@@ -1,0 +1,31 @@
+---
+configuration:
+  server_url:
+    name: 伺服器 URL
+    description: >-
+      Tailscale client 用來連進來的公開網址（例如 LAN 內測試用
+      http://homeassistant.local:28080，外部曝露用
+      https://headscale.example.com）。**這裡的網域必須跟「MagicDNS 尾綴」
+      不同**，否則 Headscale 拒啟動。
+  log_level:
+    name: Log 等級
+    description: Headscale log 的詳細程度。
+  ipv4_prefix:
+    name: IPv4 網段
+    description: 配給 tailnet 節點的 IPv4 範圍，須為 100.64.0.0/10 的子網。
+  ipv6_prefix:
+    name: IPv6 網段
+    description: 配給 tailnet 節點的 IPv6 範圍，須為 fd7a:115c:a1e0::/48 的子網。
+  magic_dns_base_domain:
+    name: MagicDNS 尾綴
+    description: >-
+      節點主機名後綴（例如 `phone.ts.local`）。**必須與伺服器 URL 的網域不同**。
+  headplane_enabled:
+    name: 啟用 Headplane 管理介面
+    description: >-
+      是否啟動內建的 Headplane Web UI（port 3000，路徑 /admin）。首次啟動時
+      Log 會印出 API key，用它登入。
+  create_default_user:
+    name: 首次啟動建立 default 使用者
+    description: >-
+      啟用時，add-on 首次啟動會自動建立 `default` 使用者（idempotent，開著沒副作用）。

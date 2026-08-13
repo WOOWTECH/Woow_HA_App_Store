@@ -1,0 +1,133 @@
+#!/command/with-contenv bashio
+set -e
+
+# Redirect stderr into stdout so both streams reach the s6 log service and
+# show up together in the addon Logs tab. Otherwise pi-web crash traces and
+# any node warnings disappear silently.
+exec 2>&1
+
+DATA_DIR=/data/pi-agent
+mkdir -p "${DATA_DIR}/sessions" "${DATA_DIR}/home"
+
+# Wrap the "POST to Supervisor to mutate our own addon options" call — used
+# to auto-enable the sidebar panel AND to auto-revert reset_video_tools.
+# Both callers need identical retry / timeout / auth-header shape and log
+# on the same 200-only success criterion, so extract to keep them in sync.
+# Args: 1=JSON body, 2=success log, 3=failure log.
+supervisor_options_post() {
+  local body="$1" success_msg="$2" failure_msg="$3"
+  [ -z "${SUPERVISOR_TOKEN}" ] && { bashio::log.warning "${failure_msg} (no SUPERVISOR_TOKEN)"; return 1; }
+  if curl -sSL --max-time 5 -o /dev/null -w '%{http_code}' \
+      -X POST \
+      -H "Authorization: Bearer ${SUPERVISOR_TOKEN}" \
+      -H "Content-Type: application/json" \
+      -d "${body}" \
+      http://supervisor/addons/self/options 2>/dev/null | grep -q '^200$'; then
+    bashio::log.info "${success_msg}"
+  else
+    bashio::log.warning "${failure_msg}"
+    return 1
+  fi
+}
+
+# --- Auto-enable sidebar panel ---
+# Every user who installs this addon wants the sidebar entry; making them
+# hunt for the toggle in Info tab is pure friction. Runs on every boot and
+# is a no-op once already enabled.
+supervisor_options_post \
+  '{"ingress_panel": true}' \
+  "Sidebar panel enabled via Supervisor API" \
+  "Could not auto-enable sidebar — toggle 'Show in sidebar' manually if it's missing" \
+  || true
+
+# --- Log level ---
+# Applied to bashio (this script + video-tools-init) AND exported as LOG_LEVEL
+# for pi-web (Next.js pino logger reads it). Nginx access_log stays default;
+# switch to `debug` to see request-level trace, `warn` to silence chatty info.
+LOG_LEVEL="$(bashio::config 'log_level' 'info')"
+bashio::log.level "${LOG_LEVEL}"
+export LOG_LEVEL
+
+# --- Timezone ---
+# Debian base image defaults to UTC, which makes session-log timestamps and
+# video-pipeline SRT cues awkward for anyone not in UTC. If left empty we
+# keep the base image default; setting a value writes /etc/timezone AND
+# exports TZ (needed for Node.js which reads TZ from process.env not the file).
+if bashio::config.has_value 'timezone'; then
+  TZ_VALUE="$(bashio::config 'timezone')"
+  if [ -f "/usr/share/zoneinfo/${TZ_VALUE}" ]; then
+    ln -sf "/usr/share/zoneinfo/${TZ_VALUE}" /etc/localtime
+    echo "${TZ_VALUE}" > /etc/timezone
+    export TZ="${TZ_VALUE}"
+    bashio::log.info "Timezone set to ${TZ_VALUE}"
+  else
+    bashio::log.warning "timezone '${TZ_VALUE}' not found in /usr/share/zoneinfo — falling back to UTC"
+  fi
+fi
+
+# --- Reset video tools ---
+# One-shot maintenance: nuke the video-tools sentinel + venv + Playwright
+# browser cache so video-tools-init re-installs from scratch on the next
+# boot. Auto-toggles the option back to false via the Supervisor API once
+# executed so users don't get stuck in a 720MB-redownload-every-restart loop.
+if bashio::config.true 'reset_video_tools'; then
+  bashio::log.warning "reset_video_tools=true — clearing venv + playwright-cache + sentinel"
+  rm -rf \
+    "${DATA_DIR}/.video-tools-installed" \
+    "${DATA_DIR}/venv" \
+    "${DATA_DIR}/playwright-cache"
+  supervisor_options_post \
+    '{"options": {"reset_video_tools": false}}' \
+    "reset_video_tools auto-reverted to false" \
+    "Could not auto-revert reset_video_tools — turn it OFF manually to avoid re-clearing next boot" \
+    || true
+fi
+
+# --- Environment variable escape hatch ---
+# Advanced users can inject arbitrary KEY=VALUE pairs (proxy config, provider
+# base-URL overrides, Playwright download mirrors, etc.) without waiting for
+# a new dedicated option. Names must be POSIX-safe: [A-Za-z_][A-Za-z0-9_]*.
+# Reject anything else early with a warning so a typo doesn't cause a silent
+# `export` failure that would crash the whole `set -e` script.
+if bashio::config.has_value 'env_vars'; then
+  ENV_VARS_COUNT="$(bashio::config 'env_vars | length')"
+  for i in $(seq 0 $((ENV_VARS_COUNT - 1))); do
+    ev_name="$(bashio::config "env_vars[${i}].name")"
+    ev_value="$(bashio::config "env_vars[${i}].value")"
+    if [[ ! "${ev_name}" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
+      bashio::log.warning "env_vars[${i}]: skipping invalid name '${ev_name}' (must match [A-Za-z_][A-Za-z0-9_]*)"
+      continue
+    fi
+    export "${ev_name}=${ev_value}"
+    bashio::log.info "env_vars: exported ${ev_name}"
+  done
+fi
+
+# --- Runtime env for pi-web ---
+export PI_CODING_AGENT_DIR="${DATA_DIR}"
+export PI_WEB_HOSTNAME="0.0.0.0"
+export PI_WEB_NO_OPEN=1
+export PORT=30141
+
+# Pi coding agent creates ephemeral worktrees under $HOME/pi-cwd-<date>/. The
+# container root filesystem is not persisted across addon updates, so those
+# worktrees would vanish on every image bump. Redirect $HOME into /data (which
+# is persistent per-addon and covered by HA snapshots) so user work survives.
+export HOME="${DATA_DIR}/home"
+cd "${HOME}"
+
+# Video pipeline (v0.11.0). The pi coding agent spawns shell subprocesses to
+# run user commands like `python3 video/tts.py`; those subprocesses inherit
+# this env, so the venv python + Playwright browser cache + rclone conf are
+# discoverable without the user having to source anything. The `[ -x ]` guard
+# skips the PATH prepend on the very first boot when video-tools-init hasn't
+# finished creating the venv yet — pi-web still starts, chat still works, and
+# the next spawned shell (after video-tools-init exits) will pick up the venv.
+if [ -x /data/pi-agent/venv/bin/python3 ]; then
+  export PATH="/data/pi-agent/venv/bin:${PATH}"
+fi
+export PLAYWRIGHT_BROWSERS_PATH=/data/pi-agent/playwright-cache
+export RCLONE_CONFIG=/data/pi-agent/rclone/rclone.conf
+
+bashio::log.info "Starting pi-web on 0.0.0.0:30141 (data: ${PI_CODING_AGENT_DIR}, home: ${HOME})"
+exec pi-web

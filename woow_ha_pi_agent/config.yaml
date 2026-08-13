@@ -1,0 +1,52 @@
+name: Woow HA Pi Agent
+version: "0.13.1"
+slug: woow_ha_pi_agent
+description: pi-web + pi coding agent SDK (AI providers now configured inside pi-web UI) + video pipeline (ffmpeg / Playwright / edge-tts / rclone)
+url: https://github.com/WOOWTECH/Woow_ha_pi_agent_add_on
+hassio_api: true
+arch:
+  - amd64
+  - aarch64
+startup: application
+boot: auto
+init: false
+map:
+  - type: addon_config
+    read_only: false
+  - type: share
+    read_only: false
+backup: cold
+backup_exclude:
+  - "**/sessions/*.jsonl.tmp"
+  - "**/home/**/node_modules/**"
+  - "**/home/**/.cache/**"
+  # Video pipeline (v0.11.0): rebuildable caches. rclone.conf is NOT excluded —
+  # losing the Google Drive OAuth token in a snapshot restore would silently
+  # break every push_drive.sh run, so it stays inside the backup.
+  - "**/playwright-cache/**"
+  - "**/venv/**"
+  - "**/projects/**/clips/**"
+  - "**/projects/**/segments/**"
+ingress: true
+ingress_port: 30142
+ingress_stream: true
+panel_icon: mdi:robot
+panel_title: Pi Agent
+panel_admin: true
+watchdog: "http://[HOST]:[PORT:30142]/api/home"
+# v0.13.0: AI provider keys moved from HA UI to pi-web. This addon page now
+# holds only container-level knobs (log level, timezone, video-tools reset,
+# env var escape hatch). See CHANGELOG for migration notes.
+options:
+  log_level: info
+  timezone: ""
+  reset_video_tools: false
+  env_vars: []
+schema:
+  log_level: list(error|warn|info|debug)
+  timezone: str?
+  reset_video_tools: bool
+  env_vars:
+    - name: str
+      value: str
+image: ghcr.io/woowtech/woow-ha-pi-agent-{arch}

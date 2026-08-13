@@ -1,0 +1,195 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Climate Template",
+        "description": "Configure your climate entity using entity selectors and optional action scripts.",
+        "data": {
+          "name": "Name",
+          "temperature_sensor": "Temperature Sensor",
+          "heater": "Heater Entity",
+          "cooler": "Cooler Entity",
+          "ac_mode": "AC Mode",
+          "hvac_modes": "HVAC Modes",
+          "min_temp": "Minimum Temperature",
+          "max_temp": "Maximum Temperature",
+          "temp_step": "Temperature Step",
+          "fan_modes": "Fan Modes",
+          "preset_modes": "Preset Modes",
+          "swing_modes": "Swing Modes",
+          "swing_horizontal_modes": "Horizontal Swing Modes",
+          "humidity_sensor": "Humidity Sensor",
+          "hvac_mode_entity": "HVAC Mode Entity",
+          "fan_mode_entity": "Fan Mode Entity",
+          "preset_mode_entity": "Preset Mode Entity",
+          "swing_mode_entity": "Swing Mode Entity",
+          "swing_horizontal_mode_entity": "Horizontal Swing Entity",
+          "target_temperature_entity": "Target Temperature Entity",
+          "humidity_entity": "Target Humidity Entity",
+          "set_temperature": "Set Temperature Action",
+          "set_hvac_mode": "Set HVAC Mode Action",
+          "set_fan_mode": "Set Fan Mode Action",
+          "set_preset_mode": "Set Preset Mode Action",
+          "set_swing_mode": "Set Swing Mode Action",
+          "set_swing_horizontal_mode": "Set Horizontal Swing Action",
+          "set_humidity": "Set Humidity Action"
+        },
+        "data_description": {
+          "name": "A friendly name for this climate entity.",
+          "temperature_sensor": "Select a temperature sensor to monitor.",
+          "heater": "Entity that controls heating (switch, input_boolean, etc.).",
+          "cooler": "Optional: Entity for cooling in Heat/Cool mode.",
+          "ac_mode": "Enable if heater is an AC unit (inverts control logic).",
+          "hvac_modes": "Select which HVAC modes to enable.",
+          "min_temp": "Minimum setpoint temperature.",
+          "max_temp": "Maximum setpoint temperature.",
+          "temp_step": "Temperature adjustment increment.",
+          "fan_modes": "Optional: Fan speed modes.",
+          "preset_modes": "Optional: Temperature presets.",
+          "swing_modes": "Optional: Swing/vane positions.",
+          "swing_horizontal_modes": "Optional: Horizontal swing/vane positions.",
+          "humidity_sensor": "Select a humidity sensor to display current humidity.",
+          "hvac_mode_entity": "Entity that represents HVAC mode (input_select, select).",
+          "fan_mode_entity": "Entity to send fan speed commands to (input_select, select, fan).",
+          "preset_mode_entity": "Entity to send preset mode commands to (input_select, select).",
+          "swing_mode_entity": "Entity to send swing commands to (input_select, select, switch).",
+          "swing_horizontal_mode_entity": "Entity to send horizontal swing commands to.",
+          "target_temperature_entity": "Entity to sync target temperature with (input_number, number). Enables TX/RX.",
+          "humidity_entity": "Entity to send target humidity commands to (input_number, number).",
+          "set_temperature": "Optional: Action script override for temperature changes.",
+          "set_hvac_mode": "Optional: Action script override for HVAC mode changes.",
+          "set_fan_mode": "Optional: Action script override for fan mode changes.",
+          "set_preset_mode": "Optional: Action script override for preset mode changes.",
+          "set_swing_mode": "Optional: Action script override for swing mode changes.",
+          "set_swing_horizontal_mode": "Optional: Action script override for horizontal swing changes.",
+          "set_humidity": "Optional: Action script override for humidity changes."
+        }
+      }
+    },
+    "error": {
+      "invalid_sensor": "Invalid temperature sensor.",
+      "invalid_heater": "Invalid heater entity.",
+      "min_max_error": "Min temp must be less than max temp.",
+      "no_hvac_modes": "At least one HVAC mode required.",
+      "entity_not_found": "Entity not found.",
+      "cannot_connect": "Configuration validation failed.",
+      "invalid_template": "Invalid template syntax.",
+      "unknown": "Unexpected error.",
+      "heater_or_cooler_required": "At least one of Heater or Cooler entity must be provided."
+    },
+    "abort": {
+      "already_configured": "Already configured.",
+      "single_instance_allowed": "Single instance only."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Climate Template Options",
+        "description": "Modify your climate entity settings.",
+        "data": {
+          "temperature_sensor": "Temperature Sensor",
+          "heater": "Heater Entity",
+          "cooler": "Cooler Entity",
+          "ac_mode": "AC Mode",
+          "hvac_modes": "HVAC Modes",
+          "min_temp": "Minimum Temperature",
+          "max_temp": "Maximum Temperature",
+          "temp_step": "Temperature Step",
+          "fan_modes": "Fan Modes",
+          "preset_modes": "Preset Modes",
+          "swing_modes": "Swing Modes",
+          "swing_horizontal_modes": "Horizontal Swing Modes",
+          "humidity_sensor": "Humidity Sensor",
+          "hvac_mode_entity": "HVAC Mode Entity",
+          "fan_mode_entity": "Fan Mode Entity",
+          "preset_mode_entity": "Preset Mode Entity",
+          "swing_mode_entity": "Swing Mode Entity",
+          "swing_horizontal_mode_entity": "Horizontal Swing Entity",
+          "target_temperature_entity": "Target Temperature Entity",
+          "humidity_entity": "Target Humidity Entity",
+          "set_temperature": "Set Temperature Action",
+          "set_hvac_mode": "Set HVAC Mode Action",
+          "set_fan_mode": "Set Fan Mode Action",
+          "set_preset_mode": "Set Preset Mode Action",
+          "set_swing_mode": "Set Swing Mode Action",
+          "set_swing_horizontal_mode": "Set Horizontal Swing Action",
+          "set_humidity": "Set Humidity Action"
+        },
+        "data_description": {
+          "temperature_sensor": "Select a temperature sensor to monitor.",
+          "heater": "Entity that controls heating.",
+          "cooler": "Optional: Entity for cooling.",
+          "ac_mode": "Enable if heater is an AC unit.",
+          "hvac_modes": "Select which HVAC modes to enable.",
+          "min_temp": "Minimum setpoint temperature.",
+          "max_temp": "Maximum setpoint temperature.",
+          "temp_step": "Temperature adjustment increment.",
+          "fan_modes": "Optional: Fan speed modes.",
+          "preset_modes": "Optional: Temperature presets.",
+          "swing_modes": "Optional: Swing/vane positions.",
+          "swing_horizontal_modes": "Optional: Horizontal swing/vane positions.",
+          "humidity_sensor": "Select a humidity sensor to display current humidity.",
+          "hvac_mode_entity": "Entity that represents HVAC mode (input_select, select).",
+          "fan_mode_entity": "Entity to send fan speed commands to (input_select, select, fan).",
+          "preset_mode_entity": "Entity to send preset mode commands to (input_select, select).",
+          "swing_mode_entity": "Entity to send swing commands to (input_select, select, switch).",
+          "swing_horizontal_mode_entity": "Entity to send horizontal swing commands to.",
+          "target_temperature_entity": "Entity to sync target temperature with (input_number, number). Enables TX/RX.",
+          "humidity_entity": "Entity to send target humidity commands to (input_number, number).",
+          "set_temperature": "Optional: Action script override for temperature changes.",
+          "set_hvac_mode": "Optional: Action script override for HVAC mode changes.",
+          "set_fan_mode": "Optional: Action script override for fan mode changes.",
+          "set_preset_mode": "Optional: Action script override for preset mode changes.",
+          "set_swing_mode": "Optional: Action script override for swing mode changes.",
+          "set_swing_horizontal_mode": "Optional: Action script override for horizontal swing changes.",
+          "set_humidity": "Optional: Action script override for humidity changes."
+        }
+      }
+    }
+  },
+  "selector": {
+    "hvac_modes": {
+      "options": {
+        "off": "Off",
+        "heat": "Heat",
+        "cool": "Cool",
+        "heat_cool": "Heat/Cool",
+        "auto": "Auto",
+        "dry": "Dry",
+        "fan_only": "Fan Only"
+      }
+    },
+    "fan_modes": {
+      "options": {
+        "auto": "Auto",
+        "low": "Low",
+        "medium": "Medium",
+        "high": "High"
+      }
+    },
+    "preset_modes": {
+      "options": {
+        "eco": "Eco",
+        "away": "Away",
+        "boost": "Boost",
+        "comfort": "Comfort",
+        "home": "Home",
+        "sleep": "Sleep",
+        "activity": "Activity"
+      }
+    },
+    "swing_modes": {
+      "options": {
+        "on": "On",
+        "off": "Off"
+      }
+    },
+    "swing_horizontal_modes": {
+      "options": {
+        "on": "On",
+        "off": "Off"
+      }
+    }
+  }
+}

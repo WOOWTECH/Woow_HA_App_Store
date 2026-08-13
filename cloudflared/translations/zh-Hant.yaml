@@ -1,0 +1,43 @@
+---
+configuration:
+  log_level:
+    name: 記錄層級
+    description: >-
+      設定此 add-on 的記錄輸出層級。
+  external_hostname:
+    name: Home Assistant 外部主機名稱
+    description: >-
+      設定你要用來存取 Home Assistant 的網域或子網域。
+  tunnel_name:
+    name: Cloudflare Tunnel 名稱
+    description: >-
+      此服務與 Cloudflare edge 伺服器之間通道的名稱。大多數情況下使用
+      預設值即可。
+  additional_hosts:
+    name: 額外主機
+    description: >-
+      定義要透過 Cloudflare Tunnel 轉送的額外主機清單。
+  post_quantum:
+    name: 使用後量子密碼學
+    description: >-
+      勾選後通道將使用後量子密碼學。警告:這會限制通道只能使用 QUIC,
+      部分使用者可能因此發生問題。
+  run_parameters:
+    name: 附加執行參數
+    description: >-
+      為 Cloudflared 加入額外的執行參數。
+  catch_all_service:
+    name: Catch-All 服務
+    description: >-
+      定義一個 catch-all 服務,未直接設定的主機名稱都會轉送到這裡。
+  nginx_proxy_manager:
+    name: 啟用 Catch-All Nginx-Proxy-Manager
+    description: >-
+      將 catch-all 服務指向「Nginx-Proxy-Manager Community App/Add-Ons」。
+  tunnel_token:
+    name: Cloudflare Tunnel Token
+    description: >-
+      設定後其他所有選項都會被忽略。若你是在 Cloudflare Dashboard 建立
+      通道,請使用此選項。
+network:
+  36500/tcp: Metrics 網頁介面 (36500/tcp)

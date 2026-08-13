@@ -1,0 +1,21 @@
+{
+  "providers": {
+    "glm": {
+      "baseUrl": "https://open.bigmodel.cn/api/paas/v4",
+      "api": "openai-completions",
+      "apiKey": "$GLM_API_KEY",
+      "thinkingFormat": "zai",
+      "models": [
+        {
+          "id": "glm-4.6",
+          "name": "GLM-4.6",
+          "reasoning": true,
+          "input": ["text"],
+          "contextWindow": 200000,
+          "maxTokens": 16384,
+          "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 }
+        }
+      ]
+    }
+  }
+}

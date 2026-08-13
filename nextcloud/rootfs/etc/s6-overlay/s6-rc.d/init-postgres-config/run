@@ -1,0 +1,19 @@
+#!/usr/bin/with-contenv bash
+# shellcheck shell=bash
+set -e
+
+# Create PostgreSQL directories with proper permissions
+mkdir -p \
+    "${PGDATA}" \
+    /config/log/postgres \
+    /var/run/postgresql
+
+chown -R postgres:postgres \
+    "${PGDATA}" \
+    /config/log/postgres \
+    /var/run/postgresql
+
+chmod 700 "${PGDATA}"
+chmod 755 /var/run/postgresql
+
+echo "PostgreSQL directories initialized"

@@ -1,0 +1,19 @@
+rebind_knob:
+  name: Rebind 4-58E8017 knob
+  description: >-
+    Re-create the ZHA group bind for the Simon 4-58E8017 rotary knob (TS0034 /
+    _TZ3000_ocqo8iwd). This Tuya controller only multicasts its gestures to group
+    0x2760 and ignores ZHA's unicast bind, so after a (re-)pair its sensors stay
+    "Unknown" until the group 0x2760 (with the coordinator as a member) and the
+    knob's OnOff/Level/Color group bind are recreated. Runs automatically on
+    pairing; use this service to force it on demand. Takes no parameters.
+
+apply_presence_defaults:
+  name: Apply WO_40117 presence-sensor defaults
+  description: >-
+    Write the curated optimal configuration into the WO_40117 (_TZE204_clrdrnya)
+    mmWave presence sensor: sensitivities, ~6 m range, 30 s hold, relay in Local
+    (auto) mode driving the light regardless of ambient light, status LED on. These
+    are applied automatically ONCE on first pairing (persisted, so later manual
+    changes survive restarts); use this service to force a re-apply on demand.
+    Targets all paired sensors matching the manufacturer/model. Takes no parameters.

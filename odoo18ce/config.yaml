@@ -1,0 +1,111 @@
+---
+name: "Odoo 18 CE"
+description: "Odoo 18 Community Edition + PostgreSQL 16 — bundled all-in-one add-on for SME"
+version: "0.2.0"
+slug: "odoo18ce"
+url: "https://github.com/WOOWTECH/Woow_ha_odoo"
+startup: application
+boot: auto
+init: false
+
+arch:
+  - amd64
+  - aarch64
+
+ports:
+  8069/tcp: 8069
+  8072/tcp: 8072
+
+ports_description:
+  8069/tcp: "Odoo Web + XML-RPC"
+  8072/tcp: "Odoo Longpolling / WebSocket"
+
+webui: "http://[HOST]:[PORT:8069]"
+
+map:
+  - share:rw
+  - backup:rw
+  - addon_config:rw
+
+backup: cold
+backup_exclude:
+  - "**/cache"
+  - "**/logs"
+  - "**/sessions"
+
+# ---------- options schema (22 fields) ----------
+schema:
+  # Required
+  admin_passwd: "password"
+  db_password: "password"
+
+  # System
+  TZ: "str?"
+
+  # Database
+  default_db: "str?"
+  list_db: "bool?"
+
+  # Performance
+  workers: "int(0,16)?"
+  max_cron_threads: "int(0,4)?"
+  limit_memory_hard: "int?"
+  limit_memory_soft: "int?"
+  limit_time_cpu: "int?"
+  limit_time_real: "int?"
+
+  # Network
+  proxy_mode: "bool?"
+
+  # Modules
+  odoo_extra_addons: "str?"
+  auto_update_module: "str?"
+  without_demo: "bool?"
+
+  # Developer
+  dev_mode: "bool?"
+  log_level: "list(info|debug|warn|error|critical)?"
+
+  # SMTP (all optional)
+  email_from: "str?"
+  smtp_server: "str?"
+  smtp_port: "int?"
+  smtp_user: "str?"
+  smtp_password: "password?"
+  smtp_ssl: "bool?"
+
+options:
+  # REQUIRED — the add-on will not start until both are set.
+  # admin_passwd is Odoo's master password (database manager);
+  # db_password is the password for the bundled PostgreSQL 'odoo' role.
+  # Home Assistant rejects known-breached passwords, so pick a fresh one.
+  admin_passwd: null
+  db_password: null
+
+  TZ: "Asia/Taipei"
+  # Leave true for first-run: the initial database is created through
+  # /web/database/manager, which this gates. Turn it off once your
+  # databases exist and the add-on is reachable from outside the LAN.
+  list_db: true
+  workers: 0
+  max_cron_threads: 1
+  limit_memory_hard: 2684354560
+  limit_memory_soft: 2147483648
+  limit_time_cpu: 60
+  limit_time_real: 120
+  # Enable ONLY behind a trusted reverse proxy (NGINX Proxy Manager,
+  # Cloudflare Tunnel). Port 8069 is published directly, so leaving this
+  # on makes Odoo trust X-Forwarded-* headers from any LAN client.
+  proxy_mode: false
+  dev_mode: false
+  log_level: "info"
+  without_demo: true
+  odoo_extra_addons: ""
+  auto_update_module: ""
+  default_db: ""
+  email_from: ""
+  smtp_server: ""
+  smtp_port: 465
+  smtp_user: ""
+  smtp_password: ""
+  smtp_ssl: true

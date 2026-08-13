@@ -1,0 +1,87 @@
+#!/command/with-contenv bashio
+# ------------------------------------------------------------------------------
+# video-tools-init  —  first-boot bootstrap for the video-production pipeline.
+#
+# Design constraints:
+#   1. Idempotent.  Runs on every boot; noop after the first success (sentinel
+#      /data/pi-agent/.video-tools-installed).  Cold-boot install cost (~720MB
+#      download for Chromium + Python venv) is paid once per addon lifetime.
+#   2. Non-fatal.  A failed install must not block the pi-web longrun — the
+#      chat UI stays useful even if the video pipeline can't be built. Errors
+#      surface in the addon Logs tab and users can retry by clearing the
+#      sentinel and restarting the addon.
+#   3. Parallel with pi-web.  This oneshot has NO dependencies.d entry from
+#      pi-web/nginx, so all three services start together and pi-web is up
+#      in <5s even during a cold Chromium download.
+#   4. Persistent.  Everything lands under /data/pi-agent (per-addon mount
+#      that survives addon updates + is captured by HA snapshots — minus the
+#      opt-out entries in config.yaml backup_exclude).
+# ------------------------------------------------------------------------------
+set -e
+exec 2>&1
+
+DATA=/data/pi-agent
+VENV="${DATA}/venv"
+CACHE="${DATA}/playwright-cache"
+RCLONE_DIR="${DATA}/rclone"
+SENTINEL="${DATA}/.video-tools-installed"
+
+mkdir -p "${DATA}" "${CACHE}" "${RCLONE_DIR}" "${DATA}/projects"
+
+if [ -f "${SENTINEL}" ] && [ -x "${VENV}/bin/python3" ]; then
+  bashio::log.info "video-tools-init: already installed (sentinel present) — skipping"
+  exit 0
+fi
+
+bashio::log.info "video-tools-init: first-run install starting (~720MB, may take several minutes)"
+
+# --- Python venv --------------------------------------------------------------
+# We isolate from the system site-packages because pi-web ships its own
+# node_modules and shouldn't share a python interpreter surface.
+if [ ! -x "${VENV}/bin/python3" ]; then
+  bashio::log.info "video-tools-init: creating venv at ${VENV}"
+  if ! python3 -m venv "${VENV}"; then
+    bashio::log.warning "video-tools-init: venv creation failed — aborting (chat still works)"
+    exit 0
+  fi
+fi
+
+# Package pin rationale:
+#   - playwright: browser control + browser install command
+#   - edge-tts: Microsoft Edge cloud TTS, free, no API key, covers the 4 voices
+#     the pitch_video pipeline uses. Users who prefer OpenAI TTS can `pip install
+#     openai` themselves inside the venv.
+#   - pyyaml: script.yaml parsing
+#   - mutagen: mp3 duration probing for SRT alignment (faster than ffprobe fork)
+bashio::log.info "video-tools-init: installing python packages into venv"
+if ! "${VENV}/bin/pip" install --no-cache-dir --quiet --upgrade pip; then
+  bashio::log.warning "video-tools-init: pip self-upgrade failed — continuing"
+fi
+if ! "${VENV}/bin/pip" install --no-cache-dir --quiet \
+       playwright edge-tts pyyaml mutagen; then
+  bashio::log.warning "video-tools-init: pip install failed — video pipeline will not work"
+  exit 0
+fi
+
+# --- Chromium (Playwright browser) --------------------------------------------
+# PLAYWRIGHT_BROWSERS_PATH pins the browser download to /data so it survives
+# image upgrades. Without this env, playwright caches under ~/.cache which is
+# on the ephemeral rootfs.
+export PLAYWRIGHT_BROWSERS_PATH="${CACHE}"
+
+bashio::log.info "video-tools-init: downloading Chromium into ${CACHE} (~600MB)"
+if ! "${VENV}/bin/playwright" install chromium; then
+  bashio::log.warning "video-tools-init: chromium download failed — capture step will not work"
+  exit 0
+fi
+
+# --- rclone conf hint ---------------------------------------------------------
+# We can't run `rclone config` non-interactively without leaking OAuth tokens
+# through logs. Users configure Google Drive once via addon shell — see DOCS.md.
+if [ ! -s "${RCLONE_DIR}/rclone.conf" ]; then
+  bashio::log.info "video-tools-init: no rclone.conf yet — Drive upload will fail until configured"
+  bashio::log.info "video-tools-init:   Run inside addon shell: rclone --config=${RCLONE_DIR}/rclone.conf config"
+fi
+
+touch "${SENTINEL}"
+bashio::log.info "video-tools-init: install complete — sentinel written to ${SENTINEL}"

@@ -1,0 +1,108 @@
+configuration:
+  PUID:
+    name: PUID
+    description: >-
+      User ID used to run Nextcloud. (Default: `1000`)
+
+      If you're not sure, leave as default.
+  PGID:
+    name: PGID
+    description: >-
+      Group ID used to run Nextcloud. (Default: `1000`)
+
+      If you're not sure, leave as default
+  TZ:
+    name: Timezone
+    description: >-
+      Local timezone.
+      You can find your timezone identifier here:
+      https://en.wikipedia.org/wiki/List_of_tz_database_time_zones
+  ADMIN_USER:
+    name: Admin user
+    description: >-
+      Nextcloud admin username. Used for initial installation.
+  ADMIN_PASS:
+    name: Admin password
+    description: >-
+      Nextcloud admin password. Used for initial installation and password reset on restart.
+  db_password:
+    name: Database password
+    description: >-
+      PostgreSQL database password for Nextcloud. (Default: `nextcloud`)
+
+      Change this for better security.
+  DEFAULT_PHONE_REGION:
+    name: Default phone region
+    description: >-
+      2 letters country code, ex: `IT` for Italy, `TW` for Taiwan.
+      https://en.wikipedia.org/wiki/List_of_ISO_3166_country_codes
+  OVERWRITEPROTOCOL:
+    name: Overwrite Protocol
+    description: >-
+      Set this if you're running behind a reverse proxy (e.g., Cloudflare Tunnel).
+      Use `https` when accessing through Cloudflare Tunnel.
+  OVERWRITEHOST:
+    name: Overwrite Host
+    description: >-
+      Set this if you're running behind a reverse proxy. ex: `cloud.example.com`
+  OVERWRITECLIURL:
+    name: Overwrite URL
+    description: >-
+      Set this if you're running behind a reverse proxy. ex: `https://cloud.example.com/path`
+      Full url for accessing your Nextcloud instance.
+  NEXTCLOUD_DATADIR:
+    name: Nextcloud data directory
+    description: >-
+      Path where Nextcloud stores user data. (Default: `/share/nextcloud`)
+
+      This should be on a persistent storage location.
+  storage_mounts:
+    name: Storage mounts
+    description: >-
+      Configure external storage mounts (local disks, SMB/CIFS, NFS).
+  trusted_proxies:
+    name: Trusted Proxies
+    description: >-
+      List of trusted proxy IP addresses or ranges.
+  trusted_domains:
+    name: Trusted Domains
+    description: >-
+      List of trusted domains for Nextcloud access.
+  SMTP_HOST:
+    name: SMTP Host
+  SMTP_SECURE:
+    name: SMTP Secure
+    description: >-
+      SMTP encryption method: `STARTTLS` or `SSL`.
+  SMTP_PORT:
+    name: SMTP Port
+  SMTP_AUTH:
+    name: SMTP Auth
+    description: >-
+      Enable SMTP authentication.
+  SMTP_AUTHTYPE:
+    name: SMTP Auth type
+    description: >-
+      SMTP authentication type: `LOGIN` or `PLAIN`.
+  SMTP_USER:
+    name: SMTP User
+  SMTP_PASS:
+    name: SMTP Password
+  MAIL_FROM_ADDRESS:
+    name: EMail From address
+    description: >-
+      Only first part of your email, before the `@` without the domain.
+      Example: for `nextcloud@example.com` you need to set this to `nextcloud`
+  MAIL_DOMAIN:
+    name: EMail Domain
+    description: >-
+      Only the domain of your email, which is after the `@`.
+      Example: for `nextcloud@example.com` you need to set this to `example.com`
+  env_vars:
+    name: Custom environment variables
+    description: >-
+      Additional environment variables to pass to the container.
+network:
+  80/tcp: HTTP
+  5432/tcp: PostgreSQL DB
+  6379/tcp: Redis DB

@@ -1,0 +1,24 @@
+configuration:
+  log_level:
+    name: 記錄等級
+    description: >-
+      控制 bashio（啟動 / init）與 pi-web（Next.js pino logger）的訊息詳細程度。
+      排查影片管線或 Playwright 問題時切到 `debug`；要清靜切到 `warn`。
+  timezone:
+    name: 時區
+    description: >-
+      IANA 時區名稱（例如 `Asia/Taipei`、`America/New_York`）。留空 = UTC。
+      影響 addon 日誌時戳、session 記錄檔名、影片管線 SRT 字幕時序。
+  reset_video_tools:
+    name: 重置影片工具（一次性）
+    description: >-
+      開啟並重啟 addon 會清掉 Python venv、Playwright 瀏覽器快取與安裝 sentinel，
+      強制 video-tools-init 重新下載全套工具（約 720MB，需要數分鐘）。
+      執行後會自動關回 OFF —— 你**不需要**手動關閉。
+  env_vars:
+    name: 額外環境變數
+    description: >-
+      進階逃生門。把 KEY=VALUE 塞進 pi-web 進程（proxy 設定、provider baseURL 覆寫、
+      Playwright 下載鏡像等）。名稱必須符合 `[A-Za-z_][A-Za-z0-9_]*`。
+      注意：AI 供應商 API key 已不再從這裡設定，請進 pi-web UI 內設定。
+network: {}

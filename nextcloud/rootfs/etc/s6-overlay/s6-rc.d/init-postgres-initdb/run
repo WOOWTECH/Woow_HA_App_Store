@@ -1,0 +1,71 @@
+#!/usr/bin/with-contenv bash
+# shellcheck shell=bash
+set -e
+
+# Read db_password from HA options if available
+OPTIONS_FILE="/data/options.json"
+if [[ -f "${OPTIONS_FILE}" ]]; then
+    OPT_DB_PASS=$(jq -r '.db_password // empty' "${OPTIONS_FILE}")
+    if [[ -n "${OPT_DB_PASS}" ]]; then
+        export POSTGRES_PASSWORD="${OPT_DB_PASS}"
+    fi
+fi
+
+POSTGRES_USER="${POSTGRES_USER:-nextcloud}"
+POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-nextcloud}"
+POSTGRES_DB="${POSTGRES_DB:-nextcloud}"
+
+# Check if database is already initialized
+if [ -s "${PGDATA}/PG_VERSION" ]; then
+    echo "PostgreSQL database already initialized in ${PGDATA}"
+    # Ensure ownership is correct
+    chown -R postgres:postgres "${PGDATA}"
+    exit 0
+fi
+
+echo "Initializing PostgreSQL database..."
+
+# Initialize the database cluster
+# Use a temp file for password instead of process substitution
+# (process substitution /dev/fd/N is not accessible after s6-setuidgid)
+PW_FILE="$(mktemp)"
+printf "%s\n" "${POSTGRES_PASSWORD}" > "$PW_FILE"
+chmod 644 "$PW_FILE"
+
+s6-setuidgid postgres initdb \
+    --username="${POSTGRES_USER}" \
+    --pwfile="$PW_FILE" \
+    --encoding=UTF8 \
+    --locale=C \
+    -D "${PGDATA}"
+
+rm -f "$PW_FILE"
+
+# Configure pg_hba.conf for local connections
+cat >> "${PGDATA}/pg_hba.conf" <<-EOF
+
+# Allow local connections for nextcloud
+host all all 127.0.0.1/32 md5
+host all all ::1/128 md5
+local all all md5
+EOF
+
+# Configure postgresql.conf for local-only access
+sed -ri "s!^#?(listen_addresses)\s*=\s*\S+.*!\1 = 'localhost'!" "${PGDATA}/postgresql.conf"
+
+# Create log directory and start temporary server to create the database
+mkdir -p /config/log/postgres
+chown postgres:postgres /config/log/postgres
+s6-setuidgid postgres pg_ctl -D "${PGDATA}" -o "-c listen_addresses='localhost'" -w start -l /config/log/postgres/init.log
+
+# Create the nextcloud database if it doesn't exist
+DB_EXISTS=$(s6-setuidgid postgres psql -U "${POSTGRES_USER}" -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname='${POSTGRES_DB}';" 2>/dev/null || true)
+if [ "$DB_EXISTS" != "1" ]; then
+    s6-setuidgid postgres createdb -U "${POSTGRES_USER}" -O "${POSTGRES_USER}" "${POSTGRES_DB}"
+    echo "Database '${POSTGRES_DB}' created."
+fi
+
+# Stop temporary server
+s6-setuidgid postgres pg_ctl -D "${PGDATA}" -m fast -w stop
+
+echo "PostgreSQL database initialization complete"

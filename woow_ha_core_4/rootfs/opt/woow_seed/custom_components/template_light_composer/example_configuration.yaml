@@ -1,0 +1,98 @@
+# Example configuration.yaml for Template Light Composer
+# Add these entities to your Home Assistant configuration.yaml for testing
+
+# Optional: Enable debug logging for Template Light Composer
+logger:
+  default: info
+  logs:
+    custom_components.template_light_composer: debug
+
+# Test entities for Template Light Composer
+input_number:
+  # Brightness control (0-255)
+  test_brightness:
+    name: "Test Brightness"
+    min: 0
+    max: 255
+    step: 1
+    initial: 100
+    mode: slider
+    icon: mdi:brightness-6
+
+  # Color temperature control (2500K-6500K)
+  test_color_temp:
+    name: "Test Color Temperature (Kelvin)"
+    min: 2500
+    max: 6500
+    step: 100
+    initial: 4000
+    mode: slider
+    unit_of_measurement: "K"
+    icon: mdi:thermometer
+
+input_boolean:
+  # Light on/off state
+  test_light_state:
+    name: "Test Light State"
+    initial: false
+    icon: mdi:lightbulb
+
+input_select:
+  # Optional: Light mode selector
+  test_mode:
+    name: "Test Mode"
+    options:
+      - "Off"
+      - "Low"
+      - "Medium"
+      - "High"
+    initial: "Off"
+    icon: mdi:tune
+
+# Optional: Create some automation examples
+automation:
+  # Example: Auto-adjust color temperature based on time
+  - alias: "Auto Color Temperature"
+    trigger:
+      - platform: time_pattern
+        minutes: "/30"  # Every 30 minutes
+    action:
+      - service: input_number.set_value
+        target:
+          entity_id: input_number.test_color_temp
+        data:
+          value: >
+            {% set hour = now().hour %}
+            {% if hour < 8 %}
+              2700
+            {% elif hour < 12 %}
+              4000
+            {% elif hour < 18 %}
+              5500
+            {% else %}
+              3000
+            {% endif %}
+
+  # Example: Sync brightness with sun elevation
+  - alias: "Auto Brightness"
+    trigger:
+      - platform: state
+        entity_id: sun.sun
+    action:
+      - service: input_number.set_value
+        target:
+          entity_id: input_number.test_brightness
+        data:
+          value: >
+            {% set elevation = state_attr('sun.sun', 'elevation') %}
+            {{ (elevation + 90) * 255 / 180 | int | max(50) | min(255) }}
+
+# Optional: Group entities for easier management
+group:
+  template_light_test_controls:
+    name: "Template Light Test Controls"
+    entities:
+      - input_boolean.test_light_state
+      - input_number.test_brightness
+      - input_number.test_color_temp
+      - input_select.test_mode

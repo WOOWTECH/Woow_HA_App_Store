@@ -1,0 +1,117 @@
+configuration:
+  PUID:
+    name: 使用者 ID (PUID)
+    description: >-
+      執行 Nextcloud 的使用者 ID。（預設：`1000`）
+
+      如果不確定，請保持預設值。
+  PGID:
+    name: 群組 ID (PGID)
+    description: >-
+      執行 Nextcloud 的群組 ID。（預設：`1000`）
+
+      如果不確定，請保持預設值。
+  TZ:
+    name: 時區
+    description: >-
+      本地時區設定。
+      可在此查詢時區識別碼：
+      https://en.wikipedia.org/wiki/List_of_tz_database_time_zones
+      例如台灣為 `Asia/Taipei`
+  ADMIN_USER:
+    name: 管理員帳號
+    description: >-
+      Nextcloud 管理員使用者名稱，用於首次安裝。
+  ADMIN_PASS:
+    name: 管理員密碼
+    description: >-
+      Nextcloud 管理員密碼，用於首次安裝及重啟時的密碼重設。
+  db_password:
+    name: 資料庫密碼
+    description: >-
+      Nextcloud 使用的 PostgreSQL 資料庫密碼。（預設：`nextcloud`）
+
+      建議修改此密碼以提升安全性。
+  DEFAULT_PHONE_REGION:
+    name: 預設電話區碼
+    description: >-
+      兩碼國家代碼，例如：`TW` 為台灣，`IT` 為義大利。
+      https://en.wikipedia.org/wiki/List_of_ISO_3166_country_codes
+  OVERWRITEPROTOCOL:
+    name: 覆寫通訊協定
+    description: >-
+      若在反向代理後方運行（例如 Cloudflare Tunnel），請設定此項。
+      透過 Cloudflare Tunnel 存取時，請設為 `https`。
+  OVERWRITEHOST:
+    name: 覆寫主機名稱
+    description: >-
+      若在反向代理後方運行，請設定此項。例如：`cloud.example.com`
+  OVERWRITECLIURL:
+    name: 覆寫 URL
+    description: >-
+      若在反向代理後方運行，請設定此項。例如：`https://cloud.example.com/path`
+      用於存取 Nextcloud 的完整 URL。
+  NEXTCLOUD_DATADIR:
+    name: Nextcloud 資料目錄
+    description: >-
+      Nextcloud 儲存使用者資料的路徑。（預設：`/share/nextcloud`）
+
+      此路徑應位於持久儲存位置。
+  storage_mounts:
+    name: 儲存掛載
+    description: >-
+      設定外部儲存掛載（本地磁碟、SMB/CIFS、NFS）。
+  trusted_proxies:
+    name: 信任的代理伺服器
+    description: >-
+      信任的代理伺服器 IP 位址或範圍清單。
+  trusted_domains:
+    name: 信任的網域
+    description: >-
+      允許存取 Nextcloud 的信任網域清單。
+  SMTP_HOST:
+    name: SMTP 主機
+    description: >-
+      SMTP 郵件伺服器的主機名稱或 IP 位址。
+  SMTP_SECURE:
+    name: SMTP 加密方式
+    description: >-
+      SMTP 加密方法：`STARTTLS` 或 `SSL`。
+  SMTP_PORT:
+    name: SMTP 連接埠
+    description: >-
+      SMTP 郵件伺服器的連接埠號碼。
+  SMTP_AUTH:
+    name: SMTP 驗證
+    description: >-
+      啟用 SMTP 驗證。
+  SMTP_AUTHTYPE:
+    name: SMTP 驗證類型
+    description: >-
+      SMTP 驗證類型：`LOGIN` 或 `PLAIN`。
+  SMTP_USER:
+    name: SMTP 使用者
+    description: >-
+      SMTP 驗證使用者名稱。
+  SMTP_PASS:
+    name: SMTP 密碼
+    description: >-
+      SMTP 驗證密碼。
+  MAIL_FROM_ADDRESS:
+    name: 寄件人地址
+    description: >-
+      電子郵件的寄件人部分，僅填寫 `@` 符號前的部分（不含網域）。
+      例如：`nextcloud@example.com` 請設為 `nextcloud`
+  MAIL_DOMAIN:
+    name: 郵件網域
+    description: >-
+      電子郵件的網域部分，僅填寫 `@` 符號後的部分。
+      例如：`nextcloud@example.com` 請設為 `example.com`
+  env_vars:
+    name: 自訂環境變數
+    description: >-
+      傳遞給容器的額外環境變數。
+network:
+  80/tcp: HTTP 網頁介面
+  5432/tcp: PostgreSQL 資料庫
+  6379/tcp: Redis 資料庫

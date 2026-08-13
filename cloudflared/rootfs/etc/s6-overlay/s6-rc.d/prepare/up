@@ -1,0 +1,8 @@
+# WOOWTECH Web GUI patch: upstream runs prepare/run.sh directly, so any
+# setup failure (bashio::exit.nok) halts the whole container — taking the
+# Web GUI down with it and locking the user out of the tool they would use
+# to fix the problem. Capture the failure in a marker instead: run.sh (CMD)
+# sees it, skips the tunnel, and idles with the GUI reachable. The original
+# error remains visible in the log. With a valid configuration this wrapper
+# changes nothing.
+/bin/sh -ec "rm -f /tmp/webgui-prepare-failed; /etc/s6-overlay/s6-rc.d/prepare/run.sh || touch /tmp/webgui-prepare-failed"

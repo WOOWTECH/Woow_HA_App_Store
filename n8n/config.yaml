@@ -1,0 +1,39 @@
+name: Woow n8n
+version: 2.12.3
+slug: woow-n8n
+description: Flexible AI workflow automation (HTTP for LAN, use Cloudflare Tunnel for HTTPS)
+url: https://github.com/WOOWTECH/Woow_ha_n8n
+webui: "http://[HOST]:[PORT:5678]"
+hassio_api: true
+arch:
+  - aarch64
+  - amd64
+init: false
+map:
+  - type: addon_config
+    read_only: false
+  - type: share
+    read_only: false
+  - type: media
+    read_only: false
+backup: cold
+backup_exclude:
+  - "**/logs"
+schema:
+  N8N_LOG_LEVEL: list(error|warn|info|debug)
+  TZ: str?
+  GENERIC_TIMEZONE: str?
+  N8N_HOST: str?
+  N8N_PATH: str?
+  WEBHOOK_URL: str?
+  clean_redis: bool?
+  env_vars:
+    - key: match(^[A-Za-z0-9_-]+$)
+      value: str
+options:
+  N8N_LOG_LEVEL: info
+  env_vars: []
+ports:
+  5678/tcp: 5678
+ports_description:
+  5678/tcp: Web UI

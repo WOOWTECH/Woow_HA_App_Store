@@ -1,0 +1,14 @@
+---
+configuration:
+  env_vars:
+    name: 環境變數
+    description: >-
+      用於進階設定的 EMQX 環境變數。
+      僅接受以 `EMQX_` 開頭的變數。
+      請參閱 https://www.emqx.io/docs/en/v5.0/admin/cfg.html
+network:
+  1883/tcp: MQTT 連線
+  8083/tcp: MQTT over WebSocket
+  8084/tcp: MQTT over 安全 WebSocket
+  8883/tcp: MQTT over SSL/TLS
+  18083/tcp: EMQX 管理面板 (Web UI)

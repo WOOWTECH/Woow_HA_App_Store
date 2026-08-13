@@ -1,0 +1,25 @@
+# Fully pinned (incl. transitive deps) for reproducible image builds on
+# Python 3.14 / Alpine musl. Regenerate with:
+#   uv venv --python 3.14 .venv && uv pip install fastapi uvicorn aiohttp pydantic websockets && uv pip freeze
+fastapi==0.115.6
+uvicorn==0.34.0
+aiohttp==3.14.3
+pydantic==2.12.0
+websockets==14.2
+# --- transitive ---
+aiohappyeyeballs==2.7.1
+aiosignal==1.4.0
+annotated-types==0.8.0
+anyio==4.14.2
+attrs==26.1.0
+click==8.4.2
+frozenlist==1.8.0
+h11==0.16.0
+idna==3.18
+multidict==6.7.1
+propcache==0.5.2
+pydantic-core==2.41.1
+starlette==0.41.3
+typing-extensions==4.16.0
+typing-inspection==0.4.2
+yarl==1.24.5

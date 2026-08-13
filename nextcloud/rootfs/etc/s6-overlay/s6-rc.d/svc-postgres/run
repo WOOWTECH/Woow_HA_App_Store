@@ -1,0 +1,11 @@
+#!/usr/bin/with-contenv bash
+# shellcheck shell=bash
+set -e
+
+echo "Starting PostgreSQL 16 server..."
+
+s6-notifyoncheck -d -n 300 -w 1000 -c "pg_isready -U ${POSTGRES_USER:-nextcloud}" \
+    s6-setuidgid postgres \
+    postgres \
+        -D "${PGDATA}" \
+        -c config_file="${PGDATA}/postgresql.conf"

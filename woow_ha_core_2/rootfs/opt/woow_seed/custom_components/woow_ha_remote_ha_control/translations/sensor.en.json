@@ -1,0 +1,12 @@
+{
+  "state": {
+    "woow_ha_remote_ha_control___": {
+      "disconnected": "Disconnected",
+      "connecting": "Connecting",
+      "connected": "Connected",
+      "reconnecting": "Re-connecting",
+      "auth_invalid": "Invalid access token",
+      "auth_required": "Authentication Required"
+    }
+  }
+}

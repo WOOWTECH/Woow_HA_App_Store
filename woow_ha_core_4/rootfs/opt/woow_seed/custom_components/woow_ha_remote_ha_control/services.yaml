@@ -1,0 +1,3 @@
+reload:
+  name: Reload Woow HA Remote HA Control
+  description: Reload woow_ha_remote_ha_control and re-process yaml configuration.

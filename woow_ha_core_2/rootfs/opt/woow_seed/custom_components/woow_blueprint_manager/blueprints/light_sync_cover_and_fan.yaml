@@ -1,0 +1,195 @@
+blueprint:
+  name: 燈光變化控制比例裝置
+  description: |
+    燈光亮度變化按比例同步控制窗簾開度與風扇轉速。
+
+    ## 功能說明 / Functional Description
+    監控燈光實體的狀態與亮度 (brightness) 變化，自動將亮度百分比同步映射到
+    窗簾位置 (cover position) 與風扇轉速 (fan percentage)。關燈時自動全關。
+    Light brightness proportional sync controller: maps light brightness (0-255)
+    to cover position and fan speed percentage. Turns off covers/fans on light off.
+
+    ## 觸發方式 / Trigger
+    - platform: state，監控所選燈光實體的任何狀態變化
+    - 觸發 ID: light_changed
+
+    ## 輸入參數 / Inputs
+    - **light_entities** (必填): 燈光實體清單 (domain: light, 可複選)
+    - **pct_entities** (必填): 比例控制裝置 (domain: cover 或 fan, 可複選)
+    - **after/before_this_time** (選填, 預設全天): 生效時間窗口
+    - **condition_weekday** (選填, 預設每天): 生效星期
+    - **global_conditions** (選填): 額外自訂條件
+
+    ## 執行效果 / Effects
+    1. 關燈 (state=off): cover.close_cover 全關窗簾 + fan.turn_off 關閉風扇
+    2. 開燈/調光 (state=on): 計算 brightness/255*100 百分比，
+       呼叫 cover.set_cover_position + fan.set_percentage 同步設定
+    3. 自動區分 cover.* 與 fan.* 實體，分別呼叫對應服務
+
+    ## 典型應用場景 / Use Cases
+    - 智慧展廳：調光同步控制窗簾遮光與通風扇轉速
+    - 臥室情境：睡前調暗燈光，窗簾與風扇同步降低
+    - 辦公室節能：關燈離開時自動關閉所有比例裝置
+  domain: automation
+  author: WOOW TECH CO., LTD.
+  homeassistant:
+    min_version: "2024.6.0"
+
+  input:
+    # ─── 燈光設定 ─────────────────────────
+    light_settings:
+      name: 燈光實體 (可複選)
+      icon: mdi:lightbulb
+      collapsed: true
+      input:
+        light_entities:
+          name: 燈光實體
+          default: []
+          selector:
+            entity:
+              multiple: true
+              filter:
+                domain: light
+
+    # ─── 比例控制裝置 ───────────────────────
+    pct_settings:
+      name: 比例控制裝置 (可複選)
+      icon: mdi:percent
+      collapsed: true
+      input:
+        pct_entities:
+          name: 裝置清單
+          description: 支援 cover (窗簾) 或 fan (風扇) 的實體
+          default: []
+          selector:
+            entity:
+              multiple: true
+              filter:
+                domain:
+                  - cover
+                  - fan
+
+    # ─── 時間／星期 條件 (選填) ────────────
+    condition_time:
+      name: 執行時間 (選填)
+      icon: mdi:clock-time-five-outline
+      collapsed: true
+      input:
+        after_this_time:
+          name: 開始時間
+          default: "00:00:00"
+          selector: { time: {} }
+        before_this_time:
+          name: 結束時間
+          default: "23:59:59"
+          selector: { time: {} }
+        condition_weekday:
+          name: 生效星期
+          default: [mon, tue, wed, thu, fri, sat, sun]
+          selector:
+            select:
+              multiple: true
+              mode: list
+              options:
+                - { label: 週一, value: mon }
+                - { label: 週二, value: tue }
+                - { label: 週三, value: wed }
+                - { label: 週四, value: thu }
+                - { label: 週五, value: fri }
+                - { label: 週六, value: sat }
+                - { label: 週日, value: sun }
+
+    # ─── Global Conditions (選填) ──────────
+    global_conditions_settings:
+      name: Global Conditions (選填)
+      icon: mdi:earth
+      collapsed: true
+      input:
+        global_conditions:
+          name: 額外全域條件
+          default: []
+          selector: { condition: {} }
+
+    _woow_meta:
+      name: "WOOW Metadata"
+      description: "Internal metadata - do not modify"
+      default:
+        version: "1.0.0"
+        name_zh: "燈光同步窗簾風扇"
+        name_en: "Light Sync Cover & Fan"
+        desc_zh: "燈光狀態同步控制窗簾與風扇"
+        desc_en: "Sync cover and fan control based on light state"
+        category: "climate"
+# ─── 變數 ────────────────────────────────
+variables:
+  _lights: !input light_entities
+  _pcts:   !input pct_entities
+
+# ─── 觸發：燈光狀態變化 ──────────────────
+trigger:
+  - platform: state
+    entity_id: !input light_entities
+    id: light_changed
+
+# ─── 條件：時間／星期／Global ────────────
+condition:
+  - condition: time
+    after: !input after_this_time
+    before: !input before_this_time
+    weekday: !input condition_weekday
+  - condition: !input global_conditions
+
+# ─── 動作 ────────────────────────────────
+action:
+  # 1. 計算必要變數
+  - variables:
+      _light:      "{{ trigger.entity_id }}"
+      _name:       "{{ state_attr(_light, 'friendly_name') or _light }}"
+      _from:       "{{ trigger.from_state.state }}"
+      _to:         "{{ trigger.to_state.state }}"
+      # brightness 可能為 None → default(0, true) 強制回傳 0，再轉 int
+      _brightness: "{{ (trigger.to_state.attributes.brightness | default(0, true)) | int }}"
+      _pct:        "{{ (_brightness / 255 * 100) | round(0) }}"
+      # 過濾出 cover.* 與 fan.* 清單
+      _covers:     "{{ _pcts | select('match','^cover\\.') | list }}"
+      _fans:       "{{ _pcts | select('match','^fan\\.')   | list }}"
+
+  # 2. 分支：關燈 → 全關；調整亮度 → 同步百分比
+  - choose:
+      - conditions:
+          - "{{ _to == 'off' }}"
+        sequence:
+          - if:
+              - "{{ _covers | length > 0 }}"
+            then:
+              - service: cover.close_cover
+                target:
+                  entity_id: "{{ _covers }}"
+          - if:
+              - "{{ _fans | length > 0 }}"
+            then:
+              - service: fan.turn_off
+                target:
+                  entity_id: "{{ _fans }}"
+
+      - conditions:
+          - "{{ _to == 'on' }}"
+        sequence:
+          - if:
+              - "{{ _covers | length > 0 }}"
+            then:
+              - service: cover.set_cover_position
+                data:
+                  position: "{{ _pct }}"
+                target:
+                  entity_id: "{{ _covers }}"
+          - if:
+              - "{{ _fans | length > 0 }}"
+            then:
+              - service: fan.set_percentage
+                data:
+                  percentage: "{{ _pct }}"
+                target:
+                  entity_id: "{{ _fans }}"
+
+mode: single

@@ -1,0 +1,14 @@
+---
+configuration:
+  env_vars:
+    name: Environment variables
+    description: >-
+      Additional EMQX environment variables for advanced configuration.
+      Only variables starting with `EMQX_` are accepted.
+      See https://www.emqx.io/docs/en/v5.0/admin/cfg.html
+network:
+  1883/tcp: MQTT
+  8083/tcp: MQTT over WebSocket
+  8084/tcp: MQTT over Secure WebSocket
+  8883/tcp: MQTT over SSL/TLS
+  18083/tcp: EMQX Dashboard (Web UI)

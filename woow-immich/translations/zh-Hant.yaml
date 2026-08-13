@@ -1,0 +1,121 @@
+configuration:
+  PUID:
+    name: 使用者 ID (PUID)
+    description: >-
+      用於執行 Immich 的使用者 ID。（預設：`0` → `root`）
+
+      若不確定，請保持預設值。
+  PGID:
+    name: 群組 ID (PGID)
+    description: >-
+      用於執行 Immich 的群組 ID。（預設：`0` → `root`）
+
+      若不確定，請保持預設值。
+  TZ:
+    name: 時區
+    description: >-
+      用於正確顯示日期和時間的時區。（預設：`Etc/UTC`）
+
+      建議設為 `Asia/Taipei`。時區識別碼列表請參考：
+      https://en.wikipedia.org/wiki/List_of_tz_database_time_zones
+  IMMICH_LOG_LEVEL:
+    name: 日誌等級
+  DB_STORAGE_TYPE:
+    name: 儲存類型
+    description: >-
+      Home Assistant 使用的儲存類型（SSD 或 HDD）。
+  MACHINE_LEARNING_WORKERS:
+    name: 機器學習工作程序數
+    description: >-
+      要產生的機器學習工作程序數量（預設 `1`）
+  MACHINE_LEARNING_MODEL_TTL:
+    name: 機器學習模型 TTL
+    description: >-
+      模型在閒置後保留在記憶體中的時間（秒）。
+      設為 `0` 表示永不卸載模型。
+  MACHINE_LEARNING_WORKER_TIMEOUT:
+    name: 機器學習工作程序逾時
+    description: >-
+      機器學習工作程序在無回應多少秒後會被終止。
+  MACHINE_LEARNING_PRELOAD__CLIP__TEXTUAL:
+    name: 預載 CLIP 文字模型
+    description: >-
+      以逗號分隔的文字 CLIP 模型列表，用於預載和快取。
+
+      這些模型用於智慧搜尋，在搜尋媒體庫時使用。
+
+      可用模型：https://huggingface.co/immich-app/collections
+
+      其他機器學習設定可透過管理介面設定。
+  MACHINE_LEARNING_PRELOAD__CLIP__VISUAL:
+    name: 預載 CLIP 視覺模型
+    description: >-
+      以逗號分隔的視覺 CLIP 模型列表，用於預載和快取。
+
+      這些模型用於智慧搜尋，在處理圖片和影片時使用。
+
+      可用模型：https://huggingface.co/immich-app/collections
+
+      其他機器學習設定可透過管理介面設定。
+  MACHINE_LEARNING_PRELOAD__FACIAL_RECOGNITION__RECOGNITION:
+    name: 人臉辨識模型
+    description: >-
+      以逗號分隔的人臉辨識模型列表（用於辨識）。
+
+      這些模型用於比對和識別人臉。
+
+      預載可確保模型隨時可用，但會顯著增加記憶體使用量。
+
+      可用模型：https://huggingface.co/collections/immich-app/facial-recognition-654eb881c0e106160e2e9c95
+
+      其他機器學習設定可透過管理介面設定。
+  MACHINE_LEARNING_PRELOAD__FACIAL_RECOGNITION__DETECTION:
+    name: 人臉偵測模型
+    description: >-
+      以逗號分隔的人臉偵測模型列表（用於偵測）。
+
+      這些模型用於在圖片和影片中偵測人臉。
+
+      預載可確保模型隨時可用，但會顯著增加記憶體使用量。
+
+      可用模型：https://huggingface.co/collections/immich-app/facial-recognition-654eb881c0e106160e2e9c95
+
+      其他機器學習設定可透過管理介面設定。
+  IMMICH_TRUSTED_PROXIES:
+    name: 受信任的代理
+    description: >-
+      以逗號分隔的 IP 位址列表，這些位址應被視為受信任的代理。
+      若 Immich 運行在反向代理（如 NGINX）後方則需要設定。
+  IMMICH_MEDIA_LOCATION:
+    name: 媒體位置
+    description: >-
+      Immich 媒體資料夾的位置，必須是 '/media/' 或 '/share/' 下的路徑（預設 `/media/immich`）。修改前請先閱讀說明文件。
+  IMMICH_PROCESS_INVALID_IMAGES:
+    name: 處理無效圖片的縮圖
+    description: >-
+      設為 true 時，為無效圖片產生縮圖
+  storage_mounts:
+    name: 外部儲存掛載
+    description: >-
+      要掛載到附加元件內部的本機、SMB 和 NFS 儲存列表。請參閱說明文件。
+  clean_redis:
+    name: 清除 Redis 快取
+    description: >-
+      啟動時以全新的資料庫啟動 Redis。僅在遇到需要清除 Redis 的問題時使用。
+  APPLY_PERMISSIONS:
+    name: 套用權限
+    description: >-
+      開機時套用權限到 Immich 媒體位置中的所有檔案，可能會增加開機時間。
+  backup_location:
+    name: PostgreSQL 備份位置
+  restore_backup:
+    name: 還原備份
+  delete_db:
+    name: 刪除資料庫！
+    description: >-
+      僅在需要手動還原 Immich 備份傾印時啟用！還原完成後必須保持為 false。
+      僅在同時啟用「還原備份」時有效。
+network:
+  8080/tcp: Immich 網頁介面
+  5432/tcp: PostgreSQL 資料庫
+  6379/tcp: Redis 資料庫

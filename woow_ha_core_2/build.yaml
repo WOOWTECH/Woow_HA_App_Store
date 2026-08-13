@@ -1,0 +1,7 @@
+build_from:
+  aarch64: ghcr.io/home-assistant/home-assistant:stable
+  amd64: ghcr.io/woowtech/woowtech-ha:2026.7.2-v2-r2
+  armhf: ghcr.io/home-assistant/home-assistant:stable
+  armv7: ghcr.io/home-assistant/home-assistant:stable
+  i386: ghcr.io/home-assistant/home-assistant:stable
+squash: false

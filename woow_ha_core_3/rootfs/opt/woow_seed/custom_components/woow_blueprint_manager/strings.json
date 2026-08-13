@@ -1,0 +1,123 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Blueprint Manager",
+        "description": "Install Blueprint Manager to auto-deploy all blueprints and access the management panel from the sidebar."
+      }
+    },
+    "abort": {
+      "already_configured": "Blueprint Manager is already configured."
+    }
+  },
+  "services": {
+    "list_blueprints": {
+      "name": "List Blueprints",
+      "description": "List all available blueprints grouped by category with instance counts."
+    },
+    "get_blueprint_detail": {
+      "name": "Get Blueprint Detail",
+      "description": "Get full parameter definitions for a single blueprint, including all input fields with selectors and defaults.",
+      "fields": {
+        "blueprint_key": {
+          "name": "Blueprint Key",
+          "description": "Blueprint identifier, e.g. 'adalight', 'light_loop'."
+        }
+      }
+    },
+    "list_instances": {
+      "name": "List Instances",
+      "description": "List all automation and script instances.",
+      "fields": {
+        "type": {
+          "name": "Type",
+          "description": "Filter by type: 'automation', 'script', or omit for both."
+        }
+      }
+    },
+    "get_instance_detail": {
+      "name": "Get Instance Detail",
+      "description": "Get current parameter values of an existing automation or script instance.",
+      "fields": {
+        "entity_id": {
+          "name": "Entity ID",
+          "description": "Entity ID of the automation or script, e.g. 'automation.adalight_living_room'."
+        }
+      }
+    },
+    "create_instance": {
+      "name": "Create Instance",
+      "description": "Create a new automation or script from a blueprint.",
+      "fields": {
+        "blueprint_key": {
+          "name": "Blueprint Key",
+          "description": "Blueprint identifier to create from."
+        },
+        "name": {
+          "name": "Name",
+          "description": "Friendly name for the new instance."
+        },
+        "input": {
+          "name": "Input",
+          "description": "Blueprint input values as key-value pairs."
+        }
+      }
+    },
+    "update_instance": {
+      "name": "Update Instance",
+      "description": "Modify parameter values of an existing automation or script.",
+      "fields": {
+        "entity_id": {
+          "name": "Entity ID",
+          "description": "Entity ID of the automation or script to update."
+        },
+        "input": {
+          "name": "Input",
+          "description": "Key-value pairs to update (partial update supported)."
+        },
+        "name": {
+          "name": "Name",
+          "description": "New friendly name (optional)."
+        }
+      }
+    },
+    "delete_instance": {
+      "name": "Delete Instance",
+      "description": "Delete an automation or script instance.",
+      "fields": {
+        "entity_id": {
+          "name": "Entity ID",
+          "description": "Entity ID of the automation or script to delete."
+        }
+      }
+    },
+    "toggle_instance": {
+      "name": "Toggle Instance",
+      "description": "Enable, disable, or toggle an automation or script.",
+      "fields": {
+        "entity_id": {
+          "name": "Entity ID",
+          "description": "Entity ID of the automation or script."
+        },
+        "action": {
+          "name": "Action",
+          "description": "'toggle' (default), 'enable', or 'disable'."
+        }
+      }
+    },
+    "recommend_blueprint": {
+      "name": "Recommend Blueprint",
+      "description": "Recommend matching blueprints based on a natural language description of user needs.",
+      "fields": {
+        "description": {
+          "name": "Description",
+          "description": "Natural language description of what the user wants, e.g. 'auto-dim living room lights based on time of day'."
+        }
+      }
+    },
+    "get_system_status": {
+      "name": "Get System Status",
+      "description": "Get overall system status including deployed blueprint and instance counts."
+    }
+  }
+}

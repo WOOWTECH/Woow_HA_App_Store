@@ -1,0 +1,27 @@
+name: emqx-amd64
+services:
+  emqx-amd64:
+    image: woowtech/woow-emqx:${VERSION:-latest}-amd64
+    build:
+      context: ..
+      args:
+        BUILD_ARCH: amd64
+        BUILD_VERSION: ${VERSION:-latest}
+    container_name: emqx-amd64
+    network_mode: host
+    environment:
+      - TZ=Asia/Taipei
+    volumes:
+      - data:/data
+      - ./options.json:/data/options.json:ro
+      - config:/config
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://127.0.0.1:18083 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+volumes:
+  data:
+  config:

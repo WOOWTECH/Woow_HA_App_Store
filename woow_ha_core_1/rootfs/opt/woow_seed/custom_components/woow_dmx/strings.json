@@ -1,0 +1,14 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Woow DMX Setup Guide",
+        "description": "This integration adds a sidebar panel with DMX configuration guidance, AI assistant links, and useful tools.\n\nClick Submit to install.",
+        "data": {}
+      }
+    },
+    "abort": {
+      "already_configured": "Woow DMX Setup Guide is already configured."
+    }
+  }
+}

@@ -1,0 +1,123 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "藍圖管理器",
+        "description": "安裝藍圖管理器以自動部署所有藍圖，並在側邊欄存取管理面板。"
+      }
+    },
+    "abort": {
+      "already_configured": "藍圖管理器已設定完成。"
+    }
+  },
+  "services": {
+    "list_blueprints": {
+      "name": "列出藍圖",
+      "description": "列出所有可用的藍圖，依分類分組並顯示實例數量。"
+    },
+    "get_blueprint_detail": {
+      "name": "取得藍圖詳情",
+      "description": "取得單一藍圖的完整參數定義，包含所有輸入欄位的選擇器與預設值。",
+      "fields": {
+        "blueprint_key": {
+          "name": "藍圖識別碼",
+          "description": "藍圖識別碼，例如 'adalight'、'light_loop'。"
+        }
+      }
+    },
+    "list_instances": {
+      "name": "列出實例",
+      "description": "列出所有自動化與腳本實例。",
+      "fields": {
+        "type": {
+          "name": "類型",
+          "description": "依類型篩選：'automation'、'script'，或留空顯示全部。"
+        }
+      }
+    },
+    "get_instance_detail": {
+      "name": "取得實例詳情",
+      "description": "取得現有自動化或腳本實例的目前參數值。",
+      "fields": {
+        "entity_id": {
+          "name": "實體 ID",
+          "description": "自動化或腳本的實體 ID，例如 'automation.adalight_living_room'。"
+        }
+      }
+    },
+    "create_instance": {
+      "name": "建立實例",
+      "description": "從藍圖建立新的自動化或腳本。",
+      "fields": {
+        "blueprint_key": {
+          "name": "藍圖識別碼",
+          "description": "要使用的藍圖識別碼。"
+        },
+        "name": {
+          "name": "名稱",
+          "description": "新實例的友善名稱。"
+        },
+        "input": {
+          "name": "輸入參數",
+          "description": "藍圖輸入值，以鍵值對形式提供。"
+        }
+      }
+    },
+    "update_instance": {
+      "name": "更新實例",
+      "description": "修改現有自動化或腳本的參數值。",
+      "fields": {
+        "entity_id": {
+          "name": "實體 ID",
+          "description": "要更新的自動化或腳本實體 ID。"
+        },
+        "input": {
+          "name": "輸入參數",
+          "description": "要更新的鍵值對（支援部分更新）。"
+        },
+        "name": {
+          "name": "名稱",
+          "description": "新的友善名稱（選填）。"
+        }
+      }
+    },
+    "delete_instance": {
+      "name": "刪除實例",
+      "description": "刪除自動化或腳本實例。",
+      "fields": {
+        "entity_id": {
+          "name": "實體 ID",
+          "description": "要刪除的自動化或腳本實體 ID。"
+        }
+      }
+    },
+    "toggle_instance": {
+      "name": "切換實例",
+      "description": "啟用、停用或切換自動化或腳本。",
+      "fields": {
+        "entity_id": {
+          "name": "實體 ID",
+          "description": "自動化或腳本的實體 ID。"
+        },
+        "action": {
+          "name": "動作",
+          "description": "'toggle'（預設）、'enable' 或 'disable'。"
+        }
+      }
+    },
+    "recommend_blueprint": {
+      "name": "推薦藍圖",
+      "description": "根據自然語言描述推薦最匹配的藍圖。",
+      "fields": {
+        "description": {
+          "name": "需求描述",
+          "description": "描述使用者想要什麼，例如 '客廳3盞燈日出到日落自動調光'。"
+        }
+      }
+    },
+    "get_system_status": {
+      "name": "取得系統狀態",
+      "description": "取得系統整體狀態，包含已部署的藍圖與實例數量。"
+    }
+  }
+}

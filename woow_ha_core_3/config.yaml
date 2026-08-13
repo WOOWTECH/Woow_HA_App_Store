@@ -1,0 +1,16 @@
+name: "Woowtech HA Core 3"
+description: "Woowtech Home Assistant Core instance 3"
+version: "2.3.0"
+slug: "woow_ha_core_3"
+init: false
+webui: "http://[HOST]:[PORT:8123]/"
+arch:
+  - aarch64
+  - amd64
+  - armhf
+  - armv7
+  - i386
+ports:
+  8123/tcp: 8126
+map:
+  - "addon_config:rw"

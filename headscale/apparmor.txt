@@ -1,0 +1,70 @@
+#include <tunables/global>
+
+profile headscale flags=(attach_disconnected,mediate_deleted) {
+  #include <abstractions/base>
+  #include <abstractions/nameservice>
+
+  # Networking: headscale :8080/:9090, nginx ingress shim :3000,
+  # headplane :3001 (loopback), optional ngrok tunnel (outbound)
+  network,
+  unix,
+
+  # An enforced AppArmor profile denies every capability not listed here.
+  # nginx starts as root and switches worker credentials (setuid/setgid/
+  # initgroups) and chowns its temp dirs — without these it crash-loops on
+  # EPERM (chown / initgroups). dac_override lets root read across owners;
+  # net_bind_service is harmless headroom for privileged ports.
+  capability chown,
+  capability setuid,
+  capability setgid,
+  capability dac_override,
+  capability net_bind_service,
+
+  # Headplane reloads headscale with SIGHUP after config changes and finds
+  # its PID by scanning /proc (integration.proc.enabled: true)
+  signal,
+  ptrace (read),
+  @{PROC}/{,**} r,
+  /sys/** r,
+
+  # S6-Overlay / bashio. The supervision tree is copied under /run at boot
+  # and executed from there: the whole /run needs inherit-exec.
+  /init rix,
+  /package/** rix,
+  /command/** rix,
+  /bin/** rix,
+  /usr/bin/** rix,
+  /usr/sbin/** rix,
+  # ngrok ships to /usr/local/bin; without this the optional tunnel is blocked
+  /usr/local/bin/** rix,
+  /usr/lib/** rix,
+  /usr/lib/bashio/** rix,
+  /etc/s6/** rix,
+  /etc/services.d/** rix,
+  /etc/cont-init.d/** rix,
+  /run/{,**} rwk,
+  /run/** rix,
+  /var/run/{,**} rwk,
+  /var/run/** rix,
+  /tmp/{,**} rwk,
+  /dev/tty rw,
+
+  # Container /etc is ephemeral: init scripts write/symlink there (timezone)
+  # and we render configs into it.
+  /etc/{,**} rwlk,
+  /var/lib/headscale/{,**} rwk,
+  # nginx runtime temp dirs (client body / proxy temp) + pid
+  /var/lib/nginx/{,**} rwk,
+  /usr/share/** rix,
+
+  # debian-base timezone init runs dpkg-reconfigure tzdata
+  /var/lib/dpkg/{,**} rwk,
+  /var/lib/dpkg/** rix,
+  /var/cache/debconf/{,**} rwk,
+  /var/log/{,**} rw,
+
+  # Headplane application + Node.js runtime ("m" for dlopen/mmap of native
+  # modules bundled with the app, e.g. libsql's index.node)
+  /opt/headplane/{,**} mr,
+  /opt/nodejs/** mrix,
+}

@@ -1,0 +1,54 @@
+---
+name: "Woow Headscale VPN"
+version: "0.1.0"
+slug: "woow-headscale"
+description: "Self-hosted Tailscale control plane (Headscale + Headplane) by WoowTech"
+url: "https://github.com/WOOWTECH/Woow_ha_vpn_headscale_package"
+init: false
+startup: services
+arch:
+  - aarch64
+  - amd64
+ingress: true
+ingress_port: 3000
+panel_title: "Headscale VPN"
+panel_icon: mdi:vpn
+ports:
+  8080/tcp: 28080
+  9090/tcp: null
+  50443/tcp: null
+ports_description:
+  8080/tcp: "Headscale control plane（tailscale login-server／反代目標）"
+  9090/tcp: "Metrics（預設關閉）"
+  50443/tcp: "gRPC remote CLI（需有效 TLS，預設關閉）"
+map:
+  - type: addon_config
+    path: /etc/headscale
+    read_only: false
+  - type: data
+    path: /var/lib/headscale
+backup: cold
+backup_exclude:
+  - "*/logs"
+options:
+  server_url: "http://homeassistant.local:28080"
+  log_level: "info"
+  ipv4_prefix: "100.64.0.0/10"
+  ipv6_prefix: "fd7a:115c:a1e0::/48"
+  magic_dns_base_domain: "ts.local"
+  create_default_user: true
+  ngrok_enabled: false
+  ngrok_authtoken: ""
+  ngrok_mode: "http"
+  ngrok_domain: ""
+schema:
+  server_url: url
+  log_level: list(trace|debug|info|warn|error)
+  ipv4_prefix: str
+  ipv6_prefix: str
+  magic_dns_base_domain: str
+  create_default_user: bool
+  ngrok_enabled: bool
+  ngrok_authtoken: password?
+  ngrok_mode: list(http|tcp)
+  ngrok_domain: str?

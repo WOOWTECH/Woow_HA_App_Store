@@ -1,0 +1,31 @@
+#!/command/with-contenv bashio
+# shellcheck shell=bash
+
+set -e
+
+OPTIONS_SOURCE=${ADDON_DATA_FOLDER:-"/data"}/options.json
+
+service_port=${SERVICE_PORT:-80}
+service_protocol=${SERVICE_PROTOCOL:-http}
+nginx_port=${NGINX_PORT:-8080}
+ingress_user="$(jq -r '.ingress_user' $OPTIONS_SOURCE)"
+
+# Generate upstream configuration
+printf '{ "port": "%s" }' "$service_port" \
+    | tempio \
+        -template /etc/nginx/templates/upstream.gtpl \
+        -out /etc/nginx/includes/upstream.conf
+
+# WOOWTECH: Always use HTTP for LAN access
+# External HTTPS access should be configured via Cloudflare Tunnel
+printf '{
+  "certfile": "",
+  "keyfile": "",
+  "port": "%s",
+  "protocol": "%s",
+  "ssl": %s,
+  "ingress_user": "%s"
+}' "$nginx_port" "$service_protocol" "false" "$ingress_user" \
+    | tempio \
+        -template /etc/nginx/templates/direct.gtpl \
+        -out /etc/nginx/servers/direct.conf

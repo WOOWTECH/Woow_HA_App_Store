@@ -1,0 +1,62 @@
+---
+configuration:
+  server_url:
+    name: Server URL
+    description: >-
+      The URL Tailscale clients use to reach this Headscale control plane
+      (the "login server" for "tailscale up"). The default points at the
+      add-on's host port 28080 for LAN use; set your reverse-proxy URL here
+      for external access. Ignored while the ngrok tunnel is enabled — the
+      tunnel's public URL is injected automatically. The hostname must be
+      different from the MagicDNS base domain, otherwise Headscale refuses
+      to start.
+  log_level:
+    name: Log level
+    description: Verbosity of the Headscale logs.
+  ipv4_prefix:
+    name: IPv4 prefix
+    description: >-
+      IPv4 range to allocate tailnet addresses from. Must be a subnet of
+      100.64.0.0/10.
+  ipv6_prefix:
+    name: IPv6 prefix
+    description: >-
+      IPv6 range to allocate tailnet addresses from. Must be a subnet of
+      fd7a:115c:a1e0::/48.
+  magic_dns_base_domain:
+    name: MagicDNS base domain
+    description: >-
+      Base domain MagicDNS appends to tailnet hostnames (e.g.
+      my-laptop.ts.local). Must be different from the Server URL hostname.
+  create_default_user:
+    name: Create default user
+    description: >-
+      Create a Headscale user named "default" on startup if it does not
+      exist yet, so you can create pre-auth keys and register devices right
+      away. Existing users are never modified.
+  ngrok_enabled:
+    name: Enable ngrok tunnel
+    description: >-
+      Expose the Headscale control plane to the internet through an ngrok
+      tunnel. The tunnel's public URL automatically replaces the Server URL
+      and is printed in the add-on log for use with
+      "tailscale up --login-server". Requires an ngrok authtoken.
+  ngrok_authtoken:
+    name: ngrok authtoken
+    description: >-
+      Authtoken from your ngrok dashboard (https://dashboard.ngrok.com).
+      Required when the ngrok tunnel is enabled.
+  ngrok_mode:
+    name: ngrok mode
+    description: >-
+      "http" tunnels the control plane over HTTPS (recommended; clients log
+      in via an https:// URL). "tcp" is a raw passthrough without valid TLS,
+      so clients must use an http:// login server — testing only.
+  ngrok_domain:
+    name: ngrok domain
+    description: >-
+      Optional reserved ngrok domain (paid plan), e.g.
+      headscale.example.ngrok.app, so the public URL stays fixed across
+      restarts. Leave empty for a random free-tier URL — note it changes on
+      every restart, which breaks all registered devices until they
+      re-register. Used in HTTP mode only.

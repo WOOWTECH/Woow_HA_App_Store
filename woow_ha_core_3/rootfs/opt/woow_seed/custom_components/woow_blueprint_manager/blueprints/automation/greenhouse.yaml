@@ -1,0 +1,372 @@
+blueprint:
+  name: 環境數值控制器
+  description: |
+    環境數值遲滯控制器，以雙閾值 (hysteresis) 機制維持感測值在理想範圍內。
+
+    ## 功能說明 / Functional Description
+    自動將環境數值 (溫度、濕度、CO2、光照等) 控制在理想範圍內。透過四個
+    numeric_state 觸發點 (過高啟動/停止、過低啟動/停止) 實現遲滯控制，
+    防止設備在臨界值附近反覆開關。Hysteresis-based environment value
+    controller with dual-threshold (high/low) control using numeric_state
+    triggers and configurable dead-band to prevent relay chattering.
+
+    【運作原理圖 / Operation Diagram】
+    ┌─────────────────────────────────────────┐
+    │   數值過高區域 → 啟動「降低數值」設備      │
+    │   (溫度→風扇, 濕度→除濕, CO2→通風)       │
+    ├─────────────────────────────────────────┤
+    │   ↑ 過高啟動值 (threshold_high_on)       │
+    │   ↓ 過高停止值 (threshold_high_off)      │
+    │         ← 緩衝區 / dead-band →          │
+    ├─────────────────────────────────────────┤
+    │              理想區域 (無動作)            │
+    ├─────────────────────────────────────────┤
+    │   ↑ 過低停止值 (threshold_low_off)       │
+    │   ↓ 過低啟動值 (threshold_low_on)        │
+    │         ← 緩衝區 / dead-band →          │
+    ├─────────────────────────────────────────┤
+    │   數值過低區域 → 啟動「提升數值」設備      │
+    │   (溫度→暖氣, 濕度→加濕, 光照→開燈)      │
+    └─────────────────────────────────────────┘
+
+    ## 觸發方式 / Trigger
+    - platform: numeric_state，共 4 組觸發 ID:
+      high_on (above high_on值), high_off (below high_off值),
+      low_on (below low_on值), low_off (above low_off值)
+    - 每組觸發均支援 trigger_duration 延遲，避免感測器波動誤觸發
+
+    ## 輸入參數 / Inputs
+    - **numeric_sensor_entity** (必填): 數值感測器 (domain: sensor)
+    - **trigger_duration** (選填, 預設 0): 數值持續超過閾值多久才觸發
+    - **threshold_high_on/off** (選填, 預設 40/38): 過高啟動/停止閾值
+    - **threshold_low_on/off** (選填, 預設 30/32): 過低啟動/停止閾值
+    - **high_start/stop_entities** (選填): 過高時啟動/恢復的 Scene/Script
+    - **low_start/stop_entities** (選填): 過低時啟動/恢復的 Scene/Script
+    - **after/before_this_time, condition_weekday** (選填): 時間與星期條件
+    - **global_conditions** (選填): 額外自訂條件
+
+    ## 執行效果 / Effects
+    1. 根據觸發 ID 執行對應的 Scene/Script (homeassistant.turn_on)
+    2. 僅在 entities 清單非空時才執行動作，空清單自動跳過
+    3. 緩衝區設計確保設備不會在臨界值附近反覆開關
+
+    ## 典型應用場景 / Use Cases
+    - 溫室/種植箱溫濕度自動控制 (風扇+加濕器)
+    - 室內 CO2 濃度管控 (通風扇自動啟停)
+    - 伺服器機房溫度監控 (冷氣+告警)
+  domain: automation
+  author: WOOW TECH CO., LTD.
+  homeassistant:
+    min_version: "2024.6.0"
+
+  input:
+    # ═══════════════════════════════════════════
+    # 1️⃣ 監控感測器
+    # ═══════════════════════════════════════════
+    sensor_section:
+      name: 1️⃣ 監控感測器
+      icon: mdi:chip
+      collapsed: false
+      input:
+        numeric_sensor_entity:
+          name: 數值感測器
+          description: |
+            選擇要監控的數值感測器，例如：
+            • 溫度感測器 (sensor.xxx_temperature)
+            • 濕度感測器 (sensor.xxx_humidity)
+            • CO2 感測器 (sensor.xxx_co2)
+            • 光照感測器 (sensor.xxx_illuminance)
+          default: []
+          selector:
+            entity:
+              filter: { domain: sensor }
+
+        trigger_duration:
+          name: 觸發延遲時間 (選填)
+          description: |
+            數值需持續超過/低於閾值多久才觸發動作。
+            適用於感測器數值波動較大的情況，可避免誤觸發。
+          default: { hours: 0, minutes: 0, seconds: 0 }
+          selector:
+            duration: {}
+
+    # ═══════════════════════════════════════════
+    # 2️⃣ 數值過高時
+    # ═══════════════════════════════════════════
+    high_section:
+      name: 2️⃣ 數值過高時
+      icon: mdi:arrow-up-bold
+      collapsed: false
+      input:
+        threshold_high_on:
+          name: 🔴 過高啟動值
+          description: |
+            數值高於此值時，啟動「降低數值」的設備。
+            範例：
+            • 溫度 > 30°C → 開風扇/冷氣
+            • 濕度 > 80% → 開除濕機
+            • CO2 > 1000ppm → 開通風扇
+          default: 40
+          selector:
+            number: { mode: box, min: -1000, max: 10000, step: 0.5 }
+
+        threshold_high_off:
+          name: 🟢 過高停止值
+          description: |
+            數值降到此值以下時，停止「降低數值」的設備。
+            【重要】應設定比「過高啟動值」低 2-5 單位，形成緩衝區。
+            範例：啟動值=30，停止值=28 → 緩衝區=2度
+          default: 38
+          selector:
+            number: { mode: box, min: -1000, max: 10000, step: 0.5 }
+
+        high_start_entities:
+          name: 過高時啟動的 Scene / Script
+          description: |
+            數值過高時要執行的動作（可複選）。
+            範例：開啟風扇的 Scene、啟動冷氣的 Script
+          default: []
+          selector:
+            entity:
+              multiple: true
+              filter:
+                - domain: scene
+                - domain: script
+
+        high_stop_entities:
+          name: 過高結束時啟動的 Scene / Script
+          description: |
+            數值回到正常範圍時要執行的動作（可複選）。
+            範例：關閉風扇的 Scene、停止冷氣的 Script
+          default: []
+          selector:
+            entity:
+              multiple: true
+              filter:
+                - domain: scene
+                - domain: script
+
+    # ═══════════════════════════════════════════
+    # 3️⃣ 數值過低時
+    # ═══════════════════════════════════════════
+    low_section:
+      name: 3️⃣ 數值過低時
+      icon: mdi:arrow-down-bold
+      collapsed: true
+      input:
+        threshold_low_on:
+          name: 🔴 過低啟動值
+          description: |
+            數值低於此值時，啟動「提升數值」的設備。
+            範例：
+            • 溫度 < 18°C → 開暖氣/加熱器
+            • 濕度 < 40% → 開加濕器
+            • 光照 < 100lux → 開燈
+          default: 30
+          selector:
+            number: { mode: box, min: -1000, max: 10000, step: 0.5 }
+
+        threshold_low_off:
+          name: 🟢 過低停止值
+          description: |
+            數值升到此值以上時，停止「提升數值」的設備。
+            【重要】應設定比「過低啟動值」高 2-5 單位，形成緩衝區。
+            範例：啟動值=18，停止值=20 → 緩衝區=2度
+          default: 32
+          selector:
+            number: { mode: box, min: -1000, max: 10000, step: 0.5 }
+
+        low_start_entities:
+          name: 過低時啟動的 Scene / Script
+          description: |
+            數值過低時要執行的動作（可複選）。
+            範例：開啟暖氣的 Scene、啟動加濕器的 Script
+          default: []
+          selector:
+            entity:
+              multiple: true
+              filter:
+                - domain: scene
+                - domain: script
+
+        low_stop_entities:
+          name: 過低結束時啟動的 Scene / Script
+          description: |
+            數值回到正常範圍時要執行的動作（可複選）。
+            範例：關閉暖氣的 Scene、停止加濕器的 Script
+          default: []
+          selector:
+            entity:
+              multiple: true
+              filter:
+                - domain: scene
+                - domain: script
+
+    # ═══════════════════════════════════════════
+    # 4️⃣ 執行時間 (選填)
+    # ═══════════════════════════════════════════
+    time_section:
+      name: 4️⃣ 執行時間 (選填)
+      icon: mdi:clock-outline
+      collapsed: true
+      input:
+        after_this_time:
+          name: 開始時間
+          description: 自動化只在此時間之後執行
+          default: "00:00:00"
+          selector: { time: {} }
+
+        before_this_time:
+          name: 結束時間
+          description: 自動化只在此時間之前執行
+          default: "23:59:59"
+          selector: { time: {} }
+
+        condition_weekday:
+          name: 生效星期
+          description: 選擇要執行自動化的星期
+          default: [mon, tue, wed, thu, fri, sat, sun]
+          selector:
+            select:
+              multiple: true
+              mode: list
+              options:
+                - { label: 週一, value: mon }
+                - { label: 週二, value: tue }
+                - { label: 週三, value: wed }
+                - { label: 週四, value: thu }
+                - { label: 週五, value: fri }
+                - { label: 週六, value: sat }
+                - { label: 週日, value: sun }
+
+    # ═══════════════════════════════════════════
+    # 5️⃣ 額外條件 (選填)
+    # ═══════════════════════════════════════════
+    conditions_section:
+      name: 5️⃣ 額外條件 (選填)
+      icon: mdi:filter-outline
+      collapsed: true
+      input:
+        global_conditions:
+          name: 額外全域條件
+          description: |
+            可新增任意條件類型，如：
+            • 狀態條件：某開關必須開啟
+            • 數值條件：另一個感測器在某範圍內
+            • 範本條件：自定義邏輯判斷
+          default: []
+          selector: { condition: {} }
+
+    _woow_meta:
+      name: "WOOW Metadata"
+      description: "Internal metadata - do not modify"
+      default:
+        version: "1.0.0"
+        name_zh: "溫室自動控制"
+        name_en: "Greenhouse Control"
+        desc_zh: "溫室環境自動監控與控制"
+        desc_en: "Automated greenhouse environment monitoring and control"
+        category: "climate"
+# ═══════════════════════════════════════════════
+# 變數
+# ═══════════════════════════════════════════════
+variables:
+  _sensor: !input numeric_sensor_entity
+  _high_on: !input threshold_high_on
+  _high_off: !input threshold_high_off
+  _low_on: !input threshold_low_on
+  _low_off: !input threshold_low_off
+
+  _high_start: !input high_start_entities
+  _high_stop: !input high_stop_entities
+  _low_start: !input low_start_entities
+  _low_stop: !input low_stop_entities
+
+# ═══════════════════════════════════════════════
+# 觸發
+# ═══════════════════════════════════════════════
+trigger:
+  # 過高啟動: 數值超過過高啟動值
+  - platform: numeric_state
+    entity_id: !input numeric_sensor_entity
+    above: !input threshold_high_on
+    for: !input trigger_duration
+    id: high_on
+
+  # 過高停止: 數值降到過高停止值以下 (遲滯)
+  - platform: numeric_state
+    entity_id: !input numeric_sensor_entity
+    below: !input threshold_high_off
+    for: !input trigger_duration
+    id: high_off
+
+  # 過低啟動: 數值低於過低啟動值
+  - platform: numeric_state
+    entity_id: !input numeric_sensor_entity
+    below: !input threshold_low_on
+    for: !input trigger_duration
+    id: low_on
+
+  # 過低停止: 數值升到過低停止值以上 (遲滯)
+  - platform: numeric_state
+    entity_id: !input numeric_sensor_entity
+    above: !input threshold_low_off
+    for: !input trigger_duration
+    id: low_off
+
+# ═══════════════════════════════════════════════
+# 條件
+# ═══════════════════════════════════════════════
+condition:
+  - condition: time
+    after: !input after_this_time
+    before: !input before_this_time
+    weekday: !input condition_weekday
+  - condition: !input global_conditions
+
+# ═══════════════════════════════════════════════
+# 動作
+# ═══════════════════════════════════════════════
+action:
+  - choose:
+      # 數值過高 → 啟動降低設備
+      - conditions: "{{ trigger.id == 'high_on' }}"
+        sequence:
+          - if:
+              - "{{ _high_start | length > 0 }}"
+            then:
+              - service: homeassistant.turn_on
+                target:
+                  entity_id: "{{ _high_start }}"
+
+      # 數值回落 → 停止降低設備
+      - conditions: "{{ trigger.id == 'high_off' }}"
+        sequence:
+          - if:
+              - "{{ _high_stop | length > 0 }}"
+            then:
+              - service: homeassistant.turn_on
+                target:
+                  entity_id: "{{ _high_stop }}"
+
+      # 數值過低 → 啟動提升設備
+      - conditions: "{{ trigger.id == 'low_on' }}"
+        sequence:
+          - if:
+              - "{{ _low_start | length > 0 }}"
+            then:
+              - service: homeassistant.turn_on
+                target:
+                  entity_id: "{{ _low_start }}"
+
+      # 數值回升 → 停止提升設備
+      - conditions: "{{ trigger.id == 'low_off' }}"
+        sequence:
+          - if:
+              - "{{ _low_stop | length > 0 }}"
+            then:
+              - service: homeassistant.turn_on
+                target:
+                  entity_id: "{{ _low_stop }}"
+
+mode: single

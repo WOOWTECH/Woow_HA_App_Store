@@ -1,0 +1,13 @@
+{
+  "PUID": 1000,
+  "PGID": 1000,
+  "TZ": "Asia/Taipei",
+  "ADMIN_USER": "admin",
+  "ADMIN_PASS": "admin-password",
+  "db_password": "nextcloud",
+  "NEXTCLOUD_DATADIR": "/share/nextcloud",
+  "storage_mounts": [],
+  "trusted_proxies": [],
+  "trusted_domains": [],
+  "env_vars": []
+}

@@ -1,0 +1,113 @@
+configuration:
+  admin_passwd:
+    name: Admin Master Password
+    description: >-
+      Master password for Odoo database management.
+      Used to create, duplicate, delete, or backup databases via the web interface.
+  db_password:
+    name: Database Password
+    description: >-
+      Password for the PostgreSQL 'odoo' database role.
+      Change the default for better security.
+  TZ:
+    name: Timezone
+    description: >-
+      Timezone for Odoo and PostgreSQL. (Default: Asia/Taipei)
+      See: https://en.wikipedia.org/wiki/List_of_tz_database_time_zones
+  default_db:
+    name: Default Database
+    description: >-
+      PostgreSQL database name for Odoo. If set, the database will be
+      automatically created on first startup with the 'base' module installed.
+      Leave empty to use the Database Manager in the web interface.
+  list_db:
+    name: List Databases
+    description: >-
+      Allow listing all databases on the login page.
+      Disable this in production for security. (Default: true)
+  workers:
+    name: Workers
+    description: >-
+      Number of Odoo worker processes. (Default: 0)
+      Set to 0 for single-process mode (recommended for RPi / low-memory).
+      For multi-core servers: CPU cores × 2 + 1.
+  max_cron_threads:
+    name: Max Cron Threads
+    description: >-
+      Number of cron job worker threads. (Default: 1)
+  limit_memory_hard:
+    name: Memory Hard Limit (bytes)
+    description: >-
+      Hard memory limit per worker process. Workers exceeding this are killed.
+      (Default: 2684354560 = 2.5 GB)
+  limit_memory_soft:
+    name: Memory Soft Limit (bytes)
+    description: >-
+      Soft memory limit per worker. Workers exceeding this after a request are recycled.
+      (Default: 2147483648 = 2 GB)
+  limit_time_cpu:
+    name: CPU Time Limit (seconds)
+    description: >-
+      Maximum CPU time per request. (Default: 60)
+  limit_time_real:
+    name: Real Time Limit (seconds)
+    description: >-
+      Maximum wall-clock time per request. (Default: 120)
+  proxy_mode:
+    name: Proxy Mode
+    description: >-
+      Enable proxy mode to correctly handle X-Forwarded headers.
+      Should be true when running behind a reverse proxy or Cloudflare Tunnel.
+  odoo_extra_addons:
+    name: Extra Addons Path
+    description: >-
+      Additional Odoo module paths (comma-separated).
+      These paths are prepended to the default addons path for highest priority.
+  auto_update_module:
+    name: Auto-Update Modules
+    description: >-
+      Comma-separated list of modules to update on each startup.
+      Odoo runs with --stop-after-init to update, then starts normally.
+      Leave empty to skip.
+  without_demo:
+    name: Disable Demo Data
+    description: >-
+      Do not load demo data when creating new databases. (Default: true)
+  dev_mode:
+    name: Developer Mode
+    description: >-
+      Enable Odoo developer mode. Enables all dev features including
+      asset reloading and debug tools. (Default: false)
+  log_level:
+    name: Log Level
+    description: >-
+      Odoo log output level. (Default: info)
+  email_from:
+    name: Email From
+    description: >-
+      Default sender email address for outgoing mail.
+  smtp_server:
+    name: SMTP Server
+    description: >-
+      SMTP server hostname for sending emails.
+      Leave empty to disable email sending.
+  smtp_port:
+    name: SMTP Port
+    description: >-
+      SMTP server port. (Default: 465 for SSL)
+  smtp_user:
+    name: SMTP User
+    description: >-
+      SMTP authentication username.
+  smtp_password:
+    name: SMTP Password
+    description: >-
+      SMTP authentication password.
+  smtp_ssl:
+    name: SMTP SSL
+    description: >-
+      Use SSL/TLS for SMTP connection. (Default: true)
+
+network:
+  8069/tcp: Odoo Web + XML-RPC
+  8072/tcp: Odoo Longpolling / WebSocket

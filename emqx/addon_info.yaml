@@ -1,0 +1,8 @@
+source:
+  type: github-releases
+  repo: emqx/emqx
+  current_version: v5.8.9
+config:
+  version_template: "{{version}}"
+test:
+  enable: true

@@ -1,0 +1,46 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Add Financial Account",
+        "description": "Create a new financial account to track your finances.",
+        "data": {
+          "account_name": "Account Name",
+          "account_id": "Account ID (optional)",
+          "initial_balance": "Initial Balance"
+        }
+      }
+    },
+    "error": {
+      "invalid_day_weekly": "Day must be 1-7 for weekly frequency",
+      "invalid_day_monthly": "Day must be 1-28 for monthly frequency",
+      "invalid_day_yearly": "Day must be 1-28 for yearly frequency"
+    },
+    "abort": {
+      "already_configured": "Account is already configured",
+      "invalid_input": "Invalid input for account creation"
+    }
+  },
+  "entity": {
+    "sensor": {
+      "balance_display": {
+        "name": "Balance"
+      },
+      "last_transaction": {
+        "name": "Last Transaction"
+      },
+      "last_note": {
+        "name": "Last Note"
+      },
+      "last_time": {
+        "name": "Last Time"
+      },
+      "plan_next_date": {
+        "name": "{title} Next Date"
+      },
+      "plan_last_executed": {
+        "name": "{title} Last Executed"
+      }
+    }
+  }
+}

@@ -1,0 +1,165 @@
+blueprint:
+  name: 多切開關控制實體
+  description: |
+    多個 switch 開關同時控制多個支援 toggle 的實體（light / switch / input_boolean）。
+
+    ## 功能說明 / Functional Description
+    本 Blueprint 允許一或多個實體開關（domain: switch）的狀態變化來觸發一組目標實體的 toggle。
+    目標實體可以是燈光、開關或虛擬開關，任何支援 homeassistant.toggle 的實體皆適用。
+    This blueprint toggles multiple target entities (light/switch/input_boolean) whenever
+    any of the selected switch entities changes state. Supports time/weekday restrictions.
+
+    ## 觸發方式 / Trigger
+    任一已選開關（domain: switch）的 state 發生變化時觸發（platform: state）。
+
+    ## 輸入參數 / Inputs
+    - **switch_entities**（必填）: 觸發用的開關實體清單（domain: switch, 可複選）
+    - **target_entities**（必填）: 要被 toggle 的目標實體（domain: light/switch/input_boolean, 可複選）
+    - **after_this_time / before_this_time**（選填）: 執行時間區間，預設全天
+    - **condition_weekday**（選填）: 生效星期，預設每天
+    - **global_conditions**（選填）: 額外全域條件
+
+    ## 執行效果 / Effects
+    對所有目標實體呼叫 homeassistant.toggle，使其在 on/off 間切換。
+    模式為 single，同時只處理一次觸發。
+
+    ## 典型應用場景 / Use Cases
+    - 多對多控制：多個牆壁開關同時控制同一組燈光
+    - 跨房間聯動：走廊開關同步切換客廳與走廊燈
+    - 虛實整合：實體開關連動 input_boolean 觸發其他自動化
+  domain: automation
+  author: WOOW TECH CO., LTD. - Matt
+  source_url: https://github.com/WOOWTECH/HA_blueprint_switch_trigger_lights
+  homeassistant:
+    min_version: "2024.6.0"
+
+  input:
+    # ─── 觸發開關 ─────────────────────────
+    trigger_settings:
+      name: 觸發開關 (可複選)
+      icon: mdi:toggle-switch
+      collapsed: true
+      input:
+        switch_entities:
+          name: 開關實體
+          description: 當這些開關狀態變化時觸發
+          default: []
+          selector:
+            entity:
+              multiple: true
+              filter:
+                domain: switch
+
+    # ─── 目標實體 ─────────────────────────
+    target_settings:
+      name: 目標實體 (可複選)
+      icon: mdi:target
+      collapsed: true
+      input:
+        target_entities:
+          name: 支援 toggle 的實體
+          description: 同時切換這些實體狀態 (light / switch / input_boolean)
+          default: []
+          selector:
+            entity:
+              multiple: true
+              filter:
+                domain:
+                  - light
+                  - switch
+                  - input_boolean
+
+    # ─── 時間／星期 條件 (選填) ────────────
+    condition_time:
+      name: 執行時間 (選填)
+      icon: mdi:clock-time-five-outline
+      collapsed: true
+      input:
+        after_this_time:
+          name: 開始時間
+          default: "00:00:00"
+          selector:
+            time: {}
+        before_this_time:
+          name: 結束時間
+          default: "23:59:59"
+          selector:
+            time: {}
+        condition_weekday:
+          name: 生效星期
+          default:
+            - mon
+            - tue
+            - wed
+            - thu
+            - fri
+            - sat
+            - sun
+          selector:
+            select:
+              multiple: true
+              mode: list
+              options:
+                - { label: 週一, value: mon }
+                - { label: 週二, value: tue }
+                - { label: 週三, value: wed }
+                - { label: 週四, value: thu }
+                - { label: 週五, value: fri }
+                - { label: 週六, value: sat }
+                - { label: 週日, value: sun }
+
+    # ─── Global Condition (選填) ──────────
+    global_conditions_settings:
+      name: Global Conditions (選填)
+      icon: mdi:earth
+      collapsed: true
+      input:
+        global_conditions:
+          name: 額外全域條件
+          default: []
+          selector:
+            condition: {}
+
+    _woow_meta:
+      name: "WOOW Metadata"
+      description: "Internal metadata - do not modify"
+      default:
+        version: "1.0.0"
+        name_zh: "開關觸發燈光"
+        name_en: "Switch Trigger Lights"
+        desc_zh: "多切開關控制燈光實體，支援同步切換"
+        desc_en: "Multi-switch controls light entities with synchronized toggle"
+        category: "lighting"
+# ─── 變數 ────────────────────────────────
+variables:
+  _triggers: !input switch_entities
+  _targets:  !input target_entities
+
+# ─── 觸發 ────────────────────────────────
+trigger:
+  - platform: state
+    entity_id: !input switch_entities
+    id: switch_changed
+
+# ─── 條件 ────────────────────────────────
+condition:
+  - condition: time
+    after: !input after_this_time
+    before: !input before_this_time
+    weekday: !input condition_weekday
+
+  - condition: !input global_conditions
+
+# ─── 動作 ────────────────────────────────
+action:
+  # 1. 取得觸發開關資訊
+  - variables:
+      _trigger:      "{{ trigger.entity_id }}"
+      _trigger_name: "{{ state_attr(_trigger,'friendly_name') or _trigger }}"
+
+  # 2. 切換所有目標實體
+  - service: homeassistant.toggle
+    target:
+      entity_id: !input target_entities
+
+mode: single

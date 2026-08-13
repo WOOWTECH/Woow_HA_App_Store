@@ -1,0 +1,230 @@
+blueprint:
+  name: 時間模式觸發 Scene/Script（秒／分／時 三合一）
+  description: |
+    秒／分／時三合一 time_pattern 觸發，批次執行 Scene / Script 並可選推播通知。
+
+    ## 功能說明 / Functional Description
+    同時設定秒數、分鐘、小時三條 time_pattern 觸發器，任一頻率達成即批次啟動選定的 Scene 與 Script。
+    Three independent time_pattern triggers (seconds/minutes/hours) fire in OR logic; any match batch-activates selected scenes/scripts.
+    支援全域條件、時段星期過濾，以及完成後的持久通知與 notify.notify 推播。
+
+    ## 觸發方式 / Trigger
+    三條獨立 platform: time_pattern 觸發器（OR 邏輯）：
+    - 秒數觸發：依 interval_seconds_pattern
+    - 分鐘觸發：依 interval_minutes_pattern（秒歸零）
+    - 小時觸發：依 interval_hours_pattern（分秒歸零）
+
+    ## 輸入參數 / Inputs
+    - **interval_seconds_pattern** (必填): 秒數 time_pattern，預設 `/15`
+    - **interval_minutes_pattern** (必填): 分鐘 time_pattern，預設 `*`（停用）
+    - **interval_hours_pattern** (必填): 小時 time_pattern，預設 `*`（停用）
+    - **target_entities** (必填): 要執行的 Scene/Script 實體清單（多選）
+    - **global_conditions** (選填): 額外全域條件，預設無
+    - **after_time / before_time** (選填): 生效時段，預設全天
+    - **condition_weekday** (選填): 生效星期，預設每天
+    - **send_notify** (選填): 是否發送通知，預設否
+    - **notify_title / notify_message** (選填): 自訂通知標題與內容，支援 Jinja
+
+    ## 執行效果 / Effects
+    1. 若未選擇目標實體，建立錯誤持久通知並停止
+    2. 呼叫 homeassistant.turn_on 批次啟動所有選定實體
+    3. 若啟用通知：建立 persistent_notification 並呼叫 notify.notify
+    mode 為 restart，新觸發會中斷前一次執行。
+
+    ## 典型應用場景 / Use Cases
+    - 每 5 分鐘刷新儀表板場景，同時每 2 小時執行完整巡檢腳本
+    - 秒級高頻觸發搭配分鐘級低頻觸發，實現多層級排程
+    - 白天上班時段每 10 分鐘執行節能 Script
+  domain: automation
+  author: WOOW TECH CO., LTD.
+
+  # ─── Input ────────────────────────────────────────
+  input:
+    frequency_settings:
+      name: 執行頻率設定
+      icon: mdi:timer-outline
+      collapsed: true
+      input:
+        interval_seconds_pattern:
+          name: 間隔 - 秒數 (time_pattern 格式)
+          description: 例如 `/10` = 每 10 秒；`*` = 不使用秒數頻率
+          default: "/15"
+          selector: { text: {} }
+
+        interval_minutes_pattern:
+          name: 間隔 - 分鐘 (time_pattern 格式)
+          description: 例如 `/5` = 每 5 分鐘；`*` = 不使用分鐘頻率
+          default: "*"
+          selector: { text: {} }
+
+        interval_hours_pattern:
+          name: 間隔 - 小時 (time_pattern 格式)
+          description: 例如 `/2` = 每 2 小時；`*` = 不使用小時頻率
+          default: "*"
+          selector: { text: {} }
+
+    target_actions:
+      name: 執行目標
+      icon: mdi:play-circle-outline
+      collapsed: true
+      input:
+        target_entities:
+          name: 要執行的 Scene/Script (可複選)
+          description: 選取要觸發的場景與腳本
+          default: []
+          selector:
+            entity:
+              multiple: true
+              filter:
+                - domain: scene
+                - domain: script
+
+    global_conditions_settings:
+      name: 全域條件 (選填)
+      icon: mdi:earth
+      collapsed: true
+      input:
+        global_conditions:
+          name: 額外全域條件
+          default: []
+          selector:
+            condition: {}
+
+    time_condition_settings:
+      name: 時段／星期條件 (選填)
+      icon: mdi:clock-time-five-outline
+      collapsed: true
+      input:
+        after_time:
+          name: 開始時間
+          default: "00:00:00"
+          selector: { time: {} }
+        before_time:
+          name: 結束時間
+          default: "23:59:59"
+          selector: { time: {} }
+        condition_weekday:
+          name: 生效星期
+          default: [mon, tue, wed, thu, fri, sat, sun]
+          selector:
+            select:
+              multiple: true
+              mode: list
+              options:
+                - { label: 週一, value: mon }
+                - { label: 週二, value: tue }
+                - { label: 週三, value: wed }
+                - { label: 週四, value: thu }
+                - { label: 週五, value: fri }
+                - { label: 週六, value: sat }
+                - { label: 週日, value: sun }
+
+    notify_settings:
+      name: 通知設定 (選填)
+      icon: mdi:cellphone-message
+      collapsed: true
+      input:
+        send_notify:
+          name: 是否通知
+          default: n
+          selector:
+            select:
+              options:
+                - { label: 是, value: y }
+                - { label: 否, value: n }
+        notify_title:
+          name: 標題 (留空自動產生)
+          default: ""
+          selector: { text: {} }
+        notify_message:
+          name: 內容 (留空自動產生，可寫 Jinja)
+          default: ""
+          selector: { text: {} }
+
+    _woow_meta:
+      name: "WOOW Metadata"
+      description: "Internal metadata - do not modify"
+      default:
+        version: "1.0.0"
+        name_zh: "時間模式觸發動作（進階）"
+        name_en: "Time Pattern Trigger (Complex)"
+        desc_zh: "進階時間模式觸發，支援多時段與條件"
+        desc_en: "Advanced time pattern trigger with multiple periods and conditions"
+        category: "device"
+# ─── Variables ─────────────────────────────────────
+variables:
+  _spat:     !input interval_seconds_pattern
+  _mpat:     !input interval_minutes_pattern
+  _hpat:     !input interval_hours_pattern
+  _when:     "{{ now().strftime('%Y-%m-%d %H:%M:%S') }}"
+  _entities: !input target_entities
+  _after:    !input after_time
+  _before:   !input before_time
+  _wday:     !input condition_weekday
+  _send:     !input send_notify
+  _title:    !input notify_title
+  _msg_in:   !input notify_message
+
+# ─── Triggers：三條 time_pattern ────────────────
+trigger:
+  # 秒數頻率
+  - platform: time_pattern
+    seconds: !input interval_seconds_pattern
+
+  # 分鐘頻率
+  - platform: time_pattern
+    minutes: !input interval_minutes_pattern
+    seconds: 0
+
+  # 小時頻率
+  - platform: time_pattern
+    hours: !input interval_hours_pattern
+    minutes: 0
+    seconds: 0
+
+# ─── Conditions ────────────────────────────────────
+condition:
+  - condition: !input global_conditions
+  - condition: time
+    after: !input after_time
+    before: !input before_time
+    weekday: !input condition_weekday
+
+# ─── Actions ───────────────────────────────────────
+action:
+  # 0. 防呆：若未指定任何 Scene / Script
+  - if:
+      - "{{ _entities | length == 0 }}"
+    then:
+      - service: persistent_notification.create
+        data:
+          title: "頻率觸發設定錯誤"
+          message: "未指定任何 Scene 或 Script，無法執行。"
+      - stop: ""
+
+  # 1. 執行所有選定的 Scene / Script
+  - service: homeassistant.turn_on
+    target:
+      entity_id: "{{ _entities }}"
+
+  # 2. 可選通知
+  - if: "{{ _send == 'y' }}"
+    then:
+      - variables:
+          _title_f: "{{ _title | default('頻率觸發執行完成', true) }}"
+          _msg: >
+            {% if _msg_in %}
+              {{ _msg_in }}
+            {% else %}
+              時間：{{ _when }}<br>
+              {% for e in _entities %}
+                已執行「{{ state_attr(e,'friendly_name') or e }}」
+                (區域：{{ area_name(e) or '未設定' }}){% if not loop.last %}<br>{% endif %}
+              {% endfor %}
+            {% endif %}
+      - service: persistent_notification.create
+        data: { title: "{{ _title_f }}", message: "{{ _msg }}" }
+      - service: notify.notify
+        data: { title: "{{ _title_f }}", message: "{{ _msg }}" }
+
+mode: restart

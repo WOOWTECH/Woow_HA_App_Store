@@ -1,0 +1,47 @@
+---
+name: Cloudflared Web GUI
+version: 1.0.3
+breaking_versions:
+  - 5.3.7
+  - 6.0.0
+slug: cloudflared
+description: "Use a Cloudflare Tunnel to remotely
+  connect to Home Assistant without opening any ports — now with a Web GUI"
+url: "https://github.com/WOOWTECH/Woow_ha_cloudflare_tunnel_webgui"
+image: "ghcr.io/woowtech/{arch}-addon-cloudflared-webgui"
+startup: services
+init: false
+hassio_api: true
+hassio_role: manager
+ingress: true
+ingress_port: 8099
+ingress_panel: true
+panel_icon: mdi:cloud-lock-outline
+panel_title: Cloudflared
+arch:
+  - aarch64
+  - amd64
+map:
+  - addon_config:rw
+  - homeassistant_config
+options:
+  external_hostname: ""
+  additional_hosts: []
+ports:
+  36500/tcp: null
+schema:
+  external_hostname: str?
+  additional_hosts:
+    - hostname: str
+      service: str
+      disableChunkedEncoding: bool?
+  tunnel_name: str?
+  catch_all_service: str?
+  nginx_proxy_manager: bool?
+  # password? instead of upstream's str?: identical values accepted, but the
+  # HA configuration UI masks the secret instead of showing it in clear text.
+  tunnel_token: password?
+  post_quantum: bool?
+  run_parameters:
+    - match(^(--edge-bind-address|--edge-ip-version|--grace-period|--ha-connections|--logfile|--loglevel|--pidfile|--protocol|--region|--retries|--tag)=.*$)?
+  log_level: list(trace|debug|info|notice|warning|error|fatal)?

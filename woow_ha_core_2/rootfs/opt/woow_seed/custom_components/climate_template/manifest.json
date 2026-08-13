@@ -1,0 +1,12 @@
+{
+  "domain": "climate_template",
+  "name": "Climate Template",
+  "codeowners": ["@jcwillox"],
+  "config_flow": true,
+  "dependencies": ["template"],
+  "documentation": "https://github.com/WOOWTECH/woow_climate_component",
+  "iot_class": "calculated",
+  "issue_tracker": "https://github.com/WOOWTECH/woow_climate_component/issues",
+  "requirements": [],
+  "version": "1.4.1"
+}

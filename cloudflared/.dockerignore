@@ -1,0 +1,8 @@
+webgui/frontend/node_modules
+webgui/frontend/dist
+webgui/tests
+tests
+webgui/pytest.ini
+webgui/requirements-dev.txt
+**/__pycache__
+**/*.pyc

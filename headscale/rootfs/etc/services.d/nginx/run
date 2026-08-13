@@ -1,0 +1,13 @@
+#!/command/with-contenv bashio
+# shellcheck shell=bash
+# ==============================================================================
+# Woow Headscale VPN（WoowTech Home Assistant add-on）
+# services.d/nginx：HA Ingress shim（listen 0.0.0.0:3000 → proxy 127.0.0.1:3001）
+#
+# /etc/nginx/nginx.conf 已由 cont-init.d/headscale.sh 從
+# /etc/nginx/ingress.conf.tpl 代入 %%INGRESS_ENTRY%% 產生，且內含 daemon off。
+#
+# 出處：yuriy1337/headscale-ha（%%INGRESS_ENTRY%% ingress shim）
+# ==============================================================================
+bashio::log.info 'Starting nginx ingress shim (0.0.0.0:3000 -> 127.0.0.1:3001)...'
+exec nginx -c /etc/nginx/nginx.conf

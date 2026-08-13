@@ -1,0 +1,45 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "連接 Atmocube",
+        "description": "請輸入 Atmocube 空氣品質感測器的 IP 位址。",
+        "data": {
+          "host": "主機位址",
+          "port": "連接埠",
+          "slave_id": "Modbus Slave ID"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "無法連接到 Atmocube 裝置，請確認 IP 位址與連接埠是否正確。"
+    },
+    "abort": {
+      "already_configured": "此 Atmocube 裝置已經設定過了。"
+    }
+  },
+  "entity": {
+    "sensor": {
+      "tvocs": { "name": "總揮發性有機化合物 TVOCs" },
+      "pm1_0": { "name": "懸浮微粒 PM 1.0" },
+      "pm2_5": { "name": "懸浮微粒 PM 2.5" },
+      "pm4": { "name": "懸浮微粒 PM 4" },
+      "pm10": { "name": "懸浮微粒 PM 10" },
+      "co2": { "name": "二氧化碳 CO2" },
+      "temperature": { "name": "溫度 Temperature" },
+      "humidity": { "name": "相對濕度 Humidity" },
+      "abs_humidity": { "name": "絕對濕度 Absolute Humidity" },
+      "pressure": { "name": "氣壓 Pressure" },
+      "noise": { "name": "噪音 Noise" },
+      "light": { "name": "光照度 Lux" },
+      "no2": { "name": "二氧化氮 NO2" },
+      "co": { "name": "一氧化碳 CO" },
+      "o3": { "name": "臭氧 O3" },
+      "formaldehyde": { "name": "甲醛 Formaldehyde" },
+      "color_temp": { "name": "色溫 Color Temperature" },
+      "people_index": { "name": "人員舒適指數 People Index" },
+      "voc_index": { "name": "VOC 指數 VOC Index" },
+      "nox_index": { "name": "NOx 指數 NOx Index" }
+    }
+  }
+}

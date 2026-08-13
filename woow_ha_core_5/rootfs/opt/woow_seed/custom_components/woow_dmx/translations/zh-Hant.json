@@ -1,0 +1,13 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Woow DMX 設定指南",
+        "description": "此整合會在側邊欄新增一個 DMX 設定指引面板，包含設定教學、AI 助手連結及實用工具。\n\n點擊「提交」以安裝。"
+      }
+    },
+    "abort": {
+      "already_configured": "Woow DMX 設定指南已設定完成。"
+    }
+  }
+}

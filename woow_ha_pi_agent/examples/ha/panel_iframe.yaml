@@ -1,0 +1,17 @@
+# Home Assistant sidebar panel for Pi Agent
+#
+# Add to configuration.yaml, restart HA, and "Pi Agent" appears in the sidebar
+# for admin users only. `require_admin: true` is a UX guard — the underlying
+# ingress URL is still reachable by any HA authenticated user, and the direct
+# :30142 port (if you expose it) has no application-level auth. Treat it as
+# "trust anyone with HA login."
+#
+# The addon is served through HA Ingress by default (no port needed on host),
+# so this iframe URL uses HA's internal ingress proxy.
+
+panel_iframe:
+  pi_agent:
+    title: Pi Agent
+    url: "/hassio_ingress/Y8CEY_PaGC63_jYf9gh6ir6WprqcmY_xoTU6oyqwr1g/"
+    icon: mdi:robot
+    require_admin: true

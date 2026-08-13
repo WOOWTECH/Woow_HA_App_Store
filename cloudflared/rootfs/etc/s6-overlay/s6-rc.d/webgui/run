@@ -1,0 +1,21 @@
+#!/command/with-contenv bashio
+# shellcheck shell=bash
+# ==============================================================================
+# Home Assistant App (Add-on): Cloudflared Web GUI
+#
+# Runs the Web GUI backend (FastAPI, served through Home Assistant Ingress).
+# Started in parallel with the 'prepare' oneshot so the GUI is reachable
+# while 'cloudflared tunnel login' is still waiting for authorization.
+# ==============================================================================
+
+bashio::log.info "Starting Cloudflared Web GUI (ingress port 8099)..."
+
+cd /opt/webgui || bashio::exit.nok "Web GUI files are missing"
+
+# Keep the GUI quiet on stdout so the add-on log stays identical to the
+# original Cloudflared add-on (cloudflared + bashio lines only).
+exec python3 -m uvicorn backend.main:app \
+    --host 0.0.0.0 \
+    --port 8099 \
+    --no-access-log \
+    --log-level warning

@@ -1,0 +1,414 @@
+blueprint:
+  name: 定時觸發情境 - 多時間版
+  description: |
+    一天中最多 10 個時段各自觸發不同場景/腳本的多時間定時藍圖。
+
+    ## 功能說明 / Functional Description
+    此藍圖提供 10 個獨立時間槽（夜間、凌晨、起床、早晨、白天、中午、
+    下午、傍晚、晚上、睡前），每個時段可指定不同的 Scene 和/或 Script。
+    時間到達時自動執行對應時段的實體，未設定的時段自動跳過。
+    Multi-slot time-trigger blueprint with 10 independent time periods, each
+    capable of running different Scenes/Scripts. Unused slots are skipped.
+
+    ## 觸發方式 / Trigger
+    - 10 個 platform: time 觸發器，分別對應各時段的開始時間
+
+    ## 輸入參數 / Inputs
+    - **10 組時段** (皆選填，各有預設時間，target 預設為空):
+      midnight (00:00), pre_dawn (03:00), wakeup (05:00), morning (07:00),
+      noon (10:00), midday (12:00), afternoon (15:00), evening (18:00),
+      night (20:00), before_sleep (22:00)
+    - 每組含: 開始時間 + 要執行的 Scene/Script (可複選)
+    - **global_conditions** (選填): 額外全域條件
+    - **condition_weekday** (選填): 生效星期，預設每天
+
+    ## 執行效果 / Effects
+    各時段到達時，若該時段有設定目標實體則透過 homeassistant.turn_on 執行；
+    未設定目標的時段自動略過，不產生任何動作。
+
+    ## 典型應用場景 / Use Cases
+    - 全天情境排程：起床開燈→白天場景→傍晚暖光→睡前調暗→夜間關燈
+    - 辦公室按時段自動切換不同工作氛圍的場景
+    - 搭配 adalight 使用，在色溫自適應之外額外執行窗簾、音樂等腳本
+  domain: automation
+  author: WOOW TECH CO., LTD.
+  input:
+    # ——— 各時段設定 ————————————————
+    event_midnight:
+      name: 夜間模式
+      icon: mdi:sleep
+      collapsed: true
+      input:
+        time_midnight:
+          name: 開始時間
+          default: "00:00:00"
+          selector:
+            time: {}
+        target_entities_midnight:
+          name: 要執行的 Scene / Script (可複選)
+          default: []
+          selector:
+            entity:
+              multiple: true
+              filter:
+                - domain: scene
+                - domain: script
+
+    event_pre_dawn:
+      name: 凌晨模式
+      icon: mdi:weather-night
+      collapsed: true
+      input:
+        time_pre_dawn:
+          name: 開始時間
+          default: "03:00:00"
+          selector:
+            time: {}
+        target_entities_pre_dawn:
+          name: 要執行的 Scene / Script (可複選)
+          default: []
+          selector:
+            entity:
+              multiple: true
+              filter:
+                - domain: scene
+                - domain: script
+
+    event_wakeup:
+      name: 起床模式
+      icon: mdi:bed-clock
+      collapsed: true
+      input:
+        time_wakeup:
+          name: 開始時間
+          default: "05:00:00"
+          selector:
+            time: {}
+        target_entities_wakeup:
+          name: 要執行的 Scene / Script (可複選)
+          default: []
+          selector:
+            entity:
+              multiple: true
+              filter:
+                - domain: scene
+                - domain: script
+
+    event_morning:
+      name: 早晨模式
+      icon: mdi:weather-sunset-up
+      collapsed: true
+      input:
+        time_morning:
+          name: 開始時間
+          default: "07:00:00"
+          selector:
+            time: {}
+        target_entities_morning:
+          name: 要執行的 Scene / Script (可複選)
+          default: []
+          selector:
+            entity:
+              multiple: true
+              filter:
+                - domain: scene
+                - domain: script
+
+    event_noon:
+      name: 白天模式
+      icon: mdi:white-balance-sunny
+      collapsed: true
+      input:
+        time_noon:
+          name: 開始時間
+          default: "10:00:00"
+          selector:
+            time: {}
+        target_entities_noon:
+          name: 要執行的 Scene / Script (可複選)
+          default: []
+          selector:
+            entity:
+              multiple: true
+              filter:
+                - domain: scene
+                - domain: script
+
+    event_midday:
+      name: 中午模式
+      icon: mdi:weather-sunny
+      collapsed: true
+      input:
+        time_midday:
+          name: 開始時間
+          default: "12:00:00"
+          selector:
+            time: {}
+        target_entities_midday:
+          name: 要執行的 Scene / Script (可複選)
+          default: []
+          selector:
+            entity:
+              multiple: true
+              filter:
+                - domain: scene
+                - domain: script
+
+    event_afternoon:
+      name: 下午模式
+      icon: mdi:weather-sunny
+      collapsed: true
+      input:
+        time_afternoon:
+          name: 開始時間
+          default: "15:00:00"
+          selector:
+            time: {}
+        target_entities_afternoon:
+          name: 要執行的 Scene / Script (可複選)
+          default: []
+          selector:
+            entity:
+              multiple: true
+              filter:
+                - domain: scene
+                - domain: script
+
+    event_evening:
+      name: 傍晚模式
+      icon: mdi:weather-sunset-down
+      collapsed: true
+      input:
+        time_evening:
+          name: 開始時間
+          default: "18:00:00"
+          selector:
+            time: {}
+        target_entities_evening:
+          name: 要執行的 Scene / Script (可複選)
+          default: []
+          selector:
+            entity:
+              multiple: true
+              filter:
+                - domain: scene
+                - domain: script
+
+    event_night:
+      name: 晚上模式
+      icon: mdi:theme-light-dark
+      collapsed: true
+      input:
+        time_night:
+          name: 開始時間
+          default: "20:00:00"
+          selector:
+            time: {}
+        target_entities_night:
+          name: 要執行的 Scene / Script (可複選)
+          default: []
+          selector:
+            entity:
+              multiple: true
+              filter:
+                - domain: scene
+                - domain: script
+
+    event_before_sleep:
+      name: 睡前模式
+      icon: mdi:weather-night
+      collapsed: true
+      input:
+        time_before_sleep:
+          name: 開始時間
+          default: "22:00:00"
+          selector:
+            time: {}
+        target_entities_before_sleep:
+          name: 要執行的 Scene / Script (可複選)
+          default: []
+          selector:
+            entity:
+              multiple: true
+              filter:
+                - domain: scene
+                - domain: script
+
+    # ——— 全域條件 (選填) —————————————
+    global_conditions_settings:
+      name: Global Conditions (選填)
+      icon: mdi:earth
+      collapsed: true
+      input:
+        global_conditions:
+          name: 額外全域條件
+          default: []
+          selector:
+            condition: {}
+
+    # ——— 生效星期 (選填) —————————————
+    weekday_settings:
+      name: 生效星期 (選填)
+      icon: mdi:calendar-week
+      collapsed: true
+      input:
+        condition_weekday:
+          name: 選擇星期
+          default: [mon, tue, wed, thu, fri, sat, sun]
+          selector:
+            select:
+              multiple: true
+              mode: list
+              options:
+                - { label: 週一, value: mon }
+                - { label: 週二, value: tue }
+                - { label: 週三, value: wed }
+                - { label: 週四, value: thu }
+                - { label: 週五, value: fri }
+                - { label: 週六, value: sat }
+                - { label: 週日, value: sun }
+
+    _woow_meta:
+      name: "WOOW Metadata"
+      description: "Internal metadata - do not modify"
+      default:
+        version: "1.0.0"
+        name_zh: "自適應場景（多場景）"
+        name_en: "Adaptive Scene (Multi)"
+        desc_zh: "根據時段自動切換多個場景"
+        desc_en: "Auto-switch multiple scenes based on time period"
+        category: "scene"
+# ─── 變數 ───────────────────────────────────
+variables:
+  _global_conds:          !input global_conditions
+
+  _targets_midnight:      !input target_entities_midnight
+  _targets_pre_dawn:      !input target_entities_pre_dawn
+  _targets_wakeup:        !input target_entities_wakeup
+  _targets_morning:       !input target_entities_morning
+  _targets_noon:          !input target_entities_noon
+  _targets_midday:        !input target_entities_midday
+  _targets_afternoon:     !input target_entities_afternoon
+  _targets_evening:       !input target_entities_evening
+  _targets_night:         !input target_entities_night
+  _targets_before_sleep:  !input target_entities_before_sleep
+
+# ─── 觸發：各時段到點 ───────────────────────
+trigger:
+  - platform: time
+    at: !input time_midnight
+    id: t_midnight
+  - platform: time
+    at: !input time_pre_dawn
+    id: t_pre_dawn
+  - platform: time
+    at: !input time_wakeup
+    id: t_wakeup
+  - platform: time
+    at: !input time_morning
+    id: t_morning
+  - platform: time
+    at: !input time_noon
+    id: t_noon
+  - platform: time
+    at: !input time_midday
+    id: t_midday
+  - platform: time
+    at: !input time_afternoon
+    id: t_afternoon
+  - platform: time
+    at: !input time_evening
+    id: t_evening
+  - platform: time
+    at: !input time_night
+    id: t_night
+  - platform: time
+    at: !input time_before_sleep
+    id: t_before_sleep
+
+# ─── 條件：全域＋星期 ───────────────────────
+condition:
+  - condition: or
+    conditions:
+      - condition: template
+        value_template: "{{ (_global_conds | length) == 0 }}"
+      - condition: and
+        conditions: !input global_conditions
+  - condition: time
+    weekday: !input condition_weekday
+
+# ─── 動作：各時段執行 ─────────────────────
+action:
+  - alias: "處理各時段觸發"
+    choose:
+      - conditions: "{{ trigger.id == 't_midnight' and (_targets_midnight | length > 0) }}"
+        sequence:
+          - alias: "執行夜間場景/腳本"
+            service: homeassistant.turn_on
+            target:
+              entity_id: "{{ _targets_midnight }}"
+
+      - conditions: "{{ trigger.id == 't_pre_dawn' and (_targets_pre_dawn | length > 0) }}"
+        sequence:
+          - alias: "執行凌晨場景/腳本"
+            service: homeassistant.turn_on
+            target:
+              entity_id: "{{ _targets_pre_dawn }}"
+
+      - conditions: "{{ trigger.id == 't_wakeup' and (_targets_wakeup | length > 0) }}"
+        sequence:
+          - alias: "執行起床場景/腳本"
+            service: homeassistant.turn_on
+            target:
+              entity_id: "{{ _targets_wakeup }}"
+
+      - conditions: "{{ trigger.id == 't_morning' and (_targets_morning | length > 0) }}"
+        sequence:
+          - alias: "執行早晨場景/腳本"
+            service: homeassistant.turn_on
+            target:
+              entity_id: "{{ _targets_morning }}"
+
+      - conditions: "{{ trigger.id == 't_noon' and (_targets_noon | length > 0) }}"
+        sequence:
+          - alias: "執行白天場景/腳本"
+            service: homeassistant.turn_on
+            target:
+              entity_id: "{{ _targets_noon }}"
+
+      - conditions: "{{ trigger.id == 't_midday' and (_targets_midday | length > 0) }}"
+        sequence:
+          - alias: "執行中午場景/腳本"
+            service: homeassistant.turn_on
+            target:
+              entity_id: "{{ _targets_midday }}"
+
+      - conditions: "{{ trigger.id == 't_afternoon' and (_targets_afternoon | length > 0) }}"
+        sequence:
+          - alias: "執行下午場景/腳本"
+            service: homeassistant.turn_on
+            target:
+              entity_id: "{{ _targets_afternoon }}"
+
+      - conditions: "{{ trigger.id == 't_evening' and (_targets_evening | length > 0) }}"
+        sequence:
+          - alias: "執行傍晚場景/腳本"
+            service: homeassistant.turn_on
+            target:
+              entity_id: "{{ _targets_evening }}"
+
+      - conditions: "{{ trigger.id == 't_night' and (_targets_night | length > 0) }}"
+        sequence:
+          - alias: "執行晚上場景/腳本"
+            service: homeassistant.turn_on
+            target:
+              entity_id: "{{ _targets_night }}"
+
+      - conditions: "{{ trigger.id == 't_before_sleep' and (_targets_before_sleep | length > 0) }}"
+        sequence:
+          - alias: "執行睡前場景/腳本"
+            service: homeassistant.turn_on
+            target:
+              entity_id: "{{ _targets_before_sleep }}"
+
+mode: single

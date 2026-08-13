@@ -1,0 +1,46 @@
+#!/command/with-contenv bashio
+# shellcheck shell=bash
+# ==============================================================================
+# Woow Headscale VPN（WoowTech Home Assistant add-on）
+# services.d/ngrok：選配 ngrok tunnel（把 Headscale control plane 曝露到外網）
+#   - http 模式：ngrok http 8080（ngrok_domain 有值時加 --url=<domain>，
+#     paid reserved domain / free dev domain 皆用 --url；--domain 已棄用）
+#   - tcp  模式：ngrok tcp 8080（raw passthrough，無有效 TLS，
+#     login-server 用 http://；測試用途）
+# services.d/headscale/run 會輪詢 http://127.0.0.1:4040/api/tunnels
+# 取得 public URL 並注入 server_url。
+# ==============================================================================
+
+if ! bashio::config.true 'ngrok_enabled'; then
+    bashio::log.info "ngrok 未啟用（'ngrok_enabled: false'），停用 ngrok service"
+    s6-svc -O "$(pwd)"
+    exit 0
+fi
+
+if ! bashio::config.has_value 'ngrok_authtoken'; then
+    bashio::exit.nok \
+        "已啟用 ngrok（'ngrok_enabled: true'）但 'ngrok_authtoken' 為空。請到 https://dashboard.ngrok.com 取得 authtoken，填入 add-on 設定後重啟。"
+fi
+
+# ngrok v3：NGROK_AUTHTOKEN 環境變數優先於 config file，免落地 token
+NGROK_AUTHTOKEN=$(bashio::config 'ngrok_authtoken')
+export NGROK_AUTHTOKEN
+
+ngrok_mode=$(bashio::config 'ngrok_mode')
+
+if [[ "${ngrok_mode}" == 'tcp' ]]; then
+    if bashio::config.has_value 'ngrok_domain'; then
+        bashio::log.notice "tcp 模式不使用 'ngrok_domain'，忽略該設定"
+    fi
+    bashio::log.info 'Starting ngrok tunnel: tcp -> 8080 ...'
+    exec ngrok tcp 8080 --log stdout
+fi
+
+if bashio::config.has_value 'ngrok_domain'; then
+    ngrok_domain=$(bashio::config 'ngrok_domain')
+    bashio::log.info "Starting ngrok tunnel: http -> 8080 (url: ${ngrok_domain}) ..."
+    exec ngrok http 8080 --log stdout --url="${ngrok_domain}"
+fi
+
+bashio::log.info 'Starting ngrok tunnel: http -> 8080 ...'
+exec ngrok http 8080 --log stdout

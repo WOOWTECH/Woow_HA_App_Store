@@ -1,0 +1,5 @@
+#!/command/with-contenv bashio
+set -e
+
+bashio::log.info "Starting nginx ingress rewriter on 0.0.0.0:30142 (upstream: pi-web@30141)"
+exec nginx -c /etc/nginx/nginx.conf

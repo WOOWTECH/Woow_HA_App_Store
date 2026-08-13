@@ -1,0 +1,45 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect to Atmocube",
+        "description": "Enter the IP address of your Atmocube air quality sensor.",
+        "data": {
+          "host": "Host",
+          "port": "Port",
+          "slave_id": "Modbus Slave ID"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect to the Atmocube device. Please check the IP address and port."
+    },
+    "abort": {
+      "already_configured": "This Atmocube device is already configured."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "tvocs": { "name": "TVOCs" },
+      "pm1_0": { "name": "PM 1.0" },
+      "pm2_5": { "name": "PM 2.5" },
+      "pm4": { "name": "PM 4" },
+      "pm10": { "name": "PM 10" },
+      "co2": { "name": "CO2" },
+      "temperature": { "name": "Temperature" },
+      "humidity": { "name": "Humidity" },
+      "abs_humidity": { "name": "Absolute Humidity" },
+      "pressure": { "name": "Pressure" },
+      "noise": { "name": "Noise" },
+      "light": { "name": "Light" },
+      "no2": { "name": "NO2" },
+      "co": { "name": "CO" },
+      "o3": { "name": "O3" },
+      "formaldehyde": { "name": "Formaldehyde" },
+      "color_temp": { "name": "Color Temperature" },
+      "people_index": { "name": "People Index" },
+      "voc_index": { "name": "VOC Index" },
+      "nox_index": { "name": "NOx Index" }
+    }
+  }
+}

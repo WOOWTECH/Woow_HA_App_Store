@@ -1,0 +1,59 @@
+#!/command/with-contenv bashio
+# shellcheck shell=bash
+# ==============================================================================
+# Woow Headscale VPN（WoowTech Home Assistant add-on）
+# services.d/headplane：等 Headscale 就緒 → 建預設 user / 簽發 API key
+# （皆 idempotent）→ 注入 api_key → 啟動 Headplane
+# （listen 127.0.0.1:3001，僅供 nginx ingress shim 代理，不開 host port）
+#
+# 出處：AlessioBazzanella/homeassistant-headscale-addon（headplane service）
+#       yuriy1337/headscale-ha（API key 落檔 + ingress 自動登入模型）
+# ==============================================================================
+readonly KEY_FILE='/var/lib/headscale/.headplane_api_key'
+readonly HEADPLANE_CONFIG='/etc/headplane/config.yaml'
+readonly HEALTH_URL='http://127.0.0.1:8080/health'
+
+# 等待窗口需涵蓋 ngrok 模式下 headscale 的最壞啟動時間：headscale/run 會先
+# 輪詢 ngrok tunnel 最多 120 秒才 exec headscale serve，故此處用 180 秒，
+# 避免正常 ngrok 慢啟動路徑每 60 秒噴一次 FATAL 再被 s6 重啟。
+bashio::log.info '等待 Headscale 就緒（最多 180 秒）...'
+for _ in $(seq 1 180); do
+    if curl -sf "${HEALTH_URL}" > /dev/null 2>&1; then
+        break
+    fi
+    sleep 1
+done
+if ! curl -sf "${HEALTH_URL}" > /dev/null 2>&1; then
+    bashio::exit.nok 'Headscale 未在 180 秒內就緒，不啟動 Headplane（service 會自動重試）'
+fi
+
+# ------------------------------------------------------------------------------
+# 預設 user：官方 Tailscale client 註冊裝置時掛在此 user 底下（idempotent）
+# ------------------------------------------------------------------------------
+if bashio::config.true 'create_default_user'; then
+    if headscale users list --output json 2>/dev/null \
+        | jq -e 'any(.[]?; .name == "default")' > /dev/null 2>&1; then
+        bashio::log.info "預設 user 'default' 已存在，略過建立"
+    else
+        bashio::log.info "建立預設 user 'default'..."
+        headscale users create default \
+            || bashio::log.warning "建立 user 'default' 失敗（可能已存在），繼續啟動"
+    fi
+fi
+
+# ------------------------------------------------------------------------------
+# Headplane 用的 Headscale API key：只在檔案不存在（或為空）時簽發，
+# 存於 /var/lib/headscale（data map）→ 隨 HA backup 備份、跨重啟存活；
+# 亦由 nginx 的 /_ha_key（僅 ingress 可達）提供給自動登入 script。
+# ------------------------------------------------------------------------------
+if [[ ! -s "${KEY_FILE}" ]]; then
+    bashio::log.info '簽發 Headplane 用的 Headscale API key（效期 3650 天）...'
+    headscale apikeys create --expiration 3650d \
+        | tail -n1 | tr -d '[:space:]' > "${KEY_FILE}"
+fi
+yq -i ".headscale.api_key = \"$(< "${KEY_FILE}")\"" "${HEADPLANE_CONFIG}"
+
+bashio::log.info 'Starting Headplane (127.0.0.1:3001)...'
+cd /opt/headplane \
+    || bashio::exit.nok 'Headplane application directory is missing'
+exec /opt/nodejs/bin/node build/server/index.js

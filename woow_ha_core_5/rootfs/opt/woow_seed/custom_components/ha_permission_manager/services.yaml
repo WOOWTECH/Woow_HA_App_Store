@@ -1,0 +1,396 @@
+# ============================================================================
+# ha_permission_manager services — AI-friendly service descriptors
+#
+# IMPORTANT FOR AI ASSISTANTS:
+#   This integration IS the permission management store.  Do NOT create
+#   input_boolean helpers, template sensors, or any other entities to track
+#   permissions.  Use the 14 services below instead.
+#
+#   Workflow:
+#     1. Call get_users to discover valid user_id values.
+#     2. Call get_resources to discover valid resource_id values (with prefix).
+#     3. Use set_permission or bulk_set_permissions to assign permissions.
+#     4. Use get_permitted_areas / get_permitted_labels to query what a user
+#        can access — these return enriched data with entity counts.
+#     5. Use get_area_entities / get_label_entities to list entities within
+#        a specific area or label.
+#     6. Use get_panel_permissions / get_all_permissions to query a user's
+#        panel/area/label permission levels in one call.
+#
+#   Permission model:  0 = Closed (hidden),  1 = View (accessible).
+#   Resource ID format:  panel_<id>, area_<id>, label_<id>.
+#   Admin users bypass permission checks and always see all resources.
+#   All services require admin authentication.
+#   Query services (get_*) return data via SupportsResponse.
+# ============================================================================
+
+# ---------------------------------------------------------------------------
+# Write services (no response)
+# ---------------------------------------------------------------------------
+
+set_permission:
+  name: "Set Permission / 設定權限"
+  description: >
+    Set the permission level for a specific user on a specific resource
+    (panel, area, or label). Level 0 = Closed (hidden), Level 1 = View (accessible).
+    Call get_users first to discover valid user_id values, and get_resources
+    to discover valid resource_id values.
+    設定某用戶對某資源（面板、區域或標籤）的權限等級。0=關閉（隱藏），1=可見（可訪問）。
+    請先呼叫 get_users 查詢用戶 ID，get_resources 查詢資源 ID。
+  fields:
+    user_id:
+      name: "User ID / 用戶 ID"
+      description: >
+        The Home Assistant user ID. Call get_users service first to discover
+        available user IDs.
+        Home Assistant 用戶 ID。請先呼叫 get_users 服務查詢可用的用戶 ID。
+      required: true
+      example: "a1b2c3d4e5f6"
+      selector:
+        text:
+    resource_id:
+      name: "Resource ID / 資源 ID"
+      description: >
+        Resource ID with prefix: panel_ for panels, area_ for areas, label_ for labels.
+        Call get_resources service to discover available resource IDs.
+        帶前綴的資源 ID：panel_ 代表面板，area_ 代表區域，label_ 代表標籤。
+        請呼叫 get_resources 服務查詢可用的資源 ID。
+      required: true
+      example: "area_living_room"
+      selector:
+        text:
+    level:
+      name: "Permission Level / 權限等級"
+      description: >
+        0 = Closed (user cannot see this resource).
+        1 = View (user can see and interact with this resource).
+        0 = 關閉（用戶無法看到此資源）。1 = 可見（用戶可以看到並操作此資源）。
+      required: true
+      selector:
+        select:
+          options:
+            - label: "0 - Closed / 關閉"
+              value: "0"
+            - label: "1 - View / 可見"
+              value: "1"
+
+bulk_set_permissions:
+  name: "Bulk Set Permissions / 批量設定權限"
+  description: >
+    Set multiple permission entries in one call. Useful for onboarding new users
+    or configuring permissions for multiple resources at once. Max 500 entries per call.
+    Fires a single permission_manager_updated event after all entries are applied.
+    一次設定多筆權限。適用於新用戶開權限或一次配置多個資源。每次最多 500 筆。
+    所有條目套用後只觸發一次 permission_manager_updated 事件。
+  fields:
+    permissions:
+      name: "Permissions List / 權限列表"
+      description: >
+        List of permission entries. Each entry requires user_id, resource_id, and level.
+        權限條目列表。每個條目需要 user_id、resource_id 和 level。
+      required: true
+      example: '[{"user_id": "a1b2c3", "resource_id": "area_living_room", "level": 1}, {"user_id": "a1b2c3", "resource_id": "panel_lovelace", "level": 1}]'
+      selector:
+        object:
+
+remove_user_permissions:
+  name: "Remove User Permissions / 刪除用戶權限"
+  description: >
+    Delete all permissions for a specific user. Typically used when a user leaves
+    or needs to be reset. The user will lose access to all restricted resources.
+    刪除某用戶的所有權限。通常用於用戶離開或需要重置權限時。該用戶將失去所有受限資源的訪問權。
+  fields:
+    user_id:
+      name: "User ID / 用戶 ID"
+      description: >
+        The Home Assistant user ID whose permissions will be removed.
+        Call get_users first to discover valid user IDs.
+        要刪除權限的 Home Assistant 用戶 ID。請先呼叫 get_users 查詢有效的用戶 ID。
+      required: true
+      example: "a1b2c3d4e5f6"
+      selector:
+        text:
+
+remove_resource_permissions:
+  name: "Remove Resource Permissions / 刪除資源權限"
+  description: >
+    Delete all permissions for a specific resource across all users.
+    Typically used when a resource (area, label, panel) is removed or renamed.
+    Call get_resources first to discover valid resource IDs.
+    刪除某資源在所有用戶中的權限記錄。通常用於資源被移除或重命名時。
+    請先呼叫 get_resources 查詢有效的資源 ID。
+  fields:
+    resource_id:
+      name: "Resource ID / 資源 ID"
+      description: >
+        The resource ID (with prefix) whose permissions will be removed from all users.
+        要從所有用戶中刪除權限的資源 ID（含前綴）。
+      required: true
+      example: "area_living_room"
+      selector:
+        text:
+
+reset_all_permissions:
+  name: "Reset All Permissions / 重置所有權限"
+  description: >
+    WARNING: Clears the entire permission table. All users will lose all configured
+    permissions. This action cannot be undone. Requires confirm=true as a safety lock.
+    警告：清空整個權限表。所有用戶將失去所有已配置的權限。此操作不可撤銷。
+    需要 confirm=true 作為安全鎖。
+  fields:
+    confirm:
+      name: "Confirm / 確認"
+      description: >
+        Must be set to true to proceed. This is a safety lock to prevent accidental resets.
+        必須設為 true 才能執行。這是防止誤操作的安全鎖。
+      required: true
+      selector:
+        boolean:
+
+# ---------------------------------------------------------------------------
+# Admin query services (SupportsResponse.ONLY)
+# ---------------------------------------------------------------------------
+
+get_permissions:
+  name: "Get Permissions / 查詢權限"
+  description: >
+    Query the raw permission table with optional filters. Returns a JSON object with
+    permission data. All parameters are optional — omit all to get the complete
+    permission table. This service returns data (SupportsResponse).
+    AI assistants should use this to inspect the raw permission matrix.
+    查詢原始權限表，支持可選過濾條件。返回 JSON 權限數據。
+    所有參數均為可選 — 全部省略則返回完整權限表。此服務返回數據。
+  fields:
+    user_id:
+      name: "User ID / 用戶 ID"
+      description: >
+        Optional. Filter permissions for a specific user.
+        可選。按用戶 ID 過濾。
+      required: false
+      example: "a1b2c3d4e5f6"
+      selector:
+        text:
+    resource_type:
+      name: "Resource Type / 資源類型"
+      description: >
+        Optional. Filter by resource type: panel, area, or label.
+        可選。按資源類型過濾：panel（面板）、area（區域）或 label（標籤）。
+      required: false
+      selector:
+        select:
+          options:
+            - label: "panel / 面板"
+              value: "panel"
+            - label: "area / 區域"
+              value: "area"
+            - label: "label / 標籤"
+              value: "label"
+    resource_id:
+      name: "Resource ID / 資源 ID"
+      description: >
+        Optional. Filter for a specific resource ID (with prefix).
+        可選。按特定資源 ID 過濾（含前綴）。
+      required: false
+      example: "area_living_room"
+      selector:
+        text:
+
+get_users:
+  name: "Get Users / 查詢用戶"
+  description: >
+    Returns all manageable Home Assistant users (non-system users).
+    Includes user ID, display name, and admin status.
+    AI assistants MUST call this service first to discover valid user_id values
+    before calling any user-related service.
+    This service returns data (SupportsResponse).
+    返回所有可管理的 Home Assistant 用戶（非系統用戶）。
+    包含用戶 ID、顯示名稱和管理員狀態。此服務返回數據。
+    AI 助手必須先呼叫此服務以查詢有效的 user_id 值。
+
+get_resources:
+  name: "Get Resources / 查詢資源"
+  description: >
+    Returns all manageable resources (panels, areas, labels).
+    Optionally filter by resource type. Each resource includes its ID (with prefix),
+    display name, and type.
+    AI assistants MUST call this service to discover valid resource_id values
+    before calling set_permission or remove_resource_permissions.
+    This service returns data (SupportsResponse).
+    返回所有可管理的資源（面板、區域、標籤）。可按資源類型過濾。
+    每個資源包含 ID（含前綴）、顯示名稱和類型。此服務返回數據。
+    AI 助手必須呼叫此服務以查詢有效的 resource_id 值。
+  fields:
+    type:
+      name: "Resource Type / 資源類型"
+      description: >
+        Optional. Filter by resource type: panel, area, or label.
+        Omit to return all resource types.
+        可選。按資源類型過濾：panel（面板）、area（區域）或 label（標籤）。
+        省略則返回所有類型。
+      required: false
+      selector:
+        select:
+          options:
+            - label: "panel / 面板"
+              value: "panel"
+            - label: "area / 區域"
+              value: "area"
+            - label: "label / 標籤"
+              value: "label"
+
+# ---------------------------------------------------------------------------
+# User-context query services (SupportsResponse.ONLY)
+# These mirror the GUI's WebSocket commands, enabling AI agents to query
+# what a specific user can see and control.
+# ---------------------------------------------------------------------------
+
+get_permitted_areas:
+  name: "Get Permitted Areas / 查詢用戶可見區域"
+  description: >
+    Returns areas a specific user has permission to access, enriched with
+    entity counts, area icon, and permission level. Admin users get all areas
+    with permission_level=1. This is the service equivalent of the
+    area_control/get_permitted_areas WebSocket command.
+    Call get_users first to discover valid user_id values.
+    This service returns data (SupportsResponse).
+    返回指定用戶有權限訪問的區域，包含實體計數、區域圖標和權限等級。
+    管理員用戶取得所有區域且 permission_level=1。
+    請先呼叫 get_users 查詢有效的 user_id。此服務返回數據。
+  fields:
+    user_id:
+      name: "User ID / 用戶 ID"
+      description: >
+        The Home Assistant user ID to check area permissions for.
+        Call get_users first to discover valid user IDs.
+        要查詢區域權限的 Home Assistant 用戶 ID。
+        請先呼叫 get_users 查詢有效的用戶 ID。
+      required: true
+      example: "a1b2c3d4e5f6"
+      selector:
+        text:
+
+get_area_entities:
+  name: "Get Area Entities / 查詢區域實體"
+  description: >
+    Returns entities grouped by domain for a specific area. Considers both
+    direct area assignment and device area assignment. Excludes disabled entities.
+    This is the service equivalent of the area_control/get_area_entities
+    WebSocket command. Call get_resources with type='area' first to discover
+    valid area IDs (note: use the area ID without the 'area_' prefix here).
+    This service returns data (SupportsResponse).
+    返回指定區域的實體，按域名分組。同時考慮直接區域分配和設備區域分配。
+    排除已禁用實體。請先呼叫 get_resources（type='area'）查詢有效的區域 ID
+    （注意：此處使用不含 'area_' 前綴的區域 ID）。此服務返回數據。
+  fields:
+    area_id:
+      name: "Area ID / 區域 ID"
+      description: >
+        The area ID (without prefix). Call get_resources with type='area'
+        to discover available area IDs, then strip the 'area_' prefix.
+        區域 ID（不含前綴）。請呼叫 get_resources（type='area'）查詢可用的區域 ID，
+        然後去掉 'area_' 前綴。
+      required: true
+      example: "living_room"
+      selector:
+        text:
+
+get_permitted_labels:
+  name: "Get Permitted Labels / 查詢用戶可見標籤"
+  description: >
+    Returns labels a specific user has permission to access, enriched with
+    entity counts, label icon, color, and permission level. Admin users get
+    all labels with permission_level=1. This is the service equivalent of the
+    label_control/get_permitted_labels WebSocket command.
+    Call get_users first to discover valid user_id values.
+    This service returns data (SupportsResponse).
+    返回指定用戶有權限訪問的標籤，包含實體計數、標籤圖標、顏色和權限等級。
+    管理員用戶取得所有標籤且 permission_level=1。
+    請先呼叫 get_users 查詢有效的 user_id。此服務返回數據。
+  fields:
+    user_id:
+      name: "User ID / 用戶 ID"
+      description: >
+        The Home Assistant user ID to check label permissions for.
+        Call get_users first to discover valid user IDs.
+        要查詢標籤權限的 Home Assistant 用戶 ID。
+        請先呼叫 get_users 查詢有效的用戶 ID。
+      required: true
+      example: "a1b2c3d4e5f6"
+      selector:
+        text:
+
+get_label_entities:
+  name: "Get Label Entities / 查詢標籤實體"
+  description: >
+    Returns entities grouped by domain for a specific label. Checks entity
+    labels set membership. Excludes disabled entities.
+    This is the service equivalent of the label_control/get_label_entities
+    WebSocket command. Call get_resources with type='label' first to discover
+    valid label IDs (note: use the label ID without the 'label_' prefix here).
+    This service returns data (SupportsResponse).
+    返回指定標籤的實體，按域名分組。檢查實體標籤集合成員資格。
+    排除已禁用實體。請先呼叫 get_resources（type='label'）查詢有效的標籤 ID
+    （注意：此處使用不含 'label_' 前綴的標籤 ID）。此服務返回數據。
+  fields:
+    label_id:
+      name: "Label ID / 標籤 ID"
+      description: >
+        The label ID (without prefix). Call get_resources with type='label'
+        to discover available label IDs, then strip the 'label_' prefix.
+        標籤 ID（不含前綴）。請呼叫 get_resources（type='label'）查詢可用的標籤 ID，
+        然後去掉 'label_' 前綴。
+      required: true
+      example: "my_label"
+      selector:
+        text:
+
+get_panel_permissions:
+  name: "Get Panel Permissions / 查詢面板權限"
+  description: >
+    Returns panel permission levels for a specific user. Each panel is
+    identified by its panel_id (without prefix). Admin users always get
+    level=1 for the ha_permission_manager panel. This is the service
+    equivalent of the permission_manager/get_panel_permissions WebSocket command.
+    Call get_users first to discover valid user_id values.
+    This service returns data (SupportsResponse).
+    返回指定用戶的面板權限等級。每個面板以 panel_id（不含前綴）標識。
+    管理員用戶的 ha_permission_manager 面板始終為 level=1。
+    請先呼叫 get_users 查詢有效的 user_id。此服務返回數據。
+  fields:
+    user_id:
+      name: "User ID / 用戶 ID"
+      description: >
+        The Home Assistant user ID to check panel permissions for.
+        Call get_users first to discover valid user IDs.
+        要查詢面板權限的 Home Assistant 用戶 ID。
+        請先呼叫 get_users 查詢有效的用戶 ID。
+      required: true
+      example: "a1b2c3d4e5f6"
+      selector:
+        text:
+
+get_all_permissions:
+  name: "Get All User Permissions / 查詢用戶全部權限"
+  description: >
+    Returns all permission types (panels, areas, labels) for a specific user,
+    categorized by resource type. This is a convenience service that combines
+    get_panel_permissions, get_permitted_areas, and get_permitted_labels into
+    one call (but returns raw permission levels without entity counts).
+    This is the service equivalent of the permission_manager/get_all_permissions
+    WebSocket command. Call get_users first to discover valid user_id values.
+    This service returns data (SupportsResponse).
+    返回指定用戶的所有權限類型（面板、區域、標籤），按資源類型分類。
+    此便捷服務合併了面板、區域和標籤權限查詢（但返回原始權限等級，不含實體計數）。
+    請先呼叫 get_users 查詢有效的 user_id。此服務返回數據。
+  fields:
+    user_id:
+      name: "User ID / 用戶 ID"
+      description: >
+        The Home Assistant user ID to get all permissions for.
+        Call get_users first to discover valid user IDs.
+        要查詢全部權限的 Home Assistant 用戶 ID。
+        請先呼叫 get_users 查詢有效的用戶 ID。
+      required: true
+      example: "a1b2c3d4e5f6"
+      selector:
+        text:

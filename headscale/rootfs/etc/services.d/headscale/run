@@ -1,0 +1,70 @@
+#!/command/with-contenv bashio
+# shellcheck shell=bash
+# ==============================================================================
+# Woow Headscale VPN（WoowTech Home Assistant add-on）
+# services.d/headscale：啟動 Headscale server（control plane, 0.0.0.0:8080）
+#
+# ngrok_enabled 時：先輪詢 ngrok 本機 API 拿 tunnel public URL，
+# 覆寫 config 的 server_url 後才啟動（官方 Tailscale client 的
+# login-server 必須指向對外可達的 URL）。
+#
+# 出處：AlessioBazzanella/homeassistant-headscale-addon（headscale service）
+# ==============================================================================
+readonly CONFIG='/etc/headscale/config.yaml'
+readonly NGROK_API='http://127.0.0.1:4040/api/tunnels'
+
+if bashio::config.true 'ngrok_enabled'; then
+    ngrok_mode=$(bashio::config 'ngrok_mode')
+    bashio::log.info \
+        "ngrok 已啟用（mode: ${ngrok_mode}），等待 tunnel public URL（最多 120 秒）..."
+
+    public_url=''
+    for _ in $(seq 1 60); do
+        public_url=$(curl -sf "${NGROK_API}" 2>/dev/null \
+            | jq -r '.tunnels[0].public_url // empty' 2>/dev/null) \
+            || public_url=''
+        if [[ -n "${public_url}" ]]; then
+            break
+        fi
+        sleep 2
+    done
+
+    if [[ -z "${public_url}" ]]; then
+        bashio::exit.nok \
+            "等不到 ngrok tunnel public URL（輪詢 ${NGROK_API} 60 次 x 2 秒逾時）。請確認 ngrok_authtoken 正確、ngrok service log 無錯誤後重啟 add-on。"
+    fi
+
+    if [[ "${ngrok_mode}" == 'tcp' ]]; then
+        # tcp 模式：tcp://H:P → http://H:P（raw passthrough 無有效 TLS，
+        # login-server 必須用 http://；測試用途）
+        server_url="http://${public_url#tcp://}"
+    else
+        # http 模式：直接使用 ngrok 提供的 https URL
+        server_url="${public_url}"
+    fi
+
+    # 已知坑：server_url 網域 = MagicDNS base_domain 時 Headscale 拒絕啟動，
+    # ngrok 動態 URL 也要比對（cont-init 只驗過 options 裡的靜態 server_url）
+    base_domain=$(bashio::config 'magic_dns_base_domain')
+    ngrok_host="${server_url#*://}"
+    ngrok_host="${ngrok_host%%/*}"
+    ngrok_host="${ngrok_host%%:*}"
+    if [[ "${ngrok_host}" == "${base_domain}" ]]; then
+        bashio::exit.nok \
+            "ngrok public URL 的網域（${ngrok_host}）與 magic_dns_base_domain 相同，Headscale 會拒絕啟動。請修改 magic_dns_base_domain 後重啟 add-on。"
+    fi
+
+    bashio::log.info "以 ngrok public URL 覆寫 server_url: ${server_url}"
+    yq -i ".server_url = \"${server_url}\"" "${CONFIG}"
+else
+    server_url=$(yq '.server_url' "${CONFIG}")
+fi
+
+bashio::log.info '===================================================================='
+bashio::log.info '  Headscale login server URL（裝置加入 tailnet 用）：'
+bashio::log.info "  >>>  ${server_url}  <<<"
+bashio::log.info "  手機/筆電：tailscale up --login-server=${server_url}"
+bashio::log.info '===================================================================='
+
+bashio::log.info 'Starting the Headscale server...'
+exec headscale serve

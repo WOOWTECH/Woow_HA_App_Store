@@ -1,0 +1,14 @@
+{
+  "domain": "template_light_composer",
+  "name": "Template Light Composer",
+  "version": "1.0.2",
+  "documentation": "https://github.com/WOOWTECH/template_light_composer",
+  "issue_tracker": "https://github.com/WOOWTECH/template_light_composer/issues",
+  "dependencies": ["light"],
+  "config_flow": true,
+  "codeowners": ["@WOOWTECH"],
+  "iot_class": "calculated",
+  "integration_type": "device",
+  "homeassistant": "2024.1.0",
+  "requirements": []
+}

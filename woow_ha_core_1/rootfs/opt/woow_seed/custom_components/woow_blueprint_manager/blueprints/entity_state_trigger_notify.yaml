@@ -1,0 +1,185 @@
+blueprint:
+  name: 通用感測器觸發雙通知 + Global Condition
+  description: |
+    通用實體狀態變化雙通知發送器，支援任意 domain 的實體監控與條件過濾。
+
+    ## 功能說明 / Functional Description
+    監控任意實體的狀態變化，當狀態改變時同步發送「持久通知」與「notify.notify
+    推播通知」。通知內容自動包含時間、區域、狀態變化資訊，也可自訂 Jinja 模板。
+    Generic entity state change dual-notification sender. Monitors any entity
+    domain and sends both persistent_notification and notify.notify on change.
+
+    ## 觸發方式 / Trigger
+    - trigger: state (監控所選實體的任何狀態變化)
+    - 支援多個實體同時監控 (multiple: true)
+
+    ## 輸入參數 / Inputs
+    - **trigger_entities** (必填): 要監控的實體清單 (任意 domain，可複選)
+    - **after/before_this_time** (選填, 預設全天): 生效時間窗口
+    - **condition_weekday** (選填, 預設每天): 生效星期
+    - **global_conditions** (選填): 額外自訂條件 (condition selector)
+    - **send_notify** (選填): 是否發送通知，預設是
+    - **notify_title** (選填): 自訂通知標題，留空自動產生
+    - **notify_message** (選填): 自訂通知內容，支援 Jinja 模板
+
+    ## 執行效果 / Effects
+    1. 自動解析觸發實體的 friendly_name、區域、狀態變化前後值
+    2. 建立 persistent_notification (含時間、區域、狀態變化詳情)
+    3. 發送 notify.notify 推播通知 (相同內容)
+
+    ## 典型應用場景 / Use Cases
+    - 門窗感測器狀態變化時推送手機通知
+    - 任意感測器異常狀態變化告警 (如漏水偵測器)
+    - 設備上下線狀態監控通知
+  domain: automation
+  author: WOOW TECH CO., LTD. - Matt
+  source_url: https://github.com/woowtech/ha-blueprints/blob/main/automation/entity_state_trigger_notify.yaml
+
+  input:
+    # ─── 觸發實體 ──────────────────────────
+    trigger:
+      name: 觸發實體
+      icon: mdi:motion-sensor
+      collapsed: true
+      input:
+        trigger_entities:
+          name: 觸發實體 (可複選，任意 Domain)
+          default: []
+          selector:
+            entity:
+              multiple: true
+
+    # ─── 時間條件 (選填) ───────────────────
+    condition_time:
+      name: 執行時間 (選填)
+      icon: mdi:clock-time-five-outline
+      collapsed: true
+      input:
+        after_this_time:
+          name: 開始時間
+          default: "00:00:00"
+          selector:
+            time: {}
+        before_this_time:
+          name: 結束時間
+          default: "23:59:59"
+          selector:
+            time: {}
+        condition_weekday:
+          name: 生效星期
+          default: [mon, tue, wed, thu, fri, sat, sun]
+          selector:
+            select:
+              multiple: true
+              mode: list
+              options:
+                - { label: 週一, value: mon }
+                - { label: 週二, value: tue }
+                - { label: 週三, value: wed }
+                - { label: 週四, value: thu }
+                - { label: 週五, value: fri }
+                - { label: 週六, value: sat }
+                - { label: 週日, value: sun }
+
+    # ─── Global Conditions (選填) ──────────
+    global_conditions_settings:
+      name: Global Conditions (選填)
+      icon: mdi:earth
+      collapsed: true
+      input:
+        global_conditions:
+          name: Global Conditions
+          description: 任何額外條件皆可設定（留空則不檢查）
+          default: []
+          selector:
+            condition: {}
+
+    # ─── 通知內容 (可自訂) ──────────────────
+    notify_settings:
+      name: 通知內容
+      icon: mdi:message-text
+      collapsed: true
+      input:
+        send_notify:
+          name: 是否發送通知
+          default: y
+          selector:
+            select:
+              options:
+                - { label: 是, value: y }
+                - { label: 否, value: n }
+        notify_title:
+          name: 通知標題 (留空自動產生)
+          default: ""
+          selector:
+            text: {}
+        notify_message:
+          name: 通知內容 (留空自動產生，可寫 Jinja)
+          default: ""
+          selector:
+            text: {}
+
+    _woow_meta:
+      name: "WOOW Metadata"
+      description: "Internal metadata - do not modify"
+      default:
+        version: "1.0.0"
+        name_zh: "實體狀態觸發通知"
+        name_en: "Entity State Trigger Notify"
+        desc_zh: "實體狀態變化時發送通知"
+        desc_en: "Send notification when entity state changes"
+        category: "notify"
+# ─── 變數 ────────────────────────────────
+variables:
+  _send: !input send_notify
+  _title: !input notify_title
+  _msg: !input notify_message
+
+# ─── 觸發：任意狀態改變 ───────────────────
+triggers:
+  - trigger: state
+    entity_id: !input trigger_entities
+
+# ─── 條件：時間 / 星期 / Global ───────────
+conditions:
+  - condition: time
+    after: !input after_this_time
+    before: !input before_this_time
+    weekday: !input condition_weekday
+  - condition: !input global_conditions
+
+# ─── 動作 ────────────────────────────────
+actions:
+  - variables:
+      _entity: "{{ trigger.entity_id }}"
+      _friendly: "{{ state_attr(_entity,'friendly_name') or _entity }}"
+      _from: "{{ trigger.from_state.state }}"
+      _to: "{{ trigger.to_state.state }}"
+      _when: "{{ now().strftime('%Y-%m-%d %H:%M:%S') }}"
+      _area: "{{ area_name(_entity) or '未設定區域' }}"
+
+  - variables:
+      _t_final: "{{ _title | default('狀態變化 - ' ~ _friendly, true) }}"
+      _m_final: >
+        {% if _msg %}
+          {{ _msg }}
+        {% else %}
+          時間：{{ _when }}<br>
+          區域：{{ _area }}<br>
+          狀態：{{ _from }} ➜ {{ _to }}
+        {% endif %}
+
+  # ── 通知（可關）───────────────────────────
+  - if: "{{ _send == 'y' }}"
+    then:
+      - alias: "建立持久通知"
+        action: persistent_notification.create
+        data:
+          title: "{{ _t_final }}"
+          message: "{{ _m_final }}"
+      - alias: "發送 notify.notify 推播"
+        action: notify.notify
+        data:
+          title: "{{ _t_final }}"
+          message: "{{ _m_final }}"
+mode: single

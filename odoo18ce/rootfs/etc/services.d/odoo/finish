@@ -1,0 +1,7 @@
+#!/usr/bin/with-contenv bashio
+# ==============================================================================
+# Odoo crashed — halt the container so HA Supervisor can restart
+# ==============================================================================
+bashio::log.error "Odoo exited unexpectedly (exit code: ${1}), halting container..."
+
+exec /run/s6/basedir/bin/halt

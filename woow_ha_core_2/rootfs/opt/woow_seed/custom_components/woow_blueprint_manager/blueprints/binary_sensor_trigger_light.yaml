@@ -1,0 +1,179 @@
+blueprint:
+  name: 感應開關燈
+  description: |
+    二元感應器 (PIR/人體偵測) 觸發開關燈/設備的自動化藍圖。
+
+    ## 功能說明 / Functional Description
+    當 binary_sensor 偵測到人 (off→on) 時自動開啟目標設備；
+    偵測不到人持續指定秒數後 (on→off + delay) 自動關閉設備。
+    支援 light、switch、input_boolean 三種 domain 的設備控制。
+    Motion/PIR sensor triggered automation: turns on devices when presence
+    detected, turns off after configurable no-motion timeout.
+
+    ## 觸發方式 / Trigger
+    - binary_sensor off→on: 立即觸發開啟動作 (id: pir_on)
+    - binary_sensor on→off + 持續 N 秒: 觸發關閉動作 (id: pir_off)
+
+    ## 輸入參數 / Inputs
+    - **my_sensor_entity** (必填): binary_sensor 實體
+    - **target_entities** (必填，可複選): 目標設備 (light/switch/input_boolean)
+    - **pir_no_detect_wait_time** (選填，預設 60 秒): 無人持續多久後關閉
+    - **after_this_time / before_this_time** (選填): 生效時間窗口
+    - **condition_weekday** (選填): 生效星期，預設每天
+    - **global_conditions** (選填): 額外全域條件
+
+    ## 執行效果 / Effects
+    有人→開啟全部目標設備；無人超時→關閉全部目標設備。
+
+    ## 典型應用場景 / Use Cases
+    - 走廊/玄關 PIR 感應自動開關燈，離開後 60 秒熄燈
+    - 廁所人體感應開燈開抽風扇，無人後自動關閉
+    - 僅在夜間時段 (如 18:00-06:00) 啟用感應開燈
+  domain: automation
+  author: WOOW TECH CO., LTD. - Matt
+  source_url: https://github.com/WOOWTECH/HA_blueprint_binary_sensor_trigger_light
+  homeassistant:
+    min_version: "2024.6.0"
+
+  input:
+    # ─── 感應器與等待時間 ─────────────────────
+    binary:
+      name: 感應器
+      collapsed: true
+      input:
+        my_sensor_entity:
+          name: 感應器 (Binary Sensor)
+          selector:
+            entity:
+              filter:
+                domain: binary_sensor
+    pir_no:
+      name: 無人持續時間
+      collapsed: true
+      input:
+        pir_no_detect_wait_time:
+          name: 無人持續時間 (秒)
+          default: 60
+          selector:
+            number:
+              mode: slider
+              min: 0
+              max: 1800
+              step: 1
+
+    # ─── 目標設備：可多選 light / switch / input_boolean ──
+    target:
+      name: 目標設備
+      collapsed: true
+      input:
+        target_entities:
+          name: 目標設備
+          description: 勾選要控制的 light / switch / input_boolean
+          selector:
+            entity:
+              multiple: true
+              filter:
+                domain:
+                  - light
+                  - switch
+                  - input_boolean
+
+    # ─── 時間條件 (選填) ──────────────────────
+    condition_time:
+      name: 執行時間 (選填)
+      icon: mdi:clock-time-five-outline
+      collapsed: true
+      input:
+        after_this_time:
+          name: 開始時間
+          default: "00:00:00"
+          selector: { time: {} }
+        before_this_time:
+          name: 結束時間
+          default: "23:59:59"
+          selector: { time: {} }
+        condition_weekday:
+          name: 生效星期
+          default: [mon, tue, wed, thu, fri, sat, sun]
+          selector:
+            select:
+              multiple: true
+              mode: list
+              options:
+                - { label: 週一, value: mon }
+                - { label: 週二, value: tue }
+                - { label: 週三, value: wed }
+                - { label: 週四, value: thu }
+                - { label: 週五, value: fri }
+                - { label: 週六, value: sat }
+                - { label: 週日, value: sun }
+
+    # ─── 額外全域條件 (選填) ──────────────────
+    global_conditions_settings:
+      name: 額外全域條件 (選填)
+      icon: mdi:earth
+      collapsed: true
+      input:
+        global_conditions:
+          name: 額外全域條件
+          description: 可新增任意條件類型，如：狀態條件、數值條件、範本條件、裝置條件等
+          default: []
+          selector: { condition: {} }
+
+    _woow_meta:
+      name: "WOOW Metadata"
+      description: "Internal metadata - do not modify"
+      default:
+        version: "1.0.0"
+        name_zh: "感測器觸發燈光"
+        name_en: "Binary Sensor Trigger Light"
+        desc_zh: "二元感測器觸發燈光自動開關"
+        desc_en: "Binary sensor triggers automatic light on/off"
+        category: "lighting"
+# ─── 變數 ───────────────────────────────────
+variables:
+  _my_sensor_entity: !input my_sensor_entity
+  _target_entities: !input target_entities
+  _pir_no_detect_wait_time: !input pir_no_detect_wait_time
+
+# ─── 觸發 ───────────────────────────────────
+trigger:
+  - platform: state
+    entity_id: !input my_sensor_entity
+    from: "off"
+    to: "on"
+    id: pir_on
+  - platform: state
+    entity_id: !input my_sensor_entity
+    from: "on"
+    to: "off"
+    id: pir_off
+    for:
+      seconds: !input pir_no_detect_wait_time
+
+# ─── 條件 ───────────────────────────────────
+condition:
+  - condition: time
+    after: !input after_this_time
+    before: !input before_this_time
+    weekday: !input condition_weekday
+  - condition: !input global_conditions
+
+# ─── 動作 ───────────────────────────────────
+action:
+  - choose:
+      # ── 有人 ────────────────────────────
+      - conditions: "{{ trigger.id == 'pir_on' }}"
+        sequence:
+          - service: homeassistant.turn_on
+            target:
+              entity_id: "{{ _target_entities }}"
+
+      # ── 無人超時 ──────────────────────────
+      - conditions: "{{ trigger.id == 'pir_off' }}"
+        sequence:
+          - service: homeassistant.turn_off
+            target:
+              entity_id: "{{ _target_entities }}"
+
+mode: single

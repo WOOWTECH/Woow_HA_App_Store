@@ -1,0 +1,179 @@
+blueprint:
+  name: 場景循環 - 簡易版
+  description: |
+    透過 input_boolean 虛擬開關控制多個 Scene 的無限循環播放（簡易版：統一延遲與轉場時間）。
+
+    ## 功能說明 / Functional Description
+    本 Blueprint 讓使用者透過一個 input_boolean 開關啟動／停止 Scene 循環播放。
+    所有 Scene 共用相同的 transition（淡入淡出）秒數與 delay（間隔等待）秒數。
+    This blueprint loops through a list of scenes indefinitely while an input_boolean is ON,
+    applying uniform transition and delay timing between each scene activation.
+
+    ## 觸發方式 / Trigger
+    input_boolean 從 off 變為 on 時觸發。關閉該開關即停止循環。
+
+    ## 輸入參數 / Inputs
+    - **input_boolean_entity**（必填）: 控制循環啟停的虛擬開關（domain: input_boolean）
+    - **scenes**（必填）: 要循環播放的 Scene 清單，依勾選順序播放（domain: scene, 可複選）
+    - **delay_between**（選填，預設 0）: 兩個 Scene 之間的等待秒數（0-3600）
+    - **transition_seconds**（選填，預設 0）: Scene 淡入淡出秒數（0-3600），0 表示不淡入淡出
+    - **after_this_time / before_this_time**（選填）: 限制執行的時間區間，預設全天
+    - **condition_weekday**（選填）: 限制生效的星期，預設每天
+    - **global_conditions**（選填）: 額外全域條件，可加入任意條件類型
+
+    ## 執行效果 / Effects
+    依序對每個 Scene 呼叫 scene.turn_on（帶 transition 參數），每個 Scene 之間等待指定秒數。
+    外層無限迴圈持續檢查 input_boolean 是否仍為 on；關閉即中止。模式為 restart。
+
+    ## 典型應用場景 / Use Cases
+    - 展示燈光：商店或展覽空間自動循環切換多組燈光場景
+    - 氣氛營造：居家派對中循環播放不同色彩場景
+    - 節日裝飾：聖誕燈飾按順序循環變換效果
+  domain: automation
+  author: WOOW TECH CO., LTD.
+
+  input:
+    ###################################################################
+    # 觸發開關
+    ###################################################################
+    input_boolean_entity:
+      name: 虛擬開關 (Input Boolean)
+      description: 開啟 → 開始循環；關閉 → 停止
+      selector:
+        entity: { filter: { domain: input_boolean } }
+
+    ###################################################################
+    # Scene 清單
+    ###################################################################
+    scenes_settings:
+      name: Scene 清單
+      collapsed: true
+      input:
+        scenes:
+          name: Scene 清單
+          description: 勾選要循環播放的 Scene（依勾選順序）
+          default: []
+          selector:
+            entity: { domain: scene, multiple: true }
+
+    ###################################################################
+    # 固定延遲 & transition
+    ###################################################################
+    loop_timing:
+      name: 延遲 & Transition
+      collapsed: true
+      input:
+        delay_between:
+          name: 延遲（秒）
+          description: 兩個 Scene 之間等待時間
+          default: 0
+          selector: { number: { min: 0, max: 3600, step: 1 } }
+        transition_seconds:
+          name: Transition（秒）
+          description: Scene 淡入淡出秒數；0 = 不淡入淡出
+          default: 0
+          selector: { number: { min: 0, max: 3600, step: 1 } }
+
+    ###################################################################
+    # 時間條件 (選填)
+    ###################################################################
+    condition_time:
+      name: 執行時間 (選填)
+      icon: mdi:clock-time-five-outline
+      collapsed: true
+      input:
+        after_this_time:
+          name: 開始時間
+          default: "00:00:00"
+          selector: { time: {} }
+        before_this_time:
+          name: 結束時間
+          default: "23:59:59"
+          selector: { time: {} }
+        condition_weekday:
+          name: 生效星期
+          default: [mon, tue, wed, thu, fri, sat, sun]
+          selector:
+            select:
+              multiple: true
+              mode: list
+              options:
+                - { label: 週一, value: mon }
+                - { label: 週二, value: tue }
+                - { label: 週三, value: wed }
+                - { label: 週四, value: thu }
+                - { label: 週五, value: fri }
+                - { label: 週六, value: sat }
+                - { label: 週日, value: sun }
+
+    ###################################################################
+    # 額外全域條件 (選填)
+    ###################################################################
+    global_conditions_settings:
+      name: 額外全域條件 (選填)
+      icon: mdi:earth
+      collapsed: true
+      input:
+        global_conditions:
+          name: 額外全域條件
+          description: 可新增任意條件類型，如：狀態條件、數值條件、範本條件、裝置條件等；留空不檢查
+          default: []
+          selector: { condition: {} }
+
+    _woow_meta:
+      name: "WOOW Metadata"
+      description: "Internal metadata - do not modify"
+      default:
+        version: "1.0.0"
+        name_zh: "場景循環（簡易）"
+        name_en: "Scene Loop (Simple)"
+        desc_zh: "簡易場景循環播放"
+        desc_en: "Simple scene loop playback"
+        category: "scene"
+# ─────────────────── 變數 ───────────────────
+variables:
+  _boolean: !input input_boolean_entity
+  _scenes: !input scenes
+  _delay: !input delay_between
+  _transition: !input transition_seconds
+
+# ─────────────────── 觸發 ───────────────────
+triggers:
+  - trigger: state
+    entity_id: !input input_boolean_entity
+    from: "off"
+    to: "on"
+
+# ─────────────────── 動作 ───────────────────
+actions:
+  # 時間條件 & 額外全域條件檢查
+  - condition: time
+    after: !input after_this_time
+    before: !input before_this_time
+    weekday: !input condition_weekday
+  - condition: !input global_conditions
+
+  # 無限循環：保持開關 ON 就重複
+  - repeat:
+      while:
+        - condition: state
+          entity_id: !input input_boolean_entity
+          state: "on"
+      sequence:
+        - repeat:
+            count: "{{ _scenes | length }}"
+            sequence:
+              - condition: state
+                entity_id: !input input_boolean_entity
+                state: "on"
+              - variables:
+                  _idx: "{{ repeat.index - 1 }}"
+                  _scene: "{{ _scenes[_idx] }}"
+              - action: scene.turn_on
+                data:
+                  entity_id: "{{ _scene }}"
+                  transition: "{{ _transition }}"
+              - delay: "{{ _delay }}"
+
+# ─────────────────── 其他 ───────────────────
+mode: restart

@@ -1,0 +1,127 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "WoowTech Fan Entity",
+        "description": "Configure your fan entity using entity selectors and optional action scripts.",
+        "data": {
+          "name": "Name",
+          "switch_entity": "Switch Entity (On/Off)",
+          "speed_count": "Speed Count",
+          "preset_modes": "Preset Modes",
+          "enable_oscillation": "Enable Oscillation",
+          "enable_direction": "Enable Direction Control",
+          "percentage_entity": "Speed Percentage Entity (Receive)",
+          "percentage_receive_template": "Percentage Receive Template",
+          "percentage_input_min": "Percentage Input Min",
+          "percentage_input_max": "Percentage Input Max",
+          "percentage_output_min": "Percentage Output Min",
+          "percentage_output_max": "Percentage Output Max",
+          "preset_mode_entity": "Preset Mode Entity (Receive)",
+          "preset_mode_receive_template": "Preset Mode Receive Template",
+          "oscillating_entity": "Oscillation Entity",
+          "direction_entity": "Direction Entity (Receive)",
+          "direction_receive_template": "Direction Receive Template",
+          "set_percentage": "Set Percentage Action (Send)",
+          "set_preset_mode": "Set Preset Mode Action (Send)",
+          "set_oscillating": "Set Oscillation Action (Send)",
+          "set_direction": "Set Direction Action (Send)"
+        },
+        "data_description": {
+          "name": "A friendly name for this fan entity.",
+          "switch_entity": "Entity that controls power on/off (switch, input_boolean, fan).",
+          "speed_count": "Number of discrete speed levels (e.g. 3 for low/medium/high).",
+          "preset_modes": "Optional: Preset modes like Auto, Sleep, Smart.",
+          "enable_oscillation": "Enable oscillation on/off control.",
+          "enable_direction": "Enable direction control (forward/reverse).",
+          "percentage_entity": "Entity to receive speed percentage from (input_number, number).",
+          "percentage_receive_template": "Optional Jinja2 template to transform received percentage. Use {{ value }} for raw value.",
+          "percentage_input_min": "Linear interpolation: minimum input value (e.g. 0 for ADC range 0-1023).",
+          "percentage_input_max": "Linear interpolation: maximum input value (e.g. 1023 for ADC range 0-1023).",
+          "percentage_output_min": "Linear interpolation: minimum output value (e.g. 0 for fan percentage 0-100).",
+          "percentage_output_max": "Linear interpolation: maximum output value (e.g. 100 for fan percentage 0-100).",
+          "preset_mode_entity": "Entity to receive preset mode from (input_select, select).",
+          "preset_mode_receive_template": "Optional Jinja2 template to transform received preset mode. Use {{ value }} for raw value.",
+          "oscillating_entity": "Entity to sync oscillation state with (switch, input_boolean).",
+          "direction_entity": "Entity to receive direction from (input_select, select).",
+          "direction_receive_template": "Optional Jinja2 template to transform received direction. Use {{ value }} for raw value.",
+          "set_percentage": "Optional: Action script override for speed percentage changes.",
+          "set_preset_mode": "Optional: Action script override for preset mode changes.",
+          "set_oscillating": "Optional: Action script override for oscillation changes.",
+          "set_direction": "Optional: Action script override for direction changes."
+        }
+      }
+    },
+    "error": {
+      "unknown": "Unexpected error."
+    },
+    "abort": {
+      "already_configured": "Already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "WoowTech Fan Entity Options",
+        "description": "Modify your fan entity settings.",
+        "data": {
+          "switch_entity": "Switch Entity (On/Off)",
+          "speed_count": "Speed Count",
+          "preset_modes": "Preset Modes",
+          "enable_oscillation": "Enable Oscillation",
+          "enable_direction": "Enable Direction Control",
+          "percentage_entity": "Speed Percentage Entity (Receive)",
+          "percentage_receive_template": "Percentage Receive Template",
+          "percentage_input_min": "Percentage Input Min",
+          "percentage_input_max": "Percentage Input Max",
+          "percentage_output_min": "Percentage Output Min",
+          "percentage_output_max": "Percentage Output Max",
+          "preset_mode_entity": "Preset Mode Entity (Receive)",
+          "preset_mode_receive_template": "Preset Mode Receive Template",
+          "oscillating_entity": "Oscillation Entity",
+          "direction_entity": "Direction Entity (Receive)",
+          "direction_receive_template": "Direction Receive Template",
+          "set_percentage": "Set Percentage Action (Send)",
+          "set_preset_mode": "Set Preset Mode Action (Send)",
+          "set_oscillating": "Set Oscillation Action (Send)",
+          "set_direction": "Set Direction Action (Send)"
+        },
+        "data_description": {
+          "switch_entity": "Entity that controls power on/off.",
+          "speed_count": "Number of discrete speed levels.",
+          "preset_modes": "Optional: Preset modes like Auto, Sleep.",
+          "enable_oscillation": "Enable oscillation control.",
+          "enable_direction": "Enable direction control.",
+          "percentage_entity": "Entity to receive speed percentage from.",
+          "percentage_receive_template": "Optional Jinja2 template to transform received percentage. Use {{ value }}.",
+          "percentage_input_min": "Linear interpolation: minimum input value.",
+          "percentage_input_max": "Linear interpolation: maximum input value.",
+          "percentage_output_min": "Linear interpolation: minimum output value.",
+          "percentage_output_max": "Linear interpolation: maximum output value.",
+          "preset_mode_entity": "Entity to receive preset mode from.",
+          "preset_mode_receive_template": "Optional Jinja2 template to transform received preset mode. Use {{ value }}.",
+          "oscillating_entity": "Entity to sync oscillation state with.",
+          "direction_entity": "Entity to receive direction from.",
+          "direction_receive_template": "Optional Jinja2 template to transform received direction. Use {{ value }}.",
+          "set_percentage": "Optional: Action script override for speed changes.",
+          "set_preset_mode": "Optional: Action script override for preset changes.",
+          "set_oscillating": "Optional: Action script override for oscillation changes.",
+          "set_direction": "Optional: Action script override for direction changes."
+        }
+      }
+    }
+  },
+  "selector": {
+    "preset_modes": {
+      "options": {
+        "auto": "Auto",
+        "sleep": "Sleep",
+        "smart": "Smart",
+        "natural": "Natural",
+        "breeze": "Breeze",
+        "silent": "Silent",
+        "turbo": "Turbo"
+      }
+    }
+  }
+}

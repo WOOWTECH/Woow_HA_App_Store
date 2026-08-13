@@ -1,0 +1,271 @@
+blueprint:
+  name: 感應觸發多場景 / 多腳本 (整合版)
+  description: |
+    二元感應器觸發場景/腳本的雙模式自動化藍圖，支援 On 和 Off 兩個方向。
+
+    ## 功能說明 / Functional Description
+    此藍圖讓 binary_sensor（如 PIR、門磁）觸發時執行指定的 Scene/Script。
+    提供兩種可獨立啟停的觸發模式：Off→On（偵測到時執行）和 On→Off（離開後
+    延遲執行），每種模式可設定各自的目標 Scene/Script 和延遲秒數。
+    Dual-mode binary sensor blueprint: runs different Scenes/Scripts for
+    presence-detected (Off→On) and absence-detected (On→Off) events.
+
+    ## 觸發方式 / Trigger
+    - Off→On 模式: 立即觸發或持續 N 秒後觸發（由 on_wait_seconds 控制）
+    - On→Off 模式: 感應器保持 Off 達 off_wait_seconds 秒後觸發
+    - 兩種模式可透過 enable_on_trigger / enable_off_trigger 獨立啟停
+
+    ## 輸入參數 / Inputs
+    - **my_sensor_entity** (必填): binary_sensor 實體
+    - **enable_on_trigger** (選填，預設 true): 啟用 Off→On 模式
+    - **on_wait_seconds** (選填，預設 0): On 持續秒數，0=立即觸發
+    - **on_target_entities** (選填，可複選): Off→On 時執行的 Scene/Script
+    - **enable_off_trigger** (選填，預設 false): 啟用 On→Off 模式
+    - **off_wait_seconds** (選填，預設 60): Off 持續秒數後觸發
+    - **off_target_entities** (選填，可複選): On→Off 時執行的 Scene/Script
+    - **after_this_time / before_this_time** (選填): 生效時間窗口
+    - **condition_weekday** (選填): 生效星期，預設每天
+    - **global_conditions** (選填): 額外全域條件
+
+    ## 執行效果 / Effects
+    觸發時透過 homeassistant.turn_on 執行對應模式的目標實體；
+    若該模式未設定目標則發送 persistent_notification 提示並停止。
+
+    ## 典型應用場景 / Use Cases
+    - 進門偵測到人→執行「回家場景」；離開後 5 分鐘→執行「離家場景」
+    - PIR 偵測到人→開燈場景；無人 60 秒→關燈場景
+    - 門磁開啟→執行警報腳本；門磁關閉→執行解除警報腳本
+  domain: automation
+  author: WOOW TECH CO., LTD. - Matt
+  homeassistant:
+    min_version: "2024.6.0"
+
+  input:
+    # ─── 感應器設定 ──────────────────────────────
+    sensor_settings:
+      name: 感應器設定
+      icon: mdi:motion-sensor
+      input:
+        my_sensor_entity:
+          name: 感應器 (Binary Sensor)
+          selector:
+            entity:
+              filter: { domain: binary_sensor }
+
+    # ─── Off → On 觸發設定 ──────────────────────────
+    trigger_on_settings:
+      name: 感應到時執行 (Off → On)
+      icon: mdi:motion-sensor
+      collapsed: false
+      input:
+        enable_on_trigger:
+          name: 啟用此觸發模式
+          description: 當感應器從 Off 變為 On 時觸發
+          default: true
+          selector:
+            boolean: {}
+
+        on_wait_seconds:
+          name: On 持續時間 (秒)
+          description: 感應器需保持 On 狀態多少秒後才觸發（0 = 立即觸發）
+          default: 0
+          selector:
+            number:
+              mode: slider
+              min: 0
+              max: 1800
+              step: 1
+
+        on_target_entities:
+          name: 目標 Scene / Script (可複選；留空代表不用)
+          default: []
+          selector:
+            entity:
+              multiple: true
+              filter:
+                - domain: scene
+                - domain: script
+
+    # ─── On → Off 觸發設定 ──────────────────────────
+    trigger_off_settings:
+      name: 離開後延遲執行 (On → Off)
+      icon: mdi:motion-sensor-off
+      collapsed: true
+      input:
+        enable_off_trigger:
+          name: 啟用此觸發模式
+          description: 當感應器從 On 變為 Off 並持續指定時間後觸發
+          default: false
+          selector:
+            boolean: {}
+
+        off_wait_seconds:
+          name: Off 持續時間 (秒)
+          description: 感應器需保持 Off 狀態多少秒後才觸發
+          default: 60
+          selector:
+            number:
+              mode: slider
+              min: 1
+              max: 1800
+              step: 1
+
+        off_target_entities:
+          name: 目標 Scene / Script (可複選；留空代表不用)
+          default: []
+          selector:
+            entity:
+              multiple: true
+              filter:
+                - domain: scene
+                - domain: script
+
+    # ─── 執行時間 (選填) ──────────────────────────
+    condition_time:
+      name: 執行時間 (選填)
+      icon: mdi:clock-time-five-outline
+      collapsed: true
+      input:
+        after_this_time:
+          name: 開始時間
+          default: "00:00:00"
+          selector: { time: {} }
+        before_this_time:
+          name: 結束時間
+          default: "23:59:59"
+          selector: { time: {} }
+        condition_weekday:
+          name: 生效星期
+          default: [mon, tue, wed, thu, fri, sat, sun]
+          selector:
+            select:
+              multiple: true
+              mode: list
+              options:
+                - { label: 週一, value: mon }
+                - { label: 週二, value: tue }
+                - { label: 週三, value: wed }
+                - { label: 週四, value: thu }
+                - { label: 週五, value: fri }
+                - { label: 週六, value: sat }
+                - { label: 週日, value: sun }
+
+    # ─── 額外全域條件 (選填) ──────────────────
+    global_conditions_settings:
+      name: 額外全域條件 (選填)
+      icon: mdi:earth
+      collapsed: true
+      input:
+        global_conditions:
+          name: 額外全域條件
+          description: 可新增任意條件類型，如：狀態條件、數值條件、範本條件、裝置條件等
+          default: []
+          selector: { condition: {} }
+
+    _woow_meta:
+      name: "WOOW Metadata"
+      description: "Internal metadata - do not modify"
+      default:
+        version: "1.0.0"
+        name_zh: "感測器觸發動作"
+        name_en: "Binary Sensor Trigger Things"
+        desc_zh: "二元感測器觸發各種實體動作"
+        desc_en: "Binary sensor triggers various entity actions"
+        category: "device"
+# ─── Trigger Variables (用於啟用/停用觸發器) ───
+trigger_variables:
+  _enable_on: !input enable_on_trigger
+  _enable_off: !input enable_off_trigger
+  _on_wait: !input on_wait_seconds
+
+# ─── 變數 ────────────────────────────────────
+variables:
+  _sensor: !input my_sensor_entity
+  _on_targets: !input on_target_entities
+  _off_targets: !input off_target_entities
+
+# ─── 觸發：兩種模式可同時啟用 ──────────────────
+trigger:
+  # Off → On 立即觸發（on_wait_seconds = 0）
+  - platform: state
+    entity_id: !input my_sensor_entity
+    from: "off"
+    to: "on"
+    id: pir_on_immediate
+    enabled: "{{ _enable_on and _on_wait == 0 }}"
+
+  # Off → On 延遲觸發（on_wait_seconds > 0）
+  - platform: state
+    entity_id: !input my_sensor_entity
+    to: "on"
+    for:
+      seconds: !input on_wait_seconds
+    id: pir_on_delay
+    enabled: "{{ _enable_on and _on_wait > 0 }}"
+
+  # On → Off 延遲觸發
+  - platform: state
+    entity_id: !input my_sensor_entity
+    to: "off"
+    for:
+      seconds: !input off_wait_seconds
+    id: pir_off_delay
+    enabled: "{{ _enable_off }}"
+
+# ─── 時間 / 星期 條件 ────────────────────────────
+condition:
+  - condition: time
+    after: !input after_this_time
+    before: !input before_this_time
+    weekday: !input condition_weekday
+
+  # ─── 額外全域條件 ──────────────────
+  - condition: !input global_conditions
+
+# ─── 動作：根據觸發 ID 執行對應目標 ──────────────
+action:
+  - choose:
+      # Off → On 觸發的動作
+      - conditions:
+          - condition: trigger
+            id:
+              - pir_on_immediate
+              - pir_on_delay
+        sequence:
+          # 檢查是否有設定目標
+          - if:
+              - "{{ _on_targets | length == 0 }}"
+            then:
+              - service: persistent_notification.create
+                data:
+                  title: "感應觸發藍圖設定錯誤"
+                  message: "Off → On 模式未指定任何 Scene 或 Script，故未執行任何動作。"
+              - stop: 停止執行
+
+          # 使用 homeassistant.turn_on 執行所有目標（自動分派至各 domain）
+          - service: homeassistant.turn_on
+            target:
+              entity_id: "{{ _on_targets }}"
+
+      # On → Off 觸發的動作
+      - conditions:
+          - condition: trigger
+            id:
+              - pir_off_delay
+        sequence:
+          # 檢查是否有設定目標
+          - if:
+              - "{{ _off_targets | length == 0 }}"
+            then:
+              - service: persistent_notification.create
+                data:
+                  title: "感應觸發藍圖設定錯誤"
+                  message: "On → Off 模式未指定任何 Scene 或 Script，故未執行任何動作。"
+              - stop: 停止執行
+
+          # 使用 homeassistant.turn_on 執行所有目標（自動分派至各 domain）
+          - service: homeassistant.turn_on
+            target:
+              entity_id: "{{ _off_targets }}"
+
+mode: single

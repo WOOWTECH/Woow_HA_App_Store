@@ -1,0 +1,12 @@
+{
+  "domain": "woow_cover_entity",
+  "name": "WoowTech Cover Entity",
+  "codeowners": ["@alanlin"],
+  "config_flow": true,
+  "dependencies": [],
+  "documentation": "https://github.com/WOOWTECH/woow_cover_entity",
+  "iot_class": "calculated",
+  "issue_tracker": "https://github.com/WOOWTECH/woow_cover_entity/issues",
+  "requirements": [],
+  "version": "1.0.1"
+}

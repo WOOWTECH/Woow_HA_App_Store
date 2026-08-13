@@ -1,0 +1,14 @@
+# Woowtech HA Core — seeded default configuration (ADR 0005).
+# Only written on a fresh instance (when no configuration.yaml exists yet).
+
+# Loads default set of integrations. Do not remove.
+default_config:
+
+# NOTE: woow_zha_quirks is seeded into custom_components/ but deliberately NOT
+# auto-enabled here — on a ZHA-less instance its _async_heal() task blocks HA
+# startup wrap-up for no benefit (ADR 0005 correction). Add `woow_zha_quirks:`
+# yourself once this instance actually has ZHA set up.
+
+automation: !include automations.yaml
+script: !include scripts.yaml
+scene: !include scenes.yaml

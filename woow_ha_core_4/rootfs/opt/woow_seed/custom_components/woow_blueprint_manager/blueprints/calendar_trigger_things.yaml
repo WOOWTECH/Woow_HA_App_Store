@@ -1,0 +1,275 @@
+blueprint:
+  name: 行事曆行程觸發多場景 / 多腳本（duration offset 版）
+  description: |
+    行事曆行程觸發場景/腳本執行器，支援開始前/結束後偏移量與多重條件過濾。
+
+    ## 功能說明 / Functional Description
+    依據 HA 行事曆事件的「開始」或「結束」時間點，加上可設定的時間偏移量
+    (offset)，自動批次執行指定的 Scene 與 Script。支援時間窗口、星期過濾、
+    Global Condition 與推播通知。Calendar event triggered scene/script executor
+    with configurable start/end offset, time/weekday filtering, and notifications.
+
+    ## 觸發方式 / Trigger
+    - platform: calendar (event: start + offset, event: end + offset)
+    - 兩組獨立觸發：行程開始觸發 (cal_start) 與行程結束觸發 (cal_end)
+
+    ## 輸入參數 / Inputs
+    - **my_calendar_entity** (必填): 行事曆實體 (domain: calendar)
+    - **offset_time_event_start** (選填): 開始事件偏移量，負值=提前觸發
+    - **offset_time_event_end** (選填): 結束事件偏移量，正值=延後觸發
+    - **target_entities_start** (選填): 開始時執行的 Scene/Script 清單
+    - **target_entities_end** (選填): 結束時執行的 Scene/Script 清單
+    - **after/before_this_time, condition_weekday** (選填): 時間與星期條件
+    - **global_conditions** (選填): 額外自訂條件
+    - **send_push_notify** (選填, 預設 y): 是否推送 notify.notify
+    - **notify_title / notify_message** (選填): 自訂通知標題與內容 (支援 Jinja)
+
+    ## 執行效果 / Effects
+    1. 驗證行事曆已設定，否則建立錯誤通知並停止
+    2. 根據觸發 ID (cal_start/cal_end) 執行對應的 Scene/Script 清單
+    3. 建立 persistent_notification 記錄觸發事件
+    4. 若啟用推播，同步送出 notify.notify
+
+    ## 典型應用場景 / Use Cases
+    - 會議開始前 5 分鐘自動開燈、開空調，結束後關閉
+    - 下班行程觸發回家場景 (開門鎖、開燈)
+    - 排程活動自動執行腳本並推送手機通知
+  domain: automation
+  author: WOOW TECH CO., LTD.
+
+  input:
+    # ─── 行事曆 & Offset ───────────────────
+    calendar:
+      name: 行事曆
+      icon: mdi:calendar
+      collapsed: true
+      input:
+        my_calendar_entity:
+          name: 行事曆實體
+          default: []
+          selector:
+            entity:
+              filter: { domain: calendar }
+
+        offset_time_event_start:
+          name: 行程開始 Offset
+          description: |
+            使用 **負值** 表示「提前」。
+            例： minutes: -5 ＝ 行程開始前 5 分鐘觸發
+          default:
+            hours: 0
+            minutes: 0
+            seconds: 0
+          selector:
+            duration: {}
+
+        offset_time_event_end:
+          name: 行程結束 Offset
+          description: |
+            使用 **正值** 表示「結束後」。
+            例： minutes: 5 ＝ 行程結束 5 分鐘後觸發
+          default:
+            hours: 0
+            minutes: 0
+            seconds: 0
+          selector:
+            duration: {}
+
+    # ─── 行程開始 → 動作 ───────────────────
+    start_actions:
+      name: 行程開始動作
+      icon: mdi:play
+      collapsed: true
+      input:
+        target_entities_start:
+          name: 要啟動的 Scene / Script (複選)
+          description: 可同時選擇多個 Scene 與 Script，行程開始時一併執行
+          default: []
+          selector:
+            entity:
+              multiple: true
+              filter:
+                - domain: scene
+                - domain: script
+
+    # ─── 行程結束 → 動作 ───────────────────
+    end_actions:
+      name: 行程結束動作
+      icon: mdi:stop
+      collapsed: true
+      input:
+        target_entities_end:
+          name: 要啟動的 Scene / Script (複選)
+          description: 可同時選擇多個 Scene 與 Script，行程結束時一併執行
+          default: []
+          selector:
+            entity:
+              multiple: true
+              filter:
+                - domain: scene
+                - domain: script
+
+    # ─── 時間 / 星期 條件 (選填) ────────────
+    condition_time:
+      name: 執行時間 (選填)
+      icon: mdi:clock-time-five-outline
+      collapsed: true
+      input:
+        after_this_time:
+          name: 開始時間
+          default: "00:00:00"
+          selector: { time: {} }
+        before_this_time:
+          name: 結束時間
+          default: "23:59:59"
+          selector: { time: {} }
+        condition_weekday:
+          name: 生效星期
+          default: [mon, tue, wed, thu, fri, sat, sun]
+          selector:
+            select:
+              multiple: true
+              mode: list
+              options:
+                - { label: 週一, value: mon }
+                - { label: 週二, value: tue }
+                - { label: 週三, value: wed }
+                - { label: 週四, value: thu }
+                - { label: 週五, value: fri }
+                - { label: 週六, value: sat }
+                - { label: 週日, value: sun }
+
+    # ─── Global Conditions (選填) ──────────
+    global_conditions_settings:
+      name: Global Conditions (選填)
+      icon: mdi:earth
+      collapsed: true
+      input:
+        global_conditions:
+          name: Global Conditions
+          description: 額外條件，全部滿足時才執行動作（留空表示無額外條件）
+          default: []
+          selector:
+            condition: {}
+
+    # ─── 通知設定 ──────────────────────────
+    notify_settings:
+      name: 通知
+      icon: mdi:bell-ring
+      collapsed: true
+      input:
+        send_push_notify:
+          name: 是否同步推送 notify.notify
+          default: y
+          selector:
+            select:
+              options:
+                - { label: 是, value: y }
+                - { label: 否, value: n }
+        notify_title:
+          name: 通知標題 (留空自動產生)
+          default: ""
+          selector: { text: {} }
+        notify_message:
+          name: 通知內容 (留空自動產生，可寫 Jinja)
+          default: ""
+          selector: { text: {} }
+
+    _woow_meta:
+      name: "WOOW Metadata"
+      description: "Internal metadata - do not modify"
+      default:
+        version: "1.0.0"
+        name_zh: "行事曆觸發動作"
+        name_en: "Calendar Trigger Things"
+        desc_zh: "行事曆事件觸發各種實體動作"
+        desc_en: "Calendar events trigger various entity actions"
+        category: "device"
+# ─── 變數 ────────────────────────────────
+variables:
+  _cal: !input my_calendar_entity
+  _friendly: "{{ state_attr(_cal,'friendly_name') or _cal }}"
+  _targets_start: !input target_entities_start
+  _targets_end: !input target_entities_end
+  _push: !input send_push_notify
+  _t_in: !input notify_title
+  _m_in: !input notify_message
+
+# ─── 觸發：Calendar + duration Offset ────
+trigger:
+  - platform: calendar
+    entity_id: !input my_calendar_entity
+    event: start
+    offset: !input offset_time_event_start
+    id: cal_start
+
+  - platform: calendar
+    entity_id: !input my_calendar_entity
+    event: end
+    offset: !input offset_time_event_end
+    id: cal_end
+
+# ─── 條件 ────────────────────────────────
+condition:
+  - condition: time
+    after: !input after_this_time
+    before: !input before_this_time
+    weekday: !input condition_weekday
+  - condition: and
+    conditions: !input global_conditions
+
+# ─── 動作 ────────────────────────────────
+action:
+  # 未選行事曆 → 報錯並停止
+  - if: "{{ _cal | length == 0 }}"
+    then:
+      - service: persistent_notification.create
+        data:
+          title: 行事曆藍圖設定錯誤
+          message: 尚未選擇行事曆，無法觸發
+      - stop: 無行事曆
+
+  - variables:
+      _when: "{{ now().strftime('%Y-%m-%d %H:%M:%S') }}"
+      _title: "{{ _t_in | default('行程觸發 - ' ~ _friendly, true) }}"
+      _msg: >
+        {% if _m_in %}
+          {{ _m_in }}
+        {% else %}
+          行程「{{ _friendly }}」在 {{ _when }}
+          {% if trigger.id == 'cal_start' %}（開始觸發）{% else %}（結束觸發）{% endif %}
+        {% endif %}
+
+  # 執行對應 Scene / Script（使用統一的 homeassistant.turn_on）
+  - choose:
+      - conditions: "{{ trigger.id == 'cal_start' }}"
+        sequence:
+          - if: "{{ _targets_start | length > 0 }}"
+            then:
+              - service: homeassistant.turn_on
+                target:
+                  entity_id: "{{ _targets_start }}"
+
+      - conditions: "{{ trigger.id == 'cal_end' }}"
+        sequence:
+          - if: "{{ _targets_end | length > 0 }}"
+            then:
+              - service: homeassistant.turn_on
+                target:
+                  entity_id: "{{ _targets_end }}"
+
+  # 持久通知
+  - service: persistent_notification.create
+    data:
+      title: "{{ _title }}"
+      message: "{{ _msg }}"
+
+  # 推播（可關）
+  - if: "{{ _push == 'y' }}"
+    then:
+      - service: notify.notify
+        data:
+          title: "{{ _title }}"
+          message: "{{ _msg }}"
+
+mode: single

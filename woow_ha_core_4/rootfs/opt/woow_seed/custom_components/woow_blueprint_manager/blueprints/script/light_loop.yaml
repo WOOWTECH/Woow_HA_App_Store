@@ -1,0 +1,1014 @@
+blueprint:
+  name: 燈光循環控制 / Light Loop Control
+  description: |
+    燈光循環控制腳本：以12組可自訂模式依序循環控制多盞燈，支援同步/非同步、RGB與色溫。
+    Light Loop Control script: cycles through up to 12 user-defined modes on multiple lights with sync/async, RGB and color-temp support.
+
+    ## 功能說明 / Functional Description
+    此腳本藍圖可對一組燈光實體依序執行最多12種預設模式。每種模式可獨立設定開/關狀態、亮度(1-255)、色溫(2000-6500K)或RGB顏色。
+    支援同步模式（逐盞控制，每盞間有延遲）與非同步模式（所有燈同時變化）。整個12模式序列可重複循環多次。
+    This script blueprint cycles a list of light entities through up to 12 preset modes. Each mode independently configures on/off state,
+    brightness (1-255), color temperature (2000-6500K Kelvin), or RGB color. Supports sync mode (sequential per-light with delay) and
+    async mode (all lights change simultaneously). The full 12-mode sequence can repeat for multiple cycles.
+
+    ## 呼叫方式 / Invocation
+    透過 script.turn_on 服務呼叫或從自動化(automation)觸發。腳本模式為 restart（重新呼叫會中斷並重新執行）。
+    Called via script.turn_on service or triggered from automations. Script mode is "restart" (re-invocation interrupts and restarts).
+
+    ## 輸入參數 / Inputs
+    - **light_list** (必填/Required): 要控制的燈光實體清單，domain: light，支援多選
+    - **sync_mode** (選填/Optional, 預設 true): true=同步逐盞控制, false=非同步全部同時
+    - **sync_delay** (選填/Optional, 預設 0.5s): 同步模式下每盞燈之間的延遲秒數 (0-30)
+    - **transition_seconds** (選填/Optional, 預設 1s): 燈光狀態漸變過渡時間 (0-30)
+    - **hold_seconds** (選填/Optional, 預設 2s): 每個模式完成後的停留時間 (0-60)
+    - **cycle_count** (選填/Optional, 預設 1): 整個12模式序列的重複次數 (1-50)
+    - **模式 1-12 / Mode 1-12** (各含4參數): state_N(on/off), brightness_N(1-255), color_temp_N(2000-6500K), color_rgb_N([R,G,B], [0,0,0]=使用色溫)
+
+    ## 執行效果 / Effects
+    外層迴圈依 cycle_count 重複；內層迴圈遍歷12個模式，跳過 state=false 的模式（關燈）。
+    RGB 非 [0,0,0] 時使用 rgb_color，否則使用 color_temp_kelvin。每個模式執行後停留 hold_seconds。
+    Outer loop repeats by cycle_count; inner loop iterates 12 modes. Modes with state=false turn lights off.
+    Non-black RGB uses rgb_color; otherwise color_temp_kelvin is used. Each mode holds for hold_seconds after execution.
+
+    ## 典型應用場景 / Use Cases
+    - 派對/節慶燈光秀：設定多種 RGB 顏色循環，營造動態氛圍 / Party/holiday light shows with dynamic RGB cycling
+    - 日夜模擬：逐步從暖色溫過渡到冷色溫再到關燈 / Day-night simulation transitioning warm-to-cool color temps
+    - 展示空間輪播：多盞射燈依序亮滅突顯不同展品 / Showroom spotlight rotation highlighting different exhibits
+  domain: script
+  input:
+    # ═══════════════════════════════════════════════════════════════
+    # 全域設定 / Global Settings
+    # ═══════════════════════════════════════════════════════════════
+    light_list:
+      name: 燈光清單 / Light List
+      description: |
+        選擇要控制的燈光（可多選）。
+
+        Select lights to control (multiple selection allowed).
+      default: []
+      selector:
+        entity:
+          multiple: true
+          filter:
+            domain: light
+
+    # ═══════════════════════════════════════════════════════════════
+    # 時序設定 / Timing Settings
+    # ═══════════════════════════════════════════════════════════════
+    timing_settings:
+      name: 時序設定 / Timing Settings
+      icon: mdi:timer-cog
+      collapsed: true
+      input:
+        sync_mode:
+          name: 同步模式 / Sync Mode
+          description: |
+            開啟：燈光依序變換，每盞燈之間有延遲時間。
+            關閉：所有燈光同時變換，無延遲。
+
+            On: Lights change sequentially with delay between each.
+            Off: All lights change simultaneously without delay.
+          default: true
+          selector:
+            boolean: {}
+
+        sync_delay:
+          name: 同步延遲（秒）/ Sync Delay (seconds)
+          description: |
+            同步模式下，控制完一盞燈後等待的時間，再控制下一盞燈。
+            僅在同步模式開啟時生效。
+
+            Time to wait after controlling one light before controlling the next.
+            Only effective when sync mode is enabled.
+          default: 0.5
+          selector:
+            number:
+              min: 0
+              max: 30
+              step: 0.1
+              unit_of_measurement: s
+
+        transition_seconds:
+          name: 過渡時間（秒）/ Transition Time (seconds)
+          description: |
+            燈光從當前狀態變換到目標狀態的漸變時間。
+            較長的過渡時間會產生更平滑的視覺效果。
+
+            Fade time for lights to transition from current state to target state.
+            Longer transition time creates smoother visual effects.
+          default: 1
+          selector:
+            number:
+              min: 0
+              max: 30
+              step: 0.5
+              unit_of_measurement: s
+
+        hold_seconds:
+          name: 停留時間（秒）/ Hold Time (seconds)
+          description: |
+            每個模式執行完成後，維持當前狀態的時間，再進入下一個模式。
+
+            Time to maintain current state after each mode completes, before moving to next mode.
+          default: 2
+          selector:
+            number:
+              min: 0
+              max: 60
+              step: 0.5
+              unit_of_measurement: s
+
+        cycle_count:
+          name: 循環次數 / Cycle Count
+          description: |
+            整個12模式序列執行完一輪後，重新從模式1開始的重複次數。
+            設為1表示只執行一次完整序列。
+
+            Number of times to repeat the entire 12-mode sequence.
+            Set to 1 to run the complete sequence only once.
+          default: 1
+          selector:
+            number:
+              min: 1
+              max: 50
+              step: 1
+
+    # ═══════════════════════════════════════════════════════════════
+    # 模式 1 / Mode 1
+    # ═══════════════════════════════════════════════════════════════
+    mode_1:
+      name: 模式 1 / Mode 1
+      icon: mdi:numeric-1-circle
+      collapsed: true
+      input:
+        state_1:
+          name: 開關 / On/Off
+          description: |
+            此模式是否開啟燈光。
+
+            Whether lights are on in this mode.
+          default: true
+          selector:
+            boolean: {}
+        brightness_1:
+          name: 亮度 / Brightness
+          description: |
+            燈光亮度 (1-255)。
+
+            Light brightness (1-255).
+          default: 200
+          selector:
+            number:
+              min: 1
+              max: 255
+              step: 1
+        color_temp_1:
+          name: 色溫 / Color Temperature
+          description: |
+            色溫（開爾文，2000-6500K）。數值越低越暖（黃光），越高越冷（白光）。
+
+            Color temperature (Kelvin, 2000-6500K). Lower values are warmer (yellow), higher values are cooler (white).
+          default: 3300
+          selector:
+            color_temp:
+              min: 2000
+              max: 6500
+              unit: kelvin
+        color_rgb_1:
+          name: RGB顏色 / RGB Color
+          description: |
+            RGB顏色。設定黑色[0,0,0]表示使用色溫設定。
+
+            RGB color. Set to black [0,0,0] to use color temperature setting instead.
+          default: [0, 0, 0]
+          selector:
+            color_rgb: {}
+
+    # ═══════════════════════════════════════════════════════════════
+    # 模式 2 / Mode 2
+    # ═══════════════════════════════════════════════════════════════
+    mode_2:
+      name: 模式 2 / Mode 2
+      icon: mdi:numeric-2-circle
+      collapsed: true
+      input:
+        state_2:
+          name: 開關 / On/Off
+          description: |
+            此模式是否開啟燈光。
+
+            Whether lights are on in this mode.
+          default: false
+          selector:
+            boolean: {}
+        brightness_2:
+          name: 亮度 / Brightness
+          description: |
+            燈光亮度 (1-255)。
+
+            Light brightness (1-255).
+          default: 200
+          selector:
+            number:
+              min: 1
+              max: 255
+              step: 1
+        color_temp_2:
+          name: 色溫 / Color Temperature
+          description: |
+            色溫（開爾文，2000-6500K）。數值越低越暖（黃光），越高越冷（白光）。
+
+            Color temperature (Kelvin, 2000-6500K). Lower values are warmer (yellow), higher values are cooler (white).
+          default: 3300
+          selector:
+            color_temp:
+              min: 2000
+              max: 6500
+              unit: kelvin
+        color_rgb_2:
+          name: RGB顏色 / RGB Color
+          description: |
+            RGB顏色。設定黑色[0,0,0]表示使用色溫設定。
+
+            RGB color. Set to black [0,0,0] to use color temperature setting instead.
+          default: [0, 0, 0]
+          selector:
+            color_rgb: {}
+
+    # ═══════════════════════════════════════════════════════════════
+    # 模式 3 / Mode 3
+    # ═══════════════════════════════════════════════════════════════
+    mode_3:
+      name: 模式 3 / Mode 3
+      icon: mdi:numeric-3-circle
+      collapsed: true
+      input:
+        state_3:
+          name: 開關 / On/Off
+          description: |
+            此模式是否開啟燈光。
+
+            Whether lights are on in this mode.
+          default: false
+          selector:
+            boolean: {}
+        brightness_3:
+          name: 亮度 / Brightness
+          description: |
+            燈光亮度 (1-255)。
+
+            Light brightness (1-255).
+          default: 200
+          selector:
+            number:
+              min: 1
+              max: 255
+              step: 1
+        color_temp_3:
+          name: 色溫 / Color Temperature
+          description: |
+            色溫（開爾文，2000-6500K）。數值越低越暖（黃光），越高越冷（白光）。
+
+            Color temperature (Kelvin, 2000-6500K). Lower values are warmer (yellow), higher values are cooler (white).
+          default: 3300
+          selector:
+            color_temp:
+              min: 2000
+              max: 6500
+              unit: kelvin
+        color_rgb_3:
+          name: RGB顏色 / RGB Color
+          description: |
+            RGB顏色。設定黑色[0,0,0]表示使用色溫設定。
+
+            RGB color. Set to black [0,0,0] to use color temperature setting instead.
+          default: [0, 0, 0]
+          selector:
+            color_rgb: {}
+
+    # ═══════════════════════════════════════════════════════════════
+    # 模式 4 / Mode 4
+    # ═══════════════════════════════════════════════════════════════
+    mode_4:
+      name: 模式 4 / Mode 4
+      icon: mdi:numeric-4-circle
+      collapsed: true
+      input:
+        state_4:
+          name: 開關 / On/Off
+          description: |
+            此模式是否開啟燈光。
+
+            Whether lights are on in this mode.
+          default: false
+          selector:
+            boolean: {}
+        brightness_4:
+          name: 亮度 / Brightness
+          description: |
+            燈光亮度 (1-255)。
+
+            Light brightness (1-255).
+          default: 200
+          selector:
+            number:
+              min: 1
+              max: 255
+              step: 1
+        color_temp_4:
+          name: 色溫 / Color Temperature
+          description: |
+            色溫（開爾文，2000-6500K）。數值越低越暖（黃光），越高越冷（白光）。
+
+            Color temperature (Kelvin, 2000-6500K). Lower values are warmer (yellow), higher values are cooler (white).
+          default: 3300
+          selector:
+            color_temp:
+              min: 2000
+              max: 6500
+              unit: kelvin
+        color_rgb_4:
+          name: RGB顏色 / RGB Color
+          description: |
+            RGB顏色。設定黑色[0,0,0]表示使用色溫設定。
+
+            RGB color. Set to black [0,0,0] to use color temperature setting instead.
+          default: [0, 0, 0]
+          selector:
+            color_rgb: {}
+
+    # ═══════════════════════════════════════════════════════════════
+    # 模式 5 / Mode 5
+    # ═══════════════════════════════════════════════════════════════
+    mode_5:
+      name: 模式 5 / Mode 5
+      icon: mdi:numeric-5-circle
+      collapsed: true
+      input:
+        state_5:
+          name: 開關 / On/Off
+          description: |
+            此模式是否開啟燈光。
+
+            Whether lights are on in this mode.
+          default: false
+          selector:
+            boolean: {}
+        brightness_5:
+          name: 亮度 / Brightness
+          description: |
+            燈光亮度 (1-255)。
+
+            Light brightness (1-255).
+          default: 200
+          selector:
+            number:
+              min: 1
+              max: 255
+              step: 1
+        color_temp_5:
+          name: 色溫 / Color Temperature
+          description: |
+            色溫（開爾文，2000-6500K）。數值越低越暖（黃光），越高越冷（白光）。
+
+            Color temperature (Kelvin, 2000-6500K). Lower values are warmer (yellow), higher values are cooler (white).
+          default: 3300
+          selector:
+            color_temp:
+              min: 2000
+              max: 6500
+              unit: kelvin
+        color_rgb_5:
+          name: RGB顏色 / RGB Color
+          description: |
+            RGB顏色。設定黑色[0,0,0]表示使用色溫設定。
+
+            RGB color. Set to black [0,0,0] to use color temperature setting instead.
+          default: [0, 0, 0]
+          selector:
+            color_rgb: {}
+
+    # ═══════════════════════════════════════════════════════════════
+    # 模式 6 / Mode 6
+    # ═══════════════════════════════════════════════════════════════
+    mode_6:
+      name: 模式 6 / Mode 6
+      icon: mdi:numeric-6-circle
+      collapsed: true
+      input:
+        state_6:
+          name: 開關 / On/Off
+          description: |
+            此模式是否開啟燈光。
+
+            Whether lights are on in this mode.
+          default: false
+          selector:
+            boolean: {}
+        brightness_6:
+          name: 亮度 / Brightness
+          description: |
+            燈光亮度 (1-255)。
+
+            Light brightness (1-255).
+          default: 200
+          selector:
+            number:
+              min: 1
+              max: 255
+              step: 1
+        color_temp_6:
+          name: 色溫 / Color Temperature
+          description: |
+            色溫（開爾文，2000-6500K）。數值越低越暖（黃光），越高越冷（白光）。
+
+            Color temperature (Kelvin, 2000-6500K). Lower values are warmer (yellow), higher values are cooler (white).
+          default: 3300
+          selector:
+            color_temp:
+              min: 2000
+              max: 6500
+              unit: kelvin
+        color_rgb_6:
+          name: RGB顏色 / RGB Color
+          description: |
+            RGB顏色。設定黑色[0,0,0]表示使用色溫設定。
+
+            RGB color. Set to black [0,0,0] to use color temperature setting instead.
+          default: [0, 0, 0]
+          selector:
+            color_rgb: {}
+
+    # ═══════════════════════════════════════════════════════════════
+    # 模式 7 / Mode 7
+    # ═══════════════════════════════════════════════════════════════
+    mode_7:
+      name: 模式 7 / Mode 7
+      icon: mdi:numeric-7-circle
+      collapsed: true
+      input:
+        state_7:
+          name: 開關 / On/Off
+          description: |
+            此模式是否開啟燈光。
+
+            Whether lights are on in this mode.
+          default: false
+          selector:
+            boolean: {}
+        brightness_7:
+          name: 亮度 / Brightness
+          description: |
+            燈光亮度 (1-255)。
+
+            Light brightness (1-255).
+          default: 200
+          selector:
+            number:
+              min: 1
+              max: 255
+              step: 1
+        color_temp_7:
+          name: 色溫 / Color Temperature
+          description: |
+            色溫（開爾文，2000-6500K）。數值越低越暖（黃光），越高越冷（白光）。
+
+            Color temperature (Kelvin, 2000-6500K). Lower values are warmer (yellow), higher values are cooler (white).
+          default: 3300
+          selector:
+            color_temp:
+              min: 2000
+              max: 6500
+              unit: kelvin
+        color_rgb_7:
+          name: RGB顏色 / RGB Color
+          description: |
+            RGB顏色。設定黑色[0,0,0]表示使用色溫設定。
+
+            RGB color. Set to black [0,0,0] to use color temperature setting instead.
+          default: [0, 0, 0]
+          selector:
+            color_rgb: {}
+
+    # ═══════════════════════════════════════════════════════════════
+    # 模式 8 / Mode 8
+    # ═══════════════════════════════════════════════════════════════
+    mode_8:
+      name: 模式 8 / Mode 8
+      icon: mdi:numeric-8-circle
+      collapsed: true
+      input:
+        state_8:
+          name: 開關 / On/Off
+          description: |
+            此模式是否開啟燈光。
+
+            Whether lights are on in this mode.
+          default: false
+          selector:
+            boolean: {}
+        brightness_8:
+          name: 亮度 / Brightness
+          description: |
+            燈光亮度 (1-255)。
+
+            Light brightness (1-255).
+          default: 200
+          selector:
+            number:
+              min: 1
+              max: 255
+              step: 1
+        color_temp_8:
+          name: 色溫 / Color Temperature
+          description: |
+            色溫（開爾文，2000-6500K）。數值越低越暖（黃光），越高越冷（白光）。
+
+            Color temperature (Kelvin, 2000-6500K). Lower values are warmer (yellow), higher values are cooler (white).
+          default: 3300
+          selector:
+            color_temp:
+              min: 2000
+              max: 6500
+              unit: kelvin
+        color_rgb_8:
+          name: RGB顏色 / RGB Color
+          description: |
+            RGB顏色。設定黑色[0,0,0]表示使用色溫設定。
+
+            RGB color. Set to black [0,0,0] to use color temperature setting instead.
+          default: [0, 0, 0]
+          selector:
+            color_rgb: {}
+
+    # ═══════════════════════════════════════════════════════════════
+    # 模式 9 / Mode 9
+    # ═══════════════════════════════════════════════════════════════
+    mode_9:
+      name: 模式 9 / Mode 9
+      icon: mdi:numeric-9-circle
+      collapsed: true
+      input:
+        state_9:
+          name: 開關 / On/Off
+          description: |
+            此模式是否開啟燈光。
+
+            Whether lights are on in this mode.
+          default: false
+          selector:
+            boolean: {}
+        brightness_9:
+          name: 亮度 / Brightness
+          description: |
+            燈光亮度 (1-255)。
+
+            Light brightness (1-255).
+          default: 200
+          selector:
+            number:
+              min: 1
+              max: 255
+              step: 1
+        color_temp_9:
+          name: 色溫 / Color Temperature
+          description: |
+            色溫（開爾文，2000-6500K）。數值越低越暖（黃光），越高越冷（白光）。
+
+            Color temperature (Kelvin, 2000-6500K). Lower values are warmer (yellow), higher values are cooler (white).
+          default: 3300
+          selector:
+            color_temp:
+              min: 2000
+              max: 6500
+              unit: kelvin
+        color_rgb_9:
+          name: RGB顏色 / RGB Color
+          description: |
+            RGB顏色。設定黑色[0,0,0]表示使用色溫設定。
+
+            RGB color. Set to black [0,0,0] to use color temperature setting instead.
+          default: [0, 0, 0]
+          selector:
+            color_rgb: {}
+
+    # ═══════════════════════════════════════════════════════════════
+    # 模式 10 / Mode 10
+    # ═══════════════════════════════════════════════════════════════
+    mode_10:
+      name: 模式 10 / Mode 10
+      icon: mdi:numeric-10-circle
+      collapsed: true
+      input:
+        state_10:
+          name: 開關 / On/Off
+          description: |
+            此模式是否開啟燈光。
+
+            Whether lights are on in this mode.
+          default: false
+          selector:
+            boolean: {}
+        brightness_10:
+          name: 亮度 / Brightness
+          description: |
+            燈光亮度 (1-255)。
+
+            Light brightness (1-255).
+          default: 200
+          selector:
+            number:
+              min: 1
+              max: 255
+              step: 1
+        color_temp_10:
+          name: 色溫 / Color Temperature
+          description: |
+            色溫（開爾文，2000-6500K）。數值越低越暖（黃光），越高越冷（白光）。
+
+            Color temperature (Kelvin, 2000-6500K). Lower values are warmer (yellow), higher values are cooler (white).
+          default: 3300
+          selector:
+            color_temp:
+              min: 2000
+              max: 6500
+              unit: kelvin
+        color_rgb_10:
+          name: RGB顏色 / RGB Color
+          description: |
+            RGB顏色。設定黑色[0,0,0]表示使用色溫設定。
+
+            RGB color. Set to black [0,0,0] to use color temperature setting instead.
+          default: [0, 0, 0]
+          selector:
+            color_rgb: {}
+
+    # ═══════════════════════════════════════════════════════════════
+    # 模式 11 / Mode 11
+    # ═══════════════════════════════════════════════════════════════
+    mode_11:
+      name: 模式 11 / Mode 11
+      icon: mdi:roman-numeral-11
+      collapsed: true
+      input:
+        state_11:
+          name: 開關 / On/Off
+          description: |
+            此模式是否開啟燈光。
+
+            Whether lights are on in this mode.
+          default: false
+          selector:
+            boolean: {}
+        brightness_11:
+          name: 亮度 / Brightness
+          description: |
+            燈光亮度 (1-255)。
+
+            Light brightness (1-255).
+          default: 200
+          selector:
+            number:
+              min: 1
+              max: 255
+              step: 1
+        color_temp_11:
+          name: 色溫 / Color Temperature
+          description: |
+            色溫（開爾文，2000-6500K）。數值越低越暖（黃光），越高越冷（白光）。
+
+            Color temperature (Kelvin, 2000-6500K). Lower values are warmer (yellow), higher values are cooler (white).
+          default: 3300
+          selector:
+            color_temp:
+              min: 2000
+              max: 6500
+              unit: kelvin
+        color_rgb_11:
+          name: RGB顏色 / RGB Color
+          description: |
+            RGB顏色。設定黑色[0,0,0]表示使用色溫設定。
+
+            RGB color. Set to black [0,0,0] to use color temperature setting instead.
+          default: [0, 0, 0]
+          selector:
+            color_rgb: {}
+
+    # ═══════════════════════════════════════════════════════════════
+    # 模式 12 / Mode 12
+    # ═══════════════════════════════════════════════════════════════
+    mode_12:
+      name: 模式 12 / Mode 12
+      icon: mdi:roman-numeral-12
+      collapsed: true
+      input:
+        state_12:
+          name: 開關 / On/Off
+          description: |
+            此模式是否開啟燈光。
+
+            Whether lights are on in this mode.
+          default: false
+          selector:
+            boolean: {}
+        brightness_12:
+          name: 亮度 / Brightness
+          description: |
+            燈光亮度 (1-255)。
+
+            Light brightness (1-255).
+          default: 200
+          selector:
+            number:
+              min: 1
+              max: 255
+              step: 1
+        color_temp_12:
+          name: 色溫 / Color Temperature
+          description: |
+            色溫（開爾文，2000-6500K）。數值越低越暖（黃光），越高越冷（白光）。
+
+            Color temperature (Kelvin, 2000-6500K). Lower values are warmer (yellow), higher values are cooler (white).
+          default: 3300
+          selector:
+            color_temp:
+              min: 2000
+              max: 6500
+              unit: kelvin
+        color_rgb_12:
+          name: RGB顏色 / RGB Color
+          description: |
+            RGB顏色。設定黑色[0,0,0]表示使用色溫設定。
+
+            RGB color. Set to black [0,0,0] to use color temperature setting instead.
+          default: [0, 0, 0]
+          selector:
+            color_rgb: {}
+
+mode: restart
+
+variables:
+  # Global settings
+  lights: !input light_list
+  is_sync: !input sync_mode
+  delay_time: !input sync_delay
+  transition: !input transition_seconds
+  hold_time: !input hold_seconds
+  cycles: !input cycle_count
+
+  # Mode 1 (color_temp in Kelvin)
+  state_1: !input state_1
+  brightness_1: !input brightness_1
+  color_temp_1: !input color_temp_1
+  color_rgb_1: !input color_rgb_1
+
+  # Mode 2 (color_temp in Kelvin)
+  state_2: !input state_2
+  brightness_2: !input brightness_2
+  color_temp_2: !input color_temp_2
+  color_rgb_2: !input color_rgb_2
+
+  # Mode 3 (color_temp in Kelvin)
+  state_3: !input state_3
+  brightness_3: !input brightness_3
+  color_temp_3: !input color_temp_3
+  color_rgb_3: !input color_rgb_3
+
+  # Mode 4 (color_temp in Kelvin)
+  state_4: !input state_4
+  brightness_4: !input brightness_4
+  color_temp_4: !input color_temp_4
+  color_rgb_4: !input color_rgb_4
+
+  # Mode 5 (color_temp in Kelvin)
+  state_5: !input state_5
+  brightness_5: !input brightness_5
+  color_temp_5: !input color_temp_5
+  color_rgb_5: !input color_rgb_5
+
+  # Mode 6 (color_temp in Kelvin)
+  state_6: !input state_6
+  brightness_6: !input brightness_6
+  color_temp_6: !input color_temp_6
+  color_rgb_6: !input color_rgb_6
+
+  # Mode 7 (color_temp in Kelvin)
+  state_7: !input state_7
+  brightness_7: !input brightness_7
+  color_temp_7: !input color_temp_7
+  color_rgb_7: !input color_rgb_7
+
+  # Mode 8 (color_temp in Kelvin)
+  state_8: !input state_8
+  brightness_8: !input brightness_8
+  color_temp_8: !input color_temp_8
+  color_rgb_8: !input color_rgb_8
+
+  # Mode 9 (color_temp in Kelvin)
+  state_9: !input state_9
+  brightness_9: !input brightness_9
+  color_temp_9: !input color_temp_9
+  color_rgb_9: !input color_rgb_9
+
+  # Mode 10 (color_temp in Kelvin)
+  state_10: !input state_10
+  brightness_10: !input brightness_10
+  color_temp_10: !input color_temp_10
+  color_rgb_10: !input color_rgb_10
+
+  # Mode 11 (color_temp in Kelvin)
+  state_11: !input state_11
+  brightness_11: !input brightness_11
+  color_temp_11: !input color_temp_11
+  color_rgb_11: !input color_rgb_11
+
+  # Mode 12 (color_temp in Kelvin)
+  state_12: !input state_12
+  brightness_12: !input brightness_12
+  color_temp_12: !input color_temp_12
+  color_rgb_12: !input color_rgb_12
+
+  # Build modes list for iteration (color_temp values are now in Kelvin)
+  modes:
+    - state: "{{ state_1 }}"
+      brightness: "{{ brightness_1 }}"
+      color_temp: "{{ color_temp_1 }}"
+      color_rgb: "{{ color_rgb_1 }}"
+    - state: "{{ state_2 }}"
+      brightness: "{{ brightness_2 }}"
+      color_temp: "{{ color_temp_2 }}"
+      color_rgb: "{{ color_rgb_2 }}"
+    - state: "{{ state_3 }}"
+      brightness: "{{ brightness_3 }}"
+      color_temp: "{{ color_temp_3 }}"
+      color_rgb: "{{ color_rgb_3 }}"
+    - state: "{{ state_4 }}"
+      brightness: "{{ brightness_4 }}"
+      color_temp: "{{ color_temp_4 }}"
+      color_rgb: "{{ color_rgb_4 }}"
+    - state: "{{ state_5 }}"
+      brightness: "{{ brightness_5 }}"
+      color_temp: "{{ color_temp_5 }}"
+      color_rgb: "{{ color_rgb_5 }}"
+    - state: "{{ state_6 }}"
+      brightness: "{{ brightness_6 }}"
+      color_temp: "{{ color_temp_6 }}"
+      color_rgb: "{{ color_rgb_6 }}"
+    - state: "{{ state_7 }}"
+      brightness: "{{ brightness_7 }}"
+      color_temp: "{{ color_temp_7 }}"
+      color_rgb: "{{ color_rgb_7 }}"
+    - state: "{{ state_8 }}"
+      brightness: "{{ brightness_8 }}"
+      color_temp: "{{ color_temp_8 }}"
+      color_rgb: "{{ color_rgb_8 }}"
+    - state: "{{ state_9 }}"
+      brightness: "{{ brightness_9 }}"
+      color_temp: "{{ color_temp_9 }}"
+      color_rgb: "{{ color_rgb_9 }}"
+    - state: "{{ state_10 }}"
+      brightness: "{{ brightness_10 }}"
+      color_temp: "{{ color_temp_10 }}"
+      color_rgb: "{{ color_rgb_10 }}"
+    - state: "{{ state_11 }}"
+      brightness: "{{ brightness_11 }}"
+      color_temp: "{{ color_temp_11 }}"
+      color_rgb: "{{ color_rgb_11 }}"
+    - state: "{{ state_12 }}"
+      brightness: "{{ brightness_12 }}"
+      color_temp: "{{ color_temp_12 }}"
+      color_rgb: "{{ color_rgb_12 }}"
+
+sequence:
+  # ═══════════════════════════════════════════════════════════════
+  # 外層循環：循環次數 / Outer loop: cycle count
+  # ═══════════════════════════════════════════════════════════════
+  - alias: "循環執行 / Cycle through modes"
+    repeat:
+      count: "{{ cycles }}"
+      sequence:
+        # ═══════════════════════════════════════════════════════════
+        # 內層循環：12個模式 / Inner loop: 12 modes
+        # ═══════════════════════════════════════════════════════════
+        - alias: "執行模式序列 / Execute mode sequence"
+          repeat:
+            for_each: "{{ modes }}"
+            sequence:
+              # 儲存當前模式資料 / Store current mode data
+              - variables:
+                  current_mode: "{{ repeat.item }}"
+                  current_state: "{{ repeat.item.state }}"
+                  current_brightness: "{{ repeat.item.brightness }}"
+                  current_color_temp: "{{ repeat.item.color_temp }}"
+                  current_color_rgb: "{{ repeat.item.color_rgb }}"
+                  use_rgb: "{{ repeat.item.color_rgb != [0, 0, 0] }}"
+
+              # 檢查此模式是否啟用 / Check if this mode is enabled (state = on)
+              - choose:
+                  # ─────────────────────────────────────────────────
+                  # 狀態為開啟 / State is ON
+                  # ─────────────────────────────────────────────────
+                  - conditions:
+                      - condition: template
+                        value_template: "{{ current_state == true }}"
+                    sequence:
+                      - choose:
+                          # ─────────────────────────────────────────
+                          # 同步模式：依序控制每盞燈 / Sync mode: control each light sequentially
+                          # ─────────────────────────────────────────
+                          - conditions:
+                              - condition: template
+                                value_template: "{{ is_sync == true }}"
+                            sequence:
+                              - alias: "同步模式開燈 / Sync mode turn on"
+                                repeat:
+                                  for_each: "{{ lights }}"
+                                  sequence:
+                                    - choose:
+                                        # 使用 RGB 顏色 / Use RGB color
+                                        - conditions:
+                                            - condition: template
+                                              value_template: "{{ use_rgb }}"
+                                          sequence:
+                                            - service: light.turn_on
+                                              target:
+                                                entity_id: "{{ repeat.item }}"
+                                              data:
+                                                brightness: "{{ current_brightness }}"
+                                                rgb_color: "{{ current_color_rgb }}"
+                                                transition: "{{ transition }}"
+                                      default:
+                                        # 使用色溫（Kelvin）/ Use color temperature (Kelvin)
+                                        - service: light.turn_on
+                                          target:
+                                            entity_id: "{{ repeat.item }}"
+                                          data:
+                                            brightness: "{{ current_brightness }}"
+                                            color_temp_kelvin: "{{ current_color_temp }}"
+                                            transition: "{{ transition }}"
+                                    - delay:
+                                        seconds: "{{ delay_time }}"
+                        default:
+                          # ─────────────────────────────────────────
+                          # 非同步模式：所有燈同時變換 / Async mode: all lights change at once
+                          # ─────────────────────────────────────────
+                          - choose:
+                              # 使用 RGB 顏色 / Use RGB color
+                              - conditions:
+                                  - condition: template
+                                    value_template: "{{ use_rgb }}"
+                                sequence:
+                                  - alias: "非同步模式開燈(RGB) / Async mode turn on (RGB)"
+                                    service: light.turn_on
+                                    target:
+                                      entity_id: "{{ lights }}"
+                                    data:
+                                      brightness: "{{ current_brightness }}"
+                                      rgb_color: "{{ current_color_rgb }}"
+                                      transition: "{{ transition }}"
+                            default:
+                              # 使用色溫（Kelvin）/ Use color temperature (Kelvin)
+                              - alias: "非同步模式開燈(色溫) / Async mode turn on (color temp)"
+                                service: light.turn_on
+                                target:
+                                  entity_id: "{{ lights }}"
+                                data:
+                                  brightness: "{{ current_brightness }}"
+                                  color_temp_kelvin: "{{ current_color_temp }}"
+                                  transition: "{{ transition }}"
+                      # 停留時間 / Hold time
+                      - delay:
+                          seconds: "{{ hold_time }}"
+
+                # ─────────────────────────────────────────────────────
+                # 狀態為關閉 / State is OFF
+                # ─────────────────────────────────────────────────────
+                default:
+                  - choose:
+                      # 同步模式：依序關閉每盞燈 / Sync mode: turn off each light sequentially
+                      - conditions:
+                          - condition: template
+                            value_template: "{{ is_sync == true }}"
+                        sequence:
+                          - alias: "同步模式關燈 / Sync mode turn off"
+                            repeat:
+                              for_each: "{{ lights }}"
+                              sequence:
+                                - service: light.turn_off
+                                  target:
+                                    entity_id: "{{ repeat.item }}"
+                                  data:
+                                    transition: "{{ transition }}"
+                                - delay:
+                                    seconds: "{{ delay_time }}"
+                    default:
+                      # 非同步模式：所有燈同時關閉 / Async mode: all lights turn off at once
+                      - alias: "非同步模式關燈 / Async mode turn off"
+                        service: light.turn_off
+                        target:
+                          entity_id: "{{ lights }}"
+                        data:
+                          transition: "{{ transition }}"
+                  # 停留時間 / Hold time
+                  - delay:
+                      seconds: "{{ hold_time }}"

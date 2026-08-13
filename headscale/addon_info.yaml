@@ -1,0 +1,14 @@
+source:
+  type: github-releases
+  repo: juanfont/headscale
+  current_version: v0.29.3
+  version_template: regex:^v(?<major>\d+)\.(?<minor>\d+)\.(?<patch>\d+)$
+config:
+  version_template: "{{major}}.{{minor}}.{{patch}}"
+  patch: 0
+changelog:
+  source: github-releases
+  repo: juanfont/headscale
+  version_template: v{{major}}.{{minor}}.{{patch}}
+test:
+  enable: true

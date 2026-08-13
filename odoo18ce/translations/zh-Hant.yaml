@@ -1,0 +1,114 @@
+configuration:
+  admin_passwd:
+    name: 管理主密碼
+    description: >-
+      Odoo 資料庫管理的主密碼（Master Password）。
+      用於透過網頁介面建立、複製、刪除或備份資料庫。
+  db_password:
+    name: 資料庫密碼
+    description: >-
+      PostgreSQL 中 Odoo 資料庫使用者的密碼。
+      建議修改預設密碼以提升安全性。
+  TZ:
+    name: 時區
+    description: >-
+      Odoo 和 PostgreSQL 使用的時區。（預設：Asia/Taipei）
+      可在此查詢您的時區識別碼：
+      https://en.wikipedia.org/wiki/List_of_tz_database_time_zones
+  default_db:
+    name: 預設資料庫
+    description: >-
+      Odoo 使用的 PostgreSQL 資料庫名稱。若有設定，首次啟動時會
+      自動建立資料庫並安裝 base 模組。
+      留空則透過網頁介面的 Database Manager 手動建立。
+  list_db:
+    name: 列出資料庫
+    description: >-
+      允許在登入頁面列出所有資料庫。
+      正式環境建議停用以提升安全性。（預設：true）
+  workers:
+    name: 工作行程數
+    description: >-
+      Odoo 工作行程（Worker）數量。（預設：0）
+      設定為 0 啟用單行程模式（建議用於樹莓派或低記憶體環境）。
+      多核心伺服器建議值：CPU 核心數 × 2 + 1。
+  max_cron_threads:
+    name: 排程執行緒數上限
+    description: >-
+      排程（Cron）工作執行緒的數量。（預設：1）
+  limit_memory_hard:
+    name: 記憶體硬限制（位元組）
+    description: >-
+      每個工作行程的記憶體硬限制。超過時工作行程被強制終止。
+      （預設：2684354560 = 2.5 GB）
+  limit_memory_soft:
+    name: 記憶體軟限制（位元組）
+    description: >-
+      每個工作行程的記憶體軟限制。完成請求後超過時被回收。
+      （預設：2147483648 = 2 GB）
+  limit_time_cpu:
+    name: CPU 時間限制（秒）
+    description: >-
+      每個請求的最大 CPU 處理時間。（預設：60）
+  limit_time_real:
+    name: 實際時間限制（秒）
+    description: >-
+      每個請求的最大實際處理時間。（預設：120）
+  proxy_mode:
+    name: 代理模式
+    description: >-
+      啟用代理模式以正確處理 X-Forwarded 標頭。
+      在反向代理或 Cloudflare Tunnel 後方運行時應設為 true。
+  odoo_extra_addons:
+    name: 額外模組路徑
+    description: >-
+      額外的 Odoo 模組路徑（以逗號分隔）。
+      這些路徑會加入到預設模組路徑之前，擁有最高優先級。
+  auto_update_module:
+    name: 自動更新模組
+    description: >-
+      啟動時自動更新的模組（以逗號分隔）。
+      Odoo 會先以 --stop-after-init 執行更新，然後正常啟動。
+      留空則跳過。
+  without_demo:
+    name: 不載入示範資料
+    description: >-
+      建立新資料庫時不載入示範資料。（預設：true）
+  dev_mode:
+    name: 開發模式
+    description: >-
+      啟用 Odoo 開發模式。啟用後包含資源重新載入和除錯工具等
+      所有開發功能。（預設：false）
+  log_level:
+    name: 日誌等級
+    description: >-
+      Odoo 日誌輸出等級。（預設：info）
+  email_from:
+    name: 寄件人地址
+    description: >-
+      外寄郵件的預設寄件人電子郵件地址。
+  smtp_server:
+    name: SMTP 伺服器
+    description: >-
+      用於發送電子郵件的 SMTP 伺服器主機名稱。
+      留空則停用郵件發送功能。
+  smtp_port:
+    name: SMTP 埠
+    description: >-
+      SMTP 伺服器連接埠。（預設：465，SSL 加密）
+  smtp_user:
+    name: SMTP 帳號
+    description: >-
+      SMTP 驗證使用者名稱。
+  smtp_password:
+    name: SMTP 密碼
+    description: >-
+      SMTP 驗證密碼。
+  smtp_ssl:
+    name: SMTP SSL
+    description: >-
+      SMTP 連線使用 SSL/TLS 加密。（預設：true）
+
+network:
+  8069/tcp: Odoo 網頁介面 + XML-RPC
+  8072/tcp: Odoo 長輪詢 / WebSocket

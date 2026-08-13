@@ -1,0 +1,12 @@
+{
+  "domain": "woow_fan_entity",
+  "name": "WoowTech Fan Entity",
+  "codeowners": ["@alanlin"],
+  "config_flow": true,
+  "dependencies": [],
+  "documentation": "https://github.com/WOOWTECH/woow_fan_custom_component",
+  "iot_class": "calculated",
+  "issue_tracker": "https://github.com/WOOWTECH/woow_fan_custom_component/issues",
+  "requirements": [],
+  "version": "1.2.1"
+}

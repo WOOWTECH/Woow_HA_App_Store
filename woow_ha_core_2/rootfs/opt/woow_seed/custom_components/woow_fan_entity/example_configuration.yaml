@@ -1,0 +1,275 @@
+# =============================================================================
+# Example Configuration for WoowTech Fan Entity Integration
+# =============================================================================
+#
+# INTEGRATION GUIDE
+# =================
+#
+# This file provides all the helper entities needed to test and use the
+# WoowTech Fan Entity custom component. Copy the relevant sections into your
+# Home Assistant configuration.yaml file.
+#
+# ARCHITECTURE OVERVIEW
+# ---------------------
+#
+# The WoowTech Fan Entity creates a virtual fan entity that delegates control
+# to external HA entities via TX/RX (bidirectional state sync). Each fan
+# feature maps to an external entity:
+#
+#   Fan Card (UI)                  Helper Entities (HA)
+#   =====================         ==========================
+#
+#   Power ON/OFF          <--TX-->  input_boolean.fan_power
+#   Speed Percentage      <--TX-->  input_number.fan_speed
+#   Preset Mode selector  <--TX-->  input_select.fan_preset_mode
+#   Oscillation toggle    <--TX-->  input_boolean.fan_oscillation
+#   Direction selector    <--TX-->  input_select.fan_direction
+#
+# TX = When you control the fan card, it sends the value to the external entity
+# RX = When the external entity changes, the fan card updates automatically
+#
+# TX PRIORITY CHAIN
+# -----------------
+# For each control action, commands dispatch via the first available channel:
+#   1. Action script override (highest priority)
+#   2. Entity selector (medium priority)
+#   3. Default internal logic (lowest priority)
+#
+# Per-method breakdown:
+#   Turn On:        switch turn_on + set_percentage script > percentage entity > internal
+#   Turn Off:       switch turn_off + set_percentage script (0) > percentage entity (0) > internal
+#   Set Percentage: set_percentage script > percentage entity > internal
+#   Set Preset:     set_preset_mode script > preset mode entity > internal
+#   Set Oscillating: set_oscillating script > oscillating entity > internal
+#   Set Direction:  set_direction script > direction entity > internal
+#
+# TX DOMAIN-AWARE DISPATCH
+# ------------------------
+# The TX helper uses the correct service based on the entity's domain:
+#   input_number/number:     set_value (float)
+#   input_select/select:     select_option (string)
+#   switch/input_boolean:    turn_on / turn_off (boolean)
+#
+# ENTITY DOMAIN RESTRICTIONS
+# --------------------------
+# Each entity selector only accepts specific domains:
+#   Switch Entity:         switch, fan, input_boolean
+#   Percentage Entity:     input_number, number
+#   Preset Mode Entity:    input_select, select
+#   Oscillation Entity:    switch, input_boolean
+#   Direction Entity:      input_select, select
+#
+# STATE RESTORATION
+# -----------------
+# The fan entity uses HA's RestoreEntity pattern. On restart:
+#   - Percentage, preset mode, oscillating, and direction are restored
+#   - If an RX entity is configured, initial sync overrides the restored value
+#   - Switch sync then adjusts percentage (ON + 0% → default%, OFF + >0% → 0%)
+#
+# SPEED AND PRESET MUTUAL EXCLUSION
+# ----------------------------------
+# Setting a speed percentage clears the preset mode (and vice versa).
+# This also applies to RX — receiving a percentage > 0 clears the active preset.
+#
+# VALIDATION
+# ----------
+# - Percentage must be 0-100; setting 0 auto-calls turn_off()
+# - Preset mode must match a configured mode exactly (invalid = rejected)
+# - Direction must be "forward" or "reverse" (invalid = rejected)
+# - RX ignores "unavailable", "unknown", non-numeric, and out-of-range values
+# - Default percentage on turn_on = 100 / speed_count
+#
+# HOW TO USE
+# ----------
+# 1. Add the entities below to your configuration.yaml
+# 2. Restart Home Assistant
+# 3. Go to Settings > Devices & Services > Add Integration > WoowTech Fan Entity
+# 4. Fill in the config form (see QUICKSTART.md for step-by-step)
+# 5. Use the helper entities in Developer Tools to simulate hardware
+# 6. Observe the fan entity responding bidirectionally
+#
+# For a complete step-by-step setup, see docs/QUICKSTART.md
+#
+# =============================================================================
+
+
+# =============================================================================
+# SECTION 1: Power Switch (input_boolean)
+# =============================================================================
+# The fan's ON/OFF control. When the fan turns on, this toggle turns on.
+# When you flip this toggle manually, the fan entity syncs its state.
+
+input_boolean:
+  fan_power:
+    name: Fan Power Switch
+    icon: mdi:power
+
+  fan_oscillation:
+    name: Fan Oscillation
+    icon: mdi:rotate-3d-variant
+
+
+# =============================================================================
+# SECTION 2: Speed Percentage (input_number)
+# =============================================================================
+# Controls the fan speed as a percentage (0-100).
+# The fan entity reads and writes this value.
+# 0 = off, 25 = low, 50 = medium, 75 = high, 100 = max (with speed_count=4)
+
+input_number:
+  fan_speed:
+    name: "Fan Speed Percentage"
+    min: 0
+    max: 100
+    step: 1
+    initial: 0
+    mode: slider
+    unit_of_measurement: "%"
+    icon: mdi:speedometer
+
+
+# =============================================================================
+# SECTION 3: Preset Mode (input_select)
+# =============================================================================
+# Selectable preset modes for the fan (auto, sleep, turbo, etc.).
+# When you select a preset on the fan card, it syncs to this entity.
+# When you change this entity manually, the fan card updates.
+
+input_select:
+  fan_preset_mode:
+    name: Fan Preset Mode
+    options:
+      - auto
+      - sleep
+      - smart
+      - natural
+      - breeze
+      - silent
+      - turbo
+    initial: auto
+    icon: mdi:fan-auto
+
+  fan_direction:
+    name: Fan Direction
+    options:
+      - forward
+      - reverse
+    initial: forward
+    icon: mdi:rotate-left
+
+
+# =============================================================================
+# SECTION 4: Full TX/RX Demo Entity (Config Flow Settings)
+# =============================================================================
+# After adding the helpers above and restarting HA, create the fan entity via:
+#
+#   Settings > Devices & Services > Add Integration > WoowTech Fan Entity
+#
+# Use these settings in the config flow:
+#
+#   Name:                    Demo Fan Full TX/RX
+#   Switch Entity:           input_boolean.fan_power
+#   Speed Count:             4
+#   Preset Modes:            auto, sleep, turbo
+#   Enable Oscillation:      Yes
+#   Enable Direction:        Yes
+#   Percentage Entity:       input_number.fan_speed
+#   Preset Mode Entity:      input_select.fan_preset_mode
+#   Oscillation Entity:      input_boolean.fan_oscillation
+#   Direction Entity:        input_select.fan_direction
+#
+# This creates: fan.demo_fan_full_tx_rx
+#
+# All 5 controls are now bidirectional:
+#   - Toggle input_boolean.fan_power → fan card updates ON/OFF
+#   - Slide input_number.fan_speed → fan card updates speed %
+#   - Change input_select.fan_preset_mode → fan card updates preset
+#   - Toggle input_boolean.fan_oscillation → fan card updates oscillation
+#   - Change input_select.fan_direction → fan card updates direction
+
+
+# =============================================================================
+# SECTION 5: Minimal Entity (No TX/RX)
+# =============================================================================
+# For a simple fan with no external entity sync:
+#
+#   Name:                    Simple Fan
+#   Switch Entity:           input_boolean.fan_power
+#   Speed Count:             3
+#   (leave everything else blank)
+#
+# This creates: fan.simple_fan
+# The fan controls speed internally and delegates ON/OFF to the switch entity.
+# No entity selectors or action scripts are used for speed/preset/oscillation/direction.
+# State is stored in memory and restored after HA restart via RestoreEntity.
+# Switch sync logic: ON + 0% → auto-set default %, OFF + >0% → set 0%.
+
+
+# =============================================================================
+# SECTION 6: Action Script Override Example
+# =============================================================================
+# Instead of (or in addition to) entity selectors, you can use action scripts
+# for TX. Action scripts have HIGHEST priority — they fire instead of entity
+# selector TX when both are configured.
+#
+# Example: Override set_percentage with a custom script that calls a REST API
+#
+#   Set Percentage Action:
+#     - action: rest_command.set_fan_speed
+#       data:
+#         speed: "{{ percentage }}"
+#
+# Available template variables per action:
+#   set_percentage:    {{ percentage }}     (0-100)
+#   set_preset_mode:   {{ preset_mode }}    (string: "auto", "sleep", etc.)
+#   set_oscillating:   {{ oscillating }}    (boolean: true/false)
+#   set_direction:     {{ direction }}      (string: "forward"/"reverse")
+
+
+# =============================================================================
+# SECTION 7: ESP32 PWM Fan Demo (Linear Interpolation)
+# =============================================================================
+# Demonstrates linear interpolation mapping an ADC sensor (0-1023) to fan
+# speed percentage (0-100). This is useful when an ESP32 or other MCU reports
+# raw ADC values that need to be mapped to a human-readable percentage.
+#
+# Helper entity:
+
+# input_number:
+#   esp32_fan_adc:
+#     name: "ESP32 Fan ADC Reading"
+#     min: 0
+#     max: 1023
+#     step: 1
+#     initial: 0
+#     mode: slider
+#     unit_of_measurement: "ADC"
+#     icon: mdi:chip
+#
+# Config flow settings:
+#   Name:                      ESP32 PWM Fan
+#   Speed Count:               4
+#   Percentage Entity:         input_number.esp32_fan_adc
+#   Percentage Input Min:      0
+#   Percentage Input Max:      1023
+#   Percentage Output Min:     0
+#   Percentage Output Max:     100
+#
+# Mapping table:
+#   ADC 0    → 0%   (off)
+#   ADC 256  → ~25%
+#   ADC 512  → ~50%
+#   ADC 768  → ~75%
+#   ADC 1023 → 100%
+#
+# RECEIVE TRANSFORM PRIORITY CHAIN
+# ---------------------------------
+# When incoming RX values need transformation, the following priority applies:
+#   1. Linear Interpolation (all 4 fields set) — highest priority
+#   2. Receive Template (Jinja2 with {{ value }}) — medium priority
+#   3. Raw passthrough (neither set) — lowest priority (backward compatible)
+#
+# Available receive templates:
+#   percentage_receive_template:     Jinja2 template for speed percentage
+#   preset_mode_receive_template:    Jinja2 template for preset mode
+#   direction_receive_template:      Jinja2 template for direction

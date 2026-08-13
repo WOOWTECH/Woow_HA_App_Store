@@ -1,0 +1,131 @@
+blueprint:
+  name: 定時觸發情境 - 單一時間版
+  description: |
+    在指定時間點自動執行場景 (Scene) 或腳本 (Script) 的單一定時觸發藍圖。
+
+    ## 功能說明 / Functional Description
+    此藍圖在每天的一個指定時間點，自動啟動使用者選取的 Scene 和/或 Script。
+    適合只需要單一時間觸發的簡單排程場景，如每天早上開燈、晚上啟動夜間模式。
+    Single time-trigger blueprint that executes selected Scenes and/or Scripts
+    at one specified time daily. Supports global conditions and weekday filters.
+
+    ## 觸發方式 / Trigger
+    - 每天到達 time_event 指定時間時觸發（platform: time）
+
+    ## 輸入參數 / Inputs
+    - **time_event** (選填，預設 08:00): 觸發時間
+    - **target_entities** (選填，可複選): 要執行的 Scene / Script 實體
+    - **global_conditions** (選填): 額外全域條件，為空時自動略過
+    - **condition_weekday** (選填): 生效星期，預設每天
+
+    ## 執行效果 / Effects
+    時間到達且條件滿足時，透過 homeassistant.turn_on 批次啟動所有選取的實體。
+    若 target_entities 為空則不執行任何動作。
+
+    ## 典型應用場景 / Use Cases
+    - 每天早上 7:00 自動啟動「早安場景」開燈開窗簾
+    - 工作日 18:00 執行「回家模式」腳本
+    - 每晚 23:00 啟動「全屋關燈」場景
+  domain: automation
+  author: WOOW TECH CO., LTD.
+  input:
+    # ——— 單一觸發時間 ————————————————
+    event_time:
+      name: 觸發時間
+      icon: mdi:clock-outline
+      collapsed: true
+      input:
+        time_event:
+          name: 開始時間
+          default: "08:00:00"
+          selector:
+            time: {}
+        target_entities:
+          name: 要執行的 Scene / Script (可複選)
+          default: []
+          selector:
+            entity:
+              multiple: true
+              filter:
+                - domain: scene
+                - domain: script
+
+    # ——— 全域條件 (選填) —————————————
+    global_conditions_settings:
+      name: Global Conditions (選填)
+      icon: mdi:earth
+      collapsed: true
+      input:
+        global_conditions:
+          name: 額外全域條件
+          default: []
+          selector:
+            condition: {}
+
+    # ——— 生效星期 (選填) —————————————
+    weekday_settings:
+      name: 生效星期 (選填)
+      icon: mdi:calendar-week
+      collapsed: true
+      input:
+        condition_weekday:
+          name: 選擇星期
+          default: [mon, tue, wed, thu, fri, sat, sun]
+          selector:
+            select:
+              multiple: true
+              mode: list
+              options:
+                - { label: 週一, value: mon }
+                - { label: 週二, value: tue }
+                - { label: 週三, value: wed }
+                - { label: 週四, value: thu }
+                - { label: 週五, value: fri }
+                - { label: 週六, value: sat }
+                - { label: 週日, value: sun }
+
+    _woow_meta:
+      name: "WOOW Metadata"
+      description: "Internal metadata - do not modify"
+      default:
+        version: "1.0.0"
+        name_zh: "自適應場景（單場景）"
+        name_en: "Adaptive Scene (Single)"
+        desc_zh: "根據時段自動套用單一場景"
+        desc_en: "Auto-apply single scene based on time period"
+        category: "scene"
+# ─── 變數 ───────────────────────────────────
+variables:
+  _weekday:        !input condition_weekday
+  _global_conds:   !input global_conditions
+
+  _targets:        !input target_entities
+
+# ─── 觸發：單一時間 ───────────────────────
+trigger:
+  - platform: time
+    at: !input time_event
+    id: t_event
+
+# ─── 條件：全域＋星期 ───────────────────────
+condition:
+  - condition: or
+    conditions:
+      - condition: template
+        value_template: "{{ (_global_conds | length) == 0 }}"
+      - condition: and
+        conditions: !input global_conditions
+  - condition: time
+    weekday: !input condition_weekday
+
+# ─── 動作：執行 ─────────────────────────
+action:
+  - alias: "處理定時觸發"
+    choose:
+      - conditions: "{{ trigger.id == 't_event' and (_targets | length > 0) }}"
+        sequence:
+          - alias: "執行場景/腳本"
+            service: homeassistant.turn_on
+            target:
+              entity_id: "{{ _targets }}"
+mode: single

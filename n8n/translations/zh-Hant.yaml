@@ -1,0 +1,25 @@
+configuration:
+  N8N_LOG_LEVEL:
+    name: 日誌等級
+    description: 設定 n8n 的日誌輸出等級。可選項：error（僅錯誤）、warn（警告）、info（一般資訊）、debug（除錯模式）。
+  TZ:
+    name: 時區
+    description: n8n 實例的時區設定，用於正確顯示日期和時間。若未設定，預設為 UTC。建議設為 Asia/Taipei。
+  GENERIC_TIMEZONE:
+    name: 通用時區
+    description: 排程節點（Schedule node）使用的預設時區，用於判斷工作流程應在何時啟動。預設為 America/New_York，建議改為 Asia/Taipei。
+  N8N_HOST:
+    name: 主機位址
+    description: n8n 實例的主機名稱或 IP 位址。若使用 Cloudflare Tunnel，請設定為您的 Tunnel 網域名稱。
+  N8N_PATH:
+    name: URL 路徑
+    description: n8n 部署的路徑（預設為 '/'）
+  WEBHOOK_URL:
+    name: Webhook 網址
+    description: Webhook 回呼使用的網址。若使用 Cloudflare Tunnel，請設定為您的外部 HTTPS 網址。
+  clean_redis:
+    name: 清除 Redis 快取
+    description: >-
+      啟動時以全新的資料庫啟動 Redis。僅在遇到需要清除 Redis 的問題時使用。
+network:
+  5678/tcp: n8n 網頁介面

@@ -1,0 +1,29 @@
+configuration:
+  log_level:
+    name: Log level
+    description: >-
+      Controls verbosity for bashio (startup/init) and pi-web (Next.js pino
+      logger). Use `debug` when troubleshooting the video pipeline or
+      Playwright issues; `warn` to silence chatty info messages.
+  timezone:
+    name: Timezone
+    description: >-
+      IANA timezone (e.g. `Asia/Taipei`, `America/New_York`). Empty = UTC.
+      Affects addon log timestamps, session record file names, and video
+      pipeline SRT cue timing.
+  reset_video_tools:
+    name: Reset video tools (one-shot)
+    description: >-
+      Enable and restart the addon to nuke the Python venv, Playwright
+      browser cache, and install sentinel, forcing video-tools-init to
+      redownload everything (~720MB, several minutes). Auto-toggles OFF
+      after execution — you do NOT need to disable it manually.
+  env_vars:
+    name: Extra environment variables
+    description: >-
+      Advanced escape hatch. Inject KEY=VALUE pairs into the pi-web process
+      (proxy config, provider base-URL overrides, Playwright download
+      mirrors, etc.). Names must match `[A-Za-z_][A-Za-z0-9_]*`. NOTE: AI
+      provider API keys are no longer configured here — set them inside the
+      pi-web UI instead.
+network: {}

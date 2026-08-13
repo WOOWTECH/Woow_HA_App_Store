@@ -1,0 +1,9 @@
+#!/usr/bin/with-contenv bashio
+# ==============================================================================
+# Start PostgreSQL 16
+# ==============================================================================
+bashio::log.info "Starting PostgreSQL 16..."
+
+exec s6-setuidgid postgres \
+    /usr/lib/postgresql/16/bin/postgres \
+        -D /data/postgres
