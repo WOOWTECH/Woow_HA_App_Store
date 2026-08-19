@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.13.2
+
+- **Fix skills downloaded via the Add-skill flow being invisible in the pi-web UI.** Regression introduced in 0.13.0: the run-script rewrite that stripped out per-provider bashio blocks also deleted the v0.12.0 `~/.pi/agent/skills` → `/data/pi-agent/skills` symlink block. Because we set `HOME=/data/pi-agent/home` and `PI_CODING_AGENT_DIR=/data/pi-agent`, the `skills` CLI (used by the Add-skill modal) writes to `${HOME}/.pi/agent/skills/` while pi-web itself reads from `${PI_CODING_AGENT_DIR}/skills/` — so every `Add skill` succeeded at the CLI level but the skill never showed up in the modal or in `<available_skills>`. Restored the pinning block in `rootfs/etc/s6-overlay/s6-rc.d/pi-web/run`: creates `/data/pi-agent/skills/`, migrates any pre-existing content out of `~/.pi/agent/skills/` (both `/root` and `${HOME}` variants) into it, then replaces the CLI's target with a symlink so both code paths land on the same on-disk directory. Skills downloaded on 0.13.0 / 0.13.1 are auto-migrated on first boot of 0.13.2 — no manual `cp` required.
+
 ## 0.13.1
 
 - **Fix 413 Request Entity Too Large on image uploads from tablet / browser.** `rootfs/etc/nginx/nginx.conf` was missing `client_max_body_size`, so the ingress sidecar nginx fell back to its 1 MB default and rejected every image / attachment above ~1 MB with an HTML 413 (which was easy to mistake for a HAOS-ingress limit because the sidecar's own `sub_filter '</head>' '<script>...'` runs on the error page and inserts the `__INGRESS_PATH__` shim into the response body). Added `client_max_body_size 100M;` inside the `http { }` block, matching the 100 MB total / 25 MB per-file caps already enforced in pi-web's `/api/files/[...path]/route.ts`. Direct proof: `POST http://127.0.0.1:30142/` with a 2 MB body now returns 200 (was 413). No other changes.

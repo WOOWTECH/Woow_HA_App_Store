@@ -7,7 +7,35 @@ set -e
 exec 2>&1
 
 DATA_DIR=/data/pi-agent
-mkdir -p "${DATA_DIR}/sessions" "${DATA_DIR}/home"
+mkdir -p "${DATA_DIR}/sessions" "${DATA_DIR}/home" "${DATA_DIR}/skills"
+
+# Pin the global skills path to persistent storage.
+#
+# Two different code paths touch skills and they disagree on where to look:
+#   - The `skills` CLI (used by pi-web's Add-skill flow) writes to
+#     $HOME/.pi/agent/skills/  ← HOME-relative (os.homedir())
+#   - pi-web itself reads from $PI_CODING_AGENT_DIR/skills/  ← env-relative
+#
+# We set HOME=${DATA_DIR}/home and PI_CODING_AGENT_DIR=${DATA_DIR} below, so
+# without a bridge the CLI writes to /data/pi-agent/home/.pi/agent/skills/
+# while pi-web reads from /data/pi-agent/skills/ — every skill install
+# succeeds at the CLI level but is invisible in the UI. v0.12.0 fixed this
+# with a symlink; the v0.13.0 run-script rewrite deleted the block by
+# accident. Restored here.
+#
+# Also covers /root/.pi/agent/skills for the rare case where a subprocess
+# loses HOME (bashio, some s6 helpers) and falls back to root's homedir.
+for home_root in /root "${DATA_DIR}/home"; do
+  mkdir -p "${home_root}/.pi/agent"
+  # If a real dir already exists (e.g. skills downloaded on 0.13.0 / 0.13.1
+  # before this fix), preserve its contents by moving them into the
+  # canonical dir before replacing with a symlink.
+  if [ -d "${home_root}/.pi/agent/skills" ] && [ ! -L "${home_root}/.pi/agent/skills" ]; then
+    cp -an "${home_root}/.pi/agent/skills/." "${DATA_DIR}/skills/" 2>/dev/null || true
+    rm -rf "${home_root}/.pi/agent/skills"
+  fi
+  ln -sfn "${DATA_DIR}/skills" "${home_root}/.pi/agent/skills"
+done
 
 # Wrap the "POST to Supervisor to mutate our own addon options" call — used
 # to auto-enable the sidebar panel AND to auto-revert reset_video_tools.
