@@ -1,6 +1,6 @@
 ARG BUILD_FROM=docker.io/n8nio/n8n:2.12.3
 
-ARG BUILD_VERSION=2.12.4
+ARG BUILD_VERSION=2.12.5
 
 # Runner tag is decoupled from BUILD_VERSION because the addon's version bumps
 # (e.g. 2.12.3 -> 2.12.4 to ship the N8N_SECURE_COOKIE option) advance ahead
@@ -126,19 +126,19 @@ RUN \
     elif [ "${BUILD_ARCH}" = "amd64" ]; then S6_ARCH="x86_64"; \
     elif [ "${BUILD_ARCH}" = "armv7" ]; then S6_ARCH="arm"; fi \
     \
-    && curl -L -s "https://github.com/just-containers/s6-overlay/releases/download/v${S6_OVERLAY_VERSION}/s6-overlay-noarch.tar.xz" \
+    && curl -fL -sS --retry 5 --retry-delay 3 --retry-connrefused --connect-timeout 15 --max-time 120 "https://github.com/just-containers/s6-overlay/releases/download/v${S6_OVERLAY_VERSION}/s6-overlay-noarch.tar.xz" \
         | tar -C / -Jxpf - \
     \
-    && curl -L -s "https://github.com/just-containers/s6-overlay/releases/download/v${S6_OVERLAY_VERSION}/s6-overlay-${S6_ARCH}.tar.xz" \
+    && curl -fL -sS --retry 5 --retry-delay 3 --retry-connrefused --connect-timeout 15 --max-time 120 "https://github.com/just-containers/s6-overlay/releases/download/v${S6_OVERLAY_VERSION}/s6-overlay-${S6_ARCH}.tar.xz" \
         | tar -C / -Jxpf - \
     \
-    && curl -L -s "https://github.com/just-containers/s6-overlay/releases/download/v${S6_OVERLAY_VERSION}/s6-overlay-symlinks-noarch.tar.xz" \
+    && curl -fL -sS --retry 5 --retry-delay 3 --retry-connrefused --connect-timeout 15 --max-time 120 "https://github.com/just-containers/s6-overlay/releases/download/v${S6_OVERLAY_VERSION}/s6-overlay-symlinks-noarch.tar.xz" \
         | tar -C / -Jxpf - \
     \
-    && curl -L -s "https://github.com/just-containers/s6-overlay/releases/download/v${S6_OVERLAY_VERSION}/s6-overlay-symlinks-arch.tar.xz" \
+    && curl -fL -sS --retry 5 --retry-delay 3 --retry-connrefused --connect-timeout 15 --max-time 120 "https://github.com/just-containers/s6-overlay/releases/download/v${S6_OVERLAY_VERSION}/s6-overlay-symlinks-arch.tar.xz" \
         | tar -C / -Jxpf - \
     \
-    && curl -J -L -o /tmp/bashio.tar.gz \
+    && curl -fJL -sS --retry 5 --retry-delay 3 --retry-connrefused --connect-timeout 15 --max-time 300 -o /tmp/bashio.tar.gz \
         "https://github.com/hassio-addons/bashio/archive/${BASHIO_VERSION}.tar.gz" \
     && mkdir /tmp/bashio \
     && tar zxvf \
@@ -148,7 +148,7 @@ RUN \
     && mv /tmp/bashio/lib /usr/lib/bashio \
     && ln -s /usr/lib/bashio/bashio /usr/bin/bashio \
     \
-    && curl -L -s -o /usr/bin/tempio \
+    && curl -fL -sS --retry 5 --retry-delay 3 --retry-connrefused --connect-timeout 15 --max-time 120 -o /usr/bin/tempio \
         "https://github.com/home-assistant/tempio/releases/download/${TEMPIO_VERSION}/tempio_${BUILD_ARCH}" \
     && chmod a+x /usr/bin/tempio \
     \

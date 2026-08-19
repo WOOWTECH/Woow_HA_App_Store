@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.12.5
+
+- **Harden s6-overlay + bashio + tempio downloads against flaky networks.** Changed `curl -L -s` to `curl -fL -sS --retry 5 --retry-delay 3 --retry-connrefused --connect-timeout 15 --max-time 120` in the RUN block that fetches from `github.com/objects.githubusercontent.com`. Reason: 2.12.4 build kept failing on Elmo HAOS with `xz: (stdin): File format not recognized` — the plain `-s` silently swallowed HTTP errors and pipe-through-tar choked on empty or HTML output. `-f` fails the pipe on non-2xx (surfaces the real problem), `-sS` keeps quiet but still shows curl errors, and `--retry 5` rides through transient CDN hiccups. No addon behaviour change.
+
 ## 2.12.4
 
 - **Version scheme change: dropped the `-vN` fork-iteration suffix.** HA Supervisor's `awesomeversion` parses `X.Y.Z-suffix` as a SemVer pre-release, so `2.12.3-v1` was ordered BELOW the installed `2.12.3` and the Update button stayed disabled with "已最新" — every user stuck on 2.12.3 couldn't pick up the N8N_SECURE_COOKIE option shipped in 2.12.3-v1. Rebump to `2.12.4` (plain patch bump) so Supervisor orders it correctly. No addon behaviour change; content is identical to 2.12.3-v1.
