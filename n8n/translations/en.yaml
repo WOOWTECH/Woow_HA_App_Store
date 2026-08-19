@@ -16,6 +16,9 @@ configuration:
   WEBHOOK_URL:
     name: Webhook URL
     description: The URL used for webhooks. If using Cloudflare Tunnel, set this to your external HTTPS URL.
+  N8N_SECURE_COOKIE:
+    name: Secure cookie
+    description: Disabled by default for LAN HTTP access. Enable this when accessing n8n exclusively through HTTPS.
   clean_redis:
     name: Clean Redis cache
     description: >-

@@ -129,6 +129,7 @@ Then navigate to **Settings → Add-ons → Add-on Store**, find "Woow n8n" and 
 | `N8N_HOST` | 字串 | （自動偵測） | 主機名稱或 IP |
 | `N8N_PATH` | 字串 | `/` | n8n 部署路徑 |
 | `WEBHOOK_URL` | 字串 | （自動產生） | Webhook 回呼網址 |
+| `N8N_SECURE_COOKIE` | 布林 | `false` | 區域網路 HTTP 預設停用；僅透過 HTTPS 存取時應設為 `true` |
 | `clean_redis` | 布林 | `false` | 啟動時清除 Redis 快取 |
 | `env_vars` | 列表 | `[]` | 自訂環境變數（key-value 對） |
 
@@ -170,6 +171,7 @@ env_vars:
    ```yaml
    N8N_HOST: n8n.your-domain.com
    WEBHOOK_URL: https://n8n.your-domain.com
+   N8N_SECURE_COOKIE: true
    ```
 4. 重新啟動附加元件
 

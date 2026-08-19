@@ -1,3 +1,4 @@
 {
-  "N8N_LOG_LEVEL": "info"
+  "N8N_LOG_LEVEL": "info",
+  "N8N_SECURE_COOKIE": false
 }

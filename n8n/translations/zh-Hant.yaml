@@ -17,6 +17,9 @@ configuration:
   WEBHOOK_URL:
     name: Webhook 網址
     description: Webhook 回呼使用的網址。若使用 Cloudflare Tunnel，請設定為您的外部 HTTPS 網址。
+  N8N_SECURE_COOKIE:
+    name: 安全 Cookie
+    description: 區域網路 HTTP 存取預設停用。僅透過 HTTPS 存取 n8n 時，請啟用此選項。
   clean_redis:
     name: 清除 Redis 快取
     description: >-
