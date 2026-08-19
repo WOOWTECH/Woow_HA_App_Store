@@ -1,5 +1,9 @@
 # Changelog
 
+## 33.0.1
+
+- **Version scheme change: dropped the `-vN` fork-iteration suffix.** HA Supervisor's `awesomeversion` parses `X.Y.Z-suffix` as a SemVer pre-release, so `33.0.0-v4` was ordered BELOW an installed plain `33.0.0` and the Update button stayed disabled. Rebumped to `33.0.1` (plain patch bump) so Supervisor orders it correctly. No addon behaviour change; content is identical to 33.0.0-v4. Upstream Nextcloud is still on 33.0.0 (`linuxserver/nextcloud:33.0.0-ls421`); our patch number now advances independently of upstream.
+
 ## v33.0.0-v4
 
 ### Fixed

@@ -1,5 +1,5 @@
 name: Woow Nextcloud
-version: "33.0.0-v4"
+version: "33.0.1"
 slug: woow-nextcloud
 description: Nextcloud all-in-one with PostgreSQL 16 (HTTP for LAN, use Cloudflare Tunnel for HTTPS)
 url: https://github.com/WOOWTECH/Woow_ha_nextcloud

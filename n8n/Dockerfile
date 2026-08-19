@@ -1,8 +1,12 @@
 ARG BUILD_FROM=docker.io/n8nio/n8n:2.12.3
 
-ARG BUILD_VERSION=2.12.3
+ARG BUILD_VERSION=2.12.4
 
-FROM docker.io/n8nio/runners:${BUILD_VERSION%-v*} AS runner
+# Runner tag is decoupled from BUILD_VERSION because the addon's version bumps
+# (e.g. 2.12.3 -> 2.12.4 to ship the N8N_SECURE_COOKIE option) advance ahead
+# of the upstream n8n release cadence. Keep this pinned to the actual upstream
+# n8n version we're wrapping so Docker Hub always has the tag.
+FROM docker.io/n8nio/runners:2.12.3 AS runner
 
 FROM ${BUILD_FROM}
 

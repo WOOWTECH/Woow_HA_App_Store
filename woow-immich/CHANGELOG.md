@@ -1,3 +1,9 @@
+# v2.5.7 (WOOWTECH fork rebump)
+
+- **Version scheme change: dropped the `-vN` fork-iteration suffix.** HA Supervisor's `awesomeversion` parses `X.Y.Z-suffix` as a SemVer pre-release, so `2.5.6-v10` was ordered BELOW an installed plain `2.5.6` and the Update button stayed disabled. Rebumped to `2.5.7` (plain patch bump) so Supervisor orders it correctly. No addon behaviour change; content is identical to 2.5.6-v10. Upstream Immich is still on 2.5.6 (`imagegenius/immich:v2.5.6-ig447`); our patch number now advances independently of upstream.
+
+---
+
 # v2.5.6
 
 This patch release addresses the following issues
