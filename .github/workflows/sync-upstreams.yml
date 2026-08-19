@@ -1,0 +1,103 @@
+name: Sync upstream addons
+
+# Daily sweep: for each WOOWTECH-owned addon, mirror its upstream individual
+# repo's subdir into the App Store copy. Auto-commits when there's a diff.
+#
+# The App Store repo is the aggregate store users add as ONE URL to get all
+# 9 WOOWTECH addons at once. The individual per-addon repos are the source
+# of truth (that's where CI publishes the images from and where releases are
+# cut). Without this workflow, every release requires a manual clone-and-copy
+# round-trip; the pi-agent 0.13.2 incident (2026-08-19) is what triggered it.
+#
+# External mirrors (hamh, music_assistant, knxd) are intentionally NOT synced
+# here — the README's policy is "防上游失聯" (defend against upstream going
+# away), not "track upstream head". Their versions are pinned by hand.
+#
+# Cron time: 20:00 UTC = 04:00 Asia/Taipei — off-peak for the team.
+
+on:
+  schedule:
+    - cron: '0 20 * * *'
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout App Store repo
+        uses: actions/checkout@v4
+        with:
+          # Full history is not needed — we only push new commits on top.
+          fetch-depth: 1
+
+      - name: Sync each upstream subdir
+        env:
+          # slug|upstream-repo|upstream-subdir  (subdir "." = repo root)
+          MAPPINGS: |
+            cloudflared|Woow_ha_cloudflare_tunnel_webgui|cloudflared
+            emqx|Woow_ha_emqx|emqx
+            headscale|Woow_ha_vpn_headscale_package|headscale
+            n8n|Woow_ha_n8n|n8n
+            nextcloud|Woow_ha_nextcloud|nextcloud
+            odoo18ce|Woow_ha_odoo|odoo18ce
+            woow-immich|Woow_ha_immich|woow-immich
+            woow_ha_core_1|woowtech_ha_multi_ha_core|woow_ha_core_1
+            woow_ha_core_2|woowtech_ha_multi_ha_core|woow_ha_core_2
+            woow_ha_core_3|woowtech_ha_multi_ha_core|woow_ha_core_3
+            woow_ha_core_4|woowtech_ha_multi_ha_core|woow_ha_core_4
+            woow_ha_core_5|woowtech_ha_multi_ha_core|woow_ha_core_5
+            woow_ha_pi_agent|Woow_ha_pi_agent_add_on|.
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/upstream
+          synced=()
+
+          while IFS='|' read -r slug repo sub; do
+            [ -z "${slug:-}" ] && continue
+            src="/tmp/upstream/${slug}"
+            git clone --depth 1 --quiet "https://github.com/WOOWTECH/${repo}.git" "${src}"
+            src_dir="${src}"
+            [ "${sub}" != "." ] && src_dir="${src}/${sub}"
+            if [ ! -d "${src_dir}" ]; then
+              echo "::warning::${slug}: upstream subdir ${sub} not found in ${repo}, skipping"
+              continue
+            fi
+            # Mirror into the App Store subdir. Excludes cover the 4 files
+            # that structurally belong to the upstream repo alone (its own
+            # git history, its own CI, its own single-addon store manifest).
+            rsync -a --delete \
+              --exclude='.git' \
+              --exclude='.github' \
+              --exclude='.gitignore' \
+              --exclude='repository.yaml' \
+              "${src_dir}/" "${slug}/"
+            if [ -n "$(git status --porcelain -- "${slug}")" ]; then
+              synced+=("${slug}")
+              upver=$(grep -m1 '^version:' "${slug}/config.yaml" 2>/dev/null | sed 's/version: *//;s/"//g;s/ *$//' || echo unknown)
+              echo "::notice::${slug}: drift detected — new version ${upver}"
+            fi
+          done <<< "${MAPPINGS}"
+
+          if [ ${#synced[@]} -eq 0 ]; then
+            echo "All 13 subdirs already in sync with upstream — no commit needed."
+            exit 0
+          fi
+
+          git config user.name  'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          for slug in "${synced[@]}"; do
+            git add "${slug}"
+          done
+
+          # Body lists which subdirs changed and their new versions so the
+          # commit is self-documenting when reviewed on GitHub.
+          body="$(printf '\n\n'; for s in "${synced[@]}"; do
+            v=$(grep -m1 '^version:' "${s}/config.yaml" 2>/dev/null | sed 's/version: *//;s/"//g;s/ *$//' || echo unknown)
+            printf -- '- %s -> %s\n' "$s" "$v"
+          done)"
+          title="chore(sync): mirror ${#synced[@]} upstream addon(s)"
+          git commit -m "${title}${body}"
+          git push
