@@ -467,6 +467,42 @@ if [ "$HOST_ADDRESS_FOUND" != "true" ]; then
   bashio::log.warning "----------------------------------------------------------------------"
 fi
 
+# ---------------------------------------------------------------------------
+# Cloudflare Tunnel (cloudflared) auto-detection
+# ---------------------------------------------------------------------------
+# When this add-on is exposed through a Cloudflare Tunnel, the public hostname
+# is arbitrary and not known at install time. Detect a cloudflared add-on on
+# the same Home Assistant OS and, when present, accept any hostname
+# (URL-agnostic) and trust the local Docker network as a reverse proxy — so
+# users never have to edit `trusted_domains` / `trusted_proxies` manually.
+CLOUDFLARED_DETECTED=false
+CLOUDFLARED_PROXY_SUBNET=""
+
+if [[ -n "${SUPERVISOR_TOKEN:-}" ]] && command -v curl >/dev/null 2>&1; then
+  SUPERVISOR_ADDONS="$(curl -sfS -m 10 \
+    -H "Authorization: Bearer ${SUPERVISOR_TOKEN}" \
+    "http://supervisor/addons" 2>/dev/null || true)"
+  if [[ -n "${SUPERVISOR_ADDONS}" ]] && printf '%s' "${SUPERVISOR_ADDONS}" | grep -qiE 'cloudflared|cloudflare'; then
+    CLOUDFLARED_DETECTED=true
+  fi
+fi
+
+if [[ "${CLOUDFLARED_DETECTED}" = "true" ]]; then
+  # Trust the /24 this container lives on (the HAOS hassio network, where the
+  # cloudflared add-on also runs) so Nextcloud honours X-Forwarded-* headers.
+  LOCAL_IP="$(ip -4 route get 1.1.1.1 2>/dev/null | grep -oE 'src [0-9.]+' | awk '{print $2}' | head -1)"
+  if [[ -n "${LOCAL_IP}" ]]; then
+    CLOUDFLARED_PROXY_SUBNET="$(printf '%s' "${LOCAL_IP}" | awk -F. '{printf "%d.%d.%d.0/24", $1, $2, $3}')"
+  fi
+  # Fallback to the well-known HAOS hassio subnet if derivation failed.
+  [[ -n "${CLOUDFLARED_PROXY_SUBNET}" ]] || CLOUDFLARED_PROXY_SUBNET="172.30.32.0/23"
+
+  # URL-agnostic catch-all: accept any public hostname the tunnel uses.
+  nc_add_trusted_domain "*"
+
+  bashio::log.info "Cloudflare Tunnel add-on detected — trusting proxy subnet ${CLOUDFLARED_PROXY_SUBNET} and any hostname (URL-agnostic)."
+fi
+
 # Rewrite the list, and only report what was really written.
 occ config:system:delete trusted_domains > /dev/null 2>&1
 
@@ -489,6 +525,20 @@ fi
 
 # Trusted proxies
 mapfile -t TRUSTED_PROXIES < <(jq -r '.trusted_proxies // empty | .[]' "$OPTIONS_SOURCE")
+
+# Append the auto-detected Cloudflare Tunnel proxy subnet, de-duplicated.
+if [[ "${CLOUDFLARED_DETECTED}" = "true" ]] && [[ -n "${CLOUDFLARED_PROXY_SUBNET}" ]]; then
+  PROXY_PRESENT=false
+  for P in "${TRUSTED_PROXIES[@]}"; do
+    if [[ "$P" = "${CLOUDFLARED_PROXY_SUBNET}" ]]; then
+      PROXY_PRESENT=true
+      break
+    fi
+  done
+  if [[ "${PROXY_PRESENT}" != "true" ]]; then
+    TRUSTED_PROXIES+=("${CLOUDFLARED_PROXY_SUBNET}")
+  fi
+fi
 
 if [ "${#TRUSTED_PROXIES[@]}" -gt 0 ]; then
   occ config:system:del trusted_proxies

@@ -1,5 +1,18 @@
 # Changelog
 
+## 33.0.2
+
+### Added
+- **Automatic Cloudflare Tunnel (cloudflared) support.** `init-nextcloud-config`
+  now detects a cloudflared add-on running on the same Home Assistant OS and,
+  when present, automatically trusts the local hassio Docker subnet as a
+  reverse proxy (`trusted_proxies`) and adds a catch-all `*` to
+  `trusted_domains`. Nextcloud therefore accepts whatever public hostname the
+  tunnel uses, with no per-install `trusted_domains` / `OVERWRITEHOST`
+  configuration — URL-agnostic by design.
+- `hassio_role: manager` — required so the add-on can list installed add-ons
+  (`GET /addons`) for the cloudflared detection above.
+
 ## 33.0.1
 
 - **Version scheme change: dropped the `-vN` fork-iteration suffix.** HA Supervisor's `awesomeversion` parses `X.Y.Z-suffix` as a SemVer pre-release, so `33.0.0-v4` was ordered BELOW an installed plain `33.0.0` and the Update button stayed disabled. Rebumped to `33.0.1` (plain patch bump) so Supervisor orders it correctly. No addon behaviour change; content is identical to 33.0.0-v4. Upstream Nextcloud is still on 33.0.0 (`linuxserver/nextcloud:33.0.0-ls421`); our patch number now advances independently of upstream.

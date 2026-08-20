@@ -1,13 +1,16 @@
 name: Woow Nextcloud
-version: "33.0.1"
+version: "33.0.2"
 slug: woow-nextcloud
 description: Nextcloud all-in-one with PostgreSQL 16 (HTTP for LAN, use Cloudflare Tunnel for HTTPS)
 url: https://github.com/WOOWTECH/Woow_ha_nextcloud
 webui: "http://[HOST]:[PORT:80]"
-# Needed to read the host's LAN IPv4 from the Supervisor (GET /network/info,
-# GET /network/interface/<name>/info) so it can be added to Nextcloud's
-# trusted_domains automatically. The default add-on role is sufficient.
+# Needed to read the host's LAN IPv4 and the installed add-ons from the
+# Supervisor (GET /network/info, GET /network/interface/<name>/info, GET
+# /addons) so the host addresses can be trusted and a Cloudflare Tunnel
+# (cloudflared) add-on can be detected automatically. The manager role grants
+# access to the add-on list used for that detection.
 hassio_api: true
+hassio_role: manager
 arch:
   - aarch64
   - amd64
