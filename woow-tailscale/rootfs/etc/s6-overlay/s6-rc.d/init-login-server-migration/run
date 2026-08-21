@@ -1,0 +1,10 @@
+#!/command/with-contenv bashio
+# shellcheck shell=bash
+set -euo pipefail
+
+login_server="$(bashio::config 'login_server')"
+bashio::log.info "Checking configured Tailscale control server"
+if ! /usr/local/lib/woow-tailscale/reconcile-login-server "$login_server"; then
+  bashio::exit.nok \
+    "Control-server migration safety check failed; existing Tailscale state was not changed"
+fi
