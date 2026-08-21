@@ -1,5 +1,5 @@
 # WoowTech MIT-licensed fork of hassio-addons/app-tailscale at upstream commit 24464c97a779bdd64c9975f514bff6e1d9058cca.
-# Woow adds safe control-server migration behavior while retaining the upstream add-on baseline.
+# Woow retains the upstream add-on baseline and is prepared for managed control-server migration.
 
 ARG BUILD_FROM=ghcr.io/hassio-addons/base/amd64:21.0.2
 # hadolint ignore=DL3006
@@ -64,15 +64,15 @@ LABEL \
     io.hass.arch="${BUILD_ARCH}" \
     io.hass.type="addon" \
     io.hass.version=${BUILD_VERSION} \
-    maintainer="Franck Nijhof <opensource@frenck.dev>" \
+    maintainer="WOOWTECH <woowtech@designsmart.com.tw>" \
     org.opencontainers.image.title="${BUILD_NAME}" \
     org.opencontainers.image.description="${BUILD_DESCRIPTION}" \
-    org.opencontainers.image.vendor="Home Assistant Community Apps" \
-    org.opencontainers.image.authors="Franck Nijhof <opensource@frenck.dev>" \
+    org.opencontainers.image.vendor="WOOWTECH" \
+    org.opencontainers.image.authors="WOOWTECH <woowtech@designsmart.com.tw>" \
     org.opencontainers.image.licenses="MIT" \
-    org.opencontainers.image.url="https://frenck.dev/home-assistant-apps" \
-    org.opencontainers.image.source="https://github.com/${BUILD_REPOSITORY}" \
-    org.opencontainers.image.documentation="https://github.com/${BUILD_REPOSITORY}/blob/main/README.md" \
+    org.opencontainers.image.url="https://github.com/WOOWTECH" \
+    org.opencontainers.image.source="https://github.com/WOOWTECH/Woow_HA_App_Store" \
+    org.opencontainers.image.documentation="https://github.com/WOOWTECH/Woow_HA_App_Store/blob/main/woow-tailscale/DOCS.md" \
     org.opencontainers.image.created=${BUILD_DATE} \
     org.opencontainers.image.revision=${BUILD_REF} \
     org.opencontainers.image.version=${BUILD_VERSION}

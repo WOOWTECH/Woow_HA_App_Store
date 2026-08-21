@@ -2,7 +2,7 @@
 name: "Woow Tailscale"
 version: "0.1.0"
 slug: "woow-tailscale"
-description: "Tailscale client with safe Headscale/control-server migration"
+description: "Tailscale client for Tailscale and Headscale"
 url: "https://github.com/WOOWTECH/Woow_HA_App_Store"
 ingress: true
 ingress_port: 0

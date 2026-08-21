@@ -1,4 +1,4 @@
-> **WoowTech fork provenance:** This is an MIT-licensed fork of [`hassio-addons/app-tailscale`](https://github.com/hassio-addons/app-tailscale) at upstream commit `24464c97a779bdd64c9975f514bff6e1d9058cca`. Woow adds safe control-server migration behavior while retaining the upstream add-on baseline.
+> **WoowTech fork provenance:** This is an MIT-licensed fork of [`hassio-addons/app-tailscale`](https://github.com/hassio-addons/app-tailscale) at upstream commit `24464c97a779bdd64c9975f514bff6e1d9058cca`. Woow retains the upstream add-on baseline and is prepared for managed control-server migration.
 
 # Home Assistant Community App: Tailscale
 
@@ -479,16 +479,8 @@ based on the following:
 
 Got questions?
 
-You have several options to get them answered:
-
-- The [Home Assistant Community Apps Discord chat server][discord] for app
-  support and feature requests.
-- The [Home Assistant Discord chat server][discord-ha] for general Home
-  Assistant discussions and questions.
-- The Home Assistant [Community Forum][forum].
-- Join the [Reddit subreddit][reddit] in [/r/homeassistant][reddit]
-
-You could also [open an issue here][issue] GitHub.
+For support or feature requests, [open an issue][issue] in the WoowTech HA
+App Store repository.
 
 ## Authors & contributors
 
@@ -522,17 +514,13 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 [app-badge]: https://my.home-assistant.io/badges/supervisor_addon.svg
-[app]: https://my.home-assistant.io/redirect/supervisor_addon/?addon=a0d7b954_tailscale&repository_url=https%3A%2F%2Fgithub.com%2Fhassio-addons%2Frepository
+[app]: https://my.home-assistant.io/redirect/supervisor_addon/?addon=woow-tailscale&repository_url=https%3A%2F%2Fgithub.com%2FWOOWTECH%2FWoow_HA_App_Store
 [contributors]: https://github.com/hassio-addons/app-tailscale/graphs/contributors
-[discord-ha]: https://www.home-assistant.io/join-chat
-[discord]: https://discord.me/hassioaddons
-[forum]: https://community.home-assistant.io/?u=frenck
 [frenck]: https://github.com/frenck
 [headscale]: https://github.com/juanfont/headscale
 [http_integration]: https://www.home-assistant.io/integrations/http/
-[issue]: https://github.com/hassio-addons/app-tailscale/issues
-[reddit]: https://reddit.com/r/homeassistant
-[releases]: https://github.com/hassio-addons/app-tailscale/releases
+[issue]: https://github.com/WOOWTECH/Woow_HA_App_Store/issues
+[releases]: https://github.com/WOOWTECH/Woow_HA_App_Store/releases
 [semver]: https://semver.org/spec/v2.0.0.html
 [tailscale_acls]: https://login.tailscale.com/admin/acls
 [tailscale_dns]: https://login.tailscale.com/admin/dns
