@@ -150,6 +150,50 @@ set -e
 [[ -z "$(find "${data_dir}/state-backups" -mindepth 1 -maxdepth 1 -print -quit)" ]] \
     || fail 'archive creation failure left a temporary archive'
 
+# A corrupt archive reported as successfully created is rejected before publication.
+data_dir="${tmpdir}/archive-validation-failure"
+mkdir -p "${data_dir}"
+printf 'https://old.example\n' > "${data_dir}/.woow-login-server"
+make_state "${data_dir}"
+invalid_tar_bin="${tmpdir}/invalid-tar-bin"
+mkdir -p "${invalid_tar_bin}"
+cat > "${invalid_tar_bin}/tar" <<'EOF'
+#!/usr/bin/env bash
+archive=''
+previous=''
+for argument in "$@"; do
+    if [[ "${previous}" == '-czf' ]]; then
+        archive="${argument}"
+        break
+    fi
+    previous="${argument}"
+done
+if [[ -n "${archive}" ]]; then
+    printf 'corrupt archive' > "${archive}"
+    exit 0
+fi
+for argument in "$@"; do
+    [[ "${argument}" == '-tzf' ]] && exit 1
+done
+exit 99
+EOF
+chmod +x "${invalid_tar_bin}/tar"
+set +e
+PATH="${invalid_tar_bin}:${PATH}" DATA_DIR="${data_dir}" "${helper}" 'https://new.example' >/dev/null 2>&1
+status=$?
+set -e
+[[ ${status} != 0 ]] || fail 'invalid archive validation unexpectedly succeeded'
+[[ "$(<"${data_dir}/.woow-login-server")" == 'https://old.example' ]] \
+    || fail 'invalid archive validation changed marker'
+[[ "$(<"${data_dir}/tailscaled.state")" == 'state-private-key' ]] \
+    || fail 'invalid archive validation removed state file'
+[[ "$(<"${data_dir}/state/profile.conf")" == 'nested-private-key' ]] \
+    || fail 'invalid archive validation removed state directory'
+[[ "$(<"${data_dir}/final_serve_reset_is_done")" == 'serve-private-key' ]] \
+    || fail 'invalid archive validation removed serve marker'
+[[ -z "$(find "${data_dir}/state-backups" -mindepth 1 -maxdepth 1 -print -quit)" ]] \
+    || fail 'invalid archive validation published an archive or left a temporary file'
+
 # state-backups must be a real directory, never a symlink to another location.
 data_dir="${tmpdir}/backup-symlink"
 target_dir="${tmpdir}/backup-target"
@@ -171,6 +215,52 @@ assert_file_mode 755 "${target_dir}"
     || fail 'symlinked backup directory removed state'
 [[ "$(<"${data_dir}/.woow-login-server")" == 'https://old.example' ]] \
     || fail 'symlinked backup directory changed marker'
+
+# state-backups must not be an ordinary file, and it must not be touched first.
+data_dir="${tmpdir}/backup-regular-file"
+mkdir -p "${data_dir}"
+printf 'https://old.example\n' > "${data_dir}/.woow-login-server"
+make_state "${data_dir}"
+backup_file="${data_dir}/state-backups"
+printf 'ordinary backup path' > "${backup_file}"
+chmod 0640 "${backup_file}"
+backup_checksum=$(cksum < "${backup_file}")
+path_audit_log="${tmpdir}/backup-path-audit.log"
+path_audit_bin="${tmpdir}/backup-path-audit-bin"
+mkdir -p "${path_audit_bin}"
+for command in mkdir chmod rm; do
+    cat > "${path_audit_bin}/${command}" <<'EOF'
+#!/usr/bin/env bash
+for argument in "$@"; do
+    if [[ "${argument}" == "${BACKUP_PATH}" ]]; then
+        printf '%s\n' "${0##*/}" >> "${BACKUP_PATH_AUDIT_LOG}"
+    fi
+done
+exec "/usr/bin/${0##*/}" "$@"
+EOF
+    chmod +x "${path_audit_bin}/${command}"
+done
+set +e
+BACKUP_PATH="${backup_file}" BACKUP_PATH_AUDIT_LOG="${path_audit_log}" \
+    PATH="${path_audit_bin}:${PATH}" DATA_DIR="${data_dir}" "${helper}" 'https://new.example' >/dev/null 2>&1
+status=$?
+set -e
+[[ ${status} != 0 ]] || fail 'ordinary backup file unexpectedly succeeded'
+[[ -f "${backup_file}" && ! -d "${backup_file}" ]] \
+    || fail 'ordinary backup file was replaced'
+[[ "$(cksum < "${backup_file}")" == "${backup_checksum}" ]] \
+    || fail 'ordinary backup file was written'
+assert_file_mode 640 "${backup_file}"
+[[ ! -s "${path_audit_log}" ]] \
+    || fail 'ordinary backup file was mkdir/chmod/pruned before rejection'
+[[ "$(<"${data_dir}/.woow-login-server")" == 'https://old.example' ]] \
+    || fail 'ordinary backup file changed marker'
+[[ "$(<"${data_dir}/tailscaled.state")" == 'state-private-key' ]] \
+    || fail 'ordinary backup file removed state file'
+[[ "$(<"${data_dir}/state/profile.conf")" == 'nested-private-key' ]] \
+    || fail 'ordinary backup file removed state directory'
+[[ "$(<"${data_dir}/final_serve_reset_is_done")" == 'serve-private-key' ]] \
+    || fail 'ordinary backup file removed serve marker'
 
 # State without an origin marker is never changed automatically.
 data_dir="${tmpdir}/safety-guard"
