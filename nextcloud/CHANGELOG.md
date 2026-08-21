@@ -1,5 +1,14 @@
 # Changelog
 
+## 33.0.3
+
+### Fixed
+- **Force https behind the tunnel.** When a cloudflared add-on is detected, the
+  init script now also defaults `overwriteprotocol` to `https` (unless the user
+  has already set it), because TLS terminates at the Cloudflare edge and the
+  origin receives plain HTTP. Without this, Nextcloud generated `http://`
+  redirect URLs. No per-install `OVERWRITEPROTOCOL` option is needed anymore.
+
 ## 33.0.2
 
 ### Added

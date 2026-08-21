@@ -500,6 +500,10 @@ if [[ "${CLOUDFLARED_DETECTED}" = "true" ]]; then
   # URL-agnostic catch-all: accept any public hostname the tunnel uses.
   nc_add_trusted_domain "*"
 
+  # TLS terminates at the Cloudflare edge, so force https URLs even though
+  # the tunnel forwards plain HTTP to this origin.
+  [[ -n "${OVERWRITEPROTOCOL:-}" ]] || OVERWRITEPROTOCOL="https"
+
   bashio::log.info "Cloudflare Tunnel add-on detected — trusting proxy subnet ${CLOUDFLARED_PROXY_SUBNET} and any hostname (URL-agnostic)."
 fi
 
