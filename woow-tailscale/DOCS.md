@@ -11,16 +11,17 @@ manages firewall rules for you, and works from anywhere you are.
 
 ## Prerequisites
 
-In order to use this app, you'll need a Tailscale account.
+This add-on supports both Tailscale's official control plane and
+Headscale-compatible control planes.
 
-It is free to use for personal & hobby projects, up to 100 clients/devices on a
-single user account. Sign up using your Google, Microsoft or GitHub account at
-the following URL:
+To use Tailscale's official control plane, you need a Tailscale account. It is
+free to use for personal and hobby projects up to 100 clients/devices on a
+single user account; sign up with Google, Microsoft, or GitHub at:
 
 <https://login.tailscale.com/start>
 
-You can also create an account during the app installation processes,
-however, it is nice to know where you need to go later on.
+For Headscale, use the account or user configured by your Headscale
+administrator. A Tailscale account is not required for Headscale.
 
 ## Installation
 
@@ -96,6 +97,39 @@ taildrive:
 taildrop: true
 userspace_networking: true
 ```
+
+## Control server / Headscale migration
+
+To migrate from the official Home Assistant Tailscale add-on to Woow Tailscale:
+
+1. Stop `a0d7b954_tailscale`. Do not operate both add-ons at once.
+2. Install **Woow Tailscale** and open its Configuration page
+   (`/config/app/1b7b4ce7_woow-tailscale/config`).
+3. Copy your desired routing and DNS settings, then set `login_server` to the
+   public Headscale URL. For example:
+
+   ```yaml
+   login_server: "https://loving-woodcock-cleanly.ngrok-free.app"
+   ```
+
+4. Start Woow Tailscale and get the `/register/hskey-authreq-...` URL from the
+   add-on log.
+5. Register the pending node through Headplane or with
+   `headscale auth register --user <user> --auth-id <id>`.
+6. Verify the log shows `active login: <user>` and a `100.x.x.x` peer API
+   address.
+
+> [!WARNING]
+> Changing `login_server` backs up and removes the local Tailscale identity.
+> The new identity requires approval and can leave the previous node offline;
+> a Headscale administrator should remove that old node when appropriate.
+
+### Recovery
+
+`/data/state-backups/` contains emergency backups of state removed during a
+control-server change. These archives contain private-key-bearing state: stop
+the add-on and contact or consult support before attempting a restore. Do not
+blindly restore an archive. The add-on retains only the three latest archives.
 
 > [!NOTE]
 > Some of the configuration options are also available on Tailscale's web
