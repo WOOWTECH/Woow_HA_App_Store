@@ -16,10 +16,14 @@ state_dir="${DATA_DIR}/state"
 serve_marker="${DATA_DIR}/final_serve_reset_is_done"
 backup_dir="${DATA_DIR}/state-backups"
 marker_tmp=""
+archive_tmp=""
 
 cleanup() {
     if [[ -n "${marker_tmp}" && -e "${marker_tmp}" ]]; then
         rm -f -- "${marker_tmp}"
+    fi
+    if [[ -n "${archive_tmp}" && -e "${archive_tmp}" ]]; then
+        rm -f -- "${archive_tmp}"
     fi
 }
 trap cleanup EXIT
@@ -80,10 +84,6 @@ if [[ "${recorded_url}" == "${normalized_url}" ]]; then
     exit 0
 fi
 
-umask 077
-mkdir -p -- "${backup_dir}"
-chmod 0700 "${backup_dir}"
-
 archive_items=()
 if path_exists "${state_file}"; then
     archive_items+=(tailscaled.state)
@@ -95,15 +95,60 @@ if path_exists "${serve_marker}"; then
     archive_items+=(final_serve_reset_is_done)
 fi
 
-timestamp=$(date -u +%Y%m%dT%H%M%SZ)
-archive="${backup_dir}/${timestamp}-control-server-state.tar.gz"
 if (( ${#archive_items[@]} == 0 )); then
-    tar -C "${DATA_DIR}" -czf "${archive}" -T /dev/null
-else
-    tar -C "${DATA_DIR}" -czf "${archive}" -- "${archive_items[@]}"
+    write_marker
+    printf 'Reconciled Tailscale control server to %s; no state backup was needed\n' "${normalized_url}"
+    exit 0
 fi
-chmod 0600 "${archive}"
-tar -tzf "${archive}" > /dev/null
+
+umask 077
+if path_exists "${backup_dir}"; then
+    if [[ -L "${backup_dir}" || ! -d "${backup_dir}" ]]; then
+        printf 'Refusing control-server migration: backup path is not a real directory: %s\n' \
+            "${backup_dir}" >&2
+        exit 1
+    fi
+else
+    mkdir -p -- "${backup_dir}"
+fi
+if [[ -L "${backup_dir}" || ! -d "${backup_dir}" ]]; then
+    printf 'Refusing control-server migration: backup path is not a real directory: %s\n' \
+        "${backup_dir}" >&2
+    exit 1
+fi
+chmod 0700 "${backup_dir}"
+
+archive_tmp=$(mktemp "${backup_dir}/.control-server-state.XXXXXX")
+chmod 0600 "${archive_tmp}"
+tar -C "${DATA_DIR}" -czf "${archive_tmp}" -- "${archive_items[@]}"
+tar -tzf "${archive_tmp}" > /dev/null
+
+# Link publication is atomic and fails rather than replacing an existing archive.
+timestamp=$(date -u +%Y%m%dT%H%M%SZ)
+archive_index=0
+while :; do
+    if (( archive_index == 0 )); then
+        archive="${backup_dir}/${timestamp}-control-server-state.tar.gz"
+    else
+        archive="${backup_dir}/${timestamp}-control-server-state-${archive_index}.tar.gz"
+    fi
+
+    if path_exists "${archive}"; then
+        ((archive_index += 1))
+        continue
+    fi
+    if ln "${archive_tmp}" "${archive}"; then
+        rm -f -- "${archive_tmp}"
+        archive_tmp=""
+        break
+    fi
+    if path_exists "${archive}"; then
+        ((archive_index += 1))
+        continue
+    fi
+    printf 'Unable to publish control-server state backup\n' >&2
+    exit 1
+done
 
 for path in "${state_file}" "${state_dir}" "${serve_marker}"; do
     if path_exists "${path}"; then
@@ -113,7 +158,7 @@ done
 write_marker
 
 shopt -s nullglob
-archives=("${backup_dir}"/????????T??????Z-control-server-state.tar.gz)
+archives=("${backup_dir}"/????????T??????Z-control-server-state*.tar.gz)
 IFS=$'\n' archives=($(printf '%s\n' "${archives[@]}" | LC_ALL=C sort))
 unset IFS
 while (( ${#archives[@]} > 3 )); do

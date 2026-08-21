@@ -80,6 +80,98 @@ tar -tzf "${backup}" | grep -Fxq 'final_serve_reset_is_done'
 assert_file_mode 700 "${data_dir}/state-backups"
 assert_file_mode 600 "${backup}"
 
+# A changed marker with no state members updates the marker without an empty archive.
+data_dir="${tmpdir}/changed-no-state"
+mkdir -p "${data_dir}"
+printf 'https://old.example\n' > "${data_dir}/.woow-login-server"
+DATA_DIR="${data_dir}" "${helper}" 'https://new.example/'
+[[ "$(<"${data_dir}/.woow-login-server")" == 'https://new.example' ]] \
+    || fail 'changed marker without state was not replaced'
+[[ ! -e "${data_dir}/state-backups" ]] || fail 'changed marker without state created a backup directory'
+
+# Existing archives are never overwritten when timestamps collide.
+data_dir="${tmpdir}/archive-collision"
+mkdir -p "${data_dir}/state-backups"
+printf 'https://old.example\n' > "${data_dir}/.woow-login-server"
+printf 'preserved archive member' > "${data_dir}/preserved"
+timestamp='20260821T010101Z'
+existing_archive="${data_dir}/state-backups/${timestamp}-control-server-state.tar.gz"
+tar -C "${data_dir}" -czf "${existing_archive}" preserved
+rm -f -- "${data_dir}/preserved"
+existing_checksum=$(cksum < "${existing_archive}")
+collision_bin="${tmpdir}/collision-bin"
+mkdir -p "${collision_bin}"
+cat > "${collision_bin}/date" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' '20260821T010101Z'
+EOF
+chmod +x "${collision_bin}/date"
+make_state "${data_dir}"
+PATH="${collision_bin}:${PATH}" DATA_DIR="${data_dir}" "${helper}" 'https://new.example'
+[[ "$(cksum < "${existing_archive}")" == "${existing_checksum}" ]] \
+    || fail 'timestamp collision overwrote the existing archive'
+[[ "$(backup_count "${data_dir}")" == 2 ]] || fail 'timestamp collision did not create another archive'
+new_archive=$(find "${data_dir}/state-backups" -maxdepth 1 -name '*.tar.gz' ! -name "${existing_archive##*/}" -print -quit)
+[[ -n "${new_archive}" ]] || fail 'timestamp collision did not produce a distinct archive name'
+tar -tzf "${new_archive}" | grep -Fxq 'tailscaled.state'
+
+# A failed archive creation leaves no temporary archive and preserves state and marker.
+data_dir="${tmpdir}/archive-failure"
+mkdir -p "${data_dir}"
+printf 'https://old.example\n' > "${data_dir}/.woow-login-server"
+make_state "${data_dir}"
+failing_tar_bin="${tmpdir}/failing-tar-bin"
+mkdir -p "${failing_tar_bin}"
+cat > "${failing_tar_bin}/tar" <<'EOF'
+#!/usr/bin/env bash
+archive=''
+previous=''
+for argument in "$@"; do
+    if [[ "${previous}" == '-czf' ]]; then
+        archive="${argument}"
+        break
+    fi
+    previous="${argument}"
+done
+[[ -n "${archive}" ]] || exit 99
+printf 'corrupt archive' > "${archive}"
+exit 1
+EOF
+chmod +x "${failing_tar_bin}/tar"
+set +e
+PATH="${failing_tar_bin}:${PATH}" DATA_DIR="${data_dir}" "${helper}" 'https://new.example' >/dev/null 2>&1
+status=$?
+set -e
+[[ ${status} != 0 ]] || fail 'archive creation failure unexpectedly succeeded'
+[[ "$(<"${data_dir}/.woow-login-server")" == 'https://old.example' ]] \
+    || fail 'archive creation failure changed marker'
+[[ "$(<"${data_dir}/tailscaled.state")" == 'state-private-key' ]] \
+    || fail 'archive creation failure removed state'
+[[ -z "$(find "${data_dir}/state-backups" -mindepth 1 -maxdepth 1 -print -quit)" ]] \
+    || fail 'archive creation failure left a temporary archive'
+
+# state-backups must be a real directory, never a symlink to another location.
+data_dir="${tmpdir}/backup-symlink"
+target_dir="${tmpdir}/backup-target"
+mkdir -p "${data_dir}" "${target_dir}"
+chmod 0755 "${target_dir}"
+printf 'target remains untouched' > "${target_dir}/sentinel"
+ln -s "${target_dir}" "${data_dir}/state-backups"
+printf 'https://old.example\n' > "${data_dir}/.woow-login-server"
+make_state "${data_dir}"
+set +e
+DATA_DIR="${data_dir}" "${helper}" 'https://new.example' >/dev/null 2>&1
+status=$?
+set -e
+[[ ${status} != 0 ]] || fail 'symlinked backup directory unexpectedly succeeded'
+[[ "$(<"${target_dir}/sentinel")" == 'target remains untouched' ]] \
+    || fail 'symlinked backup directory altered its target'
+assert_file_mode 755 "${target_dir}"
+[[ "$(<"${data_dir}/tailscaled.state")" == 'state-private-key' ]] \
+    || fail 'symlinked backup directory removed state'
+[[ "$(<"${data_dir}/.woow-login-server")" == 'https://old.example' ]] \
+    || fail 'symlinked backup directory changed marker'
+
 # State without an origin marker is never changed automatically.
 data_dir="${tmpdir}/safety-guard"
 mkdir -p "${data_dir}"
