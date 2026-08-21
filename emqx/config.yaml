@@ -1,6 +1,6 @@
 ---
 name: Woow EMQX
-version: "5.8.9"
+version: "5.9.0"
 slug: woow-emqx
 description: The most scalable open-source MQTT broker for IoT (WOOWTECH fork)
 url: https://github.com/WOOWTECH/Woow_ha_emqx
@@ -19,8 +19,14 @@ map:
   - addon_config:rw
 options:
   env_vars: []
+  ngrok_enabled: false
+  ngrok_authtoken: ""
+  ngrok_tcp_addr: ""
 host_network: true
 schema:
   env_vars:
     - name: match(^EMQX_([A-Z0-9_])+$)
       value: str
+  ngrok_enabled: bool
+  ngrok_authtoken: password?
+  ngrok_tcp_addr: str?

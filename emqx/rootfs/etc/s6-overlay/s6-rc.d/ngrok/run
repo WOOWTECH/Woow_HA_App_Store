@@ -1,0 +1,24 @@
+#!/command/with-contenv bashio
+# shellcheck shell=bash
+# ngrok tunnel：只負責 raw MQTT tcp 1883；8083 WS 由 Cloudflare 處理。
+if ! bashio::config.true 'ngrok_enabled'; then
+    bashio::log.info "ngrok 未啟用（'ngrok_enabled: false'），service idle"
+    exec sleep infinity
+fi
+
+if ! bashio::config.has_value 'ngrok_authtoken'; then
+    bashio::log.error "已啟用 ngrok 但 'ngrok_authtoken' 為空；EMQX 本體仍會照常運行，ngrok service idle"
+    exec sleep infinity
+fi
+
+NGROK_AUTHTOKEN=$(bashio::config 'ngrok_authtoken')
+export NGROK_AUTHTOKEN
+
+if bashio::config.has_value 'ngrok_tcp_addr'; then
+    addr=$(bashio::config 'ngrok_tcp_addr')
+    bashio::log.info "Starting ngrok tcp 1883 --remote-addr=${addr}"
+    exec ngrok tcp 1883 --remote-addr="${addr}" --log stdout
+fi
+
+bashio::log.info "Starting ngrok tcp 1883 (auto address)"
+exec ngrok tcp 1883 --log stdout

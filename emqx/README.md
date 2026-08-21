@@ -114,6 +114,26 @@ env_vars:
 
 完整環境變數參考：https://www.emqx.io/docs/en/v5.0/admin/cfg.html
 
+### ngrok TCP 通道（選用）
+
+可透過 ngrok 將 raw MQTT（連接埠 1883）開啟為公開的 TCP 通道，
+並把解析後的公開網址印到 Add-on Log：
+
+```yaml
+ngrok_enabled: true
+ngrok_authtoken: "<你的 ngrok authtoken>"
+ngrok_tcp_addr: ""
+```
+
+- `ngrok_enabled`：設為 `true` 以啟用 ngrok TCP 1883 通道（預設 `false`）
+- `ngrok_authtoken`：ngrok 帳號的 authtoken（啟用 ngrok 時必填）
+- `ngrok_tcp_addr`：可選，指定 ngrok 保留的 TCP 位址以取得「固定」的公開端點；留空則由 ngrok 自動指派臨時位址
+
+注意：
+- 8083（MQTT over WebSocket）不在 ngrok 範圍內，請改用 Cloudflare Tunnel
+- TCP 位址穩定性：ngrok 自動指派的 TCP 位址在每次重啟後都可能改變；
+  若需要重啟後仍維持固定的端口，請在 ngrok 帳號中設定保留的 TCP address 並填入 `ngrok_tcp_addr`
+
 ## EMQX Dashboard 功能
 
 ### 監控面板
@@ -204,7 +224,7 @@ EMQX 比 Mosquitto 需要更多系統資源（RAM、CPU）。如果你的 Home A
 ### S6-Overlay 服務啟動順序
 
 ```
-init-emqx (oneshot) → emqx (longrun)
+init-emqx (oneshot) → emqx (longrun) → ngrok (longrun) → ngrok-announce (oneshot)
 ```
 
 ### 服務說明
@@ -213,6 +233,8 @@ init-emqx (oneshot) → emqx (longrun)
 |------|------|------|
 | init-emqx | oneshot | 建立資料目錄 |
 | emqx | longrun | EMQX MQTT Broker |
+| ngrok | longrun | ngrok TCP 1883 通道（由 config 控制） |
+| ngrok-announce | oneshot | 印出解析後的 ngrok 公開網址 |
 
 ### 檔案結構
 
@@ -236,6 +258,8 @@ woow-emqx/
     └── etc/s6-overlay/s6-rc.d/
         ├── init-emqx/       # EMQX 初始化
         ├── emqx/            # EMQX 服務 (longrun)
+        ├── ngrok/           # ngrok TCP 通道 (longrun)
+        ├── ngrok-announce/  # 印出 ngrok 公開網址 (oneshot)
         └── user/contents.d/ # 服務註冊
 ```
 

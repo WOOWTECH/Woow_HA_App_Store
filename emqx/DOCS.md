@@ -44,6 +44,26 @@ env_vars:
 僅接受以 `EMQX_` 開頭的環境變數。
 完整環境變數參考：https://www.emqx.io/docs/en/v5.0/admin/cfg.html
 
+## ngrok TCP 通道（選用）
+
+可透過 ngrok 將 raw MQTT（連接埠 1883）開啟為公開的 TCP 通道，
+並把解析後的公開網址印到 Add-on Log：
+
+```yaml
+ngrok_enabled: true
+ngrok_authtoken: "<你的 ngrok authtoken>"
+ngrok_tcp_addr: ""
+```
+
+- `ngrok_enabled`：設為 `true` 以啟用 ngrok TCP 1883 通道（預設 `false`）
+- `ngrok_authtoken`：ngrok 帳號的 authtoken（啟用 ngrok 時必填）
+- `ngrok_tcp_addr`：可選，指定 ngrok 保留的 TCP 位址以取得「固定」的公開端點；留空則由 ngrok 自動指派臨時位址
+
+注意：
+- 8083（MQTT over WebSocket）不在 ngrok 範圍內，請改用 Cloudflare Tunnel
+- TCP 位址穩定性：ngrok 自動指派的 TCP 位址在每次重啟後都可能改變；
+  若需要重啟後仍維持固定的端口，請在 ngrok 帳號中設定保留的 TCP address 並填入 `ngrok_tcp_addr`
+
 ## 已知問題
 
 - 此 Add-on 無法與 Mosquitto Add-on 同時運行

@@ -1,0 +1,23 @@
+#!/command/with-contenv bashio
+# shellcheck shell=bash
+# 等待 ngrok tcp tunnel 上線後，把 public URL 印到 add-on Log。
+if ! bashio::config.true 'ngrok_enabled'; then
+    exit 0
+fi
+
+readonly NGROK_API='http://127.0.0.1:4040/api/tunnels'
+public_url=''
+for _ in $(seq 1 60); do
+    public_url=$(curl -sf "${NGROK_API}" 2>/dev/null \
+        | jq -r '.tunnels[0].public_url // empty' 2>/dev/null) \
+        || public_url=''
+    [ -n "${public_url}" ] && break
+    sleep 2
+done
+
+if [ -z "${public_url}" ]; then
+    bashio::log.warning "等不到 ngrok tcp tunnel URL（60 x 2s 逾時）；請看 ngrok service log"
+    exit 0
+fi
+
+bashio::log.info ">>> MQTT ngrok: ${public_url}"

@@ -6,6 +6,19 @@ configuration:
       用於進階設定的 EMQX 環境變數。
       僅接受以 `EMQX_` 開頭的變數。
       請參閱 https://www.emqx.io/docs/en/v5.0/admin/cfg.html
+  ngrok_enabled:
+    name: 啟用 ngrok TCP 通道
+    description: >-
+      在連接埠 1883（raw MQTT）開啟公開的 ngrok TCP 通道。
+  ngrok_authtoken:
+    name: ngrok authtoken
+    description: >-
+      你的 ngrok 帳號 authtoken，啟用通道時為必填。
+  ngrok_tcp_addr:
+    name: ngrok 固定 TCP 位址
+    description: >-
+      （選填）保留的 ngrok TCP 位址，用於取得穩定的公開端點。
+      留空則由 ngrok 自動指派臨時位址。
 network:
   1883/tcp: MQTT 連線
   8083/tcp: MQTT over WebSocket

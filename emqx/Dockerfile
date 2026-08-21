@@ -8,10 +8,12 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 # Setup base system
 ARG BUILD_ARCH=amd64
 ARG EMQX_VERSION="v5.8.9"
+ARG NGROK_BASE_URL="https://bin.equinox.io/c/bNyj1mQVY4c"
 RUN \
     apt-get update \
     && apt-get install -y --no-install-recommends \
         procps=2:4.0.4-9 \
+        jq \
     \
     && mkdir /opt/emqx \
     && ARCH="${BUILD_ARCH}" \
@@ -19,10 +21,15 @@ RUN \
     && curl -L -s \
         "https://github.com/emqx/emqx/releases/download/${EMQX_VERSION}/emqx-${EMQX_VERSION#v}-debian13-${ARCH}.tar.gz" \
         | tar zxvf - -C /opt/emqx \
+    && curl -fsSL -o /tmp/ngrok.tgz \
+        "${NGROK_BASE_URL}/ngrok-v3-stable-linux-${ARCH}.tgz" \
+    && tar -xzf /tmp/ngrok.tgz -C /usr/local/bin ngrok \
+    && chmod +x /usr/local/bin/ngrok \
     && rm -fr \
         /opt/emqx/log \
         /var/{cache,log}/* \
-        /var/lib/apt/lists/*
+        /var/lib/apt/lists/* \
+        /tmp/ngrok.tgz
 
 # Copy root filesystem
 COPY rootfs /

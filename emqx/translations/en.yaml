@@ -6,6 +6,19 @@ configuration:
       Additional EMQX environment variables for advanced configuration.
       Only variables starting with `EMQX_` are accepted.
       See https://www.emqx.io/docs/en/v5.0/admin/cfg.html
+  ngrok_enabled:
+    name: Enable ngrok TCP tunnel
+    description: >-
+      Open a public ngrok TCP tunnel for raw MQTT on port 1883.
+  ngrok_authtoken:
+    name: ngrok authtoken
+    description: >-
+      Your ngrok account authtoken, required when the tunnel is enabled.
+  ngrok_tcp_addr:
+    name: ngrok reserved TCP address
+    description: >-
+      Optional reserved ngrok TCP address for a stable public endpoint.
+      Leave empty to let ngrok auto-assign an ephemeral address.
 network:
   1883/tcp: MQTT
   8083/tcp: MQTT over WebSocket
