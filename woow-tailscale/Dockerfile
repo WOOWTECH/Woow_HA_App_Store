@@ -43,6 +43,7 @@ RUN \
 COPY rootfs /
 
 RUN chmod +x /etc/s6-overlay/s6-rc.d/*/run \
+    /etc/s6-overlay/s6-rc.d/*/up \
     /usr/local/lib/woow-tailscale/reconcile-login-server
 
 HEALTHCHECK \

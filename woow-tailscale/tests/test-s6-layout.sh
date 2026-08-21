@@ -5,10 +5,14 @@ repo_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)
 service_dir="${repo_root}/woow-tailscale/rootfs/etc/s6-overlay/s6-rc.d/init-login-server-migration"
 tailscaled_dependencies="${repo_root}/woow-tailscale/rootfs/etc/s6-overlay/s6-rc.d/tailscaled/dependencies.d"
 run_script="${service_dir}/run"
+up_script="${service_dir}/up"
+expected_up_target='/etc/s6-overlay/s6-rc.d/init-login-server-migration/run'
 
 [[ "$(<"${service_dir}/type")" == 'oneshot' ]]
 test -f "${service_dir}/dependencies.d/base"
 test -x "${run_script}"
+test -x "${up_script}"
+grep -Fqx "${expected_up_target}" "${up_script}"
 test -f "${tailscaled_dependencies}/init-login-server-migration"
 # The migration dependency is additive; retain the upstream prerequisites.
 test -f "${tailscaled_dependencies}/base"
