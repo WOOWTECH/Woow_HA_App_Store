@@ -33,10 +33,15 @@ administrator. A Tailscale account is not required for Headscale.
 1. Click the "Install" button to install the app.
 1. Start the "Tailscale" app.
 1. Check the logs of the "Tailscale" app to see if everything went well.
-1. Open the Web UI of the "Tailscale" app to complete authentication and
-   couple your Home Assistant instance with your Tailscale account.
-   **Note:** Some browsers don't work with this step. It is recommended to
-   complete this step on a desktop or laptop computer using the Chrome browser.
+1. When using Tailscale's official control plane, open the Web UI of the
+   "Tailscale" app to complete authentication and couple your Home Assistant
+   instance with your Tailscale account. **Note:** Some browsers don't work
+   with this step. It is recommended to complete this step on a desktop or
+   laptop computer using the Chrome browser.
+
+   For Headscale, configure `login_server` and follow the registration
+   instructions in [Control server / Headscale
+   migration](#control-server--headscale-migration).
 1. Check the logs of the "Tailscale" app again, to see if everything went
    well.
 1. Done!
