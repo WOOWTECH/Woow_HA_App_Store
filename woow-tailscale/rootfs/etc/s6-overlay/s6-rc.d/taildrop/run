@@ -1,0 +1,13 @@
+#!/command/with-contenv bashio
+# shellcheck shell=bash
+export LOG_FD
+# ==============================================================================
+# Home Assistant Community App: Tailscale
+# Fetches files send via Taildrop
+# ==============================================================================
+
+# Ensure the directory exists
+mkdir -p /share/taildrop
+
+# Fetch files
+exec /opt/tailscale file get --verbose --loop "/share/taildrop"

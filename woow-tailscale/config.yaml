@@ -1,0 +1,95 @@
+---
+name: "Woow Tailscale"
+version: "0.1.0"
+slug: "woow-tailscale"
+description: "Tailscale client with safe Headscale/control-server migration"
+url: "https://github.com/WOOWTECH/Woow_HA_App_Store"
+ingress: true
+ingress_port: 0
+ingress_stream: true
+startup: services
+panel_icon: mdi:vpn
+panel_title: "Woow Tailscale"
+arch:
+  - aarch64
+  - amd64
+init: false
+hassio_api: true
+host_network: true
+host_dbus: true
+privileged:
+  - NET_ADMIN
+  - NET_RAW
+  - SYS_ADMIN
+devices:
+  - /dev/net/tun
+map:
+  - type: addons
+    read_only: false
+  - type: all_addon_configs
+    read_only: false
+  - type: backup
+    read_only: false
+  - type: homeassistant_config
+    read_only: false
+    path: /config
+  - type: media
+    read_only: false
+  - type: share
+    read_only: false
+  - type: ssl
+    read_only: false
+ports:
+  41641/udp: null
+options:
+  accept_dns: true
+  accept_routes: true
+  advertise_exit_node: true
+  advertise_connector: true
+  advertise_routes:
+    - local_subnets
+  always_use_derp: false
+  log_level: info
+  login_server: "https://controlplane.tailscale.com"
+  share_homeassistant: disabled
+  share_on_port: 443
+  snat_subnet_routes: true
+  stateful_filtering: false
+  tags: []
+  taildrive:
+    addons: false
+    addon_configs: false
+    backup: false
+    config: false
+    media: false
+    share: false
+    ssl: false
+  taildrop: true
+  userspace_networking: true
+schema:
+  accept_dns: bool
+  accept_routes: bool
+  advertise_exit_node: bool
+  advertise_connector: bool
+  advertise_routes:
+    - "match(^(?:local_subnets|(?:(?:25[0-5]|(?:2[0-4]|1\\d|[1-9]?)\\d)\\.){3}(?:25[0-5]|(?:2[0-4]|1\\d|[1-9]?)\\d)\\/(?:3[0-2]|[12]?\\d)|[a-fA-F\\d.:]+:[a-fA-F\\d.:]+\\/(?:12[0-8]|(?:1[01]|[1-9]?)\\d))$)"
+  always_use_derp: bool
+  exit_node: "match(^(?:(?:(?:25[0-5]|(?:2[0-4]|1\\d|[1-9]?)\\d)\\.){3}(?:25[0-5]|(?:2[0-4]|1\\d|[1-9]?)\\d)|[a-fA-F\\d.:]+:[a-fA-F\\d.:]+|[a-fA-F\\d]{8}(?:-[a-fA-F\\d]{4}){3}-[a-fA-F\\d]{12}|auto:any)$)?"
+  log_level: list(trace|debug|info|notice|warning|error|fatal)
+  login_server: url
+  share_homeassistant: list(disabled|serve|funnel)
+  share_on_port: match(^(?:443|8443|10000)$)
+  snat_subnet_routes: bool
+  stateful_filtering: bool
+  tags:
+    - "match(^tag:[a-zA-Z][a-zA-Z0-9-]*$)"
+  taildrive:
+    addons: bool
+    addon_configs: bool
+    backup: bool
+    config: bool
+    media: bool
+    share: bool
+    ssl: bool
+  taildrop: bool
+  userspace_networking: bool
