@@ -30,7 +30,7 @@ ha store add https://github.com/WOOWTECH/Woow_HA_App_Store
 |---|---|---|---|
 | `cloudflared` | Cloudflared Web GUI | 1.0.3 | Cloudflare Tunnel 遠端存取（含 web GUI） |
 | `odoo18ce` | Odoo 18 CE | 0.2.0 | Odoo 18 社群版 + PostgreSQL 16 一站式 |
-| `woow-emqx` | Woow EMQX | 5.8.9 | EMQX 5.x MQTT broker（企業級） |
+| `woow-emqx` | Woow EMQX | 5.9.0 | EMQX 5.x MQTT broker（企業級，內建 ngrok） |
 | `woow-headscale` | Woow Headscale VPN | 0.1.0 | 自架 Headscale + Headplane GUI |
 | `woow-immich` | Woow Immich | 2.5.6-v10 | 自架相簿（Google Photos 替代） |
 | `woow-n8n` | Woow n8n | 2.12.3 | AI/自動化 workflow |
