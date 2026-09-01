@@ -66,6 +66,7 @@ http {
     # HA Supervisor Ingress adapter.
     server {
         listen 5691;
+        absolute_redirect off;
         allow 172.30.32.2;
         deny all;
         client_max_body_size 512M;
@@ -87,6 +88,45 @@ http {
             proxy_read_timeout 3600s;
         }
 
+        # Rewrite route literals only in Odoo asset bundles. Applying these
+        # substitutions to HTML would alter hidden login redirect values and
+        # make nginx prepend the ingress token twice.
+        location ^~ /web/assets/ {
+            proxy_pass http://odoo_http;
+            proxy_http_version 1.1;
+            proxy_set_header Host $http_host;
+            proxy_set_header X-Forwarded-Host $http_host;
+            proxy_set_header X-Forwarded-Proto $forwarded_proto;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header Accept-Encoding "";
+            proxy_buffering off;
+
+            sub_filter_once off;
+            sub_filter_types application/javascript text/javascript text/css;
+            sub_filter 'url(/' 'url($safe_ingress_path/';
+            sub_filter "url('/" "url('$safe_ingress_path/";
+            sub_filter 'url("/' 'url("$safe_ingress_path/';
+            sub_filter '"/web/' '"$safe_ingress_path/web/';
+            sub_filter "'/web/" "'$safe_ingress_path/web/";
+            sub_filter '`/web/' '`$safe_ingress_path/web/';
+            sub_filter '"/website/' '"$safe_ingress_path/website/';
+            sub_filter "'/website/" "'$safe_ingress_path/website/";
+            sub_filter '`/website/' '`$safe_ingress_path/website/';
+            sub_filter '"/mail/' '"$safe_ingress_path/mail/';
+            sub_filter "'/mail/" "'$safe_ingress_path/mail/";
+            sub_filter '`/mail/' '`$safe_ingress_path/mail/';
+            sub_filter '"/bus/' '"$safe_ingress_path/bus/';
+            sub_filter "'/bus/" "'$safe_ingress_path/bus/";
+            sub_filter '`/bus/' '`$safe_ingress_path/bus/';
+            sub_filter '}/bus/websocket_worker_bundle' '}$safe_ingress_path/bus/websocket_worker_bundle';
+            sub_filter '"/report/' '"$safe_ingress_path/report/';
+            sub_filter '"/odoo' '"$safe_ingress_path/odoo';
+            sub_filter "'/odoo" "'$safe_ingress_path/odoo";
+            sub_filter '`/odoo' '`$safe_ingress_path/odoo';
+            sub_filter 'scope:"/odoo"' 'scope:"$safe_ingress_path/odoo"';
+            sub_filter 'browser.location.origin+router.stateToUrl' 'browser.location.origin+"$safe_ingress_path"+router.stateToUrl';
+        }
+
         location / {
             proxy_pass http://odoo_http;
             proxy_http_version 1.1;
@@ -101,7 +141,7 @@ http {
             proxy_read_timeout 720s;
             proxy_send_timeout 720s;
 
-            proxy_redirect ~^(/.*)$ $safe_ingress_path$1;
+            proxy_redirect ~^(?<odoo_redirect>/.*)$ $safe_ingress_path$odoo_redirect;
             proxy_cookie_path / $safe_ingress_path/;
             proxy_cookie_flags session_id secure httponly samesite=lax;
 
@@ -111,11 +151,14 @@ http {
             sub_filter 'src="/' 'src="$safe_ingress_path/';
             sub_filter 'action="/' 'action="$safe_ingress_path/';
             sub_filter 'data-src="/' 'data-src="$safe_ingress_path/';
+            sub_filter '&#39;/web/login&#39;' '&#39;$safe_ingress_path/web/login&#39;';
+            sub_filter '"translationURL": "/website/' '"translationURL": "$safe_ingress_path/website/';
+            sub_filter '`/web/webclient/' '`$safe_ingress_path/web/webclient/';
             sub_filter 'url(/' 'url($safe_ingress_path/';
             sub_filter "url('/" "url('$safe_ingress_path/";
             sub_filter 'url("/' 'url("$safe_ingress_path/';
 
-            sub_filter '</head>' '<base href="$safe_ingress_path/"><script>window.__INGRESS_PATH__="$safe_ingress_path";(function(){var P=window.__INGRESS_PATH__||"";if(!P)return;var path=function(u){if(typeof u!=="string")return u;try{var x=new URL(u,location.href);if(x.origin===location.origin){var q=x.pathname+x.search+x.hash;while(q.indexOf(P+P)===0)q=q.slice(P.length);if(q.indexOf(P)===0)return q;if(q.charAt(0)==="/")return P+q}}catch(e){}return u};var F=window.fetch;window.fetch=function(i,o){if(typeof i==="string")i=path(i);else if(i instanceof URL)i=path(i.href);else if(i&&i.url){var u=path(i.url);if(u!==i.url)i=new Request(u,i)}return F(i,o)};var X=XMLHttpRequest.prototype.open;XMLHttpRequest.prototype.open=function(m,u){arguments[1]=path(u);return X.apply(this,arguments)};var H=function(fn){return function(s,t,u){if(typeof u==="string")arguments[2]=path(u);return fn.apply(this,arguments)}};history.pushState=H(history.pushState);history.replaceState=H(history.replaceState);var A=Element.prototype.setAttribute;Element.prototype.setAttribute=function(n,v){if((n==="href"||n==="src"||n==="action")&&typeof v==="string")v=path(v);return A.call(this,n,v)};var prop=function(proto,n){if(!proto)return;var d=Object.getOwnPropertyDescriptor(proto,n);if(!d||!d.set)return;Object.defineProperty(proto,n,{get:d.get,set:function(v){return d.set.call(this,path(v))},configurable:true})};prop(window.HTMLAnchorElement&&HTMLAnchorElement.prototype,"href");prop(window.HTMLLinkElement&&HTMLLinkElement.prototype,"href");prop(window.HTMLScriptElement&&HTMLScriptElement.prototype,"src");prop(window.HTMLImageElement&&HTMLImageElement.prototype,"src");prop(window.HTMLFormElement&&HTMLFormElement.prototype,"action");var O=window.open;window.open=function(u){if(typeof u==="string")arguments[0]=path(u);return O.apply(this,arguments)};var W=window.WebSocket;window.WebSocket=function(u,p){var s=String(u),h=location.host;if(s.indexOf("ws://"+h)===0||s.indexOf("wss://"+h)===0){var x=new URL(s);if(x.pathname.indexOf(P)!==0)x.pathname=P+x.pathname;s=x.toString()}return p===undefined?new W(s):new W(s,p)};window.WebSocket.prototype=W.prototype;try{var R=navigator.serviceWorker&&navigator.serviceWorker.register;if(R)navigator.serviceWorker.register=function(u,o){return R.call(this,path(u),o)}}catch(e){}})()</script></head>';
+            sub_filter '<head>' '<head><script>window.__INGRESS_PATH__="$safe_ingress_path";(function(){var P=window.__INGRESS_PATH__||"";if(!P)return;var path=function(u){if(typeof u!=="string")return u;try{var x=new URL(u,location.href);if(x.origin===location.origin){var q=x.pathname+x.search+x.hash;while(q.indexOf(P+P)===0)q=q.slice(P.length);if(q.indexOf(P)===0)return q;if(q.charAt(0)==="/")return P+q}}catch(e){}return u};var F=window.fetch;window.fetch=function(i,o){if(typeof i==="string")i=path(i);else if(i instanceof URL)i=path(i.href);else if(i&&i.url){var u=path(i.url);if(u!==i.url)i=new Request(u,i)}return F(i,o)};var X=XMLHttpRequest.prototype.open;XMLHttpRequest.prototype.open=function(m,u){arguments[1]=path(u);return X.apply(this,arguments)};var H=function(fn){return function(s,t,u){if(typeof u==="string")arguments[2]=path(u);else if(u instanceof URL)arguments[2]=path(u.href);return fn.apply(this,arguments)}};var HP=History.prototype.pushState,HR=History.prototype.replaceState;History.prototype.pushState=H(HP);History.prototype.replaceState=H(HR);var A=Element.prototype.setAttribute;Element.prototype.setAttribute=function(n,v){if((n==="href"||n==="src"||n==="action")&&typeof v==="string")v=path(v);return A.call(this,n,v)};var prop=function(proto,n){if(!proto)return;var d=Object.getOwnPropertyDescriptor(proto,n);if(!d||!d.set)return;Object.defineProperty(proto,n,{get:d.get,set:function(v){return d.set.call(this,path(v))},configurable:true})};prop(window.HTMLAnchorElement&&HTMLAnchorElement.prototype,"href");prop(window.HTMLLinkElement&&HTMLLinkElement.prototype,"href");prop(window.HTMLScriptElement&&HTMLScriptElement.prototype,"src");prop(window.HTMLImageElement&&HTMLImageElement.prototype,"src");prop(window.HTMLFormElement&&HTMLFormElement.prototype,"action");var O=window.open;window.open=function(u){if(typeof u==="string")arguments[0]=path(u);return O.apply(this,arguments)};var WK=window.Worker;if(WK){window.Worker=function(u,o){return new WK(path(String(u)),o)};window.Worker.prototype=WK.prototype}var SW=window.SharedWorker;if(SW){window.SharedWorker=function(u,o){return new SW(path(String(u)),o)};window.SharedWorker.prototype=SW.prototype}var W=window.WebSocket;window.WebSocket=function(u,p){var s=String(u),h=location.host;if(s.indexOf("ws://"+h)===0||s.indexOf("wss://"+h)===0){var x=new URL(s);if(x.pathname.indexOf(P)!==0)x.pathname=P+x.pathname;s=x.toString()}return p===undefined?new W(s):new W(s,p)};window.WebSocket.prototype=W.prototype;try{if(navigator.serviceWorker){var C={addEventListener:function(){},removeEventListener:function(){},postMessage:function(){}};try{Object.defineProperty(navigator.serviceWorker,"controller",{get:function(){return C},configurable:true})}catch(e){};navigator.serviceWorker.register=function(){return Promise.resolve({scope:P+"/",installing:null,waiting:null,active:C,update:function(){return Promise.resolve()},unregister:function(){return Promise.resolve(true)},addEventListener:function(){},removeEventListener:function(){}})}}catch(e){}})()</script>';
         }
     }
 }

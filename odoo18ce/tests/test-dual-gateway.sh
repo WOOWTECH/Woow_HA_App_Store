@@ -33,5 +33,15 @@ assert 'bootstrap-user.json' in m
 assert 'base.group_system' in m
 assert 'base.group_erp_manager' in m
 assert 'while(q.indexOf(P+P)===0)' in n
+assert 'absolute_redirect off;' in n
+assert '(?<odoo_redirect>/.*)' in n
+assert 'window.SharedWorker=function' in n
+assert 'Object.defineProperty(navigator.serviceWorker,"controller"' in n
+assert "sub_filter '&#39;/web/login&#39;'" in n
+assert "sub_filter '<head>'" in n
+assert 'u instanceof URL' in n
+assert 'location ^~ /web/assets/' in n
+assert 'translationURL' in n
+assert 'browser.location.origin+"$safe_ingress_path"+router.stateToUrl' in n
 PY
 printf '%s\n' 'dual gateway tests passed'

@@ -1,5 +1,50 @@
 # Changelog
 
+## 0.3.11 — 2026-09-02
+
+### Fixed
+- Scope root-route substitutions to `/web/assets/` responses so Odoo login hidden redirect values remain unmodified.
+- Prefix authenticated HTML's inline menu/translation prefetch URLs.
+- Patch Odoo router `stateToUrl` origin composition so OWL navigation remains under the Supervisor ingress token.
+
+### Verified
+- Actual rendered nginx template behind an HTTPS Supervisor-prefix simulator: login, authenticated `/odoo/discuss`, menus, translations, assets and browser console all pass with zero relevant 4xx/5xx, failed requests or console errors.
+
+## 0.3.10 — 2026-09-02
+
+### Fixed
+- Remove broad server-side JavaScript route substitution after moving the runtime shim before Odoo assets; keeping both mechanisms double-prefixed OWL navigation. Early fetch/history/Worker shims are now the single runtime URL authority.
+
+## 0.3.9 — 2026-09-02
+
+### Fixed
+- Inject the ingress runtime shim immediately after `<head>`, before Odoo's synchronous backend asset bundles capture browser APIs.
+- Handle URL objects passed to History API and rewrite all quote variants of `/mail` and `/odoo` routes.
+
+## 0.3.8 — 2026-09-02
+
+### Fixed
+- Rewrite Odoo login form's HTML-entity-encoded inline `this.action = '/web/login'`; this assignment bypassed both the static action attribute and some browser property interception paths.
+
+## 0.3.7 — 2026-09-02
+
+### Fixed
+- Rewrite Odoo's computed `${serverURL}/bus/websocket_worker_bundle` path, which is not a simple quoted root literal.
+- Provide a complete inert service-worker controller/registration shape so Odoo does not dereference a null controller in the embedded Ingress UI.
+
+## 0.3.6 — 2026-09-02
+
+### Fixed
+- Keep Odoo bus SharedWorker/Worker bundle URLs inside the HA ingress prefix.
+- Disable Odoo service-worker registration under Ingress because its root scope crosses the Supervisor token boundary; offline/PWA caching is unnecessary for the embedded admin UI.
+
+## 0.3.5 — 2026-09-02
+
+### Fixed
+- Preserve relative redirect targets with named nginx regex captures and disable absolute redirects on the ingress listener.
+- Rewrite Odoo root-absolute RPC/worker bundle routes (`/web`, `/websocket`, `/report`, `/mail`, `/website`) that execute outside window-level URL shims.
+- Added an actual nginx + HTTPS Supervisor-prefix Playwright harness during validation, covering login and authenticated OWL startup.
+
 ## 0.3.4 — 2026-09-02
 
 ### Fixed
