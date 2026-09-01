@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.4 — 2026-09-02
+
+### Fixed
+- Post-test user downgrade now removes both Settings (`base.group_system`) and Access Rights (`base.group_erp_manager`) privileges, leaving a normal Internal User.
+
 ## 0.3.3 — 2026-09-02
 
 ### Fixed
