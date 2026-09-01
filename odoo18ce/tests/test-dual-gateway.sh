@@ -31,5 +31,6 @@ m=(root/'rootfs/usr/local/bin/odoo-maintenance-bootstrap').read_text()
 assert 'web.base.url.freeze' in m
 assert 'bootstrap-user.json' in m
 assert 'base.group_system' in m
+assert 'while(q.indexOf(P+P)===0)' in n
 PY
 printf '%s\n' 'dual gateway tests passed'
