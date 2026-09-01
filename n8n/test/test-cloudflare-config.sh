@@ -24,6 +24,7 @@ nginx = (config_path := __import__('pathlib').Path(sys.argv[1]).parent / 'rootfs
 assert 'history.pushState=H(history.pushState)' in nginx
 assert 'window.WebSocket=function' in nginx
 assert 'sub_filter \'</head>\'' in nginx
+assert 'return 302 $safe_ingress_path/signin;' in nginx
 
 schema = config["schema"]
 assert "N8N_EDITOR_BASE_URL" in schema, "missing N8N_EDITOR_BASE_URL schema"

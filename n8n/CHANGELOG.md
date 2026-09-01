@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.12.11
+
+- Redirect the ingress adapter's cached root URL to the token-prefixed `/signin` route, covering existing HA sidebar panels that retain the old root entry across an add-on update.
+
 ## 2.12.10
 
 - Remove the leading slash from `ingress_entry` to prevent Supervisor from generating a double-slash `//signin` ingress URL.
