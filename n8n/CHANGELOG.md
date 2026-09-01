@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.12.8
+
+- Fixed the blank HA Ingress panel after n8n loaded its initial assets: inject an ingress-aware `<base>` and runtime shim for Vue history navigation, lazy asset URLs, fetch/XHR, DOM URLs, and the `/rest/push` WebSocket.
+- Removed the duplicate nginx MIME-type warning.
+
 ## 2.12.7
 
 - Added Home Assistant Ingress on dedicated port 5690 with sidebar metadata, streaming, WebSocket forwarding, watchdog, and dynamic `X-Ingress-Path` rewriting.

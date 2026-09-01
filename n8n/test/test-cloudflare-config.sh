@@ -19,6 +19,11 @@ assert config["ingress_stream"] is True
 assert config["panel_title"] == "Woow n8n"
 assert config["ports"]["5678/tcp"] == 5678
 
+nginx = (config_path := __import__('pathlib').Path(sys.argv[1]).parent / 'rootfs/etc/nginx/nginx.conf').read_text()
+assert 'history.pushState=H(history.pushState)' in nginx
+assert 'window.WebSocket=function' in nginx
+assert 'sub_filter \'</head>\'' in nginx
+
 schema = config["schema"]
 assert "N8N_EDITOR_BASE_URL" in schema, "missing N8N_EDITOR_BASE_URL schema"
 assert "N8N_WEBHOOK_URL" in schema, "missing N8N_WEBHOOK_URL schema"
