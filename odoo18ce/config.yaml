@@ -1,7 +1,7 @@
 ---
 name: "Odoo 18 CE"
 description: "Odoo 18 Community Edition + PostgreSQL 16 — bundled all-in-one add-on for SME"
-version: "0.3.1"
+version: "0.3.2"
 slug: "odoo18ce"
 url: "https://github.com/WOOWTECH/Woow_ha_odoo"
 startup: application
@@ -104,8 +104,8 @@ options:
   limit_memory_soft: 2147483648
   limit_time_cpu: 60
   limit_time_real: 120
-  # Canonical external URL used by email, website metadata and callbacks.
-  public_url: ""
+  # public_url is optional and intentionally has no empty default because
+  # Home Assistant validates present URL fields strictly.
   # Retained for backwards compatibility; 0.3.0+ safely forces this on.
   proxy_mode: true
   dev_mode: false
