@@ -51,6 +51,8 @@ The current bundled n8n uses the legacy `WEBHOOK_URL`; the add-on mirrors it wit
 
 Cloudflare Tunnel supports WebSockets, so the editor's `/rest/push` connection works on the same public HTTPS hostname. This publishes the complete n8n entry point; protect the n8n owner account with a strong password. Cloudflare Access on the same hostname needs explicit bypass rules for public webhook paths.
 
+The add-on also enables Home Assistant Ingress on port 5690. **Open Web UI** and the optional HA sidebar panel use this authenticated ingress adapter, including WebSocket and streaming support. The direct 5678 origin remains available for Cloudflare at the domain root, so both entrances work concurrently.
+
 ## Redis
 
 Redis is running on `localhost` or `127.0.0.1` with port `6379`

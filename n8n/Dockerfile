@@ -101,7 +101,8 @@ RUN \
         python3 \
         py3-pip \
         python3-dev \
-        redis; \
+        redis \
+        nginx; \
     python3 -m venv /usr/local/lib/node_modules/@n8n/task-runner-python/.venv; \
     /usr/local/lib/node_modules/@n8n/task-runner-python/.venv/bin/pip install --upgrade pip; \
     rm -rf /tmp/*

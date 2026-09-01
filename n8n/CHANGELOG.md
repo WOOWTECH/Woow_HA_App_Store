@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.12.7
+
+- Added Home Assistant Ingress on dedicated port 5690 with sidebar metadata, streaming, WebSocket forwarding, watchdog, and dynamic `X-Ingress-Path` rewriting.
+- Kept the direct port 5678 unchanged so the complete root-path UI/API/Webhook/WebSocket remains available through Cloudflare Tunnel at the same time.
+- Added an ingress-only nginx adapter; n8n itself remains rooted at `/`, so the Cloudflare public URL is not moved under the HA ingress token.
+
 ## 2.12.6
 
 - Added first-class `N8N_EDITOR_BASE_URL`, `N8N_WEBHOOK_URL`, and `N8N_PROXY_HOPS` options for complete UI/API/WebSocket access through Cloudflare Tunnel.
