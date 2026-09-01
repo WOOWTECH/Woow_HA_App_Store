@@ -1,0 +1,12 @@
+#!/usr/bin/with-contenv bashio
+set -e
+bashio::log.info "Waiting for internal Odoo HTTP service..."
+for i in $(seq 1 120); do
+    if curl -fsS --max-time 2 http://127.0.0.1:8070/web/login >/dev/null 2>&1; then
+        bashio::log.info "Starting dual Odoo nginx gateways"
+        exec nginx -c /etc/nginx/nginx.conf
+    fi
+    sleep 1
+done
+bashio::log.error "Odoo did not become ready on 127.0.0.1:8070"
+exit 1

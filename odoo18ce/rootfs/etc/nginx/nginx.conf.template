@@ -1,0 +1,121 @@
+daemon off;
+pid /var/run/nginx.pid;
+worker_processes 1;
+error_log /dev/stderr info;
+
+events { worker_connections 1024; }
+
+http {
+    access_log /dev/stdout;
+    include /etc/nginx/mime.types;
+    default_type application/octet-stream;
+    server_tokens off;
+
+    map $http_upgrade $connection_upgrade {
+        default upgrade;
+        '' close;
+    }
+    map $http_x_forwarded_proto $forwarded_proto {
+        default $http_x_forwarded_proto;
+        '' $scheme;
+    }
+    map $http_x_ingress_path $safe_ingress_path {
+        default "";
+        "~^/api/hassio_ingress/[A-Za-z0-9_-]{16,128}$" $http_x_ingress_path;
+    }
+
+    upstream odoo_http { server 127.0.0.1:8070; }
+    upstream odoo_websocket { server 127.0.0.1:%%WS_PORT%%; }
+
+    # Internal public origin. The host port is not published; cloudflared
+    # reaches this listener through the add-on's hassio-network DNS name.
+    server {
+        listen 8069 default_server;
+        client_max_body_size 512M;
+
+        # Database lifecycle operations are deliberately HA-Ingress-only.
+        location ^~ /web/database/ { return 404; }
+
+        location = /websocket {
+            proxy_pass http://odoo_websocket;
+            proxy_http_version 1.1;
+            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Connection $connection_upgrade;
+            proxy_set_header Host $http_host;
+            proxy_set_header X-Forwarded-Host $http_host;
+            proxy_set_header X-Forwarded-Proto $forwarded_proto;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_read_timeout 3600s;
+        }
+
+        location / {
+            proxy_pass http://odoo_http;
+            proxy_http_version 1.1;
+            proxy_set_header Host $http_host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-Host $http_host;
+            proxy_set_header X-Forwarded-Proto $forwarded_proto;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_request_buffering off;
+            proxy_read_timeout 720s;
+            proxy_send_timeout 720s;
+            proxy_cookie_flags session_id secure httponly samesite=lax;
+        }
+    }
+
+    # HA Supervisor Ingress adapter.
+    server {
+        listen 5691;
+        allow 172.30.32.2;
+        deny all;
+        client_max_body_size 512M;
+
+        location = / {
+            return 302 $safe_ingress_path/odoo;
+        }
+
+        location = /websocket {
+            proxy_pass http://odoo_websocket;
+            proxy_http_version 1.1;
+            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Connection $connection_upgrade;
+            proxy_set_header Host $http_host;
+            proxy_set_header Origin $forwarded_proto://$http_host;
+            proxy_set_header X-Forwarded-Host $http_host;
+            proxy_set_header X-Forwarded-Proto $forwarded_proto;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_read_timeout 3600s;
+        }
+
+        location / {
+            proxy_pass http://odoo_http;
+            proxy_http_version 1.1;
+            proxy_set_header Host $http_host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-Host $http_host;
+            proxy_set_header X-Forwarded-Proto $forwarded_proto;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header Accept-Encoding "";
+            proxy_request_buffering off;
+            proxy_buffering off;
+            proxy_read_timeout 720s;
+            proxy_send_timeout 720s;
+
+            proxy_redirect ~^(/.*)$ $safe_ingress_path$1;
+            proxy_cookie_path / $safe_ingress_path/;
+            proxy_cookie_flags session_id secure httponly samesite=lax;
+
+            sub_filter_once off;
+            sub_filter_types application/javascript text/javascript text/css application/json;
+            sub_filter 'href="/' 'href="$safe_ingress_path/';
+            sub_filter 'src="/' 'src="$safe_ingress_path/';
+            sub_filter 'action="/' 'action="$safe_ingress_path/';
+            sub_filter 'data-src="/' 'data-src="$safe_ingress_path/';
+            sub_filter 'url(/' 'url($safe_ingress_path/';
+            sub_filter "url('/" "url('$safe_ingress_path/";
+            sub_filter 'url("/' 'url("$safe_ingress_path/';
+
+            sub_filter '</head>' '<base href="$safe_ingress_path/"><script>window.__INGRESS_PATH__="$safe_ingress_path";(function(){var P=window.__INGRESS_PATH__||"";if(!P)return;var path=function(u){if(typeof u!=="string")return u;try{var x=new URL(u,location.href);if(x.origin===location.origin){var q=x.pathname+x.search+x.hash;if(q.indexOf(P)===0)return q;if(q.charAt(0)==="/")return P+q}}catch(e){}return u};var F=window.fetch;window.fetch=function(i,o){if(typeof i==="string")i=path(i);else if(i instanceof URL)i=path(i.href);else if(i&&i.url){var u=path(i.url);if(u!==i.url)i=new Request(u,i)}return F(i,o)};var X=XMLHttpRequest.prototype.open;XMLHttpRequest.prototype.open=function(m,u){arguments[1]=path(u);return X.apply(this,arguments)};var H=function(fn){return function(s,t,u){if(typeof u==="string")arguments[2]=path(u);return fn.apply(this,arguments)}};history.pushState=H(history.pushState);history.replaceState=H(history.replaceState);var A=Element.prototype.setAttribute;Element.prototype.setAttribute=function(n,v){if((n==="href"||n==="src"||n==="action")&&typeof v==="string")v=path(v);return A.call(this,n,v)};var prop=function(proto,n){if(!proto)return;var d=Object.getOwnPropertyDescriptor(proto,n);if(!d||!d.set)return;Object.defineProperty(proto,n,{get:d.get,set:function(v){return d.set.call(this,path(v))},configurable:true})};prop(window.HTMLAnchorElement&&HTMLAnchorElement.prototype,"href");prop(window.HTMLLinkElement&&HTMLLinkElement.prototype,"href");prop(window.HTMLScriptElement&&HTMLScriptElement.prototype,"src");prop(window.HTMLImageElement&&HTMLImageElement.prototype,"src");prop(window.HTMLFormElement&&HTMLFormElement.prototype,"action");var O=window.open;window.open=function(u){if(typeof u==="string")arguments[0]=path(u);return O.apply(this,arguments)};var W=window.WebSocket;window.WebSocket=function(u,p){var s=String(u),h=location.host;if(s.indexOf("ws://"+h)===0||s.indexOf("wss://"+h)===0){var x=new URL(s);if(x.pathname.indexOf(P)!==0)x.pathname=P+x.pathname;s=x.toString()}return p===undefined?new W(s):new W(s,p)};window.WebSocket.prototype=W.prototype;try{var R=navigator.serviceWorker&&navigator.serviceWorker.register;if(R)navigator.serviceWorker.register=function(u,o){return R.call(this,path(u),o)}}catch(e){}})()</script></head>';
+        }
+    }
+}

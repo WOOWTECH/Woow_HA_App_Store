@@ -55,10 +55,10 @@ configuration:
     description: >-
       每個請求的最大實際處理時間。（預設：120）
   proxy_mode:
-    name: 代理模式
+    name: 代理模式（系統管理）
     description: >-
-      啟用代理模式以正確處理 X-Forwarded 標頭。
-      在反向代理或 Cloudflare Tunnel 後方運行時應設為 true。
+      為相容既有設定而保留。0.3.0 起 Odoo 只接受內建 nginx 流量，
+      因此系統會安全地固定啟用 proxy mode。
   odoo_extra_addons:
     name: 額外模組路徑
     description: >-
@@ -110,5 +110,5 @@ configuration:
       SMTP 連線使用 SSL/TLS 加密。（預設：true）
 
 network:
-  8069/tcp: Odoo 網頁介面 + XML-RPC
-  8072/tcp: Odoo 長輪詢 / WebSocket
+  8069/tcp: Cloudflare 內部 origin（不映射至 HA Host）
+  8072/tcp: gevent WebSocket 內部埠（不映射至 HA Host）

@@ -23,10 +23,13 @@ Medium Enterprise) deployment on Home Assistant OS hosts, including Raspberry Pi
 └─────────────────────────────────┘
 ```
 
-- **s6-overlay** manages PostgreSQL and Odoo as supervised services
-- PostgreSQL listens on `127.0.0.1:5432` (container-internal only)
-- Odoo listens on `0.0.0.0:8069` (mapped to host)
-- All persistent data stored under `/data` volume
+- **s6-overlay** manages PostgreSQL, Odoo, and nginx as supervised services
+- PostgreSQL listens on `127.0.0.1:5432`
+- Odoo listens only on `127.0.0.1:8070`
+- nginx port `5691` provides authenticated Home Assistant Ingress at `/odoo`
+- nginx port `8069` is an internal Cloudflare origin; it is not mapped to the HA host
+- `/websocket` automatically uses 8070 for `workers=0` or gevent 8072 for `workers>0`
+- All persistent data is stored under `/data`
 
 ## Configuration
 
@@ -91,16 +94,19 @@ All data is stored under `/data` and persists across restarts and updates:
 
 | Port | Protocol | Description |
 |------|----------|-------------|
-| 8069 | TCP | Odoo web interface and XML-RPC API |
-| 8072 | TCP | Longpolling / WebSocket (active when workers > 0) |
+| 5691 | TCP | HA Supervisor Ingress (container-internal) |
+| 8069 | TCP | Cloudflare full UI/API origin (container-internal) |
+| 8070 | TCP | Odoo HTTP backend bound to localhost |
+| 8072 | TCP | gevent WebSocket bound to localhost when workers > 0 |
 
 ## External HTTPS
 
-This add-on serves HTTP only. For HTTPS access, use one of:
+The add-on has two simultaneous entrances:
 
-- **Cloudflare Tunnel** (recommended for HA users)
-- **NGINX Proxy Manager** add-on with SSL certificates
-- **Let's Encrypt** add-on + reverse proxy
+- **Home Assistant Ingress** — Open Web UI/sidebar opens `/odoo`; HA authentication is followed by normal Odoo authentication.
+- **Cloudflare Tunnel** — publish the complete root-path Odoo UI/API/WebSocket by routing the hostname to `http://<repo-hash>-odoo18ce:8069` on the internal add-on network.
+
+The Cloudflare gateway blocks `/web/database/*`; database lifecycle management remains available only through HA Ingress. Odoo itself remains HTTP on localhost while TLS terminates at HA or Cloudflare.
 
 ## Custom Modules
 

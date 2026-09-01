@@ -54,10 +54,10 @@ configuration:
     description: >-
       Maximum wall-clock time per request. (Default: 120)
   proxy_mode:
-    name: Proxy Mode
+    name: Proxy Mode (managed)
     description: >-
-      Enable proxy mode to correctly handle X-Forwarded headers.
-      Should be true when running behind a reverse proxy or Cloudflare Tunnel.
+      Retained for configuration compatibility. Version 0.3.0 always enables
+      proxy mode safely because Odoo only accepts traffic from bundled nginx.
   odoo_extra_addons:
     name: Extra Addons Path
     description: >-
@@ -109,5 +109,5 @@ configuration:
       Use SSL/TLS for SMTP connection. (Default: true)
 
 network:
-  8069/tcp: Odoo Web + XML-RPC
-  8072/tcp: Odoo Longpolling / WebSocket
+  8069/tcp: Internal Cloudflare origin (not exposed on HA host)
+  8072/tcp: Internal gevent WebSocket (not exposed on HA host)

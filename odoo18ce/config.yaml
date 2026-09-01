@@ -1,24 +1,34 @@
 ---
 name: "Odoo 18 CE"
 description: "Odoo 18 Community Edition + PostgreSQL 16 — bundled all-in-one add-on for SME"
-version: "0.2.0"
+version: "0.3.0"
 slug: "odoo18ce"
 url: "https://github.com/WOOWTECH/Woow_ha_odoo"
 startup: application
 boot: auto
 init: false
+hassio_api: true
+
+ingress: true
+ingress_port: 5691
+ingress_entry: odoo
+ingress_stream: true
+panel_icon: mdi:domain
+panel_title: Woow Odoo
+panel_admin: true
+watchdog: "http://[HOST]:[PORT:5691]/web/login"
 
 arch:
   - amd64
   - aarch64
 
 ports:
-  8069/tcp: 8069
-  8072/tcp: 8072
+  8069/tcp: null
+  8072/tcp: null
 
 ports_description:
-  8069/tcp: "Odoo Web + XML-RPC"
-  8072/tcp: "Odoo Longpolling / WebSocket"
+  8069/tcp: "Internal Cloudflare origin (not exposed on HA host)"
+  8072/tcp: "Internal gevent WebSocket (workers > 0; not exposed on HA host)"
 
 webui: "http://[HOST]:[PORT:8069]"
 
