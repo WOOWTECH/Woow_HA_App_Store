@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.3 — 2026-09-02
+
+### Fixed
+- Normalize duplicate HA ingress prefixes produced when Odoo's lazy asset loader combines an already rewritten `data-src` with the document base URL.
+- Playwright token-prefix reproduction now renders the Odoo login form with all Odoo assets inside the ingress prefix.
+
 ## 0.3.2 — 2026-09-02
 
 ### Fixed
