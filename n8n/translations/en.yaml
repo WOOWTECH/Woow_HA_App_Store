@@ -13,9 +13,18 @@ configuration:
   N8N_PATH:
     name: Url path
     description: The path n8n deploys to (default '/')
+  N8N_EDITOR_BASE_URL:
+    name: Editor public URL
+    description: The complete HTTPS URL used to open the n8n editor through a reverse proxy such as Cloudflare Tunnel.
+  N8N_WEBHOOK_URL:
+    name: Webhook public URL
+    description: The complete HTTPS URL advertised for production and test webhooks. Preferred by n8n 2.35 and later.
   WEBHOOK_URL:
-    name: Webhook URL
-    description: The URL used for webhooks. If using Cloudflare Tunnel, set this to your external HTTPS URL.
+    name: Legacy webhook URL
+    description: Compatibility setting for n8n before 2.35. It is mirrored to N8N_WEBHOOK_URL automatically.
+  N8N_PROXY_HOPS:
+    name: Reverse proxy hops
+    description: Number of trusted reverse proxy hops in front of n8n. Use 1 for the standard Cloudflare Tunnel setup.
   N8N_SECURE_COOKIE:
     name: Secure cookie
     description: Disabled by default for LAN HTTP access. Enable this when accessing n8n exclusively through HTTPS.
@@ -24,4 +33,4 @@ configuration:
     description: >-
       This will always start Redis with a clean new db. Use only if you are facing problems that needs cleaning Redis
 network:
-  5678/tcp: n8n Web UI
+  5678/tcp: n8n Web UI, API, webhooks, and WebSocket origin

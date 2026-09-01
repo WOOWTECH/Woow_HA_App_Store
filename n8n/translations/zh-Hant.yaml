@@ -14,9 +14,18 @@ configuration:
   N8N_PATH:
     name: URL 路徑
     description: n8n 部署的路徑（預設為 '/'）
+  N8N_EDITOR_BASE_URL:
+    name: 編輯器公開網址
+    description: 透過 Cloudflare Tunnel 等反向代理開啟 n8n 編輯器時使用的完整 HTTPS 網址。
+  N8N_WEBHOOK_URL:
+    name: Webhook 公開網址
+    description: 對外公告的 production 與 test webhook 完整 HTTPS 網址。n8n 2.35 之後優先使用此設定。
   WEBHOOK_URL:
-    name: Webhook 網址
-    description: Webhook 回呼使用的網址。若使用 Cloudflare Tunnel，請設定為您的外部 HTTPS 網址。
+    name: 舊版 Webhook 網址
+    description: 相容 n8n 2.35 以前版本，啟動時會自動與 N8N_WEBHOOK_URL 同步。
+  N8N_PROXY_HOPS:
+    name: 反向代理層數
+    description: n8n 前方可信任的反向代理層數。標準 Cloudflare Tunnel 架構請設為 1。
   N8N_SECURE_COOKIE:
     name: 安全 Cookie
     description: 區域網路 HTTP 存取預設停用。僅透過 HTTPS 存取 n8n 時，請啟用此選項。
@@ -25,4 +34,4 @@ configuration:
     description: >-
       啟動時以全新的資料庫啟動 Redis。僅在遇到需要清除 Redis 的問題時使用。
 network:
-  5678/tcp: n8n 網頁介面
+  5678/tcp: n8n 網頁介面、API、Webhook 與 WebSocket 來源

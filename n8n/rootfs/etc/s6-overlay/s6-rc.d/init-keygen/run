@@ -4,6 +4,12 @@
 set -e
 
 OPTIONS_SOURCE=/data/options.json
+S6_ENV_DIR="${S6_ENV_DIR:-/var/run/s6/container_environment}"
+
+set_s6_env() {
+    mkdir -p "${S6_ENV_DIR}"
+    printf "%s" "$2" > "${S6_ENV_DIR}/$1"
+}
 
 if ! ha_address="$(bashio::network.ipv4_address 2>/dev/null)"; then
     ha_address="homeassistant.local"
@@ -19,12 +25,21 @@ if ! port=$(bashio::addon.port 5678 2>/dev/null); then
     port=5678
 fi
 
-printf "%s" "$protocol" > /var/run/s6/container_environment/N8N_PROTOCOL
+set_s6_env N8N_PROTOCOL "$protocol"
 
 if [ -z "${N8N_HOST:-}" ]; then
-    printf "%s" "$ha_address" > /var/run/s6/container_environment/N8N_HOST
+    set_s6_env N8N_HOST "$ha_address"
 fi
 
-if [ -z "${WEBHOOK_URL:-}" ]; then
-    printf "%s" "${protocol}://${ha_address}:${port}" > /var/run/s6/container_environment/WEBHOOK_URL
+# n8n <= 2.34 uses WEBHOOK_URL. n8n >= 2.35 prefers N8N_WEBHOOK_URL but
+# keeps WEBHOOK_URL as a deprecated alias. Mirror whichever value the user
+# configured so this add-on keeps working across a future n8n upgrade.
+if [ -n "${N8N_WEBHOOK_URL:-}" ] && [ -z "${WEBHOOK_URL:-}" ]; then
+    set_s6_env WEBHOOK_URL "$N8N_WEBHOOK_URL"
+elif [ -n "${WEBHOOK_URL:-}" ] && [ -z "${N8N_WEBHOOK_URL:-}" ]; then
+    set_s6_env N8N_WEBHOOK_URL "$WEBHOOK_URL"
+elif [ -z "${WEBHOOK_URL:-}" ] && [ -z "${N8N_WEBHOOK_URL:-}" ]; then
+    fallback_url="${protocol}://${ha_address}:${port}"
+    set_s6_env WEBHOOK_URL "$fallback_url"
+    set_s6_env N8N_WEBHOOK_URL "$fallback_url"
 fi

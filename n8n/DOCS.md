@@ -34,10 +34,22 @@ This design simplifies the setup for users who access n8n only within their home
 2. **Initial Setup**:
    - Start the add-on
    - Click **OPEN WEB UI** and follow the first-run wizard
-3. **Configure Cloudflare Tunnel** (for external access):
-   - Set up a Cloudflare Tunnel pointing to `http://<HA_IP>:5678`
-   - Set `WEBHOOK_URL` to your Cloudflare Tunnel HTTPS URL
-   - Set `N8N_HOST` to your tunnel domain
+3. **Configure Cloudflare Tunnel** (for complete external UI/API/WebSocket access):
+   - Set up a Cloudflare Tunnel public hostname pointing to `http://<HA_IP>:5678` (or the Home Assistant internal hostname and port)
+   - Configure the add-on:
+     ```yaml
+     N8N_HOST: n8n.example.com
+     N8N_EDITOR_BASE_URL: https://n8n.example.com
+     N8N_WEBHOOK_URL: https://n8n.example.com
+     WEBHOOK_URL: https://n8n.example.com
+     N8N_PROXY_HOPS: 1
+     N8N_SECURE_COOKIE: true
+     ```
+   - Restart the add-on.
+
+The current bundled n8n uses the legacy `WEBHOOK_URL`; the add-on mirrors it with `N8N_WEBHOOK_URL` for forward compatibility with n8n 2.35 and later. Keep `N8N_PROTOCOL=http`: TLS terminates at Cloudflare while the add-on origin remains HTTP.
+
+Cloudflare Tunnel supports WebSockets, so the editor's `/rest/push` connection works on the same public HTTPS hostname. This publishes the complete n8n entry point; protect the n8n owner account with a strong password. Cloudflare Access on the same hostname needs explicit bypass rules for public webhook paths.
 
 ## Redis
 

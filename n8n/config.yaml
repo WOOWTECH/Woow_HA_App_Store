@@ -1,5 +1,5 @@
 name: Woow n8n
-version: 2.12.5
+version: 2.12.6
 slug: woow-n8n
 description: Flexible AI workflow automation (HTTP for LAN, use Cloudflare Tunnel for HTTPS)
 url: https://github.com/WOOWTECH/Woow_ha_n8n
@@ -25,7 +25,10 @@ schema:
   GENERIC_TIMEZONE: str?
   N8N_HOST: str?
   N8N_PATH: str?
-  WEBHOOK_URL: str?
+  N8N_EDITOR_BASE_URL: url?
+  N8N_WEBHOOK_URL: url?
+  WEBHOOK_URL: url?
+  N8N_PROXY_HOPS: int(0,)?
   N8N_SECURE_COOKIE: bool
   clean_redis: bool?
   env_vars:
