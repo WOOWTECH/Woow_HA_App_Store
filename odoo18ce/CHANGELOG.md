@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.1 — 2026-09-02
+
+### Added
+- `public_url` option freezes Odoo `web.base.url` to the canonical Cloudflare HTTPS origin
+- Secure one-shot `/config/bootstrap-user.json` maintenance hook for repeatable E2E account provisioning and post-test privilege downgrade
+
 ## 0.3.0 — 2026-09-02
 
 ### Added

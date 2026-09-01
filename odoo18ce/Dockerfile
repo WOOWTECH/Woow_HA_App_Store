@@ -54,6 +54,7 @@ COPY rootfs/ /
 # ──────────────────────────────────────────────
 RUN chmod a+rx /etc/cont-init.d/*.sh \
     && chmod a+rx /etc/services.d/*/run \
-    && chmod a+rx /etc/services.d/*/finish
+    && chmod a+rx /etc/services.d/*/finish \
+    && chmod a+rx /usr/local/bin/odoo-maintenance-bootstrap
 
 EXPOSE 8069 5691 8072

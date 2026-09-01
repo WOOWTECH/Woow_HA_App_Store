@@ -1,0 +1,76 @@
+#!/usr/bin/with-contenv bashio
+set -euo pipefail
+
+CONF="${1:-/data/odoo.conf}"
+BOOTSTRAP_FILE="/config/bootstrap-user.json"
+
+if ! bashio::config.has_value 'default_db'; then
+    exit 0
+fi
+DB_NAME="$(bashio::config 'default_db')"
+[ -n "${DB_NAME}" ] || exit 0
+
+PUBLIC_URL=""
+if bashio::config.has_value 'public_url'; then
+    PUBLIC_URL="$(bashio::config 'public_url')"
+fi
+
+TEST_LOGIN=""
+TEST_PASSWORD=""
+TEST_ADMIN="false"
+if [ -f "${BOOTSTRAP_FILE}" ]; then
+    TEST_LOGIN="$(jq -er '.login' "${BOOTSTRAP_FILE}")"
+    TEST_PASSWORD="$(jq -er '.password' "${BOOTSTRAP_FILE}")"
+    TEST_ADMIN="$(jq -r '.admin // false' "${BOOTSTRAP_FILE}")"
+fi
+
+if [ -z "${PUBLIC_URL}" ] && [ -z "${TEST_LOGIN}" ]; then
+    exit 0
+fi
+
+export ODOO_MAINT_PUBLIC_URL="${PUBLIC_URL}"
+export ODOO_MAINT_USER_LOGIN="${TEST_LOGIN}"
+export ODOO_MAINT_USER_PASSWORD="${TEST_PASSWORD}"
+export ODOO_MAINT_USER_ADMIN="${TEST_ADMIN}"
+
+bashio::log.info "Applying Odoo canonical URL and maintenance account state..."
+s6-setuidgid odoo /usr/bin/odoo shell \
+    -c "${CONF}" -d "${DB_NAME}" --no-http <<'PY'
+import os
+
+public_url = os.environ.get("ODOO_MAINT_PUBLIC_URL", "").strip().rstrip("/")
+if public_url:
+    params = env["ir.config_parameter"].sudo()
+    params.set_param("web.base.url", public_url)
+    params.set_param("web.base.url.freeze", "True")
+
+login = os.environ.get("ODOO_MAINT_USER_LOGIN", "").strip()
+password = os.environ.get("ODOO_MAINT_USER_PASSWORD", "")
+admin = os.environ.get("ODOO_MAINT_USER_ADMIN", "false").lower() == "true"
+if login:
+    Users = env["res.users"].sudo().with_context(no_reset_password=True)
+    user = Users.search([("login", "=", login)], limit=1)
+    values = {
+        "name": "HA Ingress E2E",
+        "login": login,
+        "password": password,
+        "active": True,
+        "share": False,
+    }
+    if user:
+        user.write(values)
+    else:
+        user = Users.create(values)
+    internal = env.ref("base.group_user")
+    system = env.ref("base.group_system")
+    commands = [(4, internal.id)]
+    commands.append((4, system.id) if admin else (3, system.id))
+    user.write({"groups_id": commands})
+
+env.cr.commit()
+PY
+
+if [ -f "${BOOTSTRAP_FILE}" ]; then
+    rm -f "${BOOTSTRAP_FILE}"
+    bashio::log.info "One-shot Odoo maintenance account file consumed"
+fi

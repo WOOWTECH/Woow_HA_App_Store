@@ -59,7 +59,13 @@ if bashio::config.has_value 'auto_update_module'; then
     fi
 fi
 
-# ---------- 4. Start Odoo ----------
+# ---------- 4. Canonical URL and optional one-shot maintenance user ----------
+if ! /usr/local/bin/odoo-maintenance-bootstrap /data/odoo.conf; then
+    bashio::log.error "Odoo maintenance bootstrap failed"
+    exit 1
+fi
+
+# ---------- 5. Start Odoo ----------
 bashio::log.info "Starting Odoo 18..."
 exec s6-setuidgid odoo \
     /usr/bin/odoo \
