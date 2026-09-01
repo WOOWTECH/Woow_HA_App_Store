@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.12.10
+
+- Remove the leading slash from `ingress_entry` to prevent Supervisor from generating a double-slash `//signin` ingress URL.
+
 ## 2.12.9
 
 - Open HA Ingress directly at `/signin` so n8n does not need to perform its root-to-auth client-side redirect inside the tokenized iframe. Authenticated n8n sessions still redirect to the workflow home normally.

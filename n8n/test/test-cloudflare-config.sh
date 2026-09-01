@@ -15,7 +15,7 @@ with open(sys.argv[1], encoding="utf-8") as handle:
 
 assert config["ingress"] is True
 assert config["ingress_port"] == 5690
-assert config["ingress_entry"] == "/signin"
+assert config["ingress_entry"] == "signin"
 assert config["ingress_stream"] is True
 assert config["panel_title"] == "Woow n8n"
 assert config["ports"]["5678/tcp"] == 5678
