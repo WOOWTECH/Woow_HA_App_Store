@@ -53,6 +53,11 @@ configuration:
     name: Real Time Limit (seconds)
     description: >-
       Maximum wall-clock time per request. (Default: 120)
+  public_url:
+    name: Public URL
+    description: >-
+      Canonical HTTPS URL used for website metadata, email links and callbacks.
+      Example: https://odoo.example.com
   proxy_mode:
     name: Proxy Mode (managed)
     description: >-

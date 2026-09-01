@@ -11,6 +11,7 @@ assert c['ingress_entry']=='odoo'
 assert c['ingress_stream'] is True
 assert c['ports']['8069/tcp'] is None
 assert c['ports']['8072/tcp'] is None
+assert c['schema']['public_url']=='url?'
 
 d=(root/'Dockerfile').read_text()
 assert '18.0.20260806' in d
@@ -24,5 +25,10 @@ assert 'proxy_mode = True' in s
 n=(root/'rootfs/etc/nginx/nginx.conf.template').read_text()
 for text in ['listen 8069','listen 5691','server 127.0.0.1:%%WS_PORT%%','/web/database/','http_x_ingress_path','HTMLFormElement']:
     assert text in n, text
+
+m=(root/'rootfs/usr/local/bin/odoo-maintenance-bootstrap').read_text()
+assert 'web.base.url.freeze' in m
+assert 'bootstrap-user.json' in m
+assert 'base.group_system' in m
 PY
 printf '%s\n' 'dual gateway tests passed'

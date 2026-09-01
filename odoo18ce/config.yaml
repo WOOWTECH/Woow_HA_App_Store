@@ -1,7 +1,7 @@
 ---
 name: "Odoo 18 CE"
 description: "Odoo 18 Community Edition + PostgreSQL 16 — bundled all-in-one add-on for SME"
-version: "0.3.0"
+version: "0.3.1"
 slug: "odoo18ce"
 url: "https://github.com/WOOWTECH/Woow_ha_odoo"
 startup: application
@@ -65,6 +65,7 @@ schema:
   limit_time_real: "int?"
 
   # Network
+  public_url: "url?"
   proxy_mode: "bool?"
 
   # Modules
@@ -103,10 +104,10 @@ options:
   limit_memory_soft: 2147483648
   limit_time_cpu: 60
   limit_time_real: 120
-  # Enable ONLY behind a trusted reverse proxy (NGINX Proxy Manager,
-  # Cloudflare Tunnel). Port 8069 is published directly, so leaving this
-  # on makes Odoo trust X-Forwarded-* headers from any LAN client.
-  proxy_mode: false
+  # Canonical external URL used by email, website metadata and callbacks.
+  public_url: ""
+  # Retained for backwards compatibility; 0.3.0+ safely forces this on.
+  proxy_mode: true
   dev_mode: false
   log_level: "info"
   without_demo: true

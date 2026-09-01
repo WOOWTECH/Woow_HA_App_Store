@@ -54,6 +54,11 @@ configuration:
     name: 實際時間限制（秒）
     description: >-
       每個請求的最大實際處理時間。（預設：120）
+  public_url:
+    name: 公開網址
+    description: >-
+      Website metadata、郵件連結與callback使用的標準HTTPS網址。
+      例如：https://odoo.example.com
   proxy_mode:
     name: 代理模式（系統管理）
     description: >-

@@ -108,6 +108,8 @@ The add-on has two simultaneous entrances:
 
 The Cloudflare gateway blocks `/web/database/*`; database lifecycle management remains available only through HA Ingress. Odoo itself remains HTTP on localhost while TLS terminates at HA or Cloudflare.
 
+Set `public_url` to the canonical Cloudflare HTTPS URL so Odoo-generated website metadata, email links and callbacks never fall back to the internal HTTP origin.
+
 ## Custom Modules
 
 Place custom Odoo modules in `/share/odoo_addons/` (mapped from HA's shared
