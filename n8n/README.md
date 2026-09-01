@@ -128,7 +128,10 @@ Then navigate to **Settings → Add-ons → Add-on Store**, find "Woow n8n" and 
 | `GENERIC_TIMEZONE` | 字串 | （空） | 排程節點使用的時區 |
 | `N8N_HOST` | 字串 | （自動偵測） | 主機名稱或 IP |
 | `N8N_PATH` | 字串 | `/` | n8n 部署路徑 |
-| `WEBHOOK_URL` | 字串 | （自動產生） | Webhook 回呼網址 |
+| `N8N_EDITOR_BASE_URL` | URL | （空） | 透過反向代理開啟編輯器時的完整公開 HTTPS URL |
+| `N8N_WEBHOOK_URL` | URL | （空） | n8n 2.35+ 使用的公開 Webhook URL；會與舊版設定自動同步 |
+| `WEBHOOK_URL` | URL | （自動產生） | n8n 2.35 以前使用的 Webhook URL；會與新版設定自動同步 |
+| `N8N_PROXY_HOPS` | 整數 | （空） | n8n 前方可信任的反向代理層數；標準 Cloudflare Tunnel 設為 `1` |
 | `N8N_SECURE_COOKIE` | 布林 | `false` | 區域網路 HTTP 預設停用；僅透過 HTTPS 存取時應設為 `true` |
 | `clean_redis` | 布林 | `false` | 啟動時清除 Redis 快取 |
 | `env_vars` | 列表 | `[]` | 自訂環境變數（key-value 對） |
@@ -170,12 +173,17 @@ env_vars:
 3. 在 n8n 附加元件設定中加入：
    ```yaml
    N8N_HOST: n8n.your-domain.com
+   N8N_EDITOR_BASE_URL: https://n8n.your-domain.com
+   N8N_WEBHOOK_URL: https://n8n.your-domain.com
    WEBHOOK_URL: https://n8n.your-domain.com
+   N8N_PROXY_HOPS: 1
    N8N_SECURE_COOKIE: true
    ```
-4. 重新啟動附加元件
+4. 重新啟動附加元件。
 
-設定完成後，您可透過 `https://n8n.your-domain.com` 從外部安全存取 n8n。
+設定完成後，完整 n8n UI、REST API、Webhook 與 `/rest/push` WebSocket 都會使用 `https://n8n.your-domain.com`。Cloudflare Tunnel 原生支援 WebSocket，不需額外開放路由器連接埠。
+
+> **安全提醒：** 此模式會公開完整 n8n 入口，必須完成 n8n 擁有者帳號設定並使用強密碼。若在同一 hostname 啟用 Cloudflare Access，請為 production webhook 路徑設計適當的 Bypass policy，否則第三方服務會收到 Access 登入頁而不是 Webhook 回應。
 
 ---
 

@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.12.6
+
+- Added first-class `N8N_EDITOR_BASE_URL`, `N8N_WEBHOOK_URL`, and `N8N_PROXY_HOPS` options for complete UI/API/WebSocket access through Cloudflare Tunnel.
+- Mirror legacy `WEBHOOK_URL` and current `N8N_WEBHOOK_URL` at boot so the existing n8n 2.12.3 runtime and future n8n 2.35+ upgrades use the same public webhook URL.
+- Added focused configuration/boot tests and documented the full-UI Cloudflare security boundary. The bundled n8n version remains pinned to 2.12.3; this release does not run an upstream database migration.
+
 ## 2.12.5
 
 - **Harden s6-overlay + bashio + tempio downloads against flaky networks.** Changed `curl -L -s` to `curl -fL -sS --retry 5 --retry-delay 3 --retry-connrefused --connect-timeout 15 --max-time 120` in the RUN block that fetches from `github.com/objects.githubusercontent.com`. Reason: 2.12.4 build kept failing on Elmo HAOS with `xz: (stdin): File format not recognized` — the plain `-s` silently swallowed HTTP errors and pipe-through-tar choked on empty or HTML output. `-f` fails the pipe on non-2xx (surfaces the real problem), `-sS` keeps quiet but still shows curl errors, and `--retry 5` rides through transient CDN hiccups. No addon behaviour change.
