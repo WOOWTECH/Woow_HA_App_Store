@@ -12,6 +12,7 @@ assert c['ingress_stream'] is True
 assert c['ports']['8069/tcp'] is None
 assert c['ports']['8072/tcp'] is None
 assert c['schema']['public_url']=='url?'
+assert 'public_url' not in c['options']
 
 d=(root/'Dockerfile').read_text()
 assert '18.0.20260806' in d

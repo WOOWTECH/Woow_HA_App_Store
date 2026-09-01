@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.2 — 2026-09-02
+
+### Fixed
+- Remove the empty `public_url` default; Home Assistant correctly rejects an explicitly present empty value for an optional `url?` field.
+
 ## 0.3.1 — 2026-09-02
 
 ### Added
