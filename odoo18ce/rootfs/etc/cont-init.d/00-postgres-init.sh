@@ -25,7 +25,7 @@ if [ ! -f "${PG_DATA}/PG_VERSION" ]; then
     s6-setuidgid postgres \
         "${PG_BIN}/initdb" \
             --pgdata="${PG_DATA}" \
-            --auth-local=trust \
+            --auth-local=peer \
             --encoding=UTF8 \
             --locale=C
 
@@ -36,7 +36,7 @@ fi
 bashio::log.info "Writing pg_hba.conf..."
 cat > "${PG_DATA}/pg_hba.conf" <<'EOF'
 # TYPE  DATABASE  USER  ADDRESS        METHOD
-local   all       all                  trust
+local   all       all                  peer
 host    all       all   127.0.0.1/32   scram-sha-256
 EOF
 chown postgres:postgres "${PG_DATA}/pg_hba.conf"

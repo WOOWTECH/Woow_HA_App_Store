@@ -1,13 +1,12 @@
 ---
 name: "Odoo 18 CE"
 description: "Odoo 18 Community Edition + PostgreSQL 16 — bundled all-in-one add-on for SME"
-version: "0.3.11"
+version: "0.3.12"
 slug: "odoo18ce"
 url: "https://github.com/WOOWTECH/Woow_ha_odoo"
 startup: application
 boot: auto
 init: false
-hassio_api: true
 
 ingress: true
 ingress_port: 5691
@@ -34,7 +33,6 @@ webui: "http://[HOST]:[PORT:8069]"
 
 map:
   - share:rw
-  - backup:rw
   - addon_config:rw
 
 backup: cold

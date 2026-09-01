@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.3.12 — 2026-09-02
+
+### Security
+- Block public XML-RPC database services in addition to `/web/database/*`.
+- Remove unused Supervisor API access and read-write backup mount.
+- Enforce configured public hostname and canonical scheme at the internal Cloudflare origin.
+- Remove query strings from nginx access logs to avoid leaking URL-carried tokens.
+- Validate one-shot bootstrap file type, ownership, mode and password length.
+- Preserve standard WebSocket static constants in the ingress shim.
+- Create generated secret configuration under restrictive umask.
+- Replace local PostgreSQL `trust` authentication with `peer` authentication.
+- Fail clearly when `public_url`, maintenance bootstrap or module auto-update lacks a target `default_db`.
+
 ## 0.3.11 — 2026-09-02
 
 ### Fixed
