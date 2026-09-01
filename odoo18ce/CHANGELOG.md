@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.3.0 — 2026-09-02
+
+### Added
+- Home Assistant Ingress on port 5691, opening the Odoo backend at `/odoo`
+- Dual nginx gateways for HA Ingress and the Cloudflare full public origin
+- Ingress rewriting for Odoo/OWL assets, JSON-RPC, forms, redirects, cookies, history, and WebSocket
+- Worker-aware `/websocket` routing (HTTP port for workers=0, gevent 8072 for workers>0)
+- Focused dual-gateway regression tests
+
+### Security
+- Odoo is bound to localhost:8070 and trusts forwarded headers only from bundled nginx
+- HA host mappings for 8069/8072 are disabled; cloudflared uses add-on internal DNS
+- Public Cloudflare gateway blocks `/web/database/*`; HA Ingress retains database management access
+- Odoo package pinned to 18.0.20260806 with SHA-256 verification
+
 ## 0.2.0 — 2026-05-25
 
 ### Changed

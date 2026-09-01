@@ -41,9 +41,9 @@ TIME_CPU="${TIME_CPU:-60}"
 TIME_REAL=$(bashio::config 'limit_time_real')
 TIME_REAL="${TIME_REAL:-120}"
 
-# Network
-PROXY_MODE=$(bashio::config 'proxy_mode')
-PROXY_MODE="${PROXY_MODE:-true}"
+# Network: Odoo is bound to localhost and only the bundled nginx gateways
+# can reach it, so forwarded headers are always safe to trust.
+PROXY_MODE="true"
 
 # Database
 LIST_DB=$(bashio::config 'list_db')
@@ -107,7 +107,9 @@ logfile = ${LOG_DIR}/odoo-server.log
 log_level = ${LOG_LEVEL}
 
 ; --- Network ---
-proxy_mode = ${PROXY_MODE_VAL}
+proxy_mode = True
+http_interface = 127.0.0.1
+http_port = 8070
 workers = ${WORKERS}
 list_db = ${LIST_DB_VAL}
 without_demo = ${WITHOUT_DEMO_VAL}
@@ -123,7 +125,15 @@ EOF
 # Longpolling port (used when workers > 0)
 if [ "${WORKERS}" -gt 0 ]; then
     echo "gevent_port = 8072" >> "${CONF}"
+    WS_PORT=8072
+else
+    WS_PORT=8070
 fi
+
+# Render the dual nginx gateway. Public Cloudflare traffic uses :8069 while
+# HA Supervisor Ingress uses :5691; both reach the same Odoo backend.
+sed "s/%%WS_PORT%%/${WS_PORT}/g" \
+    /etc/nginx/nginx.conf.template > /etc/nginx/nginx.conf
 
 # default_db → db_name
 if bashio::config.has_value 'default_db'; then
