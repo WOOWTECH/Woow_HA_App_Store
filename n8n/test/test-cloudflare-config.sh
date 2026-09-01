@@ -23,6 +23,8 @@ assert config["ports"]["5678/tcp"] == 5678
 nginx = (config_path := __import__('pathlib').Path(sys.argv[1]).parent / 'rootfs/etc/nginx/nginx.conf').read_text()
 assert 'history.pushState=H(history.pushState)' in nginx
 assert 'window.WebSocket=function' in nginx
+assert 'HTMLLinkElement&&HTMLLinkElement.prototype' in nginx
+assert "sub_filter 'url(/assets/'" in nginx
 assert 'sub_filter \'</head>\'' in nginx
 assert 'return 302 $safe_ingress_path/signin;' in nginx
 
