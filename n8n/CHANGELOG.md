@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.12.9
+
+- Open HA Ingress directly at `/signin` so n8n does not need to perform its root-to-auth client-side redirect inside the tokenized iframe. Authenticated n8n sessions still redirect to the workflow home normally.
+
 ## 2.12.8
 
 - Fixed the blank HA Ingress panel after n8n loaded its initial assets: inject an ingress-aware `<base>` and runtime shim for Vue history navigation, lazy asset URLs, fetch/XHR, DOM URLs, and the `/rest/push` WebSocket.

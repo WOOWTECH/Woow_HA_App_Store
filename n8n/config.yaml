@@ -1,5 +1,5 @@
 name: Woow n8n
-version: 2.12.8
+version: 2.12.9
 slug: woow-n8n
 description: Flexible AI workflow automation (HTTP for LAN, use Cloudflare Tunnel for HTTPS)
 url: https://github.com/WOOWTECH/Woow_ha_n8n
@@ -7,6 +7,7 @@ webui: "http://[HOST]:[PORT:5678]"
 hassio_api: true
 ingress: true
 ingress_port: 5690
+ingress_entry: /signin
 ingress_stream: true
 panel_icon: mdi:sitemap-outline
 panel_title: Woow n8n
