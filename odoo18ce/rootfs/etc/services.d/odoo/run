@@ -46,6 +46,10 @@ fi
 if bashio::config.has_value 'auto_update_module'; then
     MODULE=$(bashio::config 'auto_update_module')
     if [ -n "${MODULE}" ]; then
+        if ! bashio::config.has_value 'default_db' || [ -z "$(bashio::config 'default_db')" ]; then
+            bashio::log.error "default_db is required when auto_update_module is configured"
+            exit 1
+        fi
         bashio::log.info "Running module update: ${MODULE}"
         if ! s6-setuidgid odoo \
             /usr/bin/odoo \

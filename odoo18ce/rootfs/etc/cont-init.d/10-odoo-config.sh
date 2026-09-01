@@ -4,6 +4,7 @@
 # Read HA options → generate /data/odoo.conf
 # ==============================================================================
 set -e
+umask 077
 
 declare CONF="/data/odoo.conf"
 declare DATA_DIR="/data/odoo"
@@ -130,9 +131,21 @@ else
     WS_PORT=8070
 fi
 
-# Render the dual nginx gateway. Public Cloudflare traffic uses :8069 while
-# HA Supervisor Ingress uses :5691; both reach the same Odoo backend.
-sed "s/%%WS_PORT%%/${WS_PORT}/g" \
+# Render the dual nginx gateway. When public_url is configured, authenticate
+# the expected Host header and pin the forwarded scheme instead of trusting
+# arbitrary add-on-network headers.
+PUBLIC_PROTO='$forwarded_proto'
+PUBLIC_HOST_GUARD=''
+if bashio::config.has_value 'public_url'; then
+    PUBLIC_URL="$(bashio::config 'public_url')"
+    PUBLIC_PROTO="${PUBLIC_URL%%://*}"
+    PUBLIC_HOST="${PUBLIC_URL#*://}"
+    PUBLIC_HOST="${PUBLIC_HOST%%/*}"
+    PUBLIC_HOST_GUARD="if (\$http_host != \"${PUBLIC_HOST}\") { return 444; }"
+fi
+sed -e "s/%%WS_PORT%%/${WS_PORT}/g" \
+    -e "s#%%PUBLIC_PROTO%%#${PUBLIC_PROTO}#g" \
+    -e "s#%%PUBLIC_HOST_GUARD%%#${PUBLIC_HOST_GUARD}#g" \
     /etc/nginx/nginx.conf.template > /etc/nginx/nginx.conf
 
 # default_db → db_name

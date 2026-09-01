@@ -108,7 +108,7 @@ The add-on has two simultaneous entrances:
 
 The Cloudflare gateway blocks `/web/database/*`; database lifecycle management remains available only through HA Ingress. Odoo itself remains HTTP on localhost while TLS terminates at HA or Cloudflare.
 
-Set `public_url` to the canonical Cloudflare HTTPS URL so Odoo-generated website metadata, email links and callbacks never fall back to the internal HTTP origin.
+Set `public_url` to the canonical Cloudflare HTTPS URL so Odoo-generated website metadata, email links and callbacks never fall back to the internal HTTP origin. `default_db` is required when `public_url` or `auto_update_module` is configured.
 
 ## Custom Modules
 
@@ -122,3 +122,5 @@ For additional paths, use the `odoo_extra_addons` configuration option.
 The add-on uses `cold` backup strategy. Home Assistant will stop the add-on
 before creating a backup to ensure data consistency. Cache, logs, and sessions
 are excluded from backups.
+
+Backups include the PostgreSQL cluster, filestore, Odoo master/database passwords and optional SMTP credentials. Use encrypted HA backups, strictly control downloads, and rotate credentials after any suspected backup disclosure.

@@ -4,11 +4,10 @@ set -euo pipefail
 CONF="${1:-/data/odoo.conf}"
 BOOTSTRAP_FILE="/config/bootstrap-user.json"
 
-if ! bashio::config.has_value 'default_db'; then
-    exit 0
+DB_NAME=""
+if bashio::config.has_value 'default_db'; then
+    DB_NAME="$(bashio::config 'default_db')"
 fi
-DB_NAME="$(bashio::config 'default_db')"
-[ -n "${DB_NAME}" ] || exit 0
 
 PUBLIC_URL=""
 if bashio::config.has_value 'public_url'; then
@@ -18,14 +17,31 @@ fi
 TEST_LOGIN=""
 TEST_PASSWORD=""
 TEST_ADMIN="false"
-if [ -f "${BOOTSTRAP_FILE}" ]; then
+if [ -e "${BOOTSTRAP_FILE}" ]; then
+    if [ -L "${BOOTSTRAP_FILE}" ] || [ ! -f "${BOOTSTRAP_FILE}" ]; then
+        bashio::log.error "bootstrap-user.json must be a regular non-symlink file"
+        exit 1
+    fi
+    FILE_POLICY="$(stat -c '%U:%a' "${BOOTSTRAP_FILE}")"
+    if [ "${FILE_POLICY}" != "root:600" ]; then
+        bashio::log.error "bootstrap-user.json must be owned by root with mode 0600"
+        exit 1
+    fi
     TEST_LOGIN="$(jq -er '.login' "${BOOTSTRAP_FILE}")"
     TEST_PASSWORD="$(jq -er '.password' "${BOOTSTRAP_FILE}")"
     TEST_ADMIN="$(jq -r '.admin // false' "${BOOTSTRAP_FILE}")"
+    if [ "${#TEST_PASSWORD}" -lt 20 ]; then
+        bashio::log.error "bootstrap-user.json password must contain at least 20 characters"
+        exit 1
+    fi
 fi
 
 if [ -z "${PUBLIC_URL}" ] && [ -z "${TEST_LOGIN}" ]; then
     exit 0
+fi
+if [ -z "${DB_NAME}" ]; then
+    bashio::log.error "default_db is required when public_url or bootstrap-user.json is configured"
+    exit 1
 fi
 
 export ODOO_MAINT_PUBLIC_URL="${PUBLIC_URL}"

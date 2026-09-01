@@ -6,7 +6,8 @@ error_log /dev/stderr info;
 events { worker_connections 1024; }
 
 http {
-    access_log /dev/stdout;
+    log_format safe '$remote_addr - $remote_user [$time_local] "$request_method $uri $server_protocol" $status $body_bytes_sent "$http_referer" "$http_user_agent"';
+    access_log /dev/stdout safe;
     include /etc/nginx/mime.types;
     default_type application/octet-stream;
     server_tokens off;
@@ -32,9 +33,12 @@ http {
     server {
         listen 8069 default_server;
         client_max_body_size 512M;
+        %%PUBLIC_HOST_GUARD%%
 
         # Database lifecycle operations are deliberately HA-Ingress-only.
         location ^~ /web/database/ { return 404; }
+        location = /xmlrpc/db { return 404; }
+        location = /xmlrpc/2/db { return 404; }
 
         location = /websocket {
             proxy_pass http://odoo_websocket;
@@ -43,7 +47,7 @@ http {
             proxy_set_header Connection $connection_upgrade;
             proxy_set_header Host $http_host;
             proxy_set_header X-Forwarded-Host $http_host;
-            proxy_set_header X-Forwarded-Proto $forwarded_proto;
+            proxy_set_header X-Forwarded-Proto %%PUBLIC_PROTO%%;
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
             proxy_read_timeout 3600s;
         }
@@ -54,7 +58,7 @@ http {
             proxy_set_header Host $http_host;
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header X-Forwarded-Host $http_host;
-            proxy_set_header X-Forwarded-Proto $forwarded_proto;
+            proxy_set_header X-Forwarded-Proto %%PUBLIC_PROTO%%;
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
             proxy_request_buffering off;
             proxy_read_timeout 720s;
@@ -158,7 +162,7 @@ http {
             sub_filter "url('/" "url('$safe_ingress_path/";
             sub_filter 'url("/' 'url("$safe_ingress_path/';
 
-            sub_filter '<head>' '<head><script>window.__INGRESS_PATH__="$safe_ingress_path";(function(){var P=window.__INGRESS_PATH__||"";if(!P)return;var path=function(u){if(typeof u!=="string")return u;try{var x=new URL(u,location.href);if(x.origin===location.origin){var q=x.pathname+x.search+x.hash;while(q.indexOf(P+P)===0)q=q.slice(P.length);if(q.indexOf(P)===0)return q;if(q.charAt(0)==="/")return P+q}}catch(e){}return u};var F=window.fetch;window.fetch=function(i,o){if(typeof i==="string")i=path(i);else if(i instanceof URL)i=path(i.href);else if(i&&i.url){var u=path(i.url);if(u!==i.url)i=new Request(u,i)}return F(i,o)};var X=XMLHttpRequest.prototype.open;XMLHttpRequest.prototype.open=function(m,u){arguments[1]=path(u);return X.apply(this,arguments)};var H=function(fn){return function(s,t,u){if(typeof u==="string")arguments[2]=path(u);else if(u instanceof URL)arguments[2]=path(u.href);return fn.apply(this,arguments)}};var HP=History.prototype.pushState,HR=History.prototype.replaceState;History.prototype.pushState=H(HP);History.prototype.replaceState=H(HR);var A=Element.prototype.setAttribute;Element.prototype.setAttribute=function(n,v){if((n==="href"||n==="src"||n==="action")&&typeof v==="string")v=path(v);return A.call(this,n,v)};var prop=function(proto,n){if(!proto)return;var d=Object.getOwnPropertyDescriptor(proto,n);if(!d||!d.set)return;Object.defineProperty(proto,n,{get:d.get,set:function(v){return d.set.call(this,path(v))},configurable:true})};prop(window.HTMLAnchorElement&&HTMLAnchorElement.prototype,"href");prop(window.HTMLLinkElement&&HTMLLinkElement.prototype,"href");prop(window.HTMLScriptElement&&HTMLScriptElement.prototype,"src");prop(window.HTMLImageElement&&HTMLImageElement.prototype,"src");prop(window.HTMLFormElement&&HTMLFormElement.prototype,"action");var O=window.open;window.open=function(u){if(typeof u==="string")arguments[0]=path(u);return O.apply(this,arguments)};var WK=window.Worker;if(WK){window.Worker=function(u,o){return new WK(path(String(u)),o)};window.Worker.prototype=WK.prototype}var SW=window.SharedWorker;if(SW){window.SharedWorker=function(u,o){return new SW(path(String(u)),o)};window.SharedWorker.prototype=SW.prototype}var W=window.WebSocket;window.WebSocket=function(u,p){var s=String(u),h=location.host;if(s.indexOf("ws://"+h)===0||s.indexOf("wss://"+h)===0){var x=new URL(s);if(x.pathname.indexOf(P)!==0)x.pathname=P+x.pathname;s=x.toString()}return p===undefined?new W(s):new W(s,p)};window.WebSocket.prototype=W.prototype;try{if(navigator.serviceWorker){var C={addEventListener:function(){},removeEventListener:function(){},postMessage:function(){}};try{Object.defineProperty(navigator.serviceWorker,"controller",{get:function(){return C},configurable:true})}catch(e){};navigator.serviceWorker.register=function(){return Promise.resolve({scope:P+"/",installing:null,waiting:null,active:C,update:function(){return Promise.resolve()},unregister:function(){return Promise.resolve(true)},addEventListener:function(){},removeEventListener:function(){}})}}catch(e){}})()</script>';
+            sub_filter '<head>' '<head><script>window.__INGRESS_PATH__="$safe_ingress_path";(function(){var P=window.__INGRESS_PATH__||"";if(!P)return;var path=function(u){if(typeof u!=="string")return u;try{var x=new URL(u,location.href);if(x.origin===location.origin){var q=x.pathname+x.search+x.hash;while(q.indexOf(P+P)===0)q=q.slice(P.length);if(q.indexOf(P)===0)return q;if(q.charAt(0)==="/")return P+q}}catch(e){}return u};var F=window.fetch;window.fetch=function(i,o){if(typeof i==="string")i=path(i);else if(i instanceof URL)i=path(i.href);else if(i&&i.url){var u=path(i.url);if(u!==i.url)i=new Request(u,i)}return F(i,o)};var X=XMLHttpRequest.prototype.open;XMLHttpRequest.prototype.open=function(m,u){arguments[1]=path(u);return X.apply(this,arguments)};var H=function(fn){return function(s,t,u){if(typeof u==="string")arguments[2]=path(u);else if(u instanceof URL)arguments[2]=path(u.href);return fn.apply(this,arguments)}};var HP=History.prototype.pushState,HR=History.prototype.replaceState;History.prototype.pushState=H(HP);History.prototype.replaceState=H(HR);var A=Element.prototype.setAttribute;Element.prototype.setAttribute=function(n,v){if((n==="href"||n==="src"||n==="action")&&typeof v==="string")v=path(v);return A.call(this,n,v)};var prop=function(proto,n){if(!proto)return;var d=Object.getOwnPropertyDescriptor(proto,n);if(!d||!d.set)return;Object.defineProperty(proto,n,{get:d.get,set:function(v){return d.set.call(this,path(v))},configurable:true})};prop(window.HTMLAnchorElement&&HTMLAnchorElement.prototype,"href");prop(window.HTMLLinkElement&&HTMLLinkElement.prototype,"href");prop(window.HTMLScriptElement&&HTMLScriptElement.prototype,"src");prop(window.HTMLImageElement&&HTMLImageElement.prototype,"src");prop(window.HTMLFormElement&&HTMLFormElement.prototype,"action");var O=window.open;window.open=function(u){if(typeof u==="string")arguments[0]=path(u);return O.apply(this,arguments)};var WK=window.Worker;if(WK){window.Worker=function(u,o){return new WK(path(String(u)),o)};window.Worker.prototype=WK.prototype}var SW=window.SharedWorker;if(SW){window.SharedWorker=function(u,o){return new SW(path(String(u)),o)};window.SharedWorker.prototype=SW.prototype}var W=window.WebSocket;window.WebSocket=function(u,p){var s=String(u),h=location.host;if(s.indexOf("ws://"+h)===0||s.indexOf("wss://"+h)===0){var x=new URL(s);if(x.pathname.indexOf(P)!==0)x.pathname=P+x.pathname;s=x.toString()}return p===undefined?new W(s):new W(s,p)};window.WebSocket.prototype=W.prototype;window.WebSocket.CONNECTING=W.CONNECTING;window.WebSocket.OPEN=W.OPEN;window.WebSocket.CLOSING=W.CLOSING;window.WebSocket.CLOSED=W.CLOSED;try{if(navigator.serviceWorker){var C={addEventListener:function(){},removeEventListener:function(){},postMessage:function(){}};try{Object.defineProperty(navigator.serviceWorker,"controller",{get:function(){return C},configurable:true})}catch(e){};navigator.serviceWorker.register=function(){return Promise.resolve({scope:P+"/",installing:null,waiting:null,active:C,update:function(){return Promise.resolve()},unregister:function(){return Promise.resolve(true)},addEventListener:function(){},removeEventListener:function(){}})}}catch(e){}})()</script>';
         }
     }
 }

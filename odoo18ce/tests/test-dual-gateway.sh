@@ -11,6 +11,8 @@ assert c['ingress_entry']=='odoo'
 assert c['ingress_stream'] is True
 assert c['ports']['8069/tcp'] is None
 assert c['ports']['8072/tcp'] is None
+assert not c.get('hassio_api', False)
+assert all('backup' not in str(x) for x in c['map'])
 assert c['schema']['public_url']=='url?'
 assert 'public_url' not in c['options']
 
@@ -32,6 +34,12 @@ assert 'web.base.url.freeze' in m
 assert 'bootstrap-user.json' in m
 assert 'base.group_system' in m
 assert 'base.group_erp_manager' in m
+assert "root:600" in m
+assert 'must contain at least 20 characters' in m
+
+pg=(root/'rootfs/etc/cont-init.d/00-postgres-init.sh').read_text()
+assert 'local   all       all                  peer' in pg
+assert '--auth-local=peer' in pg
 assert 'while(q.indexOf(P+P)===0)' in n
 assert 'absolute_redirect off;' in n
 assert '(?<odoo_redirect>/.*)' in n
@@ -43,5 +51,10 @@ assert 'u instanceof URL' in n
 assert 'location ^~ /web/assets/' in n
 assert 'translationURL' in n
 assert 'browser.location.origin+"$safe_ingress_path"+router.stateToUrl' in n
+assert 'location = /xmlrpc/2/db' in n
+assert '%%PUBLIC_HOST_GUARD%%' in n
+assert '%%PUBLIC_PROTO%%' in n
+assert 'window.WebSocket.OPEN=W.OPEN' in n
+assert '$request_method $uri $server_protocol' in n
 PY
 printf '%s\n' 'dual gateway tests passed'
