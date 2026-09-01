@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.12.12
+
+- Fix the confirmed blank-panel cause: n8n's runtime module preloader assigns root-absolute lazy chunk URLs through `HTMLLinkElement.href`, bypassing ordinary `setAttribute` rewriting. Patch link/script/image property setters and CSS font asset URLs into the HA ingress prefix.
+- Verified with a Playwright ingress-prefix reproduction: the n8n sign-in form renders and lazy `SigninView` assets stay under the tokenized prefix.
+
 ## 2.12.11
 
 - Redirect the ingress adapter's cached root URL to the token-prefixed `/signin` route, covering existing HA sidebar panels that retain the old root entry across an add-on update.
