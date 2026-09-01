@@ -62,9 +62,13 @@ if login:
     else:
         user = Users.create(values)
     internal = env.ref("base.group_user")
+    access_rights = env.ref("base.group_erp_manager")
     system = env.ref("base.group_system")
     commands = [(4, internal.id)]
-    commands.append((4, system.id) if admin else (3, system.id))
+    if admin:
+        commands += [(4, access_rights.id), (4, system.id)]
+    else:
+        commands += [(3, system.id), (3, access_rights.id)]
     user.write({"groups_id": commands})
 
 env.cr.commit()
