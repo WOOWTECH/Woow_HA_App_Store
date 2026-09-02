@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.16 — 2026-09-02
+
+### Fixed
+- Force the documented HTTPS scheme on the HA Ingress upstream headers. Supervisor connects to the add-on over internal HTTP and may omit `X-Forwarded-Proto`; falling back to nginx `$scheme` made Odoo emit mixed-content/incorrect absolute URLs and could leave the embedded page as a browser error placeholder.
+
 ## 0.3.15 — 2026-09-02
 
 ### Fixed
