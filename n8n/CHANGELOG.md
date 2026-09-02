@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.12.13
+
+- Fix the confirmed Home Assistant App-panel height collapse by loading a frame-height adapter only through the port 5690 ingress nginx. When the n8n iframe belongs to `ha-panel-app`, the adapter restores the host to the dynamic viewport height and the iframe to 100%; direct port 5678 and Cloudflare remain unchanged.
+- Verified in Playwright at an 857px viewport: the reproduced 343px collapsed child expands to 857px, while loading the same adapter in a top-level page is a no-op with no page errors.
+- Rollback: restore add-on 2.12.12 from a pre-update backup or prior source version; the bundled n8n and runners remain pinned to 2.12.3 and use the same data directory.
+
 ## 2.12.12
 
 - Fix the confirmed blank-panel cause: n8n's runtime module preloader assigns root-absolute lazy chunk URLs through `HTMLLinkElement.href`, bypassing ordinary `setAttribute` rewriting. Patch link/script/image property setters and CSS font asset URLs into the HA ingress prefix.

@@ -183,7 +183,9 @@ env_vars:
 
 設定完成後，完整 n8n UI、REST API、Webhook 與 `/rest/push` WebSocket 都會使用 `https://n8n.your-domain.com`。Cloudflare Tunnel 原生支援 WebSocket，不需額外開放路由器連接埠。
 
-同時，Add-on 的 **Open Web UI** 與 HA 側邊欄會走獨立的 Ingress port 5690。Ingress nginx 依每台 HA 的 `X-Ingress-Path` 動態改寫資產與 n8n `BASE_PATH`；公開 Cloudflare 入口仍維持網域根路徑 `/`。
+同時，Add-on 的 **Open Web UI** 與 HA 側邊欄會走獨立的 Ingress port 5690。Ingress nginx 依每台 HA 的 `X-Ingress-Path` 動態改寫資產與 n8n `BASE_PATH`，並只在此入口載入高度修正程式，讓 `ha-panel-app` 內的 n8n iframe 填滿動態視窗高度。公開 Cloudflare 入口仍維持網域根路徑 `/`；直接 port 5678 不會載入或執行此修正，行為不變。
+
+若需回復 2.12.13 的 Ingress 高度修正，可從更新前備份或先前來源版本還原 add-on 2.12.12；內含的 n8n 與 Task Runner 仍為 2.12.3，並沿用相同資料目錄。
 
 > **安全提醒：** 此模式會公開完整 n8n 入口，必須完成 n8n 擁有者帳號設定並使用強密碼。若在同一 hostname 啟用 Cloudflare Access，請為 production webhook 路徑設計適當的 Bypass policy，否則第三方服務會收到 Access 登入頁而不是 Webhook 回應。
 
