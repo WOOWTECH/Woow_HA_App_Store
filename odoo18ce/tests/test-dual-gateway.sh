@@ -61,6 +61,10 @@ assert 'r.scope.indexOf("/odoo")' in n
 assert 'woow-odoo-sw-clean-%%INGRESS_CACHE_VERSION%%' in n
 assert "sub_filter '\"src\": \"/'" in n
 assert "sub_filter '\"/my/'" in n
+assert "sub_filter '\"/calendar/'" in n
+assert "sub_filter '\"/base_setup/'" in n
+assert "sub_filter '\"icon\":\"/'" in n
+assert 'HTMLImageElement.prototype,"srcset"' in n
 assert 'return 302 $safe_ingress_path/odoo' not in n
 assert n.count('proxy_set_header X-Forwarded-Proto https;') >= 3
 assert 'proxy_set_header Origin https://$http_host;' in n

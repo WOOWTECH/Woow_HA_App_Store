@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.24 — 2026-09-02
+
+### Fixed
+- Prefix Calendar and Settings (`/calendar/*`, `/base_setup/*`) RPC literals discovered by recursive app-launcher testing.
+- Rewrite module icon JSON values and responsive image `srcset` URLs so Apps icons do not escape to HA root.
+
+### Verified
+- Recursive app-launcher crawl now includes Discuss, Calendar, Dashboards, Point of Sale, Invoicing, Website, Inventory, Apps and Settings as a release-gating ingress operation.
+
 ## 0.3.23 — 2026-09-02
 
 ### Fixed
