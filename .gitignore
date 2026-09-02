@@ -3,3 +3,6 @@
 *.tmp
 /data/
 /config/
+
+__pycache__/
+*.py[cod]
