@@ -151,7 +151,7 @@ http {
             # reuse a pre-upgrade worker that still targets root /websocket.
             sub_filter '"odoo:websocket_shared_worker"' '"odoo:websocket_shared_worker_%%INGRESS_CACHE_VERSION%%"';
             sub_filter '"odoo:websocket_worker"' '"odoo:websocket_worker_%%INGRESS_CACHE_VERSION%%"';
-            sub_filter 'websocket_worker_bundle?v=${session.websocket_worker_version}`' 'websocket_worker_bundle?v=${session.websocket_worker_version}&woow_ingress=%%INGRESS_CACHE_VERSION%%`';
+            sub_filter 'websocket_worker_bundle?v=' 'websocket_worker_bundle?woow_ingress=%%INGRESS_CACHE_VERSION%%&v=';
         }
 
         location / {
