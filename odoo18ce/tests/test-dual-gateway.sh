@@ -54,6 +54,8 @@ assert 'location ^~ /web/assets/' in n
 assert 'translationURL' in n
 assert 'browser.location.origin+"$safe_ingress_path"+router.stateToUrl' in n
 assert 'serverURL:window.origin+"$safe_ingress_path"' in n
+assert 'odoo:websocket_shared_worker_%%INGRESS_CACHE_VERSION%%' in n
+assert 'woow_ingress=%%INGRESS_CACHE_VERSION%%`' in n
 assert '%%INGRESS_CACHE_VERSION%%' in n
 assert 'Cache-Control "no-store, no-cache, must-revalidate"' in n
 assert 'navigator.serviceWorker.getRegistrations' in n
