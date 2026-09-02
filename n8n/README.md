@@ -183,9 +183,11 @@ env_vars:
 
 設定完成後，完整 n8n UI、REST API、Webhook 與 `/rest/push` WebSocket 都會使用 `https://n8n.your-domain.com`。Cloudflare Tunnel 原生支援 WebSocket，不需額外開放路由器連接埠。
 
-同時，Add-on 的 **Open Web UI** 與 HA 側邊欄會走獨立的 Ingress port 5690。Ingress nginx 依每台 HA 的 `X-Ingress-Path` 動態改寫資產與 n8n `BASE_PATH`。n8n 2.12.3 的 preload helper 原本以根路徑尋找相依檔案，無法辨識已加上 Ingress token 前綴的初始連結，因而在 index CSS 之後重複載入 BaseLayout CSS，讓 `height: 100%` 覆蓋 `height: 100vh`。2.12.14 只在 Ingress 回應中讓該 helper 使用 `window.BASE_PATH`，使原生重複檢查找到既有樣式表；同時移除 2.12.13 不正確的外層 frame-height workaround。公開 Cloudflare 入口仍維持網域根路徑 `/`，直接 port 5678 行為不變。
+同時，Add-on 的 **Open Web UI** 與 HA 側邊欄會走獨立的 Ingress port 5690。Ingress nginx 依每台 HA 的 `X-Ingress-Path` 動態改寫資產與 n8n `BASE_PATH`。n8n 2.12.3 的 preload helper 原本以根路徑尋找相依檔案，無法辨識已加上 Ingress token 前綴的初始連結，因而在 index CSS 之後重複載入 BaseLayout CSS，讓 `height: 100%` 覆蓋 `height: 100vh`。2.12.14 只在 Ingress 回應中讓該 helper 使用 `window.BASE_PATH`，使原生重複檢查找到既有樣式表；同時移除 2.12.13 不正確的外層 frame-height workaround。
 
-若需回復 2.12.14，可還原更新前的 partial add-on backup 以返回 2.12.13；內含的 n8n 與 Task Runner 仍為 2.12.3，未涉及資料庫遷移，並沿用相同資料目錄。
+由於 Ingress nginx 會在 n8n 產生雜湊檔名之後改寫 HTML、JavaScript 與 CSS 內容，Add-on 更新可能讓相同資產 URL 對應到不同內容。2.12.15 僅在 Ingress port 5690 對這三類可能被改寫的回應設定 `Cache-Control: no-store`，避免瀏覽器或 Cloudflare 保存舊版轉換內容；圖片、字型、圖示與其他未改寫的二進位資產會保留上游快取政策。公開 Cloudflare n8n 入口仍維持網域根路徑 `/`，直接 port 5678 行為不變。
+
+部署 2.12.15 後，需針對公開 HA 網址中以 `/api/hassio_ingress` 結尾的前綴執行一次 Cloudflare cache purge，才能移除新 header 生效前已儲存的物件。邊緣 purge 無法清除使用者瀏覽器既有快取，因此先前開啟過受影響頁面的使用者仍需強制重新整理一次。若需回復，可還原更新前的 partial add-on backup 以返回 2.12.14；內含的 n8n 與 Task Runner 仍為 2.12.3，未涉及資料庫遷移，並沿用相同資料目錄。
 
 > **安全提醒：** 此模式會公開完整 n8n 入口，必須完成 n8n 擁有者帳號設定並使用強密碼。若在同一 hostname 啟用 Cloudflare Access，請為 production webhook 路徑設計適當的 Bypass policy，否則第三方服務會收到 Access 登入頁而不是 Webhook 回應。
 

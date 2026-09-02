@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.12.15
+
+- Prevent stale Home Assistant Ingress transforms under unchanged n8n asset hashes. The ingress nginx now clears client ETag/date validators before proxying and returns `Cache-Control: no-store` for HTML, JavaScript, and CSS responses whose bodies it may rewrite, rather than forwarding n8n's long-lived public cache policy.
+- Preserve the upstream `Cache-Control` policy for unmodified response types such as images, fonts, icons, and other binary assets. Direct port 5678 remains unchanged, and n8n and Task Runner remain pinned to 2.12.3.
+- After deploying, perform a one-time Cloudflare cache purge for the public HA ingress prefix ending in `/api/hassio_ingress`. Because an edge purge cannot remove existing browser entries, users who previously opened the affected ingress UI also need one hard refresh.
+- Rollback: restore the pre-2.12.15 partial add-on backup to return to 2.12.14; no n8n database migration is involved.
+
 ## 2.12.14
 
 - Fix the confirmed Home Assistant Ingress height collapse at its source: n8n 2.12.3's preload helper searched for root-path dependencies while the initial stylesheet links had already been rewritten to the token-prefixed ingress path. The helper now builds dependency URLs from the ingress-only `window.BASE_PATH`, so its native duplicate-link check finds the existing links.
