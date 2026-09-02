@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.31 — 2026-09-02
+
+### Fixed
+- Replace the Settings CSS selector containing a single-quoted `#` inside nginx's single-quoted replacement string. The generated nginx config parsed `#` as invalid syntax and watchdog-restarted the add-on.
+
+### Testing
+- Release requires both extracted JavaScript `node --check` and fully rendered `nginx -t`; neither check alone is sufficient.
+
 ## 0.3.30 — 2026-09-02
 
 ### Fixed
