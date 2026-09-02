@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.27 — 2026-09-02
+
+### Fixed
+- Keep Odoo bus `params.serverURL` equal to `window.origin` and prefix only the SharedWorker script and WebSocket endpoint expressions. Prefixing `serverURL` triggered Odoo's cross-origin data-URL worker branch; Chromium could fail before requesting the worker bundle, producing a null `UncaughtClientError` immediately after mail initialization.
+
 ## 0.3.26 — 2026-09-02
 
 ### Fixed
