@@ -13,6 +13,7 @@ import yaml
 with open(sys.argv[1], encoding="utf-8") as handle:
     config = yaml.safe_load(handle)
 
+assert config["version"] == "2.12.15"
 assert config["ingress"] is True
 assert config["ingress_port"] == 5690
 assert config["ingress_entry"] == "signin"
@@ -30,6 +31,15 @@ assert "sub_filter 'url(/assets/'" in nginx
 assert 'sub_filter \'</head>\'' in nginx
 assert 'return 302 $safe_ingress_path/signin;' in nginx
 assert "sub_filter 'hee=function(e){return`/`+e}' 'hee=function(e){return(window.BASE_PATH||`/`)+e}';" in nginx
+assert 'map $upstream_http_content_type $ingress_cache_control {' in nginx
+assert 'default $upstream_http_cache_control;' in nginx
+assert '"~*^text/html[[:space:]]*(?:;|$)" no-store;' in nginx
+assert '"~*^(?:application|text)/(?:x-)?javascript[[:space:]]*(?:;|$)" no-store;' in nginx
+assert '"~*^text/css[[:space:]]*(?:;|$)" no-store;' in nginx
+assert nginx.count('proxy_hide_header Cache-Control;') == 1
+assert nginx.count('add_header Cache-Control $ingress_cache_control always;') == 1
+assert nginx.count('proxy_set_header If-None-Match "";') == 1
+assert nginx.count('proxy_set_header If-Modified-Since "";') == 1
 assert 'location = /_woow/ingress-frame-height.js {' not in nginx
 assert 'alias /etc/nginx/ingress-frame-height.js;' not in nginx
 assert '<script src="$safe_ingress_path/_woow/ingress-frame-height.js"></script>' not in nginx
