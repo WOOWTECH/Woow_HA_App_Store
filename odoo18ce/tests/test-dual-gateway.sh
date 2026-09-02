@@ -57,6 +57,7 @@ assert "sub_filter '\"/my/'" in n
 assert 'return 302 $safe_ingress_path/odoo' not in n
 assert n.count('proxy_set_header X-Forwarded-Proto https;') >= 3
 assert 'proxy_set_header Origin https://$http_host;' in n
+assert 'proxy_hide_header X-Frame-Options;' in n
 assert (root/'tests/e2e_adversarial.py').is_file()
 assert 'location = /xmlrpc/2/db' in n
 assert '%%PUBLIC_HOST_GUARD%%' in n
