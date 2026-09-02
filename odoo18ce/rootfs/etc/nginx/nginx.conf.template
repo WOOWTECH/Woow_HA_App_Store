@@ -145,7 +145,11 @@ http {
             sub_filter '`/odoo' '`$safe_ingress_path/odoo';
             sub_filter 'scope:"/odoo"' 'scope:"$safe_ingress_path/odoo"';
             sub_filter 'browser.location.origin+router.stateToUrl' 'browser.location.origin+"$safe_ingress_path"+router.stateToUrl';
-            sub_filter 'serverURL:window.origin' 'serverURL:window.origin+"$safe_ingress_path"';
+            # Keep params.serverURL equal to window.origin so Odoo creates a
+            # normal same-origin SharedWorker (not a data: URL worker). Prefix
+            # only the worker script and WebSocket endpoint expressions.
+            sub_filter 'params.serverURL}/bus/websocket_worker_bundle' 'params.serverURL}$safe_ingress_path/bus/websocket_worker_bundle';
+            sub_filter 'serverURL.replace("http", "ws")}/websocket' 'serverURL.replace("http", "ws")}$safe_ingress_path/websocket';
             # SharedWorkers are keyed by origin and name. Version both the
             # worker identity and imported bundle so an open browser cannot
             # reuse a pre-upgrade worker that still targets root /websocket.

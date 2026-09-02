@@ -53,7 +53,9 @@ assert 'u instanceof URL' in n
 assert 'location ^~ /web/assets/' in n
 assert 'translationURL' in n
 assert 'browser.location.origin+"$safe_ingress_path"+router.stateToUrl' in n
-assert 'serverURL:window.origin+"$safe_ingress_path"' in n
+assert 'params.serverURL}$safe_ingress_path/bus/websocket_worker_bundle' in n
+assert 'serverURL.replace("http", "ws")}$safe_ingress_path/websocket' in n
+assert 'serverURL:window.origin+"$safe_ingress_path"' not in n
 assert 'odoo:websocket_shared_worker_%%INGRESS_CACHE_VERSION%%' in n
 assert 'websocket_worker_bundle?woow_ingress=%%INGRESS_CACHE_VERSION%%&v=' in n
 assert '%%INGRESS_CACHE_VERSION%%' in n
