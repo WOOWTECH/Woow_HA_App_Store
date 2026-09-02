@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.21 — 2026-09-02
+
+### Fixed
+- Cache-bust rewritten ingress JS/CSS references with the add-on version and mark transformed assets `no-store`. Odoo asset hashes remain unchanged when only the proxy transformation changes, so browsers otherwise retained the pre-fix bus `serverURL` bundle and continued reporting real-time loss after update.
+
 ## 0.3.20 — 2026-09-02
 
 ### Fixed

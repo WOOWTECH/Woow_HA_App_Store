@@ -147,9 +147,11 @@ if bashio::config.has_value 'public_url'; then
     PUBLIC_HOST="${PUBLIC_HOST%%/*}"
     PUBLIC_HOST_GUARD="if (\$http_host != \"${PUBLIC_HOST}\") { return 444; }"
 fi
+ADDON_VERSION="$(bashio::addon.version 2>/dev/null || echo unknown)"
 sed -e "s/%%WS_PORT%%/${WS_PORT}/g" \
     -e "s#%%PUBLIC_PROTO%%#${PUBLIC_PROTO}#g" \
     -e "s#%%PUBLIC_HOST_GUARD%%#${PUBLIC_HOST_GUARD}#g" \
+    -e "s#%%INGRESS_CACHE_VERSION%%#${ADDON_VERSION}#g" \
     /etc/nginx/nginx.conf.template > /etc/nginx/nginx.conf
 
 # default_db → db_name
