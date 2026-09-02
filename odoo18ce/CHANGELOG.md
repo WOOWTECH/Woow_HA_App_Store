@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.18 — 2026-09-02
+
+### Diagnostics
+- Log sent/upstream X-Frame-Options plus ingress Host and forwarded scheme without query strings, enabling live differentiation between frame denial, mixed-content headers and URL rewriting failures.
+
 ## 0.3.17 — 2026-09-02
 
 ### Fixed

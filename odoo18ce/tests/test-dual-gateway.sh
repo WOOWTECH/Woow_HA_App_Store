@@ -65,6 +65,8 @@ assert '%%PUBLIC_PROTO%%' in n
 assert 'window.WebSocket.OPEN=W.OPEN' in n
 assert '$request_method $uri $server_protocol' in n
 assert '$http_referer' not in n
+assert '$sent_http_x_frame_options' in n
+assert '$upstream_http_x_frame_options' in n
 assert 'proxy_pass http://127.0.0.1:8071' in n
 PY
 printf '%s\n' 'dual gateway tests passed'
