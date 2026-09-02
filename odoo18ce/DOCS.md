@@ -103,12 +103,12 @@ All data is stored under `/data` and persists across restarts and updates:
 
 The add-on has two simultaneous entrances:
 
-- **Home Assistant Ingress** — Open Web UI/sidebar opens `/odoo`; HA authentication is followed by normal Odoo authentication.
+- **Home Assistant Ingress** — Open Web UI/sidebar opens `/odoo`; HA authentication is followed by normal Odoo authentication. The HA origin must use HTTPS because the Odoo session cookie is deliberately marked `Secure`.
 - **Cloudflare Tunnel** — publish the complete root-path Odoo UI/API/WebSocket by routing the hostname to `http://<repo-hash>-odoo18ce:8069` on the internal add-on network.
 
 The Cloudflare gateway blocks `/web/database/*`; database lifecycle management remains available only through HA Ingress. Odoo itself remains HTTP on localhost while TLS terminates at HA or Cloudflare.
 
-Set `public_url` to the canonical Cloudflare HTTPS URL so Odoo-generated website metadata, email links and callbacks never fall back to the internal HTTP origin. `default_db` is required when `public_url` or `auto_update_module` is configured.
+Set the required HTTPS `public_url` to the canonical Cloudflare URL so Odoo-generated website metadata, email links and callbacks never fall back to the internal HTTP origin. `default_db` is required when `public_url` or `auto_update_module` is configured.
 
 ## Custom Modules
 

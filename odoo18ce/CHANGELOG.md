@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.3.15 — 2026-09-02
+
+### Fixed
+- Keep portal `/my/*` counters and authenticated Website operations inside the HA ingress prefix.
+- Stabilize logout/protected-route browser assertions by waiting for Odoo's lazy login form.
+
+### Verified
+- Recursive authenticated ingress journey passes: backend, Discuss, Website home, Shop, Cart, Contact, Portal and back to backend, followed by logout and protected-route redirect; zero failed requests, 5xx or console errors.
+
+## 0.3.14 — 2026-09-02
+
+### Fixed
+- Allow the HA Ingress token root to proxy Odoo Website `/` instead of forcing every root navigation back to `/odoo`; this fixes backend-to-Website transitions and authenticated frontend pages.
+
+### Testing
+- Add an adversarial recursive browser matrix covering unauthenticated/authenticated Website, backend, shop, cart, contact, portal, logout, redirects, assets, console/network errors, DB-manager denial, APIs and navigation transitions.
+
+## 0.3.13 — 2026-09-02
+
+### Security
+- Add a localhost JSON-RPC filter that rejects public `service: db` calls while preserving object/common API services; HA Ingress retains database service access.
+- Fail the public origin closed until an HTTPS `public_url` supplies an exact Host guard and canonical scheme.
+- Remove Referer from access logs and pin WOOWTECH custom addons to a reviewed commit.
+
 ## 0.3.12 — 2026-09-02
 
 ### Security

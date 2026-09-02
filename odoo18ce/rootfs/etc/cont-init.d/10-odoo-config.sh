@@ -134,11 +134,15 @@ fi
 # Render the dual nginx gateway. When public_url is configured, authenticate
 # the expected Host header and pin the forwarded scheme instead of trusting
 # arbitrary add-on-network headers.
-PUBLIC_PROTO='$forwarded_proto'
-PUBLIC_HOST_GUARD=''
+PUBLIC_PROTO='https'
+PUBLIC_HOST_GUARD='return 503;'
 if bashio::config.has_value 'public_url'; then
     PUBLIC_URL="$(bashio::config 'public_url')"
     PUBLIC_PROTO="${PUBLIC_URL%%://*}"
+    if [ "${PUBLIC_PROTO}" != "https" ]; then
+        bashio::log.error "public_url must use https"
+        exit 1
+    fi
     PUBLIC_HOST="${PUBLIC_URL#*://}"
     PUBLIC_HOST="${PUBLIC_HOST%%/*}"
     PUBLIC_HOST_GUARD="if (\$http_host != \"${PUBLIC_HOST}\") { return 444; }"

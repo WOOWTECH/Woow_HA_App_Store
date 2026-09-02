@@ -1,0 +1,3 @@
+#!/usr/bin/with-contenv bashio
+bashio::log.error "JSON-RPC filter exited unexpectedly (exit code: ${1}), halting container..."
+exec /run/s6/basedir/bin/halt

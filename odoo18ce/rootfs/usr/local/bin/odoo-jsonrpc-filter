@@ -1,0 +1,82 @@
+#!/usr/bin/env python3
+"""Public JSON-RPC proxy that denies Odoo database lifecycle service calls."""
+import http.client
+import json
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+UPSTREAM_HOST = "127.0.0.1"
+UPSTREAM_PORT = 8070
+MAX_BODY = 32 * 1024 * 1024
+HOP_HEADERS = {"connection", "keep-alive", "proxy-authenticate", "proxy-authorization", "te", "trailers", "transfer-encoding", "upgrade"}
+
+def contains_db_service(payload):
+    calls = payload if isinstance(payload, list) else [payload]
+    return any(isinstance(call, dict) and isinstance(call.get("params"), dict) and call["params"].get("service") == "db" for call in calls)
+
+class Handler(BaseHTTPRequestHandler):
+    protocol_version = "HTTP/1.1"
+
+    def do_GET(self):
+        if self.path == "/healthz":
+            body = b'{"status":"ok"}'
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+        self.send_error(405)
+
+    def do_POST(self):
+        if self.path.split("?", 1)[0] != "/jsonrpc":
+            self.send_error(404)
+            return
+        try:
+            size = int(self.headers.get("Content-Length", "0"))
+        except ValueError:
+            self.send_error(400)
+            return
+        if size <= 0 or size > MAX_BODY:
+            self.send_error(413 if size > MAX_BODY else 400)
+            return
+        body = self.rfile.read(size)
+        try:
+            payload = json.loads(body)
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            self.send_error(400)
+            return
+        if contains_db_service(payload):
+            response = b'{"jsonrpc":"2.0","error":{"code":403,"message":"Database service is available only through Home Assistant Ingress"}}'
+            self.send_response(403)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(response)))
+            self.end_headers()
+            self.wfile.write(response)
+            return
+        headers = {k: v for k, v in self.headers.items() if k.lower() not in HOP_HEADERS and k.lower() != "content-length"}
+        headers["Content-Length"] = str(len(body))
+        try:
+            conn = http.client.HTTPConnection(UPSTREAM_HOST, UPSTREAM_PORT, timeout=720)
+            conn.request("POST", self.path, body=body, headers=headers)
+            upstream = conn.getresponse()
+            data = upstream.read()
+            self.send_response(upstream.status)
+            for key, value in upstream.getheaders():
+                if key.lower() not in HOP_HEADERS and key.lower() != "content-length":
+                    self.send_header(key, value)
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+        except Exception:
+            self.send_error(502)
+        finally:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+    def log_message(self, fmt, *args):
+        print("jsonrpc-filter", self.command, self.path.split("?", 1)[0], args[1] if len(args) > 1 else "")
+
+if __name__ == "__main__":
+    ThreadingHTTPServer(("127.0.0.1", 8071), Handler).serve_forever()
