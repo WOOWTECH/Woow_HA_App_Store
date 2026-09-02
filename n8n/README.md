@@ -26,6 +26,7 @@ Then navigate to **Settings → Add-ons → Add-on Store**, find "Woow n8n" and 
 - [安裝方式](#安裝方式)
 - [設定說明](#設定說明)
 - [Cloudflare Tunnel 設定](#cloudflare-tunnel-設定)
+- [預建映像與發布順序](#預建映像與發布順序)
 - [內建元件](#內建元件)
 - [目錄結構](#目錄結構)
 - [常見問題](#常見問題)
@@ -193,6 +194,14 @@ env_vars:
 
 ---
 
+## 預建映像與發布順序
+
+Home Assistant Supervisor 安裝時會直接拉取預建且有版本標籤的映像，不會在主機端建構此 Add-on。Add-on 版本為 `X.Y.Z` 時，依主機架構拉取 `ghcr.io/woowtech/woow-ha-n8n-amd64:X.Y.Z` 或 `ghcr.io/woowtech/woow-ha-n8n-aarch64:X.Y.Z`；對應 GHCR 標籤是安裝的必要相依項目。儲存庫管理者必須將這兩個 GHCR package 保持為公開，因為 Supervisor 不會提供 registry 登入憑證。
+
+維護者發布順序：先更新 `n8n/config.yaml` 與 `n8n/CHANGELOG.md` 並合併版本變更至 `main`，再等待 **Publish n8n add-on images** workflow 成功發布並驗證兩種架構的標籤，最後才公告更新。若需要重建映像，請對該發布 revision 使用 **Run workflow**；workflow 一律從 `n8n/config.yaml` 讀取標籤。兩種 GHCR 映像尚未可用前，請勿公告或建議使用者安裝該版本。
+
+---
+
 ## 內建元件
 
 ### n8n（工作流程引擎）
@@ -232,9 +241,8 @@ n8n/
 │   ├── en.yaml                   # 英文翻譯
 │   └── zh-Hant.yaml              # 繁體中文翻譯
 ├── addon_info.yaml               # 版本追蹤設定
-├── build.yaml                    # 建構設定
 ├── CHANGELOG.md                  # 變更日誌
-├── config.yaml                   # 附加元件主設定
+├── config.yaml                   # 附加元件主設定與 GHCR 映像範本
 ├── Dockerfile                    # 容器映像建構檔
 ├── DOCS.md                       # 英文說明文件
 └── README.md                     # 本檔案

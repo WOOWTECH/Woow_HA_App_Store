@@ -1,6 +1,7 @@
 name: Woow n8n
-version: 2.12.15
+version: 2.12.16
 slug: woow-n8n
+image: ghcr.io/woowtech/woow-ha-n8n-{arch}
 description: Flexible AI workflow automation (HTTP for LAN, use Cloudflare Tunnel for HTTPS)
 url: https://github.com/WOOWTECH/Woow_ha_n8n
 webui: "http://[HOST]:[PORT:5678]"

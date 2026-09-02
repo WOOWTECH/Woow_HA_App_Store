@@ -53,6 +53,12 @@ Cloudflare Tunnel supports WebSockets, so the editor's `/rest/push` connection w
 
 The add-on also enables Home Assistant Ingress on port 5690. **Open Web UI** and the optional HA sidebar panel use this authenticated ingress adapter, including WebSocket and streaming support. The direct 5678 origin remains available for Cloudflare at the domain root, so both entrances work concurrently.
 
+## Prebuilt add-on images and release order
+
+Supervisor pulls the versioned prebuilt image rather than building this add-on on the host: `ghcr.io/woowtech/woow-ha-n8n-amd64:X.Y.Z` or `ghcr.io/woowtech/woow-ha-n8n-aarch64:X.Y.Z`. The matching GHCR tag is required before that add-on version can install. Repository owners must keep both GHCR packages public because Supervisor does not supply registry credentials.
+
+Maintainers update `n8n/config.yaml` and `n8n/CHANGELOG.md`, merge the release version change to `main`, then wait for **Publish n8n add-on images** to publish and verify both architecture tags before announcing the update. Use **Run workflow** on the release revision to rebuild its images; it derives the tag from `n8n/config.yaml`.
+
 ## Redis
 
 Redis is running on `localhost` or `127.0.0.1` with port `6379`

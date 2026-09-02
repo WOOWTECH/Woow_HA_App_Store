@@ -74,15 +74,15 @@ def assert_supported_pin_gate() -> None:
     assert len(build_from) == 1, f"expected one Dockerfile BUILD_FROM, got {build_from}"
     assert len(runner_from) == 1, f"expected one Dockerfile runner FROM, got {runner_from}"
 
-    build = yaml.safe_load((ADDON_DIR / "build.yaml").read_text())
     addon_info = yaml.safe_load((ADDON_DIR / "addon_info.yaml").read_text())
     expected_n8n_image = f"docker.io/n8nio/n8n:{SUPPORTED_N8N_VERSION}"
     expected_runner_image = f"docker.io/n8nio/runners:{SUPPORTED_N8N_VERSION}"
+    assert not (ADDON_DIR / "build.yaml").exists(), (
+        "prebuilt GHCR add-on images must not retain Supervisor's client-side build.yaml"
+    )
     pins = {
         "Dockerfile BUILD_FROM": (build_from[0], expected_n8n_image),
         "Dockerfile runner FROM": (runner_from[0], expected_runner_image),
-        "build.yaml aarch64": (build["build_from"]["aarch64"], expected_n8n_image),
-        "build.yaml amd64": (build["build_from"]["amd64"], expected_n8n_image),
         "addon_info current_version": (
             addon_info["source"]["current_version"],
             f"n8n@{SUPPORTED_N8N_VERSION}",

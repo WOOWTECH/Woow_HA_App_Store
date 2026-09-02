@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.12.16
+
+- Home Assistant Supervisor now pulls versioned, prebuilt add-on images from `ghcr.io/woowtech/woow-ha-n8n-{arch}` instead of building the add-on from Docker Hub during installation. Separate `amd64` and `aarch64` images are published with the exact add-on version tag.
+- Release maintainers must wait for the `Publish n8n add-on images` workflow to publish and verify both architecture tags before announcing the add-on update. If a release image needs rebuilding, use the workflow's manual dispatch on the release revision; do not publish a configuration version whose GHCR images are unavailable.
+- n8n and Task Runner remain pinned to 2.12.3; this packaging change does not run an n8n database migration.
+
 ## 2.12.15
 
 - Prevent stale Home Assistant Ingress transforms under unchanged n8n asset hashes. The ingress nginx now clears client ETag/date validators before proxying and returns `Cache-Control: no-store` for HTML, JavaScript, and CSS responses whose bodies it may rewrite, rather than forwarding n8n's long-lived public cache policy.

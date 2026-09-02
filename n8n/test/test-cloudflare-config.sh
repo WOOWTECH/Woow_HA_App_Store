@@ -13,7 +13,7 @@ import yaml
 with open(sys.argv[1], encoding="utf-8") as handle:
     config = yaml.safe_load(handle)
 
-assert config["version"] == "2.12.15"
+assert config["version"] == "2.12.16"
 assert config["ingress"] is True
 assert config["ingress_port"] == 5690
 assert config["ingress_entry"] == "signin"

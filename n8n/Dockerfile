@@ -48,15 +48,19 @@ ARG ALPINE_VERSION=v3.23
 #      installed package). Re-initialising it makes apk believe nothing is
 #      installed, and it then reconciles the filesystem against world — which
 #      on an empty world purges the entire base image, busybox included.
-#   2. apk-tools-static FILENAME resolved from the directory index. Alpine's
+#   2. Test each apk-tools-static generation against the base database before
+#      using it. apk 3.0.8 from v3.23 cannot read the database in the arm64
+#      n8n 2.12.3 image, while v3.22's apk 2.14 can. The current branch is
+#      still tried first so compatible bases use their native generation.
+#   3. apk-tools-static FILENAME resolved from the directory index. Alpine's
 #      CDN keeps only the current build per branch, so a pinned filename
 #      starts 404-ing as soon as upstream cuts a new revision.
-#   3. Exact-checksum pins stripped from world. The image ships entries like
+#   4. Exact-checksum pins stripped from world. The image ships entries like
 #      `libcurl><Q10MJ...`, freezing packages at the builds available the day
 #      it was made. Each one becomes unsatisfiable when Alpine publishes a
 #      new revision and blocks unrelated installs. Names are kept, so world
 #      still describes the image's real contents and nothing is purged.
-#   4. libapk2 deleted rather than unpinned: the apk 3.x series replaced it
+#   5. libapk2 deleted rather than unpinned: the apk 3.x series replaced it
 #      with `libapk` and no libapk2 package exists on this branch any more.
 RUN \
     set -eux; \
@@ -68,21 +72,33 @@ RUN \
         ALPINE_BRANCH="${ALPINE_VERSION}"; \
     fi; \
     echo "Base image Alpine branch: ${ALPINE_BRANCH}"; \
-    REPO="http://dl-cdn.alpinelinux.org/alpine/${ALPINE_BRANCH}/main"; \
-    BASE="${REPO}/${ARCH}"; \
-    APK_FILE="$(wget -qO- "${BASE}/" \
-        | grep -o 'apk-tools-static-[0-9][^"]*\.apk' \
-        | sort -V \
-        | tail -n1)"; \
-    test -n "${APK_FILE}"; \
-    echo "Using ${APK_FILE} from ${BASE}"; \
-    wget -nv "${BASE}/${APK_FILE}"; \
-    tar -xzf apk-tools-static-*.apk; \
+    APK_REPO=""; \
+    APK_STATIC=""; \
+    for STATIC_BRANCH in "${ALPINE_BRANCH}" v3.22; do \
+        STATIC_BASE="http://dl-cdn.alpinelinux.org/alpine/${STATIC_BRANCH}/main/${ARCH}"; \
+        APK_FILE="$(wget -qO- "${STATIC_BASE}/" \
+            | grep -o 'apk-tools-static-[0-9][^"]*\.apk' \
+            | sort -V \
+            | tail -n1)"; \
+        test -n "${APK_FILE}"; \
+        CANDIDATE_DIR="/tmp/apk-static-${STATIC_BRANCH}"; \
+        mkdir -p "${CANDIDATE_DIR}"; \
+        echo "Trying ${APK_FILE} from ${STATIC_BASE}"; \
+        wget -nv -O "${CANDIDATE_DIR}/apk-tools-static.apk" "${STATIC_BASE}/${APK_FILE}"; \
+        tar -xzf "${CANDIDATE_DIR}/apk-tools-static.apk" -C "${CANDIDATE_DIR}"; \
+        if "${CANDIDATE_DIR}/sbin/apk.static" --no-network info >/dev/null 2>&1; then \
+            APK_STATIC="${CANDIDATE_DIR}/sbin/apk.static"; \
+            APK_REPO="http://dl-cdn.alpinelinux.org/alpine/${STATIC_BRANCH}/main"; \
+            break; \
+        fi; \
+        rm -rf "${CANDIDATE_DIR}"; \
+    done; \
+    test -n "${APK_STATIC}" && test -n "${APK_REPO}" || { echo "No apk-tools-static candidate can read the base apk database" >&2; exit 1; }; \
     if [ -f /etc/apk/world ]; then \
         sed -i 's/><.*$//' /etc/apk/world; \
         sed -i '/^libapk2$/d' /etc/apk/world; \
     fi; \
-    ./sbin/apk.static -X "${REPO}" add apk-tools; \
+    "${APK_STATIC}" -X "${APK_REPO}" add apk-tools; \
     apk --version; \
     rm -rf /tmp/*
 
