@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.29 — 2026-09-02
+
+### Fixed
+- Correct a missing closing brace in the injected ingress service-worker cleanup block. The whole early shim failed with `Unexpected token 'catch'`, disabling fetch/history/Worker/WebSocket URL rewriting and allowing native Odoo service-worker registration errors.
+
+### Testing
+- Extract and run `node --check` on the injected nginx JavaScript during gateway tests so malformed shims cannot be released again.
+
 ## 0.3.28 — 2026-09-02
 
 ### Fixed

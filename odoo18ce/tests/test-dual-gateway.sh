@@ -86,4 +86,16 @@ assert '$sent_http_x_frame_options' in n
 assert '$upstream_http_x_frame_options' in n
 assert 'proxy_pass http://127.0.0.1:8071' in n
 PY
+if command -v node >/dev/null 2>&1; then
+    shim="$(mktemp --suffix=.js)"
+    trap 'rm -f "${shim}"' EXIT
+    python3 - "${ADDON}/rootfs/etc/nginx/nginx.conf.template" "${shim}" <<'PY'
+import re, sys
+source=open(sys.argv[1], encoding='utf-8').read()
+match=re.search(r"sub_filter '<head>' '<head><script>(.*?)</script>';", source, re.S)
+assert match, 'ingress shim not found'
+open(sys.argv[2], 'w', encoding='utf-8').write(match.group(1).replace('$safe_ingress_path','/P').replace('%%INGRESS_CACHE_VERSION%%','V'))
+PY
+    node --check "${shim}"
+fi
 printf '%s\n' 'dual gateway tests passed'
