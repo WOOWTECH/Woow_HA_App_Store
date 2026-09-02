@@ -1,0 +1,3 @@
+#!/usr/bin/with-contenv bashio
+set -e
+exec s6-setuidgid odoo /usr/local/bin/odoo-jsonrpc-filter

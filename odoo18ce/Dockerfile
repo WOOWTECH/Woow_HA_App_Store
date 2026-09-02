@@ -40,9 +40,14 @@ RUN apt-get update \
 # ──────────────────────────────────────────────
 # 4. Clone WOOWTECH odoo-addons (main, shallow)
 # ──────────────────────────────────────────────
-RUN git clone --depth 1 --branch main \
+ARG WOOW_ADDONS_REF="51856b0abbce68848b2b024a00191cac5eeead3f"
+RUN mkdir -p /opt/woow-addons \
+    && git -C /opt/woow-addons init \
+    && git -C /opt/woow-addons remote add origin \
         https://github.com/WOOWTECH/odoo-addons.git \
-        /opt/woow-addons
+    && git -C /opt/woow-addons fetch --depth 1 origin "${WOOW_ADDONS_REF}" \
+    && git -C /opt/woow-addons checkout --detach FETCH_HEAD \
+    && rm -rf /opt/woow-addons/.git
 
 # ──────────────────────────────────────────────
 # 5. Copy rootfs overlay
@@ -55,6 +60,7 @@ COPY rootfs/ /
 RUN chmod a+rx /etc/cont-init.d/*.sh \
     && chmod a+rx /etc/services.d/*/run \
     && chmod a+rx /etc/services.d/*/finish \
-    && chmod a+rx /usr/local/bin/odoo-maintenance-bootstrap
+    && chmod a+rx /usr/local/bin/odoo-maintenance-bootstrap \
+    && chmod a+rx /usr/local/bin/odoo-jsonrpc-filter
 
 EXPOSE 8069 5691 8072
