@@ -22,33 +22,18 @@ assert config["ports"]["5678/tcp"] == 5678
 
 addon_dir = __import__('pathlib').Path(sys.argv[1]).parent
 nginx = (addon_dir / 'rootfs/etc/nginx/nginx.conf').read_text()
-frame_height = (addon_dir / 'rootfs/etc/nginx/ingress-frame-height.js').read_text()
+frame_height_path = addon_dir / 'rootfs/etc/nginx/ingress-frame-height.js'
 assert 'history.pushState=H(history.pushState)' in nginx
 assert 'window.WebSocket=function' in nginx
 assert 'HTMLLinkElement&&HTMLLinkElement.prototype' in nginx
 assert "sub_filter 'url(/assets/'" in nginx
 assert 'sub_filter \'</head>\'' in nginx
 assert 'return 302 $safe_ingress_path/signin;' in nginx
-assert 'location = /_woow/ingress-frame-height.js {' in nginx
-assert 'alias /etc/nginx/ingress-frame-height.js;' in nginx
-assert 'add_header Cache-Control "no-store" always;' in nginx
-assert '<script src="$safe_ingress_path/_woow/ingress-frame-height.js"></script>' in nginx
-assert 'var frame = window.frameElement;' in frame_height
-assert 'if (!frame) return;' in frame_height
-assert 'host.localName !== "ha-panel-app"' in frame_height
-assert '"100dvh"' in frame_height and '"100vh"' in frame_height
-assert 'if (changed)' in frame_height
-assert 'window.dispatchEvent(new Event("resize"));' in frame_height
-assert 'var parentWindow = window.parent;' in frame_height
-assert 'var observer = null;' in frame_height
-assert 'parentWindow.addEventListener("resize", applyHeight);' in frame_height
-assert 'parentWindow.removeEventListener("resize", applyHeight);' in frame_height
-assert 'if (!observer) observer = new ResizeObserver(applyHeight);' in frame_height
-assert 'observer.observe(frame);' in frame_height
-assert 'observer.disconnect();' in frame_height
-assert 'window.addEventListener("pageshow", start);' in frame_height
-assert 'window.addEventListener("pagehide", stop);' in frame_height
-assert 'window.addEventListener("unload",' not in frame_height
+assert "sub_filter 'hee=function(e){return`/`+e}' 'hee=function(e){return(window.BASE_PATH||`/`)+e}';" in nginx
+assert 'location = /_woow/ingress-frame-height.js {' not in nginx
+assert 'alias /etc/nginx/ingress-frame-height.js;' not in nginx
+assert '<script src="$safe_ingress_path/_woow/ingress-frame-height.js"></script>' not in nginx
+assert not frame_height_path.exists()
 
 schema = config["schema"]
 assert "N8N_EDITOR_BASE_URL" in schema, "missing N8N_EDITOR_BASE_URL schema"

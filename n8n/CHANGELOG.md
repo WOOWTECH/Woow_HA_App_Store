@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.12.14
+
+- Fix the confirmed Home Assistant Ingress height collapse at its source: n8n 2.12.3's preload helper searched for root-path dependencies while the initial stylesheet links had already been rewritten to the token-prefixed ingress path. The helper now builds dependency URLs from the ingress-only `window.BASE_PATH`, so its native duplicate-link check finds the existing links.
+- Prevent duplicate BaseLayout CSS from loading after the index stylesheet and overriding n8n's `height: 100vh` with `height: 100%`. Remove the 2.12.13 frame-height adapter, route, and injection because the Home Assistant panel and iframe were already correctly sized.
+- Direct port 5678 and Cloudflare root-path access remain unchanged. n8n and Task Runner remain pinned to 2.12.3.
+- Rollback: restore the pre-2.12.14 partial add-on backup to return to 2.12.13; no n8n database migration is involved.
+
 ## 2.12.13
 
 - Fix the confirmed Home Assistant App-panel height collapse by loading a frame-height adapter only through the port 5690 ingress nginx. When the n8n iframe belongs to `ha-panel-app`, the adapter restores the host to the dynamic viewport height and the iframe to 100%; direct port 5678 and Cloudflare remain unchanged.
