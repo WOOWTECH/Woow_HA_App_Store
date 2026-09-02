@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.17 — 2026-09-02
+
+### Fixed
+- Remove Odoo backend's `X-Frame-Options: DENY` only on the HA Ingress listener. Chromium rejected the authenticated `/odoo` iframe before loading any assets, producing the broken-page icon while nginx logged only `GET /odoo 200`.
+
 ## 0.3.16 — 2026-09-02
 
 ### Fixed
