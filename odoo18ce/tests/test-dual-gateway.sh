@@ -56,6 +56,10 @@ assert 'browser.location.origin+"$safe_ingress_path"+router.stateToUrl' in n
 assert 'serverURL:window.origin+"$safe_ingress_path"' in n
 assert '%%INGRESS_CACHE_VERSION%%' in n
 assert 'Cache-Control "no-store, no-cache, must-revalidate"' in n
+assert 'navigator.serviceWorker.getRegistrations' in n
+assert 'r.scope.indexOf("/odoo")' in n
+assert 'woow-odoo-sw-clean-%%INGRESS_CACHE_VERSION%%' in n
+assert "sub_filter '\"src\": \"/'" in n
 assert "sub_filter '\"/my/'" in n
 assert 'return 302 $safe_ingress_path/odoo' not in n
 assert n.count('proxy_set_header X-Forwarded-Proto https;') >= 3

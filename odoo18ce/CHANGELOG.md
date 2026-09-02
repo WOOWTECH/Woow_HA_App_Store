@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.23 — 2026-09-02
+
+### Fixed
+- Rewrite `{"src": "/web/assets/..."}` values returned by `/web/bundle`. Website editor injects WYSIWYG JS/CSS into a child iframe whose DOM prototypes do not inherit the parent ingress shim; unrewritten bundle JSON therefore loaded root HA URLs and raised `AssetsLoadingError`.
+
+## 0.3.22 — 2026-09-02
+
+### Fixed
+- Unregister stale Odoo service workers whose `/odoo` scope or `/web/service-worker.js` script can keep intercepting transformed ingress assets after updates. Perform one version-scoped reload after cleanup, without touching Home Assistant's own service worker registrations or unrelated CacheStorage.
+
 ## 0.3.21 — 2026-09-02
 
 ### Fixed
