@@ -33,7 +33,7 @@ ha store add https://github.com/WOOWTECH/Woow_HA_App_Store
 | `woow-emqx` | Woow EMQX | 5.9.0 | EMQX 5.x MQTT broker（企業級，內建 ngrok） |
 | `woow-headscale` | Woow Headscale VPN | 0.1.0 | 自架 Headscale + Headplane GUI |
 | `woow-immich` | Woow Immich | 2.5.6-v10 | 自架相簿（Google Photos 替代） |
-| `woow-n8n` | Woow n8n | 2.12.13 | AI/自動化 workflow |
+| `woow-n8n` | Woow n8n | 2.12.14 | AI/自動化 workflow |
 | `woow-nextcloud` | Woow Nextcloud | 33.0.0-v4 | 自架雲端硬碟 |
 | `woow_ha_pi_agent` | Woow HA Pi Agent | 0.13.1 | pi-web + coding agent SDK + 影音管線 |
 | `woow_ha_core_1..5` | Woowtech HA Core 1-5 | 2.3.0 | 巢狀 HA Core 實例（每個獨立 onboarding，port 8124-8128） |
