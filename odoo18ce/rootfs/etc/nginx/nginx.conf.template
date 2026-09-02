@@ -20,6 +20,15 @@ http {
         default $http_x_forwarded_proto;
         '' $scheme;
     }
+    map $http_x_forwarded_proto $ingress_proto {
+        default https;
+        https https;
+        http http;
+    }
+    map $ingress_proto $ingress_cookie_secure {
+        https secure;
+        default nosecure;
+    }
     map $http_x_ingress_path $safe_ingress_path {
         default "";
         "~^/api/hassio_ingress/[A-Za-z0-9_-]{16,128}$" $http_x_ingress_path;
@@ -92,9 +101,9 @@ http {
             proxy_set_header Upgrade $http_upgrade;
             proxy_set_header Connection $connection_upgrade;
             proxy_set_header Host $http_host;
-            proxy_set_header Origin https://$http_host;
+            proxy_set_header Origin $ingress_proto://$http_host;
             proxy_set_header X-Forwarded-Host $http_host;
-            proxy_set_header X-Forwarded-Proto https;
+            proxy_set_header X-Forwarded-Proto $ingress_proto;
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
             proxy_read_timeout 3600s;
         }
@@ -107,7 +116,7 @@ http {
             proxy_http_version 1.1;
             proxy_set_header Host $http_host;
             proxy_set_header X-Forwarded-Host $http_host;
-            proxy_set_header X-Forwarded-Proto https;
+            proxy_set_header X-Forwarded-Proto $ingress_proto;
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
             proxy_set_header Accept-Encoding "";
             proxy_buffering off;
@@ -164,7 +173,7 @@ http {
             proxy_set_header Host $http_host;
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header X-Forwarded-Host $http_host;
-            proxy_set_header X-Forwarded-Proto https;
+            proxy_set_header X-Forwarded-Proto $ingress_proto;
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
             proxy_set_header Accept-Encoding "";
             # Odoo backend responses use X-Frame-Options: DENY, which makes
@@ -179,7 +188,7 @@ http {
 
             proxy_redirect ~^(?<odoo_redirect>/.*)$ $safe_ingress_path$odoo_redirect;
             proxy_cookie_path / $safe_ingress_path/;
-            proxy_cookie_flags session_id secure httponly samesite=lax;
+            proxy_cookie_flags session_id $ingress_cookie_secure httponly samesite=lax;
 
             sub_filter_once off;
             sub_filter_types application/javascript text/javascript text/css application/json;

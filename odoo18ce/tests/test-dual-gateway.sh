@@ -70,8 +70,10 @@ assert "sub_filter '\"/base_setup/'" in n
 assert "sub_filter '\"icon\":\"/'" in n
 assert 'HTMLImageElement.prototype,"srcset"' in n
 assert 'return 302 $safe_ingress_path/odoo' not in n
-assert n.count('proxy_set_header X-Forwarded-Proto https;') >= 3
-assert 'proxy_set_header Origin https://$http_host;' in n
+assert n.count('proxy_set_header X-Forwarded-Proto $ingress_proto;') >= 3
+assert 'proxy_set_header Origin $ingress_proto://$http_host;' in n
+assert 'map $ingress_proto $ingress_cookie_secure' in n
+assert 'proxy_cookie_flags session_id $ingress_cookie_secure' in n
 assert 'proxy_hide_header X-Frame-Options;' in n
 assert (root/'tests/e2e_adversarial.py').is_file()
 assert 'location = /xmlrpc/2/db' in n
