@@ -68,6 +68,8 @@ assert "sub_filter '\"/my/'" in n
 assert "sub_filter '\"/calendar/'" in n
 assert "sub_filter '\"/base_setup/'" in n
 assert "sub_filter '\"icon\":\"/'" in n
+assert "sub_filter '\"imgurl\":\"/'" in n
+assert '.settings_tab a[href^=\'#\']' in n
 assert 'HTMLImageElement.prototype,"srcset"' in n
 assert 'return 302 $safe_ingress_path/odoo' not in n
 assert n.count('proxy_set_header X-Forwarded-Proto $ingress_proto;') >= 3

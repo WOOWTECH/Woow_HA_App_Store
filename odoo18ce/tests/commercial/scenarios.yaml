@@ -1,0 +1,50 @@
+gateways:
+  ingress:
+    kind: actual-ha-iframe
+    panel: /1b7b4ce7_odoo18ce
+  public:
+    kind: cloudflare-root
+    base_url: https://woowtech-odooo.woowtech.io
+
+scenarios:
+  - id: auth-shell
+    phase: 1
+    operations: [invalid_login, login, logout, relogin, back, forward, reload, deep_link, mobile]
+  - id: menu-crawl
+    phase: 2
+    operations: [apps, menu_depth_1, menu_depth_2, menu_depth_3, list, kanban, form, calendar, pivot, graph, search]
+  - id: generic-crud
+    phase: 2
+    operations: [create, save, edit, discard, duplicate, archive, unarchive, delete]
+  - id: discuss-realtime
+    phase: 3
+    operations: [channel_create, invite, send, receive, reply, edit, reaction, unread, attachment, delete, websocket]
+  - id: calendar
+    phase: 4
+    operations: [create, recur, invite, edit, reschedule, delete_occurrence, delete_series]
+  - id: website-editor
+    phase: 5
+    operations: [app_click, edit, snippet_text, snippet_image, save, publish, opposite_gateway_verify, unpublish, delete]
+  - id: ecommerce
+    phase: 5
+    operations: [product_publish, search, product_detail, variant, cart_add, cart_update, cart_remove, checkout, test_payment, confirmation]
+  - id: invoicing
+    phase: 6
+    operations: [invoice_create, edit_lines, post, pdf, register_test_payment, reverse, vendor_bill, credit_note]
+  - id: inventory
+    phase: 7
+    operations: [product_create, adjustment, receipt, internal_transfer, delivery, backorder, return, scrap, restore_baseline]
+  - id: pos
+    phase: 8
+    operations: [config, session_open, order, quantity, discount, test_payment, receipt, refund, session_close]
+  - id: portal-reports-binary
+    phase: 9
+    operations: [tiles, list, detail, pager, breadcrumb, message, unauthorized, report, upload, preview, download_sha256]
+  - id: apps-settings
+    phase: 10
+    operations: [settings_sections, save, discard, e2e_module_install, e2e_module_uninstall, user_group_access]
+  - id: cleanup
+    phase: 11
+    operations: [reverse_documents, restore_settings, remove_records, marker_scan, artifact_index]
+
+required_evidence: [screenshots, route, network, console, pageerror, response_status, semantic_state, cleanup_state]

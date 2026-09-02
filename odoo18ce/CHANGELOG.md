@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.30 — 2026-09-02
+
+### Fixed
+- Rewrite Settings `module.imgurl` values so section icons stay under HA Ingress.
+- Normalize Settings hash-tab anchors to the current tokenized `/odoo/settings#<section>` URL before browser default navigation, preventing clicks from restoring stale Discuss history.
+
 ## 0.3.29 — 2026-09-02
 
 ### Fixed
