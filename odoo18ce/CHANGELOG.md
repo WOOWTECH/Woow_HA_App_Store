@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.20 — 2026-09-02
+
+### Fixed
+- Remove the older `/bus` literal substitutions after prefixing `busParametersService.serverURL`. Applying both mechanisms generated a double ingress token for the SharedWorker bundle, so the bundle returned 404 before it could open `/websocket`.
+
+## 0.3.19 — 2026-09-02
+
+### Fixed
+- Prefix Odoo bus `serverURL` in the rewritten backend asset bundle. Discuss passed a root-origin `wss://<ha-host>/websocket` URL into its SharedWorker, bypassing window-level WebSocket shims and causing “Real-time connection lost” with no `/websocket` request reaching the add-on.
+
 ## 0.3.18 — 2026-09-02
 
 ### Diagnostics

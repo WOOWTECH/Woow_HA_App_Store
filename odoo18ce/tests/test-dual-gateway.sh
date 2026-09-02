@@ -53,6 +53,7 @@ assert 'u instanceof URL' in n
 assert 'location ^~ /web/assets/' in n
 assert 'translationURL' in n
 assert 'browser.location.origin+"$safe_ingress_path"+router.stateToUrl' in n
+assert 'serverURL:window.origin+"$safe_ingress_path"' in n
 assert "sub_filter '\"/my/'" in n
 assert 'return 302 $safe_ingress_path/odoo' not in n
 assert n.count('proxy_set_header X-Forwarded-Proto https;') >= 3
