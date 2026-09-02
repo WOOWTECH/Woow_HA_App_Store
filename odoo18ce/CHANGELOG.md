@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.25 — 2026-09-02
+
+### Fixed
+- Version the Discuss SharedWorker/Worker name and imported worker-bundle URL. Browsers keep a named SharedWorker alive across iframe/add-on reloads; reusing `odoo:websocket_shared_worker` preserved the pre-fix root `/websocket` target and emitted a null `UncaughtClientError` even after transformed assets were refreshed.
+
 ## 0.3.24 — 2026-09-02
 
 ### Fixed

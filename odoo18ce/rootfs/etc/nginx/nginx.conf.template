@@ -146,6 +146,12 @@ http {
             sub_filter 'scope:"/odoo"' 'scope:"$safe_ingress_path/odoo"';
             sub_filter 'browser.location.origin+router.stateToUrl' 'browser.location.origin+"$safe_ingress_path"+router.stateToUrl';
             sub_filter 'serverURL:window.origin' 'serverURL:window.origin+"$safe_ingress_path"';
+            # SharedWorkers are keyed by origin and name. Version both the
+            # worker identity and imported bundle so an open browser cannot
+            # reuse a pre-upgrade worker that still targets root /websocket.
+            sub_filter '"odoo:websocket_shared_worker"' '"odoo:websocket_shared_worker_%%INGRESS_CACHE_VERSION%%"';
+            sub_filter '"odoo:websocket_worker"' '"odoo:websocket_worker_%%INGRESS_CACHE_VERSION%%"';
+            sub_filter 'websocket_worker_bundle?v=${session.websocket_worker_version}`' 'websocket_worker_bundle?v=${session.websocket_worker_version}&woow_ingress=%%INGRESS_CACHE_VERSION%%`';
         }
 
         location / {
