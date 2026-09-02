@@ -129,16 +129,13 @@ http {
             sub_filter '"/my/' '"$safe_ingress_path/my/';
             sub_filter "'/my/" "'$safe_ingress_path/my/";
             sub_filter '`/my/' '`$safe_ingress_path/my/';
-            sub_filter '"/bus/' '"$safe_ingress_path/bus/';
-            sub_filter "'/bus/" "'$safe_ingress_path/bus/";
-            sub_filter '`/bus/' '`$safe_ingress_path/bus/';
-            sub_filter '}/bus/websocket_worker_bundle' '}$safe_ingress_path/bus/websocket_worker_bundle';
             sub_filter '"/report/' '"$safe_ingress_path/report/';
             sub_filter '"/odoo' '"$safe_ingress_path/odoo';
             sub_filter "'/odoo" "'$safe_ingress_path/odoo";
             sub_filter '`/odoo' '`$safe_ingress_path/odoo';
             sub_filter 'scope:"/odoo"' 'scope:"$safe_ingress_path/odoo"';
             sub_filter 'browser.location.origin+router.stateToUrl' 'browser.location.origin+"$safe_ingress_path"+router.stateToUrl';
+            sub_filter 'serverURL:window.origin' 'serverURL:window.origin+"$safe_ingress_path"';
         }
 
         location / {
