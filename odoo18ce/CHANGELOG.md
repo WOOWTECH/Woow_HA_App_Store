@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.28 — 2026-09-02
+
+### Fixed
+- Support HA Ingress through both public HTTPS and VPN-direct HTTP origins. Preserve the browser-visible `X-Forwarded-Proto`, generate matching HTTP/WS or HTTPS/WSS semantics, and add/remove the session cookie `Secure` flag conditionally. VPN users opening `http://<tailscale-ip>:8123` can now retain Odoo login sessions.
+
 ## 0.3.27 — 2026-09-02
 
 ### Fixed
