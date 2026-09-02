@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.26 — 2026-09-02
+
+### Fixed
+- Replace the SharedWorker bundle cache-buster match containing JavaScript `${...}` syntax with a simple `websocket_worker_bundle?v=` substitution. nginx parsed the former as an invalid variable and stopped the add-on at startup.
+
 ## 0.3.25 — 2026-09-02
 
 ### Fixed
