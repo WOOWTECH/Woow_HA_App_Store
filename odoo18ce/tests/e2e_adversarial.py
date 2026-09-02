@@ -10,6 +10,7 @@ LOGIN = os.environ.get("ODOO_TEST_LOGIN", "")
 PASSWORD = os.environ.get("ODOO_TEST_PASSWORD", "")
 DB_POLICY = os.environ.get("ODOO_DB_POLICY", "block")  # block | allow | skip
 IGNORE_HTTPS_ERRORS = os.environ.get("IGNORE_HTTPS_ERRORS", "0") == "1"
+EXPECT_WEBSITE_EDITOR = os.environ.get("ODOO_EXPECT_WEBSITE_EDITOR", "0") == "1"
 ARTIFACTS = Path(os.environ.get("E2E_ARTIFACT_DIR", "/tmp/odoo-e2e"))
 ARTIFACTS.mkdir(parents=True, exist_ok=True)
 
@@ -27,9 +28,9 @@ with sync_playwright() as p:
     browser = p.chromium.launch(headless=True)
     context = browser.new_context(ignore_https_errors=IGNORE_HTTPS_ERRORS, viewport={"width": 1440, "height": 1000})
     page = context.new_page()
-    failed, server_errors, console_errors = [], [], []
+    failed, server_errors, console_errors, responses = [], [], [], []
     page.on("requestfailed", lambda req: failed.append((req.url, req.failure)) if not ignored_url(req.url) else None)
-    page.on("response", lambda res: server_errors.append((res.status, res.url)) if res.status >= 500 else None)
+    page.on("response", lambda res: (responses.append((res.status, res.url)), server_errors.append((res.status, res.url)) if res.status >= 500 else None))
     page.on("console", lambda msg: console_errors.append(msg.text) if msg.type == "error" and relevant_console(msg.text) else None)
 
     # Unauthenticated basics and lifecycle perimeter.
@@ -71,6 +72,21 @@ with sync_playwright() as p:
                 "route": route, "failed": failed[before[0]:], "server": server_errors[before[1]:], "console": console_errors[before[2]:]
             }
             page.screenshot(path=str(ARTIFACTS / f"{index:02d}-{route.strip('/').replace('/','-') or 'home'}.png"), full_page=True)
+
+        if EXPECT_WEBSITE_EDITOR:
+            page.goto(url("/odoo"), wait_until="domcontentloaded", timeout=120000)
+            page.wait_for_timeout(4000)
+            page.locator(".o_navbar_apps_menu button").click()
+            website = page.get_by_text("Website", exact=True)
+            assert website.count() == 1, "Website app unavailable to E2E administrator"
+            before = (len(failed), len(server_errors), len(console_errors))
+            website.click()
+            page.wait_for_timeout(15000)
+            assert (len(failed), len(server_errors), len(console_errors)) == before, {
+                "operation": "Website editor", "failed": failed[before[0]:], "server": server_errors[before[1]:], "console": console_errors[before[2]:]
+            }
+            assert any(status == 200 and "website.assets_all_wysiwyg_inside.min.js" in target for status, target in responses), "WYSIWYG JS bundle was not loaded"
+            page.screenshot(path=str(ARTIFACTS / "website-editor.png"), full_page=True)
 
         page.goto(url("/web/session/logout?redirect=/web/login"), wait_until="domcontentloaded", timeout=120000)
         page.goto(url("/odoo"), wait_until="domcontentloaded", timeout=120000)
