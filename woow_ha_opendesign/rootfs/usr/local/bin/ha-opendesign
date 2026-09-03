@@ -1,0 +1,127 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+readonly DATA_DIR=/data/opendesign
+readonly NGINX_TMP=/tmp/ha-opendesign-nginx
+readonly SHUTDOWN_GRACE_SECONDS=5
+od_pid=''
+nginx_pid=''
+stopping=0
+
+terminate_children() {
+  if (( stopping )); then
+    return
+  fi
+  stopping=1
+  trap - TERM INT
+  local pid deadline
+  for pid in "$od_pid" "$nginx_pid"; do
+    if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
+      kill -TERM "$pid" 2>/dev/null || true
+    fi
+  done
+
+  deadline=$((SECONDS + SHUTDOWN_GRACE_SECONDS))
+  while (( SECONDS < deadline )); do
+    local alive=0
+    for pid in "$od_pid" "$nginx_pid"; do
+      if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
+        alive=1
+      fi
+    done
+    (( alive == 0 )) && break
+    sleep 0.1
+  done
+
+  for pid in "$od_pid" "$nginx_pid"; do
+    if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
+      echo "[ha-opendesign] process $pid exceeded ${SHUTDOWN_GRACE_SECONDS}s grace; sending KILL" >&2
+      kill -KILL "$pid" 2>/dev/null || true
+    fi
+  done
+  for pid in "$od_pid" "$nginx_pid"; do
+    if [[ -n "$pid" ]]; then
+      wait "$pid" 2>/dev/null || true
+    fi
+  done
+}
+
+trap terminate_children TERM INT
+
+prepare_owned_dir() {
+  local dir=$1
+  if [[ -L "$dir" ]]; then
+    echo "[ha-opendesign] refusing symbolic-link runtime directory: $dir" >&2
+    exit 78
+  fi
+  if [[ -e "$dir" ]]; then
+    if [[ ! -d "$dir" ]]; then
+      echo "[ha-opendesign] runtime path is not a directory: $dir" >&2
+      exit 78
+    fi
+  else
+    # Parents are prepared first, so plain mkdir never traverses a child path
+    # that has not already passed the no-symlink check.
+    mkdir -- "$dir"
+  fi
+  if [[ -L "$dir" || ! -d "$dir" ]]; then
+    echo "[ha-opendesign] runtime directory changed during validation: $dir" >&2
+    exit 78
+  fi
+  # -h/--no-dereference prevents a late symlink swap from changing its target.
+  chown -h open-design:open-design "$dir"
+}
+
+if [[ $(id -u) -ne 0 ]]; then
+  echo "[ha-opendesign] launcher must start as root to prepare the HA /data mount" >&2
+  exit 78
+fi
+
+owned_dirs=(
+  "$DATA_DIR"
+  "$DATA_DIR/home"
+  "$DATA_DIR/export-render"
+  "$DATA_DIR/export-pdf"
+  "$NGINX_TMP"
+  "$NGINX_TMP/client"
+  "$NGINX_TMP/proxy"
+  "$NGINX_TMP/fastcgi"
+  "$NGINX_TMP/uwsgi"
+  "$NGINX_TMP/scgi"
+)
+for dir in "${owned_dirs[@]}"; do
+  prepare_owned_dir "$dir"
+done
+for dir in "$DATA_DIR" "$DATA_DIR/home" "$DATA_DIR/export-render" "$DATA_DIR/export-pdf"; do
+  [[ ! -L "$dir" && -d "$dir" ]] || {
+    echo "[ha-opendesign] refusing unsafe chmod target: $dir" >&2
+    exit 78
+  }
+  chmod 0750 "$dir"
+done
+
+export OD_DATA_DIR="$DATA_DIR"
+export OD_BIND_HOST=127.0.0.1
+export OD_PORT=7456
+export HOME="$DATA_DIR/home"
+
+su-exec open-design:open-design /usr/local/bin/node /opt/ha-opendesign/headless-entry.mjs &
+od_pid=$!
+# `-e stderr` uses the inherited descriptor directly; reopening /dev/stderr is
+# denied when HA's root PID 1 drops to UID 1001 under its container procfs.
+su-exec open-design:open-design /usr/sbin/nginx -e stderr -c /etc/nginx/nginx.conf &
+nginx_pid=$!
+
+set +e
+wait -n "$od_pid" "$nginx_pid"
+status=$?
+set -e
+
+echo "[ha-opendesign] a required process exited (status=$status); stopping its peer" >&2
+terminate_children
+
+# A clean but unexpected child exit still requires Supervisor to restart us.
+if (( status == 0 )); then
+  status=1
+fi
+exit "$status"

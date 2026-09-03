@@ -2,7 +2,7 @@
 
 [![Open your Home Assistant instance and show the add add-on repository dialog with a specific repository URL pre-filled.](https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg)](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2FWOOWTECH%2FWoow_HA_App_Store)
 
-一鍵加入 19 個 WOOWTECH 精選 / 自製 Home Assistant App 的統一 store repo。
+一鍵加入 20 個 WOOWTECH 精選 / 自製 Home Assistant App 的統一 store repo。
 
 ## 使用方式
 
@@ -16,14 +16,14 @@
    ```
    https://github.com/WOOWTECH/Woow_HA_App_Store
    ```
-4. 按 **Add** → 關閉 → 頁面下拉即可看到 19 個 App
+4. 按 **Add** → 關閉 → 頁面下拉即可看到 20 個 App
 
 ### 方法三：CLI (HAOS SSH)
 ```bash
 ha store add https://github.com/WOOWTECH/Woow_HA_App_Store
 ```
 
-## 內含 Apps（19 個）
+## 內含 Apps（20 個）
 
 ### 🏢 WOOWTECH 自主開發
 | Slug | 名稱 | Ver | 用途 |
@@ -38,6 +38,7 @@ ha store add https://github.com/WOOWTECH/Woow_HA_App_Store
 | `woow-nextcloud` | Woow Nextcloud | 33.0.3 | 自架雲端硬碟 |
 | `woow-tailscale` | Woow Tailscale | 0.1.0 | Tailscale / Headscale VPN 用戶端 |
 | `woow_ha_pi_agent` | Woow HA Pi Agent | 0.13.2 | pi-web + coding agent SDK + 影音管線 |
+| `woow_ha_opendesign` | Woow HA OpenDesign | 0.1.0 | Ingress-only BYOK 設計工作台 + PDF／圖片／PPTX 匯出 |
 | `woow_ha_core_1..5` | Woowtech HA Core 1-5 | 2.3.0 | 巢狀 HA Core 實例（每個獨立 onboarding，port 8124-8128） |
 
 ### 🪞 WOOWTECH 鏡像維護（防上游失聯）
