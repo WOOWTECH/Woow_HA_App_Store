@@ -174,7 +174,7 @@ def login_ha_and_open_panel(page):
         page.goto(HA_BASE, wait_until="domcontentloaded", timeout=120000)
         for _ in range(100):
             username = page.locator('input[name="username"]')
-            if username.count() and username.is_visible():
+            if username.count() and username.is_visible() and username.is_enabled():
                 username.fill(HA_USER)
                 page.locator('input[name="password"]').fill(HA_PASSWORD)
                 page.locator('input[name="password"]').press("Enter")
@@ -197,10 +197,14 @@ def login_odoo_in_frame(page, frame):
     for _ in range(3):
         try:
             frame = direct_ingress_frame(page)
-            if frame.locator('input[name="login"]').count():
-                frame.locator('input[name="login"]').fill(ODOO_LOGIN)
-                frame.locator('input[name="password"]').fill(ODOO_PASSWORD)
-                frame.get_by_role("button", name="Log in", exact=True).click()
+            navbar = frame.locator(".o_main_navbar")
+            if navbar.count() and navbar.is_visible():
+                return frame
+            login = frame.locator('input[name="login"]')
+            login.wait_for(state="visible", timeout=20000)
+            login.fill(ODOO_LOGIN)
+            frame.locator('input[name="password"]').fill(ODOO_PASSWORD)
+            frame.get_by_role("button", name="Log in", exact=True).click()
             break
         except PlaywrightError as error:
             if not is_detached_frame_error(error):
@@ -352,12 +356,12 @@ def run_ingress(browser):
     try:
         frame = login_ha_and_open_panel(page)
         login_odoo_in_frame(page, frame)
+        open_ingress_settings(page)
         keys = assert_tabs_in_frame(
             page,
-            lambda: open_ingress_settings(page),
+            lambda: direct_ingress_frame(page),
             "ingress",
             evidence,
-            post_click_frame_getter=lambda: direct_ingress_frame(page),
         )
         assert_no_http_failures(evidence)
     finally:

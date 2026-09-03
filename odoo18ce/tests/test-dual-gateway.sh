@@ -106,6 +106,7 @@ open(sys.argv[2], 'w', encoding='utf-8').write(match.group(1).replace('$safe_ing
 PY
 node --check "${shim}"
 python3 "${ADDON}/tests/test-ingress-router-rewrite.py"
+python3 "${ADDON}/tests/test-settings-icon-rewrite.py"
 
 if ! command -v nginx >/dev/null 2>&1; then
     printf '%s\n' 'nginx is required for rendered gateway configuration tests' >&2
