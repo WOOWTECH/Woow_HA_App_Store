@@ -41,7 +41,6 @@ jobs:
             dnsmasq-dhcp|Woow_ha_dnsmasq_dhcp_add_on|dnsmasq-dhcp
             emqx|Woow_ha_emqx|emqx
             headscale|Woow_ha_vpn_headscale_package|headscale
-            haos-enrollment-bridge|haos-enrollment-bridge|addon
             n8n|Woow_ha_n8n|n8n
             nextcloud|Woow_ha_nextcloud|nextcloud
             odoo18ce|Woow_ha_odoo|odoo18ce
