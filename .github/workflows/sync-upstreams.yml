@@ -52,6 +52,7 @@ jobs:
             woow_ha_core_4|woowtech_ha_multi_ha_core|woow_ha_core_4
             woow_ha_core_5|woowtech_ha_multi_ha_core|woow_ha_core_5
             woow_ha_pi_agent|Woow_ha_pi_agent_add_on|.
+            woow_ha_opendesign|Woow_ha_opendesign_add_on|.
         run: |
           set -euo pipefail
           mkdir -p /tmp/upstream

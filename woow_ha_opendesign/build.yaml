@@ -1,0 +1,13 @@
+# Supervisor's local add-on builder rejects OCI digest syntax here and silently
+# falls back to its default base image. Keep the version tag for local rebuilds;
+# release/CI builds and the Dockerfile default remain pinned to the approved digest.
+build_from:
+  amd64: ghcr.io/nexu-io/od:0.21.1
+  aarch64: ghcr.io/nexu-io/od:0.21.1
+labels:
+  org.opencontainers.image.title: Woow HA OpenDesign
+  org.opencontainers.image.description: OpenDesign 0.21.1 for Home Assistant Ingress
+  org.opencontainers.image.vendor: WOOWTECH
+  org.opencontainers.image.authors: WoowTech <ops@woowtech.com>
+  org.opencontainers.image.source: https://github.com/WOOWTECH/Woow_ha_opendesign_add_on
+  org.opencontainers.image.licenses: MIT
