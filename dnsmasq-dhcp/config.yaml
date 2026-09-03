@@ -1,0 +1,168 @@
+---
+#
+# This is the main addon configuration file for Home Assistant
+# It defines metadata, options, and schema
+# See https://developers.home-assistant.io/docs/add-ons/configuration/
+#
+
+description: A DHCP/DNS server based on dnsmasq
+url: https://github.com/f18m/ha-addon-dnsmasq-dhcp-server/tree/main
+# IMPORTANT: in the "main" branch you want these 3 fields to be set to:
+#
+#   version: 5.x.y
+#   slug: dnsmasq-dhcp
+#   name: Dnsmasq-DHCP
+#   stage: stable
+#
+# instead on the 'beta' branch you want these 3 fields to be set to:
+#
+#   version: 5.x.y
+#   slug: dnsmasq-dhcp-beta
+#   name: Dnsmasq-DHCP BETA
+#   stage: experimental
+
+version: 5.1.0
+slug: dnsmasq-dhcp
+name: Dnsmasq-DHCP
+stage: stable
+arch:
+  - aarch64
+  - amd64
+# host network is required to allow dnsmasq to bind to (all) network interfaces specfied in the config
+host_network: true
+image: ghcr.io/woowtech/ha-mirror-ghcr-io-f18m-addon-dnsmasq-dhcp
+# init false because this addon uses s6-overlay
+init: false
+# enable the ingress feature for this addon, see https://developers.home-assistant.io/docs/add-ons/presentation#ingress
+ingress: true
+ingress_port: 8100
+panel_icon: mdi:ip-network-outline
+panel_title: DHCP
+options:
+  # see DOCS.md for documentation on each setting
+  interfaces:
+    - auto
+  dhcp_server:
+    default_lease: 1h
+    address_reservation_lease: 1h
+    reset_dhcp_lease_database_on_reboot: false
+    forget_past_clients_after: 30d
+    log_requests: true
+    dns_domain: lan
+    dns_servers:
+      - 0.0.0.0
+    ntp_servers:
+      - 0.europe.pool.ntp.org
+      - 1.europe.pool.ntp.org
+      - 2.europe.pool.ntp.org
+    dnsmasq_customizations: ""
+  dhcp_pools:
+    - interface: auto
+      start: 192.168.1.50
+      end: 192.168.1.150
+      gateway: 192.168.1.254
+      netmask: 255.255.255.0
+  dhcp_client_settings:
+    - name: "important-server"
+      description: "My important server"
+      mac: aa:bb:cc:dd:ee:ff
+      reserved_ip: 192.168.1.15
+      link: "http://{{ .ip }}/landing-page/for/this/host"
+      tags:
+        - server
+      dns_aliases:
+        - "alias-for-this-device"
+        - "another-alias.lan"
+    - name: "work-laptop"
+      description: "My laptop"
+      mac: dd:ee:aa:dd:bb:ee
+      reserved_ip: ""
+      link: "http://{{ .ip }}/landing-page/for/this/host"
+      tags:
+        - laptop
+      dns_aliases:
+        - "alias-for-this-friendly-device"
+  dhcp_mac_address_blocklist:
+    - mac: aa:bb:cc:dd:ee:fa
+      description: "This is a blocked MAC address"
+  dns_server:
+    enable: true
+    port: 53
+    cache_size: 10000
+    log_requests: false
+    dns_domain: lan
+    upstream_servers:
+      - 8.8.8.8
+      - 8.8.4.4
+  dns_custom_hosts:
+    - name: "my-custom-host"
+      ipv4_address: "192.168.1.99"
+      ipv6_address: ""
+  web_ui:
+    log_activity: false
+    port: 8976
+    refresh_interval_sec: 10
+    data_tables_num_rows: 20
+schema:
+  interfaces:
+    # we expect a list of valid network interfaces; the character "@" which typically appears in
+    # veth pairs (used by docker) is not allowed on-purpose to avoid mistakes where the user
+    # provides a docker veth pair as interface for dnsmasq (this is typically not a good idea)
+    - match(^([a-z][a-zA-Z0-9\.:]*)$)
+  dhcp_server:
+    default_lease: str
+    address_reservation_lease: str
+    reset_dhcp_lease_database_on_reboot: bool
+    forget_past_clients_after: str
+    log_requests: bool
+    dns_servers:
+      - str
+    dns_domain: str
+    ntp_servers:
+      - str
+    dnsmasq_customizations: str
+  dhcp_pools:
+    # the "interface" field of each DHCP pool must be either "auto" or a valid network interface as per the regex 
+    # used in the "interfaces" field
+    - interface: match(^([a-z][a-zA-Z0-9\.:]*)$)
+      start: str
+      end: str
+      gateway: str
+      netmask: str
+  dhcp_client_settings:
+    # name must be a string containing only letters, digits and dashes. This is for RFC1123 compliancy.
+    - name: match(^[a-zA-Z0-9]([a-zA-Z0-9\-]*[a-zA-Z0-9])?$)
+      description: "str?"
+      mac: match(^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$)
+      reserved_ip: "str?"
+      link: "str?"
+      tags:
+        - "str?"
+      dns_aliases:
+        - "str?"
+  dhcp_mac_address_blocklist:
+    - mac: match(^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$)
+      description: "str?"
+  dns_server:
+    enable: bool
+    port: int
+    cache_size: int
+    log_requests: bool
+    dns_domain: str
+    upstream_servers:
+      - str
+  dns_custom_hosts:
+    - name: match(^[a-zA-Z0-9]([a-zA-Z0-9\-.]*[a-zA-Z0-9])?$)
+      ipv4_address: "str?"
+      ipv6_address: "str?"
+  web_ui:
+    log_activity: bool
+    port: int
+    refresh_interval_sec: int
+    data_tables_num_rows: int
+# categorize this addon as a "system" addon
+startup: system
+privileged:
+  # NET_ADMIN is required to allow dnsmasq to bind to (all) network interfaces specified in the config
+  # and bind to the DNS port 53 and the DHCP port 67
+  - NET_ADMIN

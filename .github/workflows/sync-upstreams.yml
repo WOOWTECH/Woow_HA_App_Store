@@ -3,15 +3,15 @@ name: Sync upstream addons
 # Daily sweep: for each WOOWTECH-owned addon, mirror its upstream individual
 # repo's subdir into the App Store copy. Auto-commits when there's a diff.
 #
-# The App Store repo is the aggregate store users add as ONE URL to get all
-# 9 WOOWTECH addons at once. The individual per-addon repos are the source
-# of truth (that's where CI publishes the images from and where releases are
-# cut). Without this workflow, every release requires a manual clone-and-copy
-# round-trip; the pi-agent 0.13.2 incident (2026-08-19) is what triggered it.
+# The App Store repo is the aggregate store users add as ONE URL. Individual
+# per-addon repos are the source of truth for these mapped directories (that is
+# where releases or defensive upstream mirrors are maintained). Without this
+# workflow, every release requires a manual clone-and-copy round-trip; the
+# pi-agent 0.13.2 incident (2026-08-19) is what triggered it.
 #
-# External mirrors (hamh, music_assistant, knxd) are intentionally NOT synced
-# here — the README's policy is "防上游失聯" (defend against upstream going
-# away), not "track upstream head". Their versions are pinned by hand.
+# Legacy external mirrors (hamh, music_assistant, knxd) remain pinned by hand.
+# Dnsmasq-DHCP is synced because its WOOWTECH defensive mirror is now the
+# canonical source consumed by this store.
 #
 # Cron time: 20:00 UTC = 04:00 Asia/Taipei — off-peak for the team.
 
@@ -38,6 +38,7 @@ jobs:
           # slug|upstream-repo|upstream-subdir  (subdir "." = repo root)
           MAPPINGS: |
             cloudflared|Woow_ha_cloudflare_tunnel_webgui|cloudflared
+            dnsmasq-dhcp|Woow_ha_dnsmasq_dhcp_add_on|dnsmasq-dhcp
             emqx|Woow_ha_emqx|emqx
             headscale|Woow_ha_vpn_headscale_package|headscale
             n8n|Woow_ha_n8n|n8n
@@ -82,7 +83,7 @@ jobs:
           done <<< "${MAPPINGS}"
 
           if [ ${#synced[@]} -eq 0 ]; then
-            echo "All 13 subdirs already in sync with upstream — no commit needed."
+            echo "All mapped subdirs already in sync with upstream — no commit needed."
             exit 0
           fi
 

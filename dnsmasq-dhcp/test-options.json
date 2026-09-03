@@ -1,0 +1,108 @@
+{
+  "interfaces": [ "enp3s0" ],
+  "dhcp_client_settings": [
+    {
+      "mac": "aa:bb:cc:dd:ee:00",
+      "name": "first-reserved",
+      "description": "A static IP reservation for an important host, with a link to its landing page.",
+      "reserved_ip": "192.168.1.15",
+      "link": "https://{{ .ip }}/important-host-land-page",
+      "tags": [ "important", "static-reservation" ]
+    },
+    {
+      "mac": "aa:bb:cc:dd:ee:01",
+      "name": "second-reserved",
+      "description": "Another test. This DHCP client has a reserved IP within the DHCP range",
+      "reserved_ip": "192.168.1.55",
+      "link": "https://{{ .ip }}/less-important",
+      "tags": [ "static-reservation" ]
+    },
+    {
+      "mac": "aa:bb:cc:dd:ee:02",
+      "name": "dynamic1",
+      "description": "Metadata for a DHCP client without a reserved IP.",
+      "link": "https://{{ .ip }}/page-{{ .hostname }}",
+      "dns_aliases": [ "dynamic1.lan" ]
+    }
+  ],
+  "dhcp_mac_address_blocklist": [
+    {
+      "description": "a bad guy",
+      "mac": "11:22:33:44:55:66"
+    },
+    {
+      "description": "a bad guy",
+      "mac": "de:ad:be:ef:ca:fe"
+    }
+  ],
+  "dhcp_server": {
+    "default_lease": "12h",
+    "address_reservation_lease": "24h",
+    "forget_past_clients_after": "1w",
+    "log_requests": true,
+    "reset_dhcp_lease_database_on_reboot": false,
+    "dns_domain": "lan",
+    "dns_servers": [
+      "0.0.0.0", 
+      "8.8.8.8",
+      "8.8.4.4"
+    ],
+    "ntp_servers": [
+      "0.2.3.4",
+      "ntp.pool.org",
+      "0.europe.ntp.pool.org",
+      "1.europe.ntp.pool.org",
+      "2.europe.ntp.pool.org",
+      "1.2.3.4"
+    ],
+    "dnsmasq_customizations": "dhcp-vendorclass=set:printers,Hewlett-Packard JetDirect\ndhcp-option=tag:printers,3,192.168.4.4\n"
+  },
+  "dhcp_pools": [
+    {
+      "interface": "enp3s0",
+      "start": "192.168.1.50",
+      "end": "192.168.1.100",
+      "gateway": "192.168.1.254",
+      "netmask": "255.255.255.0"
+      },
+    {
+      "interface": "enp3s1",
+      "start": "192.168.2.50",
+      "end": "192.168.2.100",
+      "gateway": "192.168.2.254",
+      "netmask": "255.255.255.0"
+    }
+  ],
+  "dns_server": {
+    "enable": true,
+    "port": 53,
+    "dns_domain": "lan",
+    "cache_size": 10000,
+    "log_requests": false,
+    "upstream_servers": [
+      "8.8.8.8",
+      "8.8.4.4"
+    ]
+  },
+  "dns_custom_hosts": [
+    {
+      "name": "test1ipv4.lan",
+      "ipv4_address": "192.168.1.10"
+    },
+    {
+      "name": "test2ipv6.lan",
+      "ipv6_address": "fd00::1234"
+    },
+    {
+      "name": "ipv46.domain.lan",
+      "ipv4_address": "192.168.1.99",
+      "ipv6_address": "fd00::1234"
+    }
+  ],
+  "web_ui": {
+    "log_activity": true,
+    "port": 8976,
+    "refresh_interval_sec": 5,
+    "data_tables_num_rows": 10
+  }
+}

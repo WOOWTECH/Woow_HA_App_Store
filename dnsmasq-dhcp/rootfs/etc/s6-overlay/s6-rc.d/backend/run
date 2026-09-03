@@ -1,0 +1,4 @@
+#!/usr/bin/with-contenv bashio
+
+bashio::log.info "Starting dnsmasq-DHCP backend..."
+exec /opt/bin/backend
