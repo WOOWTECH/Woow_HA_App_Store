@@ -69,7 +69,8 @@ assert "sub_filter '\"/calendar/'" in n
 assert "sub_filter '\"/base_setup/'" in n
 assert "sub_filter '\"icon\":\"/'" in n
 assert "sub_filter '\"imgurl\":\"/'" in n
-assert '.settings_tab a.tab' in n
+assert '.settings_tab a.tab' not in n
+assert 'if(u.charAt(0)==="#")return u' in n
 assert "href^='#'" not in n
 assert 'HTMLImageElement.prototype,"srcset"' in n
 assert 'return 302 $safe_ingress_path/odoo' not in n
@@ -89,16 +90,61 @@ assert '$sent_http_x_frame_options' in n
 assert '$upstream_http_x_frame_options' in n
 assert 'proxy_pass http://127.0.0.1:8071' in n
 PY
-if command -v node >/dev/null 2>&1; then
-    shim="$(mktemp --suffix=.js)"
-    trap 'rm -f "${shim}"' EXIT
-    python3 - "${ADDON}/rootfs/etc/nginx/nginx.conf.template" "${shim}" <<'PY'
+if ! command -v node >/dev/null 2>&1; then
+    printf '%s\n' 'node is required for ingress gateway contract tests' >&2
+    exit 1
+fi
+shim="$(mktemp --suffix=.js)"
+nginx_test_dir="$(mktemp -d)"
+trap 'rm -f "${shim}"; rm -rf "${nginx_test_dir}"' EXIT
+python3 - "${ADDON}/rootfs/etc/nginx/nginx.conf.template" "${shim}" <<'PY'
 import re, sys
 source=open(sys.argv[1], encoding='utf-8').read()
 match=re.search(r"sub_filter '<head>' '<head><script>(.*?)</script>';", source, re.S)
 assert match, 'ingress shim not found'
 open(sys.argv[2], 'w', encoding='utf-8').write(match.group(1).replace('$safe_ingress_path','/P').replace('%%INGRESS_CACHE_VERSION%%','V'))
 PY
-    node --check "${shim}"
+node --check "${shim}"
+python3 "${ADDON}/tests/test-ingress-router-rewrite.py"
+
+if ! command -v nginx >/dev/null 2>&1; then
+    printf '%s\n' 'nginx is required for rendered gateway configuration tests' >&2
+    exit 1
 fi
+rendered_nginx="${nginx_test_dir}/nginx.conf"
+python3 - "${ADDON}/rootfs/etc/nginx/nginx.conf.template" "${rendered_nginx}" "${nginx_test_dir}" <<'PY'
+from pathlib import Path
+import sys
+source, output, test_dir = map(Path, sys.argv[1:])
+config = source.read_text(encoding='utf-8')
+replacements = {
+    '%%WS_PORT%%': '8070',
+    '%%PUBLIC_PROTO%%': 'https',
+    '%%PUBLIC_HOST_GUARD%%': 'if ($http_host != "odoo-test.invalid") { return 444; }',
+    '%%INGRESS_CACHE_VERSION%%': 'test',
+}
+for placeholder, value in replacements.items():
+    assert placeholder in config, f'missing template placeholder: {placeholder}'
+    config = config.replace(placeholder, value)
+assert '%%' not in config, 'unrendered nginx template placeholder remains'
+config = config.replace('pid /var/run/nginx.pid;', f'pid {test_dir}/nginx.pid;')
+config = config.replace('error_log /dev/stderr info;', f'error_log {test_dir}/error.log info;')
+config = config.replace('access_log /dev/stdout safe;', f'access_log {test_dir}/access.log safe;')
+
+# nginx -t opens listener sockets. Use paths within this unique temporary
+# directory rather than probing and releasing TCP ports, which has a TOCTOU
+# race with other processes.
+public_socket = test_dir / 'public.sock'
+ingress_socket = test_dir / 'ingress.sock'
+for socket_path in (public_socket, ingress_socket):
+    assert not socket_path.exists(), f'unexpected pre-existing socket: {socket_path}'
+for original, replacement in [
+    ('listen 8069 default_server;', f'listen unix:{public_socket} default_server;'),
+    ('listen 5691;', f'listen unix:{ingress_socket};'),
+]:
+    assert config.count(original) == 1, f'expected one listener to replace: {original}'
+    config = config.replace(original, replacement)
+output.write_text(config, encoding='utf-8')
+PY
+nginx -t -p "${nginx_test_dir}" -c "${rendered_nginx}"
 printf '%s\n' 'dual gateway tests passed'

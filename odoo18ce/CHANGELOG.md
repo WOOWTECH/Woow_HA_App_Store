@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.3.32 — 2026-09-03
+
+### Fixed
+- Normalize a cloned HA Ingress URL before Odoo Router parsing, so token-prefixed Settings routes retain their action instead of falling back to Discuss.
+- Make Odoo's internal route-click predicate accept only exact token-prefixed `/odoo` path segments while rejecting lookalikes such as `/odoox`.
+- Preserve fragment-only Settings links and remove the competing Settings-specific DOM click workaround.
+
+### Testing
+- Add Router contracts for prefix parsing, original-URL immutability, fragment routing, external/non-Odoo rejection, and exact path boundaries.
+- Add real HA/Public Settings E2E with direct-frame reacquisition, secure diagnostics, HTTP failure capture, and dynamic discovery of current and future Settings tabs.
+- Render the final nginx template and require `nginx -t` in the dual-gateway suite.
+
 ## 0.3.31 — 2026-09-02
 
 ### Fixed
