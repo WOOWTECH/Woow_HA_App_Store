@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.33 — 2026-09-03
+
+### Fixed
+- Prefix the exact SettingsViewCompiler fallback icon expression in HA Ingress assets and the encoding-independent General Settings icon path in Settings view responses.
+- Open Settings once in the HA E2E flow, then reacquire only the current direct ingress frame for every dynamically discovered tab instead of repeatedly invoking the app action.
+- Wait for a visible Odoo login form or an already loaded navbar so document rendering cannot be mistaken for an authenticated backend.
+
+### Testing
+- Add focused ingress-only contracts for generated module icons and explicit General Settings logos while proving the public listener is unchanged.
+
 ## 0.3.32 — 2026-09-03
 
 ### Fixed

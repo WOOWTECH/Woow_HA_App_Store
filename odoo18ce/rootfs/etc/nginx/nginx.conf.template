@@ -149,6 +149,10 @@ http {
             sub_filter "'/my/" "'$safe_ingress_path/my/";
             sub_filter '`/my/' '`$safe_ingress_path/my/';
             sub_filter '"/report/' '"$safe_ingress_path/report/';
+            # SettingsViewCompiler synthesizes each module fallback icon in the
+            # web asset bundle. Prefix only that exact expression; a generic
+            # module/static rewrite would affect unrelated application code.
+            sub_filter 'imgurl:el.getAttribute("logo")||"/"+el.getAttribute("name")+"/static/description/icon.png"' 'imgurl:el.getAttribute("logo")||"$safe_ingress_path/"+el.getAttribute("name")+"/static/description/icon.png"';
             sub_filter '"/odoo' '"$safe_ingress_path/odoo';
             sub_filter "'/odoo" "'$safe_ingress_path/odoo";
             sub_filter '`/odoo' '`$safe_ingress_path/odoo';
@@ -217,6 +221,10 @@ http {
             sub_filter '"icon": "/' '"icon": "$safe_ingress_path/';
             sub_filter '"imgurl":"/' '"imgurl":"$safe_ingress_path/';
             sub_filter '"imgurl": "/' '"imgurl": "$safe_ingress_path/';
+            # General Settings embeds this exact logo path in get_views XML.
+            # Match the path itself so surrounding XML/JSON quote escaping does
+            # not affect the ingress-only replacement.
+            sub_filter '/base/static/description/settings.png' '$safe_ingress_path/base/static/description/settings.png';
             sub_filter '`/web/webclient/' '`$safe_ingress_path/web/webclient/';
             sub_filter 'url(/' 'url($safe_ingress_path/';
             sub_filter "url('/" "url('$safe_ingress_path/";
