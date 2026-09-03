@@ -64,10 +64,10 @@ ha store add https://github.com/WOOWTECH/Woow_HA_App_Store
 
 各 addon 保留其原始授權：
 - WOOWTECH 自主 addon：見各子目錄 LICENSE
-- 鏡像 addon（`hamh`, `music_assistant`, `knxd`）：MIT / Apache-2 upstream
+- 鏡像 addon（`dnsmasq-dhcp`, `hamh`, `music_assistant`, `knxd`）：各自沿用 upstream 授權；Dnsmasq-DHCP 為 MIT
 
 ## 維護
 
 - 維護者：WOOWTECH `<woowtech@designsmart.com.tw>`
-- Baseline HAOS：18.x, HA Core 2026.7.x, amd64 / aarch64
-- 每個 addon 都已在 **N2840 / J1900 / 6412** 實機測試過（見對應機型的 `install-list.md`）
+- Baseline 目標：HAOS 18.x、HA Core 2026.7.x、amd64 / aarch64
+- 各 add-on 的實機驗證狀態以其個別 repository 與 release 紀錄為準

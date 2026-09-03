@@ -13,7 +13,7 @@ The above copyright notice and this permission notice shall be included in
 all copies or substantial portions of the Software.
 
 Each add-on subfolder retains its own upstream license (see subfolder
-LICENSE/README).  For mirrored add-ons (`hamh`, `music_assistant`, `knxd`)
-the original upstream license and attribution apply.
+LICENSE/README).  For mirrored add-ons (`dnsmasq-dhcp`, `hamh`,
+`music_assistant`, `knxd`) the original upstream license and attribution apply.
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND.

@@ -59,12 +59,13 @@ jobs:
           while IFS='|' read -r slug repo sub; do
             [ -z "${slug:-}" ] && continue
             src="/tmp/upstream/${slug}"
-            git clone --depth 1 --quiet "https://github.com/WOOWTECH/${repo}.git" "${src}"
+            git clone --depth 1 --branch main --single-branch --quiet \
+              "https://github.com/WOOWTECH/${repo}.git" "${src}"
             src_dir="${src}"
             [ "${sub}" != "." ] && src_dir="${src}/${sub}"
             if [ ! -d "${src_dir}" ]; then
-              echo "::warning::${slug}: upstream subdir ${sub} not found in ${repo}, skipping"
-              continue
+              echo "::error::${slug}: required upstream subdir ${sub} not found in ${repo}"
+              exit 1
             fi
             # Mirror into the App Store subdir. Excludes cover the 4 files
             # that structurally belong to the upstream repo alone (its own
