@@ -1,0 +1,32 @@
+version: 0.1.4
+slug: woow_lan_gateway
+name: Woow LAN Gateway
+description: Fail-closed Internet-only NAT gateway for the fixed WOOWTECH enrollment LAN.
+url: https://github.com/WOOWTECH/woow-lan-gateway
+arch:
+  - amd64
+startup: system
+boot: auto
+init: false
+host_network: true
+hassio_api: true
+homeassistant_api: true
+ingress: true
+ingress_port: 45987
+ingress_stream: false
+watchdog: http://[HOST]:[PORT:45987]/health
+privileged:
+  - NET_ADMIN
+options:
+  lan_interface: enp4s0
+  wan_interface: enp2s0
+  source_cidr: 192.168.50.0/24
+  heartbeat_interval: 15
+  lease_timeout: 45
+schema:
+  lan_interface: str
+  wan_interface: str
+  source_cidr: str
+  heartbeat_interval: int(5,60)
+  lease_timeout: int(15,180)
+stage: stable

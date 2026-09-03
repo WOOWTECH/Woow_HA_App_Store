@@ -1,0 +1,2 @@
+#!/usr/bin/with-contenv sh
+python3 -m gateway.cli cleanup || true

@@ -41,10 +41,12 @@ jobs:
             dnsmasq-dhcp|Woow_ha_dnsmasq_dhcp_add_on|dnsmasq-dhcp
             emqx|Woow_ha_emqx|emqx
             headscale|Woow_ha_vpn_headscale_package|headscale
+            haos-enrollment-bridge|haos-enrollment-bridge|addon
             n8n|Woow_ha_n8n|n8n
             nextcloud|Woow_ha_nextcloud|nextcloud
             odoo18ce|Woow_ha_odoo|odoo18ce
             woow-immich|Woow_ha_immich|woow-immich
+            woow-lan-gateway|woow-lan-gateway|app
             woow_ha_core_1|woowtech_ha_multi_ha_core|woow_ha_core_1
             woow_ha_core_2|woowtech_ha_multi_ha_core|woow_ha_core_2
             woow_ha_core_3|woowtech_ha_multi_ha_core|woow_ha_core_3

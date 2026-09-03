@@ -1,0 +1,1 @@
+"""Woow LAN Gateway service."""
