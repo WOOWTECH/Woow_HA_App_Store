@@ -139,6 +139,7 @@
     [window.HTMLAnchorElement, 'href'],
     [window.HTMLFormElement, 'action'],
     [window.HTMLImageElement, 'src'],
+    [window.HTMLIFrameElement, 'src'],
     [window.HTMLLinkElement, 'href'],
     [window.HTMLScriptElement, 'src'],
     [window.HTMLSourceElement, 'src'],

@@ -39,6 +39,7 @@ The upstream Local CLI page is intentionally unchanged. This add-on does not ins
 
 ## Troubleshooting
 
+- **Stuck at “Loading OpenDesign…”:** reload without cache and confirm the add-on is at least 0.1.1. The Next/Turbopack runtime and escaped RSC chunk references both require ingress-prefix rewriting; the container browser smoke locks this boot path down.
 - **Blank page or missing assets:** restart the add-on, then reload the HA page without cache. Report the missing root-relative URL and add-on logs; ingress adaptation is coupled to the pinned OpenDesign version.
 - **Generation cannot authenticate:** re-enter/test the provider key in this browser. There is no corresponding HA option.
 - **Key disappeared:** browser storage was cleared or a different browser/profile is in use. HA restore cannot restore browser-local keys.

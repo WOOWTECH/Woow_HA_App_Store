@@ -128,8 +128,33 @@ try {
   const context = await browser.newContext({ acceptDownloads: true });
   const page = await context.newPage();
   page.on('requestfailed', (request) => console.error(`browser request failed: ${request.method()} ${request.url()} ${request.failure()?.errorText || ''}`));
+  page.on('pageerror', (error) => console.error(`browser page error: ${error.message}`));
+  page.on('console', (message) => {
+    if (message.type() === 'error') console.error(`browser console error: ${message.text()}`);
+  });
+  page.on('response', (response) => {
+    if (response.status() >= 400) console.error(`browser HTTP ${response.status()}: ${response.url()}`);
+  });
   await page.goto(`http://127.0.0.1:${proxyPort}${prefix}/`, { waitUntil: 'domcontentloaded', timeout: 30_000 });
   await page.waitForFunction(() => window.__OD_HA_EXPORT_BRIDGE_INSTALLED__ === true, null, { timeout: 15_000 });
+  try {
+    await page.waitForFunction(
+      () => !document.body.textContent.includes('Loading OpenDesign…'),
+      null,
+      { timeout: 30_000 },
+    );
+  } catch (error) {
+    const diagnostics = await page.evaluate(() => ({
+      body: document.body.textContent.slice(0, 500),
+      scripts: Array.from(document.scripts).map((script) => script.src || script.textContent.slice(0, 120)),
+      resources: performance.getEntriesByType('resource').map((entry) => ({ name: entry.name, duration: entry.duration, transferSize: entry.transferSize })),
+      globals: Object.keys(window).filter((key) => /next|turbo|react/i.test(key)).sort(),
+      nextFlightLength: window.__next_f?.length,
+      pathname: window.location.pathname,
+    }));
+    console.error(`OpenDesign bootstrap diagnostics: ${JSON.stringify(diagnostics)}`);
+    throw error;
+  }
   // GitHub-hosted headless Chromium does not reliably emit Playwright download
   // events for programmatically clicked blob: anchors. Observe the exact anchor
   // click in-page instead; direct endpoint checks below still verify PDF/image
@@ -217,10 +242,21 @@ try {
   assert.ok(publicRequests.some((value) => value.startsWith(`${prefix}/api/projects/ha-smoke/export/image`)));
   console.log('container browser ingress e2e: built UI injection, path stripping, fetch/XHR/SSE/WebSocket, PDF Request headers, and image action passed');
 } finally {
-  await browser?.close().catch(() => {});
   proxy.closeAllConnections?.();
   proxy.closeIdleConnections?.();
   for (const socket of proxySockets) socket.destroy();
-  await new Promise((resolve) => proxy.close(resolve));
+  await Promise.race([
+    browser?.close().catch(() => {}),
+    new Promise((resolve) => setTimeout(resolve, 10_000)),
+  ]);
+  for (const socket of proxySockets) socket.destroy();
+  await Promise.race([
+    new Promise((resolve) => proxy.close(resolve)),
+    new Promise((resolve) => setTimeout(resolve, 5_000)),
+  ]);
   if (chromiumHome) await rm(chromiumHome, { recursive: true, force: true });
 }
+
+// This is a standalone smoke-test process. If the assertions above completed,
+// do not let third-party app timers or Chromium helpers keep CI alive forever.
+process.exit(0);

@@ -11,6 +11,7 @@ function applyDocumentRewrites(html) {
     .replaceAll('href="/', `href="${prefix}/`)
     .replaceAll('src="/', `src="${prefix}/`)
     .replaceAll('action="/', `action="${prefix}/`)
+    .replaceAll('\\"/_next/', `\\"${prefix}/_next/`)
     .replace('<head>', `<head><script>window.__OD_INGRESS_PATH__="${prefix}";</script><script src="${prefix}/ha-ingress.js"></script><script src="${prefix}/ha-export-bridge.js"></script>`);
 }
 
@@ -30,6 +31,9 @@ test('nginx validates the ingress prefix and preserves streaming upgrades', () =
   assert.match(nginx, /proxy_set_header Connection \$connection_upgrade/);
   assert.match(nginx, /proxy_set_header Accept-Encoding ""/);
   assert.match(nginx, /client_max_body_size 256M/);
+  assert.match(nginx, /sub_filter_types[^;]*text\/javascript/, 'Turbopack chunks are served as text/javascript and must be rewritten');
+  assert.ok(nginx.includes("sub_filter '\\\"/_next/' '\\\"$safe_ingress_path/_next/'"), 'RSC chunk references must use the ingress prefix');
+  assert.ok(nginx.includes("sub_filter '\"/_next/' '\"$safe_ingress_path/_next/'"), 'Turbopack runtime asset base must use the ingress prefix');
   assert.match(nginx, /location ~ \^\/api\/projects\/\[\^\/\]\+\/export/);
   assert.match(nginx, /location = \/ha-export-bridge\.js/);
   assert.match(nginx, /ha-ingress\.js.*ha-export-bridge\.js/);
@@ -46,6 +50,7 @@ test('early shim covers root-relative streaming, navigation, and dynamic URLs', 
     "wrapHistory('pushState')",
     "wrapHistory('replaceState')",
     'Element.prototype.setAttribute',
+    'HTMLIFrameElement',
     'MutationObserver',
     "wrapWorker('Worker')",
   ]) assert.ok(shim.includes(token), `missing shim behavior: ${token}`);

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.1
+
+- Fix HA Ingress boot hanging forever at `Loading OpenDesign…`: include `text/javascript` in nginx response filtering and prefix both escaped RSC chunk references and Turbopack's runtime `/_next/` asset base.
+- Make the real-browser container smoke wait for the OpenDesign client to finish booting, so asset-only ingress checks cannot regress silently.
+- Rewrite dynamically assigned iframe `src` values before navigation, keeping previews inside the authenticated ingress prefix.
+
 ## 0.1.0
 
 - Initial standalone Home Assistant add-on for pinned OpenDesign 0.21.1.
