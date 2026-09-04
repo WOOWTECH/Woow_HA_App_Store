@@ -107,6 +107,7 @@ PY
 node --check "${shim}"
 python3 "${ADDON}/tests/test-ingress-router-rewrite.py"
 python3 "${ADDON}/tests/test-settings-icon-rewrite.py"
+python3 "${ADDON}/tests/e2e_settings_controls.py" --self-test
 
 if ! command -v nginx >/dev/null 2>&1; then
     printf '%s\n' 'nginx is required for rendered gateway configuration tests' >&2
