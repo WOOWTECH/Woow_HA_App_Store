@@ -168,6 +168,24 @@ def assert_self_tests():
     assert not should_retry_control(
         "ingress", {"category": "form-control", "name": "Save"}, frozenset({"Save"}), 0, detach
     )
+    assert unsafe_discard_requests(
+        [{"method": "POST", "url": "https://example.invalid/web/dataset/call_kw/res.config.settings/onchange"}]
+    ) == []
+    assert unsafe_discard_requests(
+        [{"method": "POST", "url": "https://example.invalid/unsafe/web/dataset/call_kw/res.config.settings/onchange"}]
+    )
+    assert unsafe_discard_requests(
+        [{"method": "POST", "url": "https://example.invalid/web/dataset/call_kw/res.config.settings/write"}]
+    )
+    expected_aborts, unexpected_aborts = split_expected_save_navigation_aborts(
+        [
+            {"failure": "net::ERR_ABORTED", "url": "https://example.invalid/web/dataset/call_button/res.config.settings/execute"},
+            {"failure": "net::ERR_ABORTED", "url": "https://example.invalid/api/hassio_ingress/<redacted>/web/dataset/call_button/res.config.settings/execute"},
+            {"failure": "net::ERR_ABORTED", "url": "https://example.invalid/unsafe/web/dataset/call_button/res.config.settings/execute"},
+            {"failure": "net::ERR_ABORTED", "url": "https://example.invalid/web/dataset/call_kw/res.config.settings/write"},
+        ]
+    )
+    assert len(expected_aborts) == 2 and len(unexpected_aborts) == 2
     assert is_transient_ingress_detach(RuntimeError("frames=[.../auth/authorize]"))
     secret = {
         "url": "api/hassio_ingress/token-value/odoo/settings?code=secret&state=secret",
@@ -437,6 +455,41 @@ def execute_control(browser, surface, item, safe_controls):
     raise AssertionError("unreachable control retry state")
 
 
+def is_expected_settings_rpc_path(path, expected_path):
+    """Match only the public path or one HA ingress token segment plus that path."""
+    ingress_path = re.compile(r"/api/hassio_ingress/[^/]+" + re.escape(expected_path) + r"\Z")
+    return path == expected_path or bool(ingress_path.fullmatch(path))
+
+
+def split_expected_save_navigation_aborts(failures):
+    """Separate only Odoo's post-save reload abort from unexpected failures."""
+    expected_path = "/web/dataset/call_button/res.config.settings/execute"
+    expected, unexpected = [], []
+    for failure in failures:
+        path = urlsplit(failure.get("url", "")).path
+        if (
+            failure.get("failure") == "net::ERR_ABORTED"
+            and is_expected_settings_rpc_path(path, expected_path)
+        ):
+            expected.append(failure)
+        else:
+            unexpected.append(failure)
+    return expected, unexpected
+
+
+def unsafe_discard_requests(requests):
+    """Allow only Odoo's transient Settings onchange RPC during a Discard flow."""
+    allowed_path = "/web/dataset/call_kw/res.config.settings/onchange"
+    return [
+        request
+        for request in requests
+        if not (
+            request["method"] == "POST"
+            and is_expected_settings_rpc_path(urlsplit(request["url"]).path, allowed_path)
+        )
+    ]
+
+
 def explicit_text_field(frame, selector, scenario):
     field = frame.locator(selector).first
     field.wait_for(state="visible", timeout=30000)
@@ -479,7 +532,10 @@ def run_discard(browser, surface):
         frame = wait_settings_loaded(page, frame_getter)
         restored = explicit_text_field(frame, policy["selector"], "Discard").input_value()
         assert restored == original, {"original": original, "after_discard": restored}
-        assert not requests, "Discard produced a server request: " + shared.diagnostic_text(requests)
+        assert not unsafe_discard_requests(requests), (
+            "Discard produced a persistent or unexpected server request: "
+            + shared.diagnostic_text(unsafe_discard_requests(requests))
+        )
         assert "/odoo/discuss" not in frame.url
         assert_clean(evidence)
         result.update({"status": "passed", "restored": True, "url": shared.sanitize_diagnostic(frame.url)})
@@ -517,6 +573,12 @@ def run_save_restore(browser, surface):
         restored = explicit_text_field(frame, policy["selector"], "Save")
         assert restored.input_value() == original, "original value was not restored"
         assert "/odoo/discuss" not in frame.url
+        expected_aborts, unexpected_aborts = split_expected_save_navigation_aborts(
+            evidence["request_failures"]
+        )
+        if expected_aborts:
+            evidence["expected_save_navigation_aborts"] = expected_aborts
+            evidence["request_failures"] = unexpected_aborts
         assert_clean(evidence)
         result.update({"status": "passed", "restored": True, "field_type": "text"})
     except (AssertionError, RuntimeError, PlaywrightError) as error:
