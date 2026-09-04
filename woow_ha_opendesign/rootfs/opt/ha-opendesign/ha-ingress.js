@@ -4,6 +4,17 @@
   const prefix = window.__OD_INGRESS_PATH__ || '';
   if (!prefix) return;
 
+  // Supervisor's public prefix is transport routing, not an OpenDesign route.
+  // Keep the iframe's logical history unprefixed so OpenDesign's client-side
+  // route switch recognizes /settings, /design-systems, etc. Network APIs and
+  // assets are still prefixed by the wrappers below.
+  const nativeHistoryPushState = history.pushState;
+  const nativeHistoryReplaceState = history.replaceState;
+  if (window.location.pathname === prefix || window.location.pathname.startsWith(`${prefix}/`)) {
+    const logicalPath = window.location.pathname.slice(prefix.length) || '/';
+    nativeHistoryReplaceState.call(history, history.state, '', `${logicalPath}${window.location.search}${window.location.hash}`);
+  }
+
   const alreadyScoped = (pathname) => pathname === prefix
     || pathname.startsWith(`${prefix}/`)
     || pathname.startsWith('/api/hassio_ingress/');
@@ -93,15 +104,34 @@
   wrapWorker('Worker');
   wrapWorker('SharedWorker');
 
-  const wrapHistory = (method) => {
-    const native = history[method];
-    history[method] = function scopedHistory(state, title, url) {
-      if (url != null) arguments[2] = rewrite(url);
+  const logicalHistoryUrl = (value) => {
+    const pathname = pathFromUrl(String(value));
+    if (!pathname) return value;
+    if (pathname === prefix) return '/';
+    if (pathname.startsWith(`${prefix}/`)) return pathname.slice(prefix.length) || '/';
+    return pathname;
+  };
+  const wrapHistory = (method, native) => {
+    history[method] = function logicalHistory(state, title, url) {
+      if (url != null) arguments[2] = logicalHistoryUrl(url);
       return native.apply(this, arguments);
     };
   };
-  wrapHistory('pushState');
-  wrapHistory('replaceState');
+  wrapHistory('pushState', nativeHistoryPushState);
+  wrapHistory('replaceState', nativeHistoryReplaceState);
+
+  // Best effort: restore the transport prefix in the history entry before a
+  // user/browser leaves the iframe, so a manual reload remains ingress-routed.
+  window.addEventListener('beforeunload', () => {
+    if (!window.location.pathname.startsWith(prefix)) {
+      nativeHistoryReplaceState.call(
+        history,
+        history.state,
+        '',
+        `${prefix}${window.location.pathname}${window.location.search}${window.location.hash}`,
+      );
+    }
+  });
 
   const rewriteCss = (value) => typeof value === 'string'
     ? value.replace(/url\(\s*(["']?)(\/[^/][^"')\s]*)\1\s*\)/gi, (_match, quote, url) => `url(${quote}${rewrite(url)}${quote})`)

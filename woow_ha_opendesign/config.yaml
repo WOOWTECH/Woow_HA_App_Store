@@ -1,5 +1,5 @@
 name: Woow HA OpenDesign
-version: "0.1.1"
+version: "0.1.2"
 slug: woow_ha_opendesign
 description: OpenDesign 0.21.1 with browser-local BYOK and headless exports
 url: https://github.com/WOOWTECH/Woow_ha_opendesign_add_on

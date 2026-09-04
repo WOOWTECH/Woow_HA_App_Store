@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.2
+
+- Keep OpenDesign's client-side history on logical paths such as `/settings` and `/design-systems` while the network wrappers retain the authenticated HA Ingress transport prefix.
+- Fix sidebar navigation updating the URL without changing the page content.
+- Add real-browser regression coverage that opens Settings, verifies API-provider controls, returns home, and opens the Design systems page.
+
 ## 0.1.1
 
 - Fix HA Ingress boot hanging forever at `Loading OpenDesign…`: include `text/javascript` in nginx response filtering and prefix both escaped RSC chunk references and Turbopack's runtime `/_next/` asset base.

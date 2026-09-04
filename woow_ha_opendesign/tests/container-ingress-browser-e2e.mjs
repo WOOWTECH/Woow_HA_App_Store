@@ -126,6 +126,9 @@ try {
     args: ['--no-sandbox', '--disable-dev-shm-usage', '--disable-http2', '--disable-quic'],
   });
   const context = await browser.newContext({ acceptDownloads: true });
+  await context.addInitScript(() => {
+    localStorage.setItem('open-design:config', JSON.stringify({ onboardingCompleted: true }));
+  });
   const page = await context.newPage();
   page.on('requestfailed', (request) => console.error(`browser request failed: ${request.method()} ${request.url()} ${request.failure()?.errorText || ''}`));
   page.on('pageerror', (error) => console.error(`browser page error: ${error.message}`));
@@ -155,6 +158,23 @@ try {
     console.error(`OpenDesign bootstrap diagnostics: ${JSON.stringify(diagnostics)}`);
     throw error;
   }
+  assert.equal(new URL(page.url()).pathname, '/', 'ingress transport prefix must be hidden from OpenDesign route logic');
+  const expandSidebar = page.getByRole('button', { name: 'Expand sidebar' });
+  if (await expandSidebar.count()) await expandSidebar.click();
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.waitForURL((url) => url.pathname === '/settings');
+  await page.waitForFunction(() => (
+    document.body.innerText.includes('Models & providers')
+    && document.body.innerText.includes('API providers')
+  ));
+
+  await page.getByText('Back to home', { exact: true }).click();
+  await page.waitForURL((url) => url.pathname === '/');
+  const expandAfterSettings = page.getByRole('button', { name: 'Expand sidebar' });
+  if (await expandAfterSettings.count()) await expandAfterSettings.click();
+  await page.getByRole('button', { name: 'Design systems', exact: true }).first().click();
+  await page.waitForURL((url) => url.pathname === '/design-systems');
+  await page.getByRole('heading', { name: 'Design systems', exact: true }).waitFor();
   // GitHub-hosted headless Chromium does not reliably emit Playwright download
   // events for programmatically clicked blob: anchors. Observe the exact anchor
   // click in-page instead; direct endpoint checks below still verify PDF/image
