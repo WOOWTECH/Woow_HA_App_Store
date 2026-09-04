@@ -107,10 +107,10 @@ def classify_control(control):
         }
     if external_href or EXTERNAL_NAME_RE.search(name):
         return "external-skip"
-    if name in {"Save", "Discard"} or html_type == "submit":
-        return "form-control"
     if odoo_type in {"action", "object"}:
         return odoo_type
+    if name in {"Save", "Discard"} or html_type == "submit":
+        return "form-control"
     if aria_haspopup == "dialog" or toggle == "modal":
         return "dialog"
     return "other"
@@ -120,6 +120,10 @@ def assert_self_tests():
     shared.assert_sanitizer_contract()
     cases = [
         ({"name": "Manage Users", "odoo_type": "action"}, "action"),
+        (
+            {"name": "Manage Users", "odoo_type": "action", "html_type": "submit"},
+            "action",
+        ),
         ({"name": "Update Info", "odoo_type": "object"}, "object"),
         ({"name": "Open", "aria_haspopup": "dialog"}, "dialog"),
         ({"name": "Save", "html_type": "button"}, "form-control"),
@@ -130,6 +134,7 @@ def assert_self_tests():
     ]
     for payload, expected in cases:
         assert classify_control(payload) == expected, (payload, expected)
+    assert normalized_control_name("Manage\n  Users") == "Manage Users"
     assert parse_safe_controls(None) == frozenset()
     assert parse_safe_controls(" Manage Users, Add Languages,Manage Users, ") == {
         "Manage Users",
@@ -172,6 +177,36 @@ def assert_self_tests():
     assert "token-value" not in rendered
     assert "code=secret" not in rendered
     assert "state=secret" not in rendered
+
+    class FakePage:
+        def __init__(self):
+            self.events = []
+
+        def on(self, event, callback):
+            self.events.append((event, callback))
+
+    class FakeBrowserContext:
+        def __init__(self):
+            self.page = FakePage()
+
+        def new_page(self):
+            return self.page
+
+    class FakeBrowser:
+        def __init__(self):
+            self.context = FakeBrowserContext()
+            self.context_options = None
+
+        def new_context(self, **options):
+            self.context_options = options
+            return self.context
+
+    fake_browser = FakeBrowser()
+    context, page, evidence = new_evidence_session(fake_browser, "public", "viewport-contract")
+    assert context is fake_browser.context
+    assert page is context.page
+    assert fake_browser.context_options == {"viewport": {"width": 1440, "height": 1100}}
+    assert evidence["surface"] == "public"
 
 
 def evidence_template(surface, scenario):
@@ -234,8 +269,8 @@ def wait_settings_loaded(page, frame_getter):
 
 def new_evidence_session(browser, surface, scenario):
     """Create resources before navigation so callers always own their cleanup."""
-    context = browser.new_context()
-    page = context.new_page(viewport={"width": 1440, "height": 1100})
+    context = browser.new_context(viewport={"width": 1440, "height": 1100})
+    page = context.new_page()
     evidence = evidence_template(surface, scenario)
     shared.add_evidence(page, evidence)
     return context, page, evidence
@@ -316,17 +351,32 @@ def discover_controls(browser, surface):
             context.close()
 
 
+def normalized_control_name(value):
+    """Normalize browser whitespace before comparing a discovered control."""
+    return " ".join((value or "").split())
+
+
 def locate_control(frame, item):
-    matches = frame.locator(".o_action_manager").get_by_role(
-        "button", name=item["name"], exact=True
-    )
-    occurrence = item["name_occurrence"]
-    if matches.count() <= occurrence:
+    """Reacquire a control by its discovered DOM position, then verify its text."""
+    matches = frame.locator(".o_action_manager").get_by_role("button")
+    index = item["dom_index"]
+    if matches.count() <= index:
         raise AssertionError(
             "Settings control disappeared: "
             + shared.diagnostic_text({"id": item["id"], "count": matches.count()})
         )
-    return matches.nth(occurrence)
+    control = matches.nth(index)
+    actual_name = normalized_control_name(
+        control.evaluate(
+            """element => (element.getAttribute('aria-label') || element.innerText ||
+            element.getAttribute('title') || '').trim()"""
+        )
+    )
+    expected_name = normalized_control_name(item["name"])
+    assert actual_name == expected_name, shared.diagnostic_text(
+        {"id": item["id"], "expected": expected_name, "actual": actual_name}
+    )
+    return control
 
 
 def observe_outcome(page, frame_getter, before_url):
