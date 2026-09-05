@@ -75,8 +75,18 @@ def mutation_policy(environment):
 
 
 def is_transient_ingress_detach(error):
-    message = str(error).lower()
-    return "frame was detached" in message or "/auth/authorize" in message
+    """Retry only when the configured HA origin replaces ingress with its auth frame."""
+    message = str(error)
+    if "direct ingress iframe absent; frames=[" not in message.lower():
+        return False
+    ha_origin = urlsplit(shared.HA_BASE)
+    frame_urls = re.findall(r"https?://[^\s\]\"']+", message)
+    return any(
+        (candidate := urlsplit(frame_url)).scheme == ha_origin.scheme
+        and candidate.netloc == ha_origin.netloc
+        and candidate.path == "/auth/authorize"
+        for frame_url in frame_urls
+    )
 
 
 def should_retry_control(surface, item, safe_controls, attempt, error):
@@ -244,7 +254,7 @@ def assert_self_tests():
     assert explicit_save["discard_allowed"] and explicit_save["save_allowed"]
     detach = PlaywrightError("Frame was detached")
     assert not should_retry_control("ingress", action, frozenset(), 0, detach)
-    assert should_retry_control("ingress", action, frozenset({"Manage Users"}), 0, detach)
+    assert not should_retry_control("ingress", action, frozenset({"Manage Users"}), 0, detach)
     assert not should_retry_control("ingress", action, frozenset({"Manage Users"}), 1, detach)
     assert not should_retry_control("public", action, frozenset({"Manage Users"}), 0, detach)
     assert not should_retry_control(
@@ -268,7 +278,35 @@ def assert_self_tests():
         ]
     )
     assert len(expected_aborts) == 2 and len(unexpected_aborts) == 2
-    assert is_transient_ingress_detach(RuntimeError("frames=[.../auth/authorize]"))
+    auth_frame_absent = RuntimeError(
+        f"direct ingress iframe absent; frames=[{shared.HA_BASE}/auth/authorize]"
+    )
+    foreign_auth_frame = RuntimeError(
+        "direct ingress iframe absent; frames=[https://untrusted.invalid/auth/authorize]"
+    )
+    lookalike_auth_frame = RuntimeError(
+        f"direct ingress iframe absent; frames=[{shared.HA_BASE}/anything/auth/authorize-extra]"
+    )
+    assert should_retry_control(
+        "ingress", action, frozenset({"Manage Users"}), 0, auth_frame_absent
+    )
+    assert not should_retry_control("ingress", action, frozenset(), 0, auth_frame_absent)
+    assert not should_retry_control(
+        "ingress", action, frozenset({"Manage Users"}), 0, foreign_auth_frame
+    )
+    assert not should_retry_control(
+        "ingress", action, frozenset({"Manage Users"}), 0, lookalike_auth_frame
+    )
+    assert not should_retry_control(
+        "ingress", action, frozenset({"Manage Users"}), 1, auth_frame_absent
+    )
+    assert not should_retry_control(
+        "public", action, frozenset({"Manage Users"}), 0, auth_frame_absent
+    )
+    assert not is_transient_ingress_detach(RuntimeError("frames=[.../auth/authorize]"))
+    assert not is_transient_ingress_detach(
+        RuntimeError("direct ingress iframe absent; frames=[https://ha.invalid/odoo]")
+    )
     secret = {
         "url": "api/hassio_ingress/token-value/odoo/settings?code=secret&state=secret",
         "nested": ["?code=secret&state=secret"],

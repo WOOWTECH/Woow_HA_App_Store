@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.35 — 2026-09-03
+
+### Fixed
+- Prefix root `/web/assets/` `href` and `src` attributes only inside JSON-escaped Document Layout preview HTML on HA Ingress.
+- Retry an explicitly allowlisted HA Settings control once when its direct ingress iframe is temporarily replaced by the Home Assistant authorization frame.
+
+### Testing
+- Extend the live nginx response harness to parse the rewritten preview JSON and prove its escaped asset attributes and the public response remain correct.
+- Add credential-free Settings retry classification contracts for the authorization-frame condition and its approval, surface, and retry limits.
+
 ## 0.3.34 — 2026-09-03
 
 ### Fixed
