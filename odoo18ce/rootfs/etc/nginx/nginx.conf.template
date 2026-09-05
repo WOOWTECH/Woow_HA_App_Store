@@ -226,6 +226,11 @@ http {
             # The Website editor may inject those assets into a child iframe
             # whose DOM prototypes are outside the parent runtime shim.
             sub_filter '"src": "/' '"src": "$safe_ingress_path/';
+            # Document Layout serializes its preview HTML into JSON, escaping
+            # attributes as href=\"...\"/src=\"...\". Prefix only root Odoo
+            # assets in those JSON bytes; broad JSON rewriting is unsafe.
+            sub_filter 'href=\\"/web/assets/' 'href=\\"$safe_ingress_path/web/assets/';
+            sub_filter 'src=\\"/web/assets/' 'src=\\"$safe_ingress_path/web/assets/';
             sub_filter '"icon":"/' '"icon":"$safe_ingress_path/';
             sub_filter '"icon": "/' '"icon": "$safe_ingress_path/';
             sub_filter '"imgurl":"/' '"imgurl":"$safe_ingress_path/';
