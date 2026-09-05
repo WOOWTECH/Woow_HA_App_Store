@@ -116,6 +116,52 @@ def classify_control(control):
     return "other"
 
 
+def control_signature(control):
+    """Return the immutable DOM identity fields used to reacquire a control."""
+    return {
+        "accessible_name": normalized_control_name(control.get("name")),
+        "category": control.get("category") or classify_control(control),
+        "odoo_type": (control.get("odoo_type") or "").strip().lower(),
+        "html_type": (control.get("html_type") or "").strip().lower(),
+        "name_attribute": (control.get("name_attribute") or "").strip(),
+        "action_identifier": (control.get("action_identifier") or "").strip(),
+        "action_id": (control.get("action_id") or "").strip(),
+        "xml_id": (control.get("xml_id") or "").strip(),
+        "action_xmlid": (control.get("action_xmlid") or "").strip(),
+        "href": (control.get("href") or "").strip(),
+        "target": (control.get("target") or "").strip(),
+        "aria_haspopup": (control.get("aria_haspopup") or "").strip().lower(),
+        "aria_modal": (control.get("aria_modal") or "").strip().lower(),
+        "modal_target": (control.get("modal_target") or "").strip(),
+        "aria_controls": (control.get("aria_controls") or "").strip(),
+        "toggle": (control.get("toggle") or "").strip().lower(),
+    }
+
+
+def matching_controls(controls, item):
+    """Return only fresh controls whose complete technical signature matches."""
+    expected = item["signature"]
+    return [control for control in controls if control.get("signature") == expected]
+
+
+def unique_matching_control(controls, item):
+    """Reject missing or duplicated signatures before a locator can be clicked."""
+    candidates = matching_controls(controls, item)
+    if len(candidates) != 1:
+        raise AssertionError(
+            "Settings control identity is missing or ambiguous: "
+            + shared.diagnostic_text(
+                {
+                    "id": item["id"],
+                    "candidate_count": len(candidates),
+                    "signature": item["signature"],
+                    "candidates": [candidate["signature"] for candidate in candidates],
+                }
+            )
+        )
+    return candidates[0]
+
+
 def assert_self_tests():
     shared.assert_sanitizer_contract()
     cases = [
@@ -135,6 +181,42 @@ def assert_self_tests():
     for payload, expected in cases:
         assert classify_control(payload) == expected, (payload, expected)
     assert normalized_control_name("Manage\n  Users") == "Manage Users"
+    original = {
+        "id": "action:Open:0",
+        "name": "Open",
+        "category": "action",
+        "odoo_type": "action",
+        "html_type": "button",
+        "name_attribute": "open_first",
+        "href": None,
+        "target": None,
+        "aria_haspopup": None,
+        "aria_modal": None,
+        "modal_target": None,
+        "aria_controls": None,
+        "toggle": None,
+        "action_identifier": "settings.open.first",
+        "dom_index": 0,
+    }
+    original["signature"] = control_signature(original)
+    swapped = dict(original, dom_index=1)
+    different = dict(
+        original,
+        name_attribute="open_second",
+        action_identifier="settings.open.second",
+        dom_index=0,
+    )
+    different["signature"] = control_signature(different)
+    # A rerender may swap same-named controls.  The fresh signature selects
+    # the original action, not its stale discovery index.
+    assert unique_matching_control([different, swapped], original)["dom_index"] == 1
+    duplicate = dict(original, dom_index=2)
+    try:
+        unique_matching_control([swapped, duplicate], original)
+    except AssertionError as error:
+        assert "ambiguous" in str(error)
+    else:
+        raise AssertionError("duplicated control signature was not rejected")
     assert parse_safe_controls(None) == frozenset()
     assert parse_safe_controls(" Manage Users, Add Languages,Manage Users, ") == {
         "Manage Users",
@@ -336,14 +418,25 @@ def serialized_controls(frame):
                        element.getAttribute('title') || '').trim(),
                 odoo_type: element.getAttribute('type'),
                 html_type: element.type || null,
+                name_attribute: element.getAttribute('name'),
+                action_identifier: element.getAttribute('data-action'),
+                action_id: element.getAttribute('data-action-id'),
+                xml_id: element.getAttribute('data-xmlid'),
+                action_xmlid: element.getAttribute('data-action-xmlid'),
                 href: element.getAttribute('href'),
                 target: element.getAttribute('target'),
                 aria_haspopup: element.getAttribute('aria-haspopup'),
+                aria_modal: element.getAttribute('aria-modal'),
+                modal_target: element.getAttribute('data-bs-target') ||
+                    element.getAttribute('data-target'),
+                aria_controls: element.getAttribute('aria-controls'),
                 toggle: element.getAttribute('data-bs-toggle'),
             })"""
         )
         item = shared.sanitize_diagnostic(item)
+        item["name"] = normalized_control_name(item["name"])
         item["category"] = classify_control(item)
+        item["signature"] = control_signature(item)
         item["dom_index"] = index
         item["name_occurrence"] = name_occurrences.get(item["name"], 0)
         name_occurrences[item["name"]] = item["name_occurrence"] + 1
@@ -375,26 +468,11 @@ def normalized_control_name(value):
 
 
 def locate_control(frame, item):
-    """Reacquire a control by its discovered DOM position, then verify its text."""
-    matches = frame.locator(".o_action_manager").get_by_role("button")
-    index = item["dom_index"]
-    if matches.count() <= index:
-        raise AssertionError(
-            "Settings control disappeared: "
-            + shared.diagnostic_text({"id": item["id"], "count": matches.count()})
-        )
-    control = matches.nth(index)
-    actual_name = normalized_control_name(
-        control.evaluate(
-            """element => (element.getAttribute('aria-label') || element.innerText ||
-            element.getAttribute('title') || '').trim()"""
-        )
-    )
-    expected_name = normalized_control_name(item["name"])
-    assert actual_name == expected_name, shared.diagnostic_text(
-        {"id": item["id"], "expected": expected_name, "actual": actual_name}
-    )
-    return control
+    """Reacquire only one fresh control with the discovered full DOM signature."""
+    current_controls = serialized_controls(frame)
+    candidate = unique_matching_control(current_controls, item)
+    # dom_index is deliberately fresh and is used only after identity is unique.
+    return frame.locator(".o_action_manager").get_by_role("button").nth(candidate["dom_index"])
 
 
 def observe_outcome(page, frame_getter, before_url):
