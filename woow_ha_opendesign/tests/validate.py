@@ -21,6 +21,10 @@ with (ROOT / "build.yaml").open() as handle:
     build = yaml.safe_load(handle)
 with (ROOT / "runtime/package.json").open() as handle:
     package = json.load(handle)
+with (ROOT / "runtime/pi/package.json").open() as handle:
+    pi_package = json.load(handle)
+with (ROOT / "runtime/pi/package-lock.json").open() as handle:
+    pi_lock = json.load(handle)
 with (ROOT / ".github/workflows/build.yml").open() as handle:
     workflow = yaml.safe_load(handle)
 
@@ -41,12 +45,23 @@ upstream_image = "ghcr.io/nexu-io/od:0.21.1@sha256:441daca881e699657bacf28e0c27b
 local_build_image = "ghcr.io/nexu-io/od:0.21.1"
 check(build.get("build_from") == {"amd64": local_build_image, "aarch64": local_build_image}, "Supervisor local builds must use the supported OpenDesign 0.21.1 tag syntax")
 check(package.get("dependencies") == {"playwright-core": "1.55.0"}, "renderer dependency must remain exactly pinned")
+check(pi_package == {"private": True, "dependencies": {"@earendil-works/pi-coding-agent": "0.84.4"}}, "Pi package must contain only the approved exact dependency")
+pi_root_lock = pi_lock.get("packages", {}).get("", {})
+pi_agent_lock = pi_lock.get("packages", {}).get("node_modules/@earendil-works/pi-coding-agent", {})
+check(pi_root_lock.get("dependencies") == {"@earendil-works/pi-coding-agent": "0.84.4"}, "Pi lock root must use the approved exact version")
+check(pi_agent_lock.get("version") == "0.84.4", "Pi lock resolves an unexpected version")
+check(pi_agent_lock.get("integrity") == "sha512-jmOlrqUmvhh/siNWFRXjYLJzhKFIHNsAQaysRwzQPQFnPAaV/vhqHsLH/MBsIISA1Rjj7WTUFR3nJrpXoLx39w==", "Pi lock integrity mismatch")
+check(pi_agent_lock.get("license") == "MIT", "Pi lock license must remain MIT")
+check(pi_agent_lock.get("bin", {}).get("pi") == "dist/bundle/cli.js", "Pi lock must expose the pi executable")
+check(pi_agent_lock.get("engines", {}).get("node") == ">=22.19.0", "Pi lock Node engine changed")
 
 dockerfile = (ROOT / "Dockerfile").read_text()
 launcher = (ROOT / "rootfs/usr/local/bin/ha-opendesign").read_text()
 entry = (ROOT / "rootfs/opt/ha-opendesign/headless-entry.mjs").read_text()
 renderer = (ROOT / "rootfs/opt/ha-opendesign/headless-renderer.mjs").read_text()
 export_bridge = (ROOT / "rootfs/opt/ha-opendesign/ha-export-bridge.js").read_text()
+pi_wrapper = (ROOT / "rootfs/opt/ha-opendesign/ha-pi-wrapper.mjs").read_text()
+pi_command = (ROOT / "rootfs/usr/local/bin/pi").read_text()
 nginx = (ROOT / "rootfs/etc/nginx/nginx.conf").read_text()
 workflow_text = (ROOT / ".github/workflows/build.yml").read_text()
 runtime_sources = "\n".join([
@@ -55,8 +70,12 @@ runtime_sources = "\n".join([
     entry,
     renderer,
     export_bridge,
+    pi_wrapper,
+    pi_command,
     nginx,
     (ROOT / "runtime/package.json").read_text(),
+    (ROOT / "runtime/pi/package.json").read_text(),
+    (ROOT / "runtime/pi/package-lock.json").read_text(),
 ])
 
 check(re.search(rf"^ARG BUILD_FROM={re.escape(upstream_image)}$", dockerfile, re.M), "Dockerfile base must pin the approved upstream digest")
@@ -71,6 +90,13 @@ for expected in ["bash", "chromium", "font-noto-cjk", "font-noto-emoji", "fontco
     check(expected in dockerfile, f"expected image package missing: {expected}")
 check("/usr/local/bin/npm ci --omit=dev" in dockerfile, "locked production npm install must use the upstream absolute npm path for HA BuildKit")
 check("test -x /usr/local/bin/npm" in dockerfile, "image build must verify the absolute npm executable")
+check("COPY runtime/pi/package.json runtime/pi/package-lock.json /opt/ha-opendesign/pi/" in dockerfile, "Pi lockfiles must be copied independently")
+check("/usr/local/bin/npm ci --omit=dev --prefix /opt/ha-opendesign/pi" in dockerfile, "Pi install must use the locked production package prefix")
+check('test "$(/opt/ha-opendesign/pi/node_modules/.bin/pi --version)" = "0.84.4"' in dockerfile, "image build must assert the exact Pi version")
+check("/usr/local/bin/pi" in dockerfile and "ha-pi-wrapper.mjs" in dockerfile, "Pi wrapper must be executable in the image")
+check("/opt/ha-opendesign/ha-pi-wrapper.mjs" in pi_command, "Pi command must use the controlled wrapper")
+check("OD_PI_PROFILE_KEY" in pi_wrapper and "PI_CODING_AGENT_DIR" in pi_wrapper, "Pi wrapper must provide a transient profile configuration")
+check("--no-session" in pi_wrapper and "ha-profile" in pi_wrapper, "Pi wrapper must force the active profile runtime")
 check("startServer" in entry and "desktopSlideRenderer: renderSlides" in entry, "slide renderer injection missing")
 check("desktopPdfExporter" not in entry and "exportPdf" not in entry, "misleading desktop vector PDF exporter must not be injected")
 check("host = '127.0.0.1'" in entry, "OpenDesign entry must bind loopback")
@@ -102,7 +128,6 @@ for pattern, label in [
     (r"(?:^|\s)--privileged(?:\s|$)", "privileged mode"),
     (r"(?:^|\s)--network[= ]host(?:\s|$)", "host networking"),
     (r"(?:^|\s)(?:claude|codex|opencode)(?:@|\s|$)", "local AI CLI package"),
-    (r"@(?:mariozechner|earendil-works)/pi-coding-agent", "Pi AI CLI package"),
     (r"/(?:mnt|media|share|config)(?:/|\s|$)", "host path coupling"),
 ]:
     check(not re.search(pattern, runtime_sources, re.I | re.M), f"forbidden runtime coupling detected: {label}")

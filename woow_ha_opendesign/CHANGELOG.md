@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.3
+
+- Replace OpenCode BYOK with locked Pi `0.84.4` Local CLI execution.
+- Add HA Persistent BYOK Profile storage, Settings overlay, loopback sidecar, and administrator-visible cold-backup credentials.
+- Support Anthropic, OpenAI, Google, and OpenAI-compatible profiles with an authoritative active model.
+
 ## 0.1.2
 
 - Keep OpenDesign's client-side history on logical paths such as `/settings` and `/design-systems` while the network wrappers retain the authenticated HA Ingress transport prefix.

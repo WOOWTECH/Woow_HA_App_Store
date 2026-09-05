@@ -4,7 +4,7 @@
 
 This add-on intentionally has no options. Configure providers in the OpenDesign UI, not in Home Assistant.
 
-Provider keys remain in the current browser's `localStorage`. They are not stored in `/data/opendesign`, are not part of a Home Assistant backup, and must be entered again in each browser. Clearing site data removes them.
+Use **HA Persistent BYOK Profiles** in OpenDesign Settings. Profiles are stored at `/data/opendesign/credentials/byok-profiles.json` with restrictive ownership/modes, survive restart, and are included in Home Assistant cold backups. Every HA administrator with access to this add-on may view/manage complete keys; backup access is provider-key access.
 
 ## Access and persistence
 
@@ -29,21 +29,21 @@ Rendering is serialized and bounded by an absolute two-minute deadline, 64 slide
 
 ## Runtime ownership and release policy
 
-The container starts a minimal root PID 1 because Home Assistant mounts `/data` as root at runtime. It creates and assigns only the add-on-owned directories, then launches both OpenDesign and nginx through `su-exec` as UID/GID 1001.
+The container starts a minimal root PID 1 because Home Assistant mounts `/data` as root at runtime. It creates and assigns only add-on-owned directories, then launches OpenDesign, nginx, and the loopback profile sidecar through `su-exec` as UID/GID 1001.
 
 CI validates and smokes every build before architecture work. Pull requests and `main` build without pushing under `contents: read`; only an exact `v<config-version>` tag starts a publisher with `packages: write`. Its preflight fails closed unless both architecture version tags are absent from GHCR. Version tags are immutable: a partial architecture release cannot be retried over the same version and requires a version bump plus a new matching Git tag. Dockerfile and CI/release inputs pin the upstream digest; `build.yaml` uses the `0.21.1` tag because Supervisor's local builder rejects digest syntax there and otherwise silently substitutes its default base image.
 
-## Local runtimes
+## Pi Local CLI profiles
 
-The upstream Local CLI page is intentionally unchanged. This add-on does not install, discover, or mount any host AI command-line runtime, so every local runtime remains unavailable. Use OpenDesign's API/BYOK provider mode.
+The image bundles locked Pi `0.84.4`; OpenDesign uses its native Pi RPC Local CLI integration. Select one active persistent profile in Settings. Its model is authoritative for new runs. Supported profile protocols are Anthropic, OpenAI, Google, and OpenAI-compatible (bearer or `api-key` authentication). Delete/replace a profile to rotate a key; a deletion affects new runs only.
 
 ## Troubleshooting
 
 - **Stuck at “Loading OpenDesign…”:** reload without cache and confirm the add-on is at least 0.1.1. The Next/Turbopack runtime and escaped RSC chunk references both require ingress-prefix rewriting; the container browser smoke locks this boot path down.
 - **Settings or Design systems changes the URL but not the page:** update to at least 0.1.2. OpenDesign route logic must see logical paths without HA's transport-only ingress prefix.
 - **Blank page or missing assets:** restart the add-on, then reload the HA page without cache. Report the missing root-relative URL and add-on logs; ingress adaptation is coupled to the pinned OpenDesign version.
-- **Generation cannot authenticate:** re-enter/test the provider key in this browser. There is no corresponding HA option.
-- **Key disappeared:** browser storage was cleared or a different browser/profile is in use. HA restore cannot restore browser-local keys.
+- **Generation cannot authenticate:** check the active HA Persistent BYOK Profile and provider/model endpoint in Settings.
+- **Key disappeared:** reload Settings; profiles survive browser clearing and HA restart, but a deleted profile must be recreated or restored from an authorised cold backup.
 - **Editable PPTX fails:** expected. Choose the screenshot/image PPTX mode.
 - **Image/PDF export says renderer failed:** check logs for Chromium errors and reduce page dimensions/length.
 - **Watchdog restart:** if nginx or OpenDesign exits, the launcher deliberately stops its peer and exits so Supervisor can restart the complete pair.

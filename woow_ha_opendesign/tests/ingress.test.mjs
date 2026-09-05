@@ -12,7 +12,7 @@ function applyDocumentRewrites(html) {
     .replaceAll('src="/', `src="${prefix}/`)
     .replaceAll('action="/', `action="${prefix}/`)
     .replaceAll('\\"/_next/', `\\"${prefix}/_next/`)
-    .replace('<head>', `<head><script>window.__OD_INGRESS_PATH__="${prefix}";</script><script src="${prefix}/ha-ingress.js"></script><script src="${prefix}/ha-export-bridge.js"></script>`);
+    .replace('<head>', `<head><script>window.__OD_INGRESS_PATH__="${prefix}";</script><script src="${prefix}/ha-ingress.js"></script><script src="${prefix}/ha-export-bridge.js"></script><script src="${prefix}/ha-byok-profiles-bridge.js"></script>`);
 }
 
 test('representative initial HTML rewrite matches the fixture', async () => {
@@ -36,6 +36,12 @@ test('nginx validates the ingress prefix and preserves streaming upgrades', () =
   assert.ok(nginx.includes("sub_filter '\"/_next/' '\"$safe_ingress_path/_next/'"), 'Turbopack runtime asset base must use the ingress prefix');
   assert.match(nginx, /location ~ \^\/api\/projects\/\[\^\/\]\+\/export/);
   assert.match(nginx, /location = \/ha-export-bridge\.js/);
+  assert.match(nginx, /location = \/ha-byok-profiles-bridge\.js/);
+  assert.match(nginx, /ha-ingress\.js.*ha-export-bridge\.js.*ha-byok-profiles-bridge\.js/);
+  assert.match(nginx, /location = \/api\/ha-opendesign\/byok\/profiles/);
+  assert.match(nginx, /proxy_pass http:\/\/127\.0\.0\.1:7457/);
+  assert.match(nginx, /proxy_set_header X-HA-OpenDesign-Byok-Marker "ha-opendesign-byok-private"/);
+  assert.ok(nginx.indexOf('location = /api/ha-opendesign/byok/profiles') < nginx.indexOf('location / {'), 'private profile proxy must precede the catch-all route');
   assert.match(nginx, /ha-ingress\.js.*ha-export-bridge\.js/);
   assert.ok(nginx.indexOf("sub_filter '<head>'") > nginx.indexOf("location /"));
   assert.ok(nginx.indexOf('location ~ ^/api/projects/') < nginx.indexOf('location / {'), 'download bypass must precede the filtered shell location');

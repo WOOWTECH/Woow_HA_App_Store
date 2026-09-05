@@ -4,11 +4,11 @@
 
 - 僅透過 Home Assistant Ingress／側邊欄存取，不發布區域網路連接埠。
 - OpenDesign 只監聽 `127.0.0.1`，由非特權 nginx 提供 Supervisor Ingress 入口。
-- 供應商金鑰沿用 OpenDesign 的瀏覽器 `localStorage`。金鑰依瀏覽器保存，不是 HA 選項、不寫入 `/data`，也不會進入 HA 備份。
+- **HA Persistent BYOK Profiles** 使用內建 Pi Local CLI。金鑰保存於 `/data/opendesign/credentials/byok-profiles.json`，HA 管理員可管理，且會納入冷備份。
 - OpenDesign 狀態保存於 `/data/opendesign`，由冷備份涵蓋。
 - 系統 Chromium、Playwright 與 Noto CJK／emoji 字型提供無頭匯出。
 - 支援獨立 HTML、ZIP、截圖式 PDF、PNG/JPEG，以及每張投影片為圖片的 PPTX。**不支援可編輯 PPTX**，要求此模式時會明確失敗。
-- 保留上游 Local CLI 設定頁，但映像不安裝、不掛載任何本機 AI 執行環境，因此所有這類執行環境均不可用。
+- 映像以精確鎖定版本內建 Pi `0.84.4`；profile 支援 Anthropic、OpenAI、Google 與 OpenAI-compatible endpoint，active profile/model 適用於新 run。
 
 [English](README.md) · [附加元件說明](DOCS.md)
 
@@ -17,7 +17,7 @@
 1. 在 Home Assistant 開啟 **設定 → 附加元件 → 附加元件商店 → 儲存庫**。
 2. 加入 `https://github.com/WOOWTECH/Woow_ha_opendesign_add_on`。
 3. 安裝並啟動 **Woow HA OpenDesign**，再從側邊欄開啟。
-4. 在 OpenDesign 介面設定供應商；金鑰只留在目前瀏覽器。
+4. 在 **設定** 建立 **HA Persistent BYOK Profile**、設為 active，並以 Pi Local CLI 執行新 run。
 
 本附加元件沒有設定選項，也沒有主機目錄掛載。
 

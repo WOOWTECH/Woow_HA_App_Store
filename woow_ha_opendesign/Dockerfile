@@ -24,10 +24,13 @@ RUN apk add --no-cache \
     && rm -rf /etc/nginx/http.d/* /var/cache/apk/*
 
 COPY runtime/package.json runtime/package-lock.json /opt/ha-opendesign/
+COPY runtime/pi/package.json runtime/pi/package-lock.json /opt/ha-opendesign/pi/
 # Home Assistant Supervisor's BuildKit builder may supply a reduced PATH even
 # though the pinned upstream image installs Node/npm under /usr/local/bin.
 # Use the absolute npm path so local Supervisor builds match ordinary Docker.
 RUN /usr/local/bin/npm ci --omit=dev --prefix /opt/ha-opendesign \
+    && /usr/local/bin/npm ci --omit=dev --prefix /opt/ha-opendesign/pi \
+    && test "$(/opt/ha-opendesign/pi/node_modules/.bin/pi --version)" = "0.84.4" \
     && /usr/local/bin/npm cache clean --force \
     && test "$(id -u open-design)" = "1001" \
     && test -x /usr/local/bin/node \
@@ -42,6 +45,9 @@ RUN mkdir -p /data/opendesign \
     && chown -R open-design:open-design /data \
     && chmod 0755 \
       /usr/local/bin/ha-opendesign \
+      /usr/local/bin/pi \
+      /opt/ha-opendesign/ha-pi-wrapper.mjs \
+      /opt/ha-opendesign/ha-byok-store.mjs \
       /opt/ha-opendesign/headless-entry.mjs \
       /opt/ha-opendesign/headless-renderer.mjs \
     && chown -R open-design:open-design /opt/ha-opendesign

@@ -53,6 +53,7 @@ set -Eeuo pipefail
 readonly SHUTDOWN_GRACE_SECONDS=1
 od_pid=''
 nginx_pid=''
+byok_pid=''
 stopping=0
 ${terminateChildren}
 bash -c 'trap "" TERM; while :; do sleep 1; done' &
@@ -68,8 +69,13 @@ echo reaped
   assert.match(result.stderr, /exceeded 1s grace; sending KILL/);
 });
 
-test('launcher still fails the whole container when either peer exits', () => {
-  assert.match(launcher, /wait -n "\$od_pid" "\$nginx_pid"/);
+test('launcher supervises the daemon, nginx, and profile sidecar as one unit', () => {
+  assert.match(launcher, /"\$DATA_DIR\/credentials"/);
+  assert.match(launcher, /chmod 0700 "\$DATA_DIR\/credentials"/);
+  assert.match(launcher, /ha-byok-store\.mjs/);
+  assert.match(launcher, /wait -n "\$od_pid" "\$nginx_pid" "\$byok_pid"/);
+  const shutdown = launcher.slice(launcher.indexOf('terminate_children() {'), launcher.indexOf('\n}\n\ntrap terminate_children') + 2);
+  assert.match(shutdown, /"\$od_pid" "\$nginx_pid" "\$byok_pid"/);
   assert.match(launcher, /terminate_children/);
   assert.match(launcher, /if \(\( status == 0 \)\)/);
 });

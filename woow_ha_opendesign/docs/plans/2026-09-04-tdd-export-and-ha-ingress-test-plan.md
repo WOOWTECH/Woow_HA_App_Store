@@ -17,6 +17,7 @@
 | PR blocking budget | 15 minutes wall-clock |
 | Human acceptance browsers | Chrome/Chromium desktop only |
 | Human-acceptance SLA | Complete within 24 hours of each release |
+| ZIP paths | Server archive is a PR gate; browser-local fallback is covered in the later Ingress/UI batch |
 
 ## Scope and seams
 
@@ -47,7 +48,8 @@ Each row is a distinct vertical TDD slice. A single test has one externally visi
 | Slice | Public action | Independent assertions | Required negative/edge case |
 | --- | --- | --- | --- |
 | HTML | Export/download fixture as HTML | non-empty download; UTF-8; both literal text strings; two slide sections | malformed/unknown file request returns the documented failure and creates no download |
-| ZIP | Export/download fixture as ZIP | `PK` signature; archive opens; expected HTML/asset entries; every archive entry is relative and remains within the archive root | archive contains no `..`, absolute, or symlink escape entry |
+| ZIP server archive | Use the normal `GET /api/projects/:id/archive` download path | `PK` signature; archive opens; expected HTML/asset entries; every archive entry is relative and remains within the archive root | archive contains no `..`, absolute, or symlink escape entry |
+| ZIP browser fallback | Force the archive request to fail through the Ingress/UI seam, then use the normal UI ZIP action | browser downloads a locally built ZIP containing the documented single-file handoff layout | failure response does not leak an error page as a `.zip` download |
 | PDF | Export fixture as PDF | `%PDF-` header; parser accepts it; exactly 2 pages; extracted literal text on the expected pages | missing file/export failure returns a non-success result, never a partial PDF |
 | PNG | Export full deck as PNG | PNG header/IHDR; width ≥640, height ≥720; representative top/bottom pixels match blue/red within RGB ±3 | invalid image format is rejected before a file is emitted |
 | JPEG | Export full deck as JPEG | JPEG SOI/SOF; width ≥640, height ≥720; decoder can load image | invalid image format is rejected before a file is emitted |
@@ -161,8 +163,8 @@ Before reporting any slice, CI workflow, or release as complete, run the exact r
 ## Implementation order
 
 1. Add the fixture and refactor current smoke orchestration without changing export behaviour; prove the initial moved/added tests still catch an intentionally broken fixture assertion.
-2. Split HTML/ZIP, PDF, PNG/JPEG, and PPTX/rejection into independent public-contract tests, one Red/Green vertical slice at a time.
-3. Make the ingress E2E download assertions explicit and preserve route/proxy transport coverage.
+2. Split HTML and the normal server-archive ZIP path, then PDF, PNG/JPEG, and PPTX/rejection into independent public-contract tests, one Red/Green vertical slice at a time.
+3. Make the ingress E2E download assertions explicit and add the browser-local ZIP fallback coverage; preserve route/proxy transport coverage.
 4. Add artifact collection and renderer concurrency control; measure the PR critical path and adjust only by removing duplicated work or moving exhaustive coverage nightly.
 5. Add the golden manifest, comparator, baseline-review process, nightly/manual workflow, and artifact report.
 6. Add the release acceptance checklist automation and execute the first manual acceptance within 24 hours of the next release.

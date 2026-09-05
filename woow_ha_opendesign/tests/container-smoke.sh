@@ -53,10 +53,68 @@ import sys
 assert json.load(open(sys.argv[1], encoding='utf-8')).get('ok') is True
 PY
 
+# The sidecar has no public listener: a loopback call without nginx's private
+# marker is rejected, while nginx replaces a forged client marker and forwards
+# the full profile state. Bodies are confined to the temporary test directory.
+docker exec "$container" node -e '
+fetch("http://127.0.0.1:7457/api/ha-opendesign/byok/profiles").then((response) => {
+  if (response.status !== 403) process.exit(1);
+}).catch(() => process.exit(1));
+'
+python3 - "$tmp/byok-request.json" <<'PY'
+import json
+import sys
+json.dump({
+    'version': 1,
+    'revision': 0,
+    'activeProfileId': 'smoke-compatible',
+    'profiles': {
+        'smoke-compatible': {
+            'id': 'smoke-compatible',
+            'label': 'Smoke compatible',
+            'protocol': 'openai-compatible',
+            'baseUrl': 'https://provider.example/v1',
+            'authStyle': 'bearer',
+            'apiFlavor': 'openai-responses',
+            'apiKey': 'container-test-credential',
+            'model': 'smoke/model',
+            'updatedAt': '2026-09-04T00:00:00.000Z',
+        },
+    },
+}, open(sys.argv[1], 'w', encoding='utf-8'))
+PY
+curl --fail-with-body -sS -o "$tmp/byok-response.json" \
+  -X PUT \
+  -H 'content-type: application/json' \
+  -H 'X-HA-OpenDesign-Byok-Marker: forged-client-value' \
+  --data-binary "@$tmp/byok-request.json" \
+  "http://127.0.0.1:${port}/api/ha-opendesign/byok/profiles"
+python3 - "$tmp/byok-response.json" <<'PY'
+import json
+import sys
+body = json.load(open(sys.argv[1], encoding='utf-8'))
+assert body['revision'] == 1
+assert body['activeProfileId'] == 'smoke-compatible'
+assert len(body['profiles']['smoke-compatible']['apiKey']) > 0
+PY
+docker exec "$container" sh -ceu '
+  test "$(stat -c %u:%g /data/opendesign/credentials)" = 1001:1001
+  test "$(stat -c %a /data/opendesign/credentials)" = 700
+  test "$(stat -c %a /data/opendesign/credentials/byok-profiles.json)" = 600
+'
+
 # HA Supervisor removes the public ingress prefix before proxying and supplies
 # it in X-Ingress-Path. Nginx therefore receives '/' and must inject/rewrite the
 # prefix into the returned application shell.
 ingress_prefix=/api/hassio_ingress/abcdefghijklmnop
+docker cp tests/export-http-contract-e2e.mjs "$container:/tmp/export-http-contract-e2e.mjs"
+docker cp tests/export-archive-inspection.mjs "$container:/tmp/export-archive-inspection.mjs"
+docker cp tests/fixtures/export-deck.html "$container:/tmp/export-deck.html"
+docker exec \
+  -e OD_EXPORT_BASE_URL=http://127.0.0.1:8099 \
+  -e OD_EXPORT_INGRESS_PATH="$ingress_prefix" \
+  -e OD_EXPORT_FIXTURE_PATH=/tmp/export-deck.html \
+  "$container" node /tmp/export-http-contract-e2e.mjs
 curl --fail-with-body -sSL -o "$tmp/ingress.html" \
   -H "X-Ingress-Path: $ingress_prefix" \
   "http://127.0.0.1:${port}/"
@@ -120,6 +178,16 @@ import sys
 assert json.load(open(sys.argv[1], encoding='utf-8')).get('ok') is True
 PY
 docker exec "$container" grep -qx persisted /data/opendesign/container-smoke-sentinel
+curl --fail-with-body -sS -o "$tmp/byok-after-restart.json" \
+  "http://127.0.0.1:${port}/api/ha-opendesign/byok/profiles"
+python3 - "$tmp/byok-after-restart.json" <<'PY'
+import json
+import sys
+body = json.load(open(sys.argv[1], encoding='utf-8'))
+assert body['revision'] == 1
+assert body['activeProfileId'] == 'smoke-compatible'
+assert len(body['profiles']['smoke-compatible']['apiKey']) > 0
+PY
 
 # Direct renderer acceptance uses the Chromium and playwright-core installed in
 # the image. It requires no provider key or generation call.
@@ -141,15 +209,13 @@ import sys
 body = json.load(open(sys.argv[1], encoding='utf-8'))
 assert 'ha-smoke' in json.dumps(body), body
 PY
-python3 - "$tmp/deck-file.json" <<'PY'
+python3 - "$tmp/deck-file.json" tests/fixtures/export-deck.html <<'PY'
 import json
 import sys
-html = '''<!doctype html><html><head><style>
-html,body{margin:0;background:#fff}.slide{width:640px;height:360px;display:block;color:#fff;font:32px sans-serif}
-.slide:first-of-type{background:#165dba}.slide:last-of-type{background:#a33}
-</style></head><body><section class="slide">Slide one</section><section class="slide">Slide two</section></body></html>'''
+from pathlib import Path
+
 with open(sys.argv[1], 'w', encoding='utf-8') as handle:
-    json.dump({'name': 'deck.html', 'content': html}, handle)
+    json.dump({'name': 'deck.html', 'content': Path(sys.argv[2]).read_text(encoding='utf-8')}, handle)
 PY
 curl --fail-with-body -sS -o "$tmp/deck-file-response.json" \
   -H "X-Ingress-Path: $ingress_prefix" \

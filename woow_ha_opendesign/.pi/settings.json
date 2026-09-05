@@ -1,0 +1,9 @@
+{
+  "subagents": {
+    "agentOverrides": {
+      "worker": { "extensions": [] },
+      "reviewer": { "extensions": [] },
+      "delegate": { "extensions": [] }
+    }
+  }
+}

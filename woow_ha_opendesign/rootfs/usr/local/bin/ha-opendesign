@@ -6,6 +6,7 @@ readonly NGINX_TMP=/tmp/ha-opendesign-nginx
 readonly SHUTDOWN_GRACE_SECONDS=5
 od_pid=''
 nginx_pid=''
+byok_pid=''
 stopping=0
 
 terminate_children() {
@@ -15,7 +16,7 @@ terminate_children() {
   stopping=1
   trap - TERM INT
   local pid deadline
-  for pid in "$od_pid" "$nginx_pid"; do
+  for pid in "$od_pid" "$nginx_pid" "$byok_pid"; do
     if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
       kill -TERM "$pid" 2>/dev/null || true
     fi
@@ -24,7 +25,7 @@ terminate_children() {
   deadline=$((SECONDS + SHUTDOWN_GRACE_SECONDS))
   while (( SECONDS < deadline )); do
     local alive=0
-    for pid in "$od_pid" "$nginx_pid"; do
+    for pid in "$od_pid" "$nginx_pid" "$byok_pid"; do
       if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
         alive=1
       fi
@@ -33,13 +34,13 @@ terminate_children() {
     sleep 0.1
   done
 
-  for pid in "$od_pid" "$nginx_pid"; do
+  for pid in "$od_pid" "$nginx_pid" "$byok_pid"; do
     if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
       echo "[ha-opendesign] process $pid exceeded ${SHUTDOWN_GRACE_SECONDS}s grace; sending KILL" >&2
       kill -KILL "$pid" 2>/dev/null || true
     fi
   done
-  for pid in "$od_pid" "$nginx_pid"; do
+  for pid in "$od_pid" "$nginx_pid" "$byok_pid"; do
     if [[ -n "$pid" ]]; then
       wait "$pid" 2>/dev/null || true
     fi
@@ -82,6 +83,7 @@ owned_dirs=(
   "$DATA_DIR/home"
   "$DATA_DIR/export-render"
   "$DATA_DIR/export-pdf"
+  "$DATA_DIR/credentials"
   "$NGINX_TMP"
   "$NGINX_TMP/client"
   "$NGINX_TMP/proxy"
@@ -92,13 +94,14 @@ owned_dirs=(
 for dir in "${owned_dirs[@]}"; do
   prepare_owned_dir "$dir"
 done
-for dir in "$DATA_DIR" "$DATA_DIR/home" "$DATA_DIR/export-render" "$DATA_DIR/export-pdf"; do
+for dir in "$DATA_DIR" "$DATA_DIR/home" "$DATA_DIR/export-render" "$DATA_DIR/export-pdf" "$DATA_DIR/credentials"; do
   [[ ! -L "$dir" && -d "$dir" ]] || {
     echo "[ha-opendesign] refusing unsafe chmod target: $dir" >&2
     exit 78
   }
   chmod 0750 "$dir"
 done
+chmod 0700 "$DATA_DIR/credentials"
 
 export OD_DATA_DIR="$DATA_DIR"
 export OD_BIND_HOST=127.0.0.1
@@ -111,9 +114,11 @@ od_pid=$!
 # denied when HA's root PID 1 drops to UID 1001 under its container procfs.
 su-exec open-design:open-design /usr/sbin/nginx -e stderr -c /etc/nginx/nginx.conf &
 nginx_pid=$!
+su-exec open-design:open-design /usr/local/bin/node /opt/ha-opendesign/ha-byok-store.mjs &
+byok_pid=$!
 
 set +e
-wait -n "$od_pid" "$nginx_pid"
+wait -n "$od_pid" "$nginx_pid" "$byok_pid"
 status=$?
 set -e
 
