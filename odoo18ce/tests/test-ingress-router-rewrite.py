@@ -66,13 +66,20 @@ def assert_prefix_guard(template: str) -> None:
     )
 
 
+def runtime_shim(template: str) -> str:
+    """Return the HTML-only runtime shim declared in nginx's response map."""
+    map_start = template.index("map $upstream_http_content_type $ingress_runtime_shim {")
+    map_end = template.index("\n    }", map_start)
+    html_map = template[map_start:map_end]
+    assert '"~*^text/html(?:;|$)"' in html_map
+    match = re.search(r"<script>(.*?)</script>';", html_map, re.S)
+    assert match, "HTML runtime shim not found"
+    return match.group(1)
+
+
 def assert_shim_fragments(template: str, node: str) -> None:
     """Fragment anchors must remain local so Odoo's Router owns their click."""
-    match = re.search(
-        r"sub_filter '<head>' '<head><script>(.*?)</script>';", template, re.S
-    )
-    assert match, "ingress shim not found"
-    shim = match.group(1).replace("$safe_ingress_path", "/api/hassio_ingress/token")
+    shim = runtime_shim(template).replace("$safe_ingress_path", "/api/hassio_ingress/token")
     assert ".settings_tab a.tab" not in shim, (
         "Settings-specific document click workaround must be absent"
     )

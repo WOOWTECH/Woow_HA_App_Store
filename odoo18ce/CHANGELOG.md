@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.34 — 2026-09-03
+
+### Fixed
+- Restrict the HA Ingress runtime `<head>` shim to `text/html` upstream responses so Document Layout preview HTML embedded in JSON remains parseable, while retaining ingress JSON URL and icon rewrites.
+
+### Testing
+- Add a live nginx content-type response-filter harness covering HTML shim injection, JSON preview integrity, and JSON asset URL rewriting.
+
 ## 0.3.33 — 2026-09-03
 
 ### Fixed

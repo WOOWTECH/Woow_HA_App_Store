@@ -100,12 +100,17 @@ trap 'rm -f "${shim}"; rm -rf "${nginx_test_dir}"' EXIT
 python3 - "${ADDON}/rootfs/etc/nginx/nginx.conf.template" "${shim}" <<'PY'
 import re, sys
 source=open(sys.argv[1], encoding='utf-8').read()
-match=re.search(r"sub_filter '<head>' '<head><script>(.*?)</script>';", source, re.S)
-assert match, 'ingress shim not found'
+map_start=source.index('map $upstream_http_content_type $ingress_runtime_shim {')
+map_end=source.index('\n    }', map_start)
+runtime_shim=source[map_start:map_end]
+assert '"~*^text/html(?:;|$)"' in runtime_shim, 'runtime shim must be limited to HTML upstream responses'
+match=re.search(r"<script>(.*?)</script>';", runtime_shim, re.S)
+assert match, 'HTML runtime shim not found'
 open(sys.argv[2], 'w', encoding='utf-8').write(match.group(1).replace('$safe_ingress_path','/P').replace('%%INGRESS_CACHE_VERSION%%','V'))
 PY
 node --check "${shim}"
 python3 "${ADDON}/tests/test-ingress-router-rewrite.py"
+python3 "${ADDON}/tests/test-ingress-content-type-filter.py"
 python3 "${ADDON}/tests/test-settings-icon-rewrite.py"
 python3 "${ADDON}/tests/e2e_settings_controls.py" --self-test
 
