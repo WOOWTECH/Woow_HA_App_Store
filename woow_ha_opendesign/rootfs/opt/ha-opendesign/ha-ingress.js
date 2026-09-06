@@ -108,6 +108,10 @@
   const logicalHistoryUrl = (value) => {
     const pathname = pathFromUrl(String(value));
     if (!pathname) return value;
+    if (isProjectIframeTransport) {
+      if (pathname === prefix || pathname.startsWith(`${prefix}/`) || pathname.startsWith('/api/hassio_ingress/')) return pathname;
+      return `${prefix}${pathname}`;
+    }
     if (pathname === prefix) return '/';
     if (pathname.startsWith(`${prefix}/`)) return pathname.slice(prefix.length) || '/';
     return pathname;

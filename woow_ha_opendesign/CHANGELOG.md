@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.6
+
+- Preserve HA Ingress transport paths when project preview iframes use the History API, preventing post-load preview reload loops.
+
 ## 0.1.5
 
 - Preserve the authenticated HA Ingress transport prefix for raw and scoped project-preview iframes, preventing preview reload loops and blank canvases.

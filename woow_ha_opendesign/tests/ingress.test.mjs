@@ -22,21 +22,31 @@ function runIngressShim(initialPath) {
     search: '',
     hash: '',
     href: `http://localhost${initialPath}`,
+    host: 'localhost',
+    origin: 'http://localhost',
   };
   const replaceCalls = [];
+  const historyCalls = [];
+  const updateLocation = (url) => {
+    if (typeof url !== 'string') return;
+    const next = new URL(url, 'http://localhost');
+    location.pathname = next.pathname;
+    location.search = next.search;
+    location.hash = next.hash;
+    location.href = next.href;
+  };
   const history = {
     state: null,
-    pushState() {},
+    pushState(state, _title, url) {
+      historyCalls.push({ method: 'pushState', url });
+      this.state = state;
+      updateLocation(url);
+    },
     replaceState(state, _title, url) {
       replaceCalls.push(url);
+      historyCalls.push({ method: 'replaceState', url });
       this.state = state;
-      if (typeof url === 'string') {
-        const next = new URL(url, 'http://localhost');
-        location.pathname = next.pathname;
-        location.search = next.search;
-        location.hash = next.hash;
-        location.href = next.href;
-      }
+      updateLocation(url);
     },
   };
   class Element {}
@@ -66,7 +76,7 @@ function runIngressShim(initialPath) {
     URL,
     Request,
   });
-  return { location, replaceCalls };
+  return { history, historyCalls, location, replaceCalls };
 }
 
 test('representative initial HTML rewrite matches the fixture', async () => {
@@ -88,6 +98,34 @@ test('initial project raw and scoped preview iframe paths retain ingress transpo
   const spaRoute = runIngressShim(`${prefix}/settings`);
   assert.deepEqual(spaRoute.replaceCalls, ['/settings']);
   assert.equal(spaRoute.location.pathname, '/settings');
+});
+
+test('project preview iframe history retains ingress transport prefix', () => {
+  const previewPath = '/api/projects/project-123/preview/scope-456/index.html';
+  const result = runIngressShim(`${prefix}${previewPath}`);
+
+  result.history.replaceState({ page: 'editor' }, '', `${previewPath}?mode=edit`);
+  assert.deepEqual(result.historyCalls.at(-1), {
+    method: 'replaceState',
+    url: `${prefix}${previewPath}?mode=edit`,
+  });
+  assert.equal(result.location.pathname, `${prefix}${previewPath}`);
+  assert.equal(result.location.search, '?mode=edit');
+
+  result.history.pushState({ panel: 'assets' }, '', '#/assets');
+  assert.deepEqual(result.historyCalls.at(-1), {
+    method: 'pushState',
+    url: `${prefix}${previewPath}?mode=edit#/assets`,
+  });
+  assert.equal(result.location.pathname, `${prefix}${previewPath}`);
+  assert.equal(result.location.hash, '#/assets');
+
+  const spaRoute = runIngressShim(`${prefix}/settings`);
+  spaRoute.history.pushState({}, '', '/settings/profile');
+  assert.deepEqual(spaRoute.historyCalls.at(-1), {
+    method: 'pushState',
+    url: '/settings/profile',
+  });
 });
 
 test('nginx validates the ingress prefix and preserves streaming upgrades', () => {
