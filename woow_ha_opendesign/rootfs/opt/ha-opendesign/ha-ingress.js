@@ -145,7 +145,17 @@
   const originalSetAttribute = Element.prototype.setAttribute;
   Element.prototype.setAttribute = function setAttribute(name, value) {
     const attribute = String(name).toLowerCase();
-    if (urlAttributes.has(attribute)) value = rewrite(value);
+    if (urlAttributes.has(attribute)) {
+      // Preserve idempotence: React and other reconcilers repeatedly write
+      // the same logical URL against an iframe whose DOM attribute already
+      // carries the ingress-prefixed value from a prior write. Without this
+      // guard the shim rewrites and re-commits the attribute on every
+      // reconciliation tick, forcing the iframe to reload and producing a
+      // preview flicker loop.
+      const scoped = rewrite(value);
+      if (this.getAttribute(name) === scoped) return;
+      value = scoped;
+    }
     if (attribute === 'style') value = rewriteCss(value);
     return originalSetAttribute.call(this, name, value);
   };
@@ -167,7 +177,15 @@
       configurable: descriptor.configurable,
       enumerable: descriptor.enumerable,
       get: descriptor.get,
-      set(value) { descriptor.set.call(this, rewrite(value)); },
+      set(value) {
+        const scoped = rewrite(value);
+        try {
+          const current = descriptor.get.call(this);
+          const absolute = new URL(scoped, location.href).href;
+          if (current === absolute) return;
+        } catch {}
+        descriptor.set.call(this, scoped);
+      },
     });
   };
   [

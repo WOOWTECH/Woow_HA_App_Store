@@ -49,7 +49,19 @@ function runIngressShim(initialPath) {
       updateLocation(url);
     },
   };
-  class Element {}
+  const originalSetAttributeCalls = [];
+  class Element {
+    constructor() { this._attrs = new Map(); }
+    setAttribute(name, value) {
+      originalSetAttributeCalls.push({ target: this, name, value });
+      this._attrs.set(String(name).toLowerCase(), String(value));
+    }
+    getAttribute(name) {
+      const key = String(name).toLowerCase();
+      return this._attrs.has(key) ? this._attrs.get(key) : null;
+    }
+    hasAttribute(name) { return this._attrs.has(String(name).toLowerCase()); }
+  }
   class XMLHttpRequest { open() {} }
   class CSSStyleDeclaration { setProperty() {} }
   class CSSStyleSheet { insertRule() {} }
@@ -57,14 +69,32 @@ function runIngressShim(initialPath) {
     constructor() {}
     observe() {}
   }
+  const iframeSetterCalls = [];
+  class HTMLIFrameElement extends Element {}
+  Object.defineProperty(HTMLIFrameElement.prototype, 'src', {
+    configurable: true,
+    enumerable: true,
+    get() {
+      const raw = this._attrs.get('src');
+      if (raw === undefined) return '';
+      // Simulate browser canonical URL resolution against page location.
+      try { return new URL(raw, location.href).href; } catch { return raw; }
+    },
+    set(value) {
+      iframeSetterCalls.push(String(value));
+      this._attrs.set('src', String(value));
+    },
+  });
   const window = {
     __OD_INGRESS_PATH__: prefix,
     location,
     fetch() {},
     addEventListener() {},
+    HTMLIFrameElement,
   };
   vm.runInNewContext(shim, {
     window,
+    location,
     history,
     XMLHttpRequest,
     Element,
@@ -76,7 +106,7 @@ function runIngressShim(initialPath) {
     URL,
     Request,
   });
-  return { history, historyCalls, location, replaceCalls };
+  return { history, historyCalls, location, replaceCalls, Element, HTMLIFrameElement, originalSetAttributeCalls, iframeSetterCalls };
 }
 
 test('representative initial HTML rewrite matches the fixture', async () => {
@@ -147,6 +177,42 @@ test('nginx validates the ingress prefix and preserves streaming upgrades', () =
   assert.match(nginx, /ha-ingress\.js.*ha-export-bridge\.js/);
   assert.ok(nginx.indexOf("sub_filter '<head>'") > nginx.indexOf("location /"));
   assert.ok(nginx.indexOf('location ~ ^/api/projects/') < nginx.indexOf('location / {'), 'download bypass must precede the filtered shell location');
+});
+
+test('repeated iframe src setAttribute with the same logical URL commits once', () => {
+  // React reconciliation writes an unprefixed URL every render; the shim
+  // scopes it to the ingress prefix once, then subsequent identical writes
+  // must be no-ops so the preview iframe does not reload in a loop.
+  const previewPath = '/api/projects/project-123/raw/index.html?v=1';
+  const { Element, originalSetAttributeCalls } = runIngressShim(`${prefix}/api/projects/project-123/raw/index.html`);
+  const el = new Element();
+  originalSetAttributeCalls.length = 0;
+  el.setAttribute('src', previewPath);
+  el.setAttribute('src', previewPath);
+  el.setAttribute('src', previewPath);
+  assert.equal(originalSetAttributeCalls.length, 1, 'shim must skip repeated identical URL writes');
+  assert.equal(el.getAttribute('src'), `${prefix}${previewPath}`);
+
+  // Changing the URL must still commit.
+  el.setAttribute('src', '/api/projects/project-123/raw/other.html');
+  assert.equal(originalSetAttributeCalls.length, 2);
+  // Reverting to a previously written URL must also commit (attribute differs).
+  el.setAttribute('src', previewPath);
+  assert.equal(originalSetAttributeCalls.length, 3);
+});
+
+test('repeated iframe.src property assignment with the same logical URL commits once', () => {
+  const previewPath = '/api/projects/project-123/raw/index.html?v=2';
+  const { HTMLIFrameElement, iframeSetterCalls } = runIngressShim(`${prefix}/api/projects/project-123/raw/index.html`);
+  const iframe = new HTMLIFrameElement();
+  iframeSetterCalls.length = 0;
+  iframe.src = previewPath;
+  iframe.src = previewPath;
+  iframe.src = previewPath;
+  assert.equal(iframeSetterCalls.length, 1, 'shim must not re-commit iframe.src for the same canonical URL');
+
+  iframe.src = '/api/projects/project-123/raw/other.html';
+  assert.equal(iframeSetterCalls.length, 2);
 });
 
 test('early shim covers root-relative streaming, navigation, and dynamic URLs', () => {
