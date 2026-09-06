@@ -4,13 +4,13 @@
 
 This add-on intentionally has no options. Configure providers in the OpenDesign UI, not in Home Assistant.
 
-Use **HA Persistent BYOK Profiles** in OpenDesign Settings. Profiles are stored at `/data/opendesign/credentials/byok-profiles.json` with restrictive ownership/modes, survive restart, and are included in Home Assistant cold backups. Every HA administrator with access to this add-on may view/manage complete keys; backup access is provider-key access.
+Use OpenDesign's native **API BYOK** controls in Settings. Provider, model, and API-key values remain only in that administrator browser's localStorage; they are not written to `/data`, add-on options, logs, or Home Assistant cold backups. Re-enter settings in each browser after clearing browser storage.
 
 ## Access and persistence
 
 Use **Open Web UI** or the **OpenDesign** sidebar item. The service is ingress-only and has no published LAN port.
 
-Projects, the OpenDesign database, application configuration, connector data, and generated state are stored beneath `/data/opendesign`. The add-on requests cold backup so this directory is captured while the service is stopped.
+Projects, the OpenDesign database, application configuration, connector data, and generated state are stored beneath `/data/opendesign`. API BYOK credentials are deliberately excluded. The add-on requests cold backup so this directory is captured while the service is stopped.
 
 ## Exports
 
@@ -29,21 +29,21 @@ Rendering is serialized and bounded by an absolute two-minute deadline, 64 slide
 
 ## Runtime ownership and release policy
 
-The container starts a minimal root PID 1 because Home Assistant mounts `/data` as root at runtime. It creates and assigns only add-on-owned directories, then launches OpenDesign, nginx, and the loopback profile sidecar through `su-exec` as UID/GID 1001.
+The container starts a minimal root PID 1 because Home Assistant mounts `/data` as root at runtime. It creates and assigns only add-on-owned directories, safely removes the withdrawn `/data/opendesign/credentials` path without following symlinks, then launches OpenDesign and nginx through `su-exec` as UID/GID 1001.
 
 CI validates and smokes every build before architecture work. Pull requests and `main` build without pushing under `contents: read`; only an exact `v<config-version>` tag starts a publisher with `packages: write`. Its preflight fails closed unless both architecture version tags are absent from GHCR. Version tags are immutable: a partial architecture release cannot be retried over the same version and requires a version bump plus a new matching Git tag. Dockerfile and CI/release inputs pin the upstream digest; `build.yaml` uses the `0.21.1` tag because Supervisor's local builder rejects digest syntax there and otherwise silently substitutes its default base image.
 
-## Pi Local CLI profiles
+## Native API BYOK and OpenCode
 
-The image bundles locked Pi `0.84.4`; OpenDesign uses its native Pi RPC Local CLI integration. Select one active persistent profile in Settings. Its model is authoritative for new runs. Supported profile protocols are Anthropic, OpenAI, Google, and OpenAI-compatible (bearer or `api-key` authentication). Delete/replace a profile to rotate a key; a deletion affects new runs only.
+The image bundles locked OpenCode `1.18.29`. OpenDesign's native API BYOK flow uses its `byok-opencode` runtime and discovers this executable on `PATH`. Configure the provider, model, and API key in the upstream Settings UI; those values are browser-local and are not persisted by the add-on. Clearing browser storage or using another browser requires fresh entry.
 
 ## Troubleshooting
 
 - **Stuck at “Loading OpenDesign…”:** reload without cache and confirm the add-on is at least 0.1.1. The Next/Turbopack runtime and escaped RSC chunk references both require ingress-prefix rewriting; the container browser smoke locks this boot path down.
 - **Settings or Design systems changes the URL but not the page:** update to at least 0.1.2. OpenDesign route logic must see logical paths without HA's transport-only ingress prefix.
 - **Blank page or missing assets:** restart the add-on, then reload the HA page without cache. Report the missing root-relative URL and add-on logs; ingress adaptation is coupled to the pinned OpenDesign version.
-- **Generation cannot authenticate:** check the active HA Persistent BYOK Profile and provider/model endpoint in Settings.
-- **Key disappeared:** reload Settings; profiles survive browser clearing and HA restart, but a deleted profile must be recreated or restored from an authorised cold backup.
+- **Generation cannot authenticate:** check the browser-local API BYOK provider, model, and key in Settings.
+- **Key disappeared:** browser-local API BYOK settings are intentionally not backed up or shared. Re-enter them in Settings.
 - **Editable PPTX fails:** expected. Choose the screenshot/image PPTX mode.
 - **Image/PDF export says renderer failed:** check logs for Chromium errors and reduce page dimensions/length.
 - **Watchdog restart:** if nginx or OpenDesign exits, the launcher deliberately stops its peer and exits so Supervisor can restart the complete pair.

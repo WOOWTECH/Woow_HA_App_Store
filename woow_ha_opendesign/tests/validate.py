@@ -21,16 +21,18 @@ with (ROOT / "build.yaml").open() as handle:
     build = yaml.safe_load(handle)
 with (ROOT / "runtime/package.json").open() as handle:
     package = json.load(handle)
-with (ROOT / "runtime/pi/package.json").open() as handle:
-    pi_package = json.load(handle)
-with (ROOT / "runtime/pi/package-lock.json").open() as handle:
-    pi_lock = json.load(handle)
+with (ROOT / "runtime/opencode/package.json").open() as handle:
+    opencode_package = json.load(handle)
+with (ROOT / "runtime/opencode/package-lock.json").open() as handle:
+    opencode_lock = json.load(handle)
 with (ROOT / ".github/workflows/build.yml").open() as handle:
     workflow = yaml.safe_load(handle)
 
 check(isinstance(workflow, dict) and "jobs" in workflow, "GitHub Actions workflow YAML is invalid")
 check(set(repository) == {"name", "url", "maintainer"}, "repository.yaml must have the repository contract keys")
 check(repository.get("url") == "https://github.com/WOOWTECH/Woow_ha_opendesign_add_on", "repository URL mismatch")
+check(config.get("version") == "0.1.4", "release version must be 0.1.4")
+check("browser-local API BYOK" in config.get("description", ""), "add-on description must describe browser-local BYOK")
 check(config.get("arch") == ["amd64", "aarch64"], "only amd64 and aarch64 are allowed")
 check(config.get("ingress") is True, "ingress must be enabled")
 check(config.get("ingress_stream") is True, "ingress_stream must be enabled")
@@ -45,23 +47,26 @@ upstream_image = "ghcr.io/nexu-io/od:0.21.1@sha256:441daca881e699657bacf28e0c27b
 local_build_image = "ghcr.io/nexu-io/od:0.21.1"
 check(build.get("build_from") == {"amd64": local_build_image, "aarch64": local_build_image}, "Supervisor local builds must use the supported OpenDesign 0.21.1 tag syntax")
 check(package.get("dependencies") == {"playwright-core": "1.55.0"}, "renderer dependency must remain exactly pinned")
-check(pi_package == {"private": True, "dependencies": {"@earendil-works/pi-coding-agent": "0.84.4"}}, "Pi package must contain only the approved exact dependency")
-pi_root_lock = pi_lock.get("packages", {}).get("", {})
-pi_agent_lock = pi_lock.get("packages", {}).get("node_modules/@earendil-works/pi-coding-agent", {})
-check(pi_root_lock.get("dependencies") == {"@earendil-works/pi-coding-agent": "0.84.4"}, "Pi lock root must use the approved exact version")
-check(pi_agent_lock.get("version") == "0.84.4", "Pi lock resolves an unexpected version")
-check(pi_agent_lock.get("integrity") == "sha512-jmOlrqUmvhh/siNWFRXjYLJzhKFIHNsAQaysRwzQPQFnPAaV/vhqHsLH/MBsIISA1Rjj7WTUFR3nJrpXoLx39w==", "Pi lock integrity mismatch")
-check(pi_agent_lock.get("license") == "MIT", "Pi lock license must remain MIT")
-check(pi_agent_lock.get("bin", {}).get("pi") == "dist/bundle/cli.js", "Pi lock must expose the pi executable")
-check(pi_agent_lock.get("engines", {}).get("node") == ">=22.19.0", "Pi lock Node engine changed")
+opencode_root_lock = opencode_lock.get("packages", {}).get("", {})
+opencode_launcher_lock = opencode_lock.get("packages", {}).get("node_modules/opencode-ai", {})
+check(opencode_package == {"name": "ha-opendesign-opencode", "private": True, "dependencies": {"opencode-ai": "1.18.29"}}, "OpenCode package must contain only the approved exact dependency")
+check(opencode_root_lock.get("dependencies") == {"opencode-ai": "1.18.29"}, "OpenCode lock root must use the approved exact version")
+check(opencode_launcher_lock.get("version") == "1.18.29", "OpenCode lock resolves an unexpected version")
+check(opencode_launcher_lock.get("integrity") == "sha512-syIDVwlrYTgTOXzZe9SkInJWethbq6l3SNC762UeXyO0a9V0wGfd+U4yACvppwNBnhIsl0j2QPYYCyLpNaSomg==", "OpenCode launcher integrity mismatch")
+check(opencode_launcher_lock.get("bin", {}).get("opencode") == "bin/opencode.exe", "OpenCode lock must expose the opencode executable")
+check(opencode_launcher_lock.get("license") == "MIT", "OpenCode lock license must remain MIT")
+for platform_package, integrity in {
+    "opencode-linux-x64-musl": "sha512-bGAZ9NFzNOzrXVN9oczd1H+vzLH1aGyYg1ZZNtuZiszxKr8+vTjLnNcjzGJIuc6jtjvlWbfp8l+S5fxCVuQo2A==",
+    "opencode-linux-arm64-musl": "sha512-9lNhNvW3FdwbI+BDy/y+0bwIQkbz36u/RVQoZH2tYvWjHkOaf8D+mSuDKbKcFqpLFIbbQona01oYSQZzncZIcQ==",
+}.items():
+    platform_lock = opencode_lock.get("packages", {}).get(f"node_modules/{platform_package}", {})
+    check(platform_lock.get("version") == "1.18.29" and platform_lock.get("integrity") == integrity, f"OpenCode {platform_package} lock integrity mismatch")
 
 dockerfile = (ROOT / "Dockerfile").read_text()
 launcher = (ROOT / "rootfs/usr/local/bin/ha-opendesign").read_text()
 entry = (ROOT / "rootfs/opt/ha-opendesign/headless-entry.mjs").read_text()
 renderer = (ROOT / "rootfs/opt/ha-opendesign/headless-renderer.mjs").read_text()
 export_bridge = (ROOT / "rootfs/opt/ha-opendesign/ha-export-bridge.js").read_text()
-pi_wrapper = (ROOT / "rootfs/opt/ha-opendesign/ha-pi-wrapper.mjs").read_text()
-pi_command = (ROOT / "rootfs/usr/local/bin/pi").read_text()
 nginx = (ROOT / "rootfs/etc/nginx/nginx.conf").read_text()
 workflow_text = (ROOT / ".github/workflows/build.yml").read_text()
 runtime_sources = "\n".join([
@@ -70,12 +75,10 @@ runtime_sources = "\n".join([
     entry,
     renderer,
     export_bridge,
-    pi_wrapper,
-    pi_command,
     nginx,
     (ROOT / "runtime/package.json").read_text(),
-    (ROOT / "runtime/pi/package.json").read_text(),
-    (ROOT / "runtime/pi/package-lock.json").read_text(),
+    (ROOT / "runtime/opencode/package.json").read_text(),
+    (ROOT / "runtime/opencode/package-lock.json").read_text(),
 ])
 
 check(re.search(rf"^ARG BUILD_FROM={re.escape(upstream_image)}$", dockerfile, re.M), "Dockerfile base must pin the approved upstream digest")
@@ -90,13 +93,21 @@ for expected in ["bash", "chromium", "font-noto-cjk", "font-noto-emoji", "fontco
     check(expected in dockerfile, f"expected image package missing: {expected}")
 check("/usr/local/bin/npm ci --omit=dev" in dockerfile, "locked production npm install must use the upstream absolute npm path for HA BuildKit")
 check("test -x /usr/local/bin/npm" in dockerfile, "image build must verify the absolute npm executable")
-check("COPY runtime/pi/package.json runtime/pi/package-lock.json /opt/ha-opendesign/pi/" in dockerfile, "Pi lockfiles must be copied independently")
-check("/usr/local/bin/npm ci --omit=dev --prefix /opt/ha-opendesign/pi" in dockerfile, "Pi install must use the locked production package prefix")
-check('test "$(/opt/ha-opendesign/pi/node_modules/.bin/pi --version)" = "0.84.4"' in dockerfile, "image build must assert the exact Pi version")
-check("/usr/local/bin/pi" in dockerfile and "ha-pi-wrapper.mjs" in dockerfile, "Pi wrapper must be executable in the image")
-check("/opt/ha-opendesign/ha-pi-wrapper.mjs" in pi_command, "Pi command must use the controlled wrapper")
-check("OD_PI_PROFILE_KEY" in pi_wrapper and "PI_CODING_AGENT_DIR" in pi_wrapper, "Pi wrapper must provide a transient profile configuration")
-check("--no-session" in pi_wrapper and "ha-profile" in pi_wrapper, "Pi wrapper must force the active profile runtime")
+check("COPY runtime/opencode/package.json runtime/opencode/package-lock.json /opt/ha-opendesign/opencode/" in dockerfile, "OpenCode lockfiles must be copied independently")
+check("/usr/local/bin/npm ci --omit=dev --prefix /opt/ha-opendesign/opencode" in dockerfile, "OpenCode install must use the locked production package prefix")
+check('test "$(su-exec open-design:open-design opencode --version)" = "1.18.29"' in dockerfile, "image build must assert the exact OpenCode version as UID 1001")
+check("PATH=/opt/ha-opendesign/opencode/node_modules/.bin:${PATH}" in dockerfile, "OpenCode binary must be on PATH")
+for removed_path in [
+    "runtime/pi",
+    "rootfs/usr/local/bin/pi",
+    "rootfs/opt/ha-opendesign/ha-pi-wrapper.mjs",
+    "rootfs/opt/ha-opendesign/ha-byok-store.mjs",
+    "rootfs/opt/ha-opendesign/ha-byok-profiles-bridge.js",
+]:
+    check(not (ROOT / removed_path).exists(), f"withdrawn persistent BYOK component remains: {removed_path}")
+check("ha-byok" not in nginx and "127.0.0.1:7457" not in nginx, "nginx must not expose the withdrawn profile sidecar")
+check("wait -n \"$od_pid\" \"$nginx_pid\"" in launcher and "byok_pid" not in launcher, "launcher must supervise only OpenDesign and nginx")
+check("remove_obsolete_credentials" in launcher and "rm -f -- \"$legacy_dir\"" in launcher, "launcher must safely remove obsolete credential symlinks")
 check("startServer" in entry and "desktopSlideRenderer: renderSlides" in entry, "slide renderer injection missing")
 check("desktopPdfExporter" not in entry and "exportPdf" not in entry, "misleading desktop vector PDF exporter must not be injected")
 check("host = '127.0.0.1'" in entry, "OpenDesign entry must bind loopback")
@@ -127,7 +138,7 @@ for pattern, label in [
     (r"(?:^|[\s=:/])docker\.sock(?:$|[\s])", "container socket"),
     (r"(?:^|\s)--privileged(?:\s|$)", "privileged mode"),
     (r"(?:^|\s)--network[= ]host(?:\s|$)", "host networking"),
-    (r"(?:^|\s)(?:claude|codex|opencode)(?:@|\s|$)", "local AI CLI package"),
+    (r"(?:^|\s)(?:claude|codex|aider|gemini|cursor-agent|qwen|copilot|amp)(?:@|\s|$)", "unapproved local AI CLI package"),
     (r"/(?:mnt|media|share|config)(?:/|\s|$)", "host path coupling"),
 ]:
     check(not re.search(pattern, runtime_sources, re.I | re.M), f"forbidden runtime coupling detected: {label}")

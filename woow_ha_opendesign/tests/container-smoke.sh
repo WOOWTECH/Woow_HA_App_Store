@@ -5,6 +5,9 @@ image=${1:-woow-ha-opendesign:test}
 container="woow-od-smoke-${RANDOM}"
 volume="woow-od-data-${RANDOM}"
 port=${SMOKE_PORT:-18099}
+# Deliberately fake. The native BYOK smoke verifies this value never leaves the
+# transient browser-style request as a log line or persisted /data artifact.
+readonly BYOK_FAKE_KEY='od-byok-test-key-not-a-secret'
 tmp=$(mktemp -d)
 
 cleanup() {
@@ -52,56 +55,6 @@ import json
 import sys
 assert json.load(open(sys.argv[1], encoding='utf-8')).get('ok') is True
 PY
-
-# The sidecar has no public listener: a loopback call without nginx's private
-# marker is rejected, while nginx replaces a forged client marker and forwards
-# the full profile state. Bodies are confined to the temporary test directory.
-docker exec "$container" node -e '
-fetch("http://127.0.0.1:7457/api/ha-opendesign/byok/profiles").then((response) => {
-  if (response.status !== 403) process.exit(1);
-}).catch(() => process.exit(1));
-'
-python3 - "$tmp/byok-request.json" <<'PY'
-import json
-import sys
-json.dump({
-    'version': 1,
-    'revision': 0,
-    'activeProfileId': 'smoke-compatible',
-    'profiles': {
-        'smoke-compatible': {
-            'id': 'smoke-compatible',
-            'label': 'Smoke compatible',
-            'protocol': 'openai-compatible',
-            'baseUrl': 'https://provider.example/v1',
-            'authStyle': 'bearer',
-            'apiFlavor': 'openai-responses',
-            'apiKey': 'container-test-credential',
-            'model': 'smoke/model',
-            'updatedAt': '2026-09-04T00:00:00.000Z',
-        },
-    },
-}, open(sys.argv[1], 'w', encoding='utf-8'))
-PY
-curl --fail-with-body -sS -o "$tmp/byok-response.json" \
-  -X PUT \
-  -H 'content-type: application/json' \
-  -H 'X-HA-OpenDesign-Byok-Marker: forged-client-value' \
-  --data-binary "@$tmp/byok-request.json" \
-  "http://127.0.0.1:${port}/api/ha-opendesign/byok/profiles"
-python3 - "$tmp/byok-response.json" <<'PY'
-import json
-import sys
-body = json.load(open(sys.argv[1], encoding='utf-8'))
-assert body['revision'] == 1
-assert body['activeProfileId'] == 'smoke-compatible'
-assert len(body['profiles']['smoke-compatible']['apiKey']) > 0
-PY
-docker exec "$container" sh -ceu '
-  test "$(stat -c %u:%g /data/opendesign/credentials)" = 1001:1001
-  test "$(stat -c %a /data/opendesign/credentials)" = 700
-  test "$(stat -c %a /data/opendesign/credentials/byok-profiles.json)" = 600
-'
 
 # HA Supervisor removes the public ingress prefix before proxying and supplies
 # it in X-Ingress-Path. Nginx therefore receives '/' and must inject/rewrite the
@@ -153,7 +106,7 @@ docker exec "$container" sh -ceu '
   test -r /opt/ha-opendesign/headless-entry.mjs
   test -r /opt/ha-opendesign/headless-renderer.mjs
   test -r /opt/ha-opendesign/ha-export-bridge.js
-  for executable in claude codex opencode aider gemini cursor-agent qwen copilot amp; do
+  for executable in claude codex pi opencode-cli aider gemini cursor-agent qwen copilot amp; do
     if command -v "$executable" >/dev/null 2>&1 \
       || test -e "/app/node_modules/.bin/$executable" \
       || test -e "/usr/local/lib/node_modules/.bin/$executable"; then
@@ -162,9 +115,49 @@ docker exec "$container" sh -ceu '
     fi
   done
 '
+# OpenDesign's native API mode discovers `opencode` through PATH. Verify the
+# real locked Alpine binary as its runtime UID, and ensure withdrawn Pi cannot
+# be selected as a local fallback.
 docker exec -u 1001:1001 "$container" sh -ceu '
+  test "$(id -u)" = 1001
+  test "$(opencode --version)" = 1.18.29
+  test "$(command -v opencode)" = /opt/ha-opendesign/opencode/node_modules/.bin/opencode
+  ! command -v opencode-cli >/dev/null 2>&1
+  ! command -v pi >/dev/null 2>&1
+  test ! -e /usr/local/bin/pi
+  test ! -e /opt/ha-opendesign/ha-pi-wrapper.mjs
   test -w /data/opendesign
   printf persisted > /data/opendesign/container-smoke-sentinel
+'
+
+# Exercise the upstream native browser API request contract end-to-end: the
+# daemon selects byok-opencode, invokes the bundled CLI, and streams from a
+# loopback OpenAI-compatible mock. The test script itself never writes its key.
+docker cp tests/container-opencode-byok-e2e.mjs "$container:/tmp/container-opencode-byok-e2e.mjs"
+docker exec "$container" node /tmp/container-opencode-byok-e2e.mjs
+if docker logs "$container" 2>&1 | grep -Fq -- "$BYOK_FAKE_KEY"; then
+  echo 'fake BYOK key leaked to container logs' >&2
+  exit 1
+fi
+# Scan every regular persisted artifact, including the daemon DB/run output,
+# without echoing a matching path or value into the test log.
+if docker exec "$container" sh -ceu '
+  if grep -R -I -F -q -- "$1" /data; then
+    exit 1
+  fi
+' sh "$BYOK_FAKE_KEY"; then
+  :
+else
+  echo 'fake BYOK key leaked to /data persisted artifacts' >&2
+  exit 1
+fi
+
+# The withdrawn persistent-profile directory is removed at boot. A legacy
+# symlink must be unlinked, never followed, and the rest of /data stays intact.
+docker exec "$container" sh -ceu '
+  mkdir /data/opendesign/legacy-credentials-target
+  printf retained > /data/opendesign/legacy-credentials-target/sentinel
+  ln -s /data/opendesign/legacy-credentials-target /data/opendesign/credentials
 '
 
 # Stop/recreate the container while retaining only its named /data volume.
@@ -177,17 +170,12 @@ import json
 import sys
 assert json.load(open(sys.argv[1], encoding='utf-8')).get('ok') is True
 PY
-docker exec "$container" grep -qx persisted /data/opendesign/container-smoke-sentinel
-curl --fail-with-body -sS -o "$tmp/byok-after-restart.json" \
-  "http://127.0.0.1:${port}/api/ha-opendesign/byok/profiles"
-python3 - "$tmp/byok-after-restart.json" <<'PY'
-import json
-import sys
-body = json.load(open(sys.argv[1], encoding='utf-8'))
-assert body['revision'] == 1
-assert body['activeProfileId'] == 'smoke-compatible'
-assert len(body['profiles']['smoke-compatible']['apiKey']) > 0
-PY
+docker exec "$container" sh -ceu '
+  grep -qx persisted /data/opendesign/container-smoke-sentinel
+  test ! -e /data/opendesign/credentials
+  test ! -L /data/opendesign/credentials
+  grep -qx retained /data/opendesign/legacy-credentials-target/sentinel
+'
 
 # Direct renderer acceptance uses the Chromium and playwright-core installed in
 # the image. It requires no provider key or generation call.

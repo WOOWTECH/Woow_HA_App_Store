@@ -8,7 +8,8 @@ import yaml
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW_PATH = ROOT / ".github/workflows/build.yml"
 PREFLIGHT_PATH = ROOT / ".github/scripts/release-preflight.sh"
-workflow = yaml.safe_load(WORKFLOW_PATH.read_text())
+workflow_text = WORKFLOW_PATH.read_text()
+workflow = yaml.safe_load(workflow_text)
 preflight_text = PREFLIGHT_PATH.read_text()
 errors = []
 
@@ -19,13 +20,13 @@ def check(condition, message):
 
 
 jobs = workflow.get("jobs", {})
-required_jobs = {"validate", "smoke", "build-nonrelease", "release-preflight", "publish-release"}
-check(required_jobs <= set(jobs), "workflow must separate validation, smoke, non-release build, preflight, and release publishing")
+required_jobs = {"validate", "smoke", "build-nonrelease", "release-preflight", "release-architecture-gate", "publish-release"}
+check(required_jobs <= set(jobs), "workflow must separate validation, smoke, non-release build, preflight, release architecture gate, and release publishing")
 check(workflow.get("permissions") == {"contents": "read"}, "workflow default permissions must be contents:read only")
 
 package_writers = [name for name, job in jobs.items() if job.get("permissions", {}).get("packages") == "write"]
 check(package_writers == ["publish-release"], "only publish-release may receive packages:write")
-for name in {"validate", "smoke", "build-nonrelease"}:
+for name in {"validate", "smoke", "build-nonrelease", "release-architecture-gate"}:
     check(jobs.get(name, {}).get("permissions") == {"contents": "read"}, f"{name} must explicitly have only contents:read")
 
 nonrelease = jobs.get("build-nonrelease", {})
@@ -43,10 +44,29 @@ check(preflight.get("permissions") == {"contents": "read", "packages": "read"}, 
 check("./.github/scripts/release-preflight.sh" in preflight_job_text, "release preflight job must invoke the immutable-release check")
 check("GHCR_TOKEN" in preflight_job_text, "release preflight must authenticate its read-only registry query")
 
+release_gate = jobs.get("release-architecture-gate", {})
+release_gate_job_text = yaml.safe_dump(release_gate)
+release_gate_run_text = "\n".join(str(step.get("run", "")) for step in release_gate.get("steps", []))
+check("github.ref_type == 'tag'" in str(release_gate.get("if", "")), "release architecture gate must run only for tags")
+check(set(release_gate.get("needs", [])) == {"validate", "smoke", "release-preflight"}, "release architecture gate must wait for validation, smoke, and release preflight")
+check(release_gate.get("permissions") == {"contents": "read"}, "release architecture gate must have only contents:read")
+check("push: false" in release_gate_job_text and "load: true" in release_gate_job_text, "release architecture gate must build local images without publishing")
+for needle, message in [
+    ("linux/amd64", "release architecture gate must build amd64"),
+    ("linux/arm64", "release architecture gate must build aarch64"),
+    ('test "$(id -u)" = 1001', "release architecture gate must execute OpenCode as UID 1001"),
+    ('test "$(opencode --version)" = 1.18.29', "release architecture gate must verify the exact locked OpenCode version"),
+    ("docker cp tests/container-opencode-byok-e2e.mjs", "release architecture gate must run the native BYOK streaming mock"),
+    ("node /tmp/container-opencode-byok-e2e.mjs", "release architecture gate must execute the native BYOK streaming mock in the built image"),
+    ("fake BYOK key leaked to container logs", "release architecture gate must reject BYOK key log leakage"),
+    ("fake BYOK key leaked to /data persisted artifacts", "release architecture gate must reject BYOK key persistence"),
+]:
+    check(needle in (release_gate_job_text if needle.startswith("linux/") else release_gate_run_text), message)
+
 publish = jobs.get("publish-release", {})
 publish_text = yaml.safe_dump(publish)
 check("github.ref_type == 'tag'" in str(publish.get("if", "")), "publishing must run only for tags")
-check(set(publish.get("needs", [])) == {"validate", "smoke", "release-preflight"}, "every publishing leg must wait for validation, smoke, and release preflight")
+check(set(publish.get("needs", [])) == {"validate", "smoke", "release-preflight", "release-architecture-gate"}, "every publishing leg must wait for validation, smoke, release preflight, and the release architecture gate")
 check(publish.get("permissions") == {"contents": "read", "packages": "write"}, "release publisher must have only contents:read and packages:write")
 check("push: true" in publish_text, "release publisher must explicitly push")
 check("docker/login-action" in publish_text, "release publisher must authenticate to GHCR")

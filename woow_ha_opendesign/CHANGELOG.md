@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.4
+
+- Restore OpenDesign native browser-local API BYOK; provider, model, and API-key settings are excluded from `/data`, logs, add-on options, and Home Assistant backups.
+- Bundle exact OpenCode `1.18.29` for the native `byok-opencode` runtime.
+- Remove Pi Local CLI, persistent BYOK profiles, credential sidecar/route/UI injection, and three-process supervision.
+- On startup safely remove withdrawn legacy `/data/opendesign/credentials` without following symlinks.
+
 ## 0.1.3
 
 - Replace OpenCode BYOK with locked Pi `0.84.4` Local CLI execution.

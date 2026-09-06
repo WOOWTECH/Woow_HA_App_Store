@@ -20,7 +20,7 @@ test('launcher bounds TERM shutdown before KILL and reap', () => {
 
 test('privileged directory preparation rejects symlinks without touching their target', async () => {
   const start = launcher.indexOf('prepare_owned_dir() {');
-  const end = launcher.indexOf('\n}\n\nif [[ $(id -u)', start) + 2;
+  const end = launcher.indexOf('\n}\n\nremove_obsolete_credentials', start) + 2;
   assert.ok(start >= 0 && end > start);
   const prepareOwnedDir = launcher.slice(start, end);
   const root = await mkdtemp(path.join(tmpdir(), 'ha-opendesign-launcher-'));
@@ -53,7 +53,6 @@ set -Eeuo pipefail
 readonly SHUTDOWN_GRACE_SECONDS=1
 od_pid=''
 nginx_pid=''
-byok_pid=''
 stopping=0
 ${terminateChildren}
 bash -c 'trap "" TERM; while :; do sleep 1; done' &
@@ -69,13 +68,34 @@ echo reaped
   assert.match(result.stderr, /exceeded 1s grace; sending KILL/);
 });
 
-test('launcher supervises the daemon, nginx, and profile sidecar as one unit', () => {
-  assert.match(launcher, /"\$DATA_DIR\/credentials"/);
-  assert.match(launcher, /chmod 0700 "\$DATA_DIR\/credentials"/);
-  assert.match(launcher, /ha-byok-store\.mjs/);
-  assert.match(launcher, /wait -n "\$od_pid" "\$nginx_pid" "\$byok_pid"/);
+test('launcher supervises only OpenDesign and nginx as one unit', () => {
+  assert.doesNotMatch(launcher, /byok_pid|ha-byok-store|ha-byok-profiles/);
+  assert.match(launcher, /wait -n "\$od_pid" "\$nginx_pid"/);
   const shutdown = launcher.slice(launcher.indexOf('terminate_children() {'), launcher.indexOf('\n}\n\ntrap terminate_children') + 2);
-  assert.match(shutdown, /"\$od_pid" "\$nginx_pid" "\$byok_pid"/);
+  assert.match(shutdown, /"\$od_pid" "\$nginx_pid"/);
   assert.match(launcher, /terminate_children/);
   assert.match(launcher, /if \(\( status == 0 \)\)/);
+});
+
+test('launcher removes obsolete credential symlinks without following them or deleting data', async () => {
+  const start = launcher.indexOf('remove_obsolete_credentials() {');
+  const end = launcher.indexOf('\n}\n\nif [[ $(id -u)', start) + 2;
+  assert.ok(start >= 0 && end > start);
+  const removeCredentials = launcher.slice(start, end);
+  const root = await mkdtemp(path.join(tmpdir(), 'ha-opendesign-credentials-'));
+  const data = path.join(root, 'opendesign');
+  const target = path.join(data, 'outside-credentials');
+  const credentials = path.join(data, 'credentials');
+  try {
+    await mkdir(target, { recursive: true });
+    await (await import('node:fs/promises')).writeFile(path.join(target, 'sentinel'), 'retained');
+    await symlink(target, credentials);
+    const harness = `set -Eeuo pipefail\nDATA_DIR="$1"\n${removeCredentials}\nremove_obsolete_credentials`;
+    const result = spawnSync('bash', ['-c', harness, 'launcher-test', data], { encoding: 'utf8' });
+    assert.equal(result.status, 0, result.stderr);
+    await assert.rejects(stat(credentials));
+    assert.equal(await readFile(path.join(target, 'sentinel'), 'utf8'), 'retained');
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });

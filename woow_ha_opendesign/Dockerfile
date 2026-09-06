@@ -9,7 +9,8 @@ ENV NODE_ENV=production \
     OD_DATA_DIR=/data/opendesign \
     PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 \
     PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium-browser \
-    HOME=/data/opendesign/home
+    HOME=/data/opendesign/home \
+    PATH=/opt/ha-opendesign/opencode/node_modules/.bin:${PATH}
 
 # The browser comes from Alpine rather than being downloaded on first boot.
 # playwright-core is locked independently in /opt/ha-opendesign/package-lock.json.
@@ -23,18 +24,23 @@ RUN apk add --no-cache \
       su-exec \
     && rm -rf /etc/nginx/http.d/* /var/cache/apk/*
 
+# OpenCode resolves the passwd-home directory when it starts as UID 1001.
+RUN mkdir -p /data/opendesign /home/open-design \
+    && chown -R open-design:open-design /data /home/open-design
+
 COPY runtime/package.json runtime/package-lock.json /opt/ha-opendesign/
-COPY runtime/pi/package.json runtime/pi/package-lock.json /opt/ha-opendesign/pi/
+COPY runtime/opencode/package.json runtime/opencode/package-lock.json /opt/ha-opendesign/opencode/
 # Home Assistant Supervisor's BuildKit builder may supply a reduced PATH even
 # though the pinned upstream image installs Node/npm under /usr/local/bin.
 # Use the absolute npm path so local Supervisor builds match ordinary Docker.
 RUN /usr/local/bin/npm ci --omit=dev --prefix /opt/ha-opendesign \
-    && /usr/local/bin/npm ci --omit=dev --prefix /opt/ha-opendesign/pi \
-    && test "$(/opt/ha-opendesign/pi/node_modules/.bin/pi --version)" = "0.84.4" \
+    && /usr/local/bin/npm ci --omit=dev --prefix /opt/ha-opendesign/opencode \
+    && test "$(su-exec open-design:open-design opencode --version)" = "1.18.29" \
     && /usr/local/bin/npm cache clean --force \
     && test "$(id -u open-design)" = "1001" \
     && test -x /usr/local/bin/node \
     && test -x /usr/local/bin/npm \
+    && command -v opencode \
     && command -v bash \
     && command -v chromium-browser \
     && command -v nginx \
@@ -45,15 +51,12 @@ RUN mkdir -p /data/opendesign \
     && chown -R open-design:open-design /data \
     && chmod 0755 \
       /usr/local/bin/ha-opendesign \
-      /usr/local/bin/pi \
-      /opt/ha-opendesign/ha-pi-wrapper.mjs \
-      /opt/ha-opendesign/ha-byok-store.mjs \
       /opt/ha-opendesign/headless-entry.mjs \
       /opt/ha-opendesign/headless-renderer.mjs \
     && chown -R open-design:open-design /opt/ha-opendesign
 
 ARG BUILD_ARCH=amd64
-ARG BUILD_VERSION=0.1.0
+ARG BUILD_VERSION=0.1.4
 ARG BUILD_DATE
 ARG BUILD_DESCRIPTION="OpenDesign for Home Assistant"
 ARG BUILD_NAME="Woow HA OpenDesign"
