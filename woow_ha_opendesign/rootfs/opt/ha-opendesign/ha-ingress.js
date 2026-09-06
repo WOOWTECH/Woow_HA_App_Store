@@ -5,14 +5,15 @@
   if (!prefix) return;
 
   // Supervisor's public prefix is transport routing, not an OpenDesign route.
-  // Keep the iframe's logical history unprefixed so OpenDesign's client-side
-  // route switch recognizes /settings, /design-systems, etc. Network APIs and
-  // assets are still prefixed by the wrappers below.
+  // Keep SPA history unprefixed so OpenDesign recognizes /settings and similar
+  // routes. Project raw/preview iframe documents must retain their transport
+  // prefix, however, because their initial URL is fetched through ingress.
   const nativeHistoryPushState = history.pushState;
   const nativeHistoryReplaceState = history.replaceState;
-  if (window.location.pathname === prefix || window.location.pathname.startsWith(`${prefix}/`)) {
-    const logicalPath = window.location.pathname.slice(prefix.length) || '/';
-    nativeHistoryReplaceState.call(history, history.state, '', `${logicalPath}${window.location.search}${window.location.hash}`);
+  const initialLogicalPath = window.location.pathname.slice(prefix.length) || '/';
+  const isProjectIframeTransport = /^\/api\/projects\/[^/]+\/(?:raw|preview)(?:\/|$)/.test(initialLogicalPath);
+  if ((window.location.pathname === prefix || window.location.pathname.startsWith(`${prefix}/`)) && !isProjectIframeTransport) {
+    nativeHistoryReplaceState.call(history, history.state, '', `${initialLogicalPath}${window.location.search}${window.location.hash}`);
   }
 
   const alreadyScoped = (pathname) => pathname === prefix

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
+import vm from 'node:vm';
 
 const prefix = '/api/hassio_ingress/abcdefghijklmnop';
 const nginx = await readFile(new URL('../rootfs/etc/nginx/nginx.conf', import.meta.url), 'utf8');
@@ -15,10 +16,78 @@ function applyDocumentRewrites(html) {
     .replace('<head>', `<head><script>window.__OD_INGRESS_PATH__="${prefix}";</script><script src="${prefix}/ha-ingress.js"></script><script src="${prefix}/ha-export-bridge.js"></script>`);
 }
 
+function runIngressShim(initialPath) {
+  const location = {
+    pathname: initialPath,
+    search: '',
+    hash: '',
+    href: `http://localhost${initialPath}`,
+  };
+  const replaceCalls = [];
+  const history = {
+    state: null,
+    pushState() {},
+    replaceState(state, _title, url) {
+      replaceCalls.push(url);
+      this.state = state;
+      if (typeof url === 'string') {
+        const next = new URL(url, 'http://localhost');
+        location.pathname = next.pathname;
+        location.search = next.search;
+        location.hash = next.hash;
+        location.href = next.href;
+      }
+    },
+  };
+  class Element {}
+  class XMLHttpRequest { open() {} }
+  class CSSStyleDeclaration { setProperty() {} }
+  class CSSStyleSheet { insertRule() {} }
+  class MutationObserver {
+    constructor() {}
+    observe() {}
+  }
+  const window = {
+    __OD_INGRESS_PATH__: prefix,
+    location,
+    fetch() {},
+    addEventListener() {},
+  };
+  vm.runInNewContext(shim, {
+    window,
+    history,
+    XMLHttpRequest,
+    Element,
+    CSSStyleDeclaration,
+    CSSStyleSheet,
+    MutationObserver,
+    document: { documentElement: {} },
+    navigator: {},
+    URL,
+    Request,
+  });
+  return { location, replaceCalls };
+}
+
 test('representative initial HTML rewrite matches the fixture', async () => {
   const upstream = await readFile(new URL('./fixtures/upstream-response.html', import.meta.url), 'utf8');
   const expected = await readFile(new URL('./fixtures/ingress-response.html', import.meta.url), 'utf8');
   assert.equal(applyDocumentRewrites(upstream), expected);
+});
+
+test('initial project raw and scoped preview iframe paths retain ingress transport prefix', () => {
+  for (const initialPath of [
+    `${prefix}/api/projects/project-123/raw/index.html`,
+    `${prefix}/api/projects/project-123/preview/scope-456/index.html`,
+  ]) {
+    const result = runIngressShim(initialPath);
+    assert.deepEqual(result.replaceCalls, [], `iframe must not transport-swap ${initialPath}`);
+    assert.equal(result.location.pathname, initialPath);
+  }
+
+  const spaRoute = runIngressShim(`${prefix}/settings`);
+  assert.deepEqual(spaRoute.replaceCalls, ['/settings']);
+  assert.equal(spaRoute.location.pathname, '/settings');
 });
 
 test('nginx validates the ingress prefix and preserves streaming upgrades', () => {

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.5
+
+- Preserve the authenticated HA Ingress transport prefix for raw and scoped project-preview iframes, preventing preview reload loops and blank canvases.
+
 ## 0.1.4
 
 - Restore OpenDesign native browser-local API BYOK; provider, model, and API-key settings are excluded from `/data`, logs, add-on options, and Home Assistant backups.
