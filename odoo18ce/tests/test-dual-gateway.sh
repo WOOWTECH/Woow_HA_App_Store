@@ -56,6 +56,14 @@ for text in ['listen 8069','listen 5691','server 127.0.0.1:%%WS_PORT%%','/web/da
 # what keeps the tunnel off the LAN tier, so assert it literally.
 assert '172.30.32.0/23      0;' in n, 'hassio IPv4 carve-out missing'
 assert 'fd0c:ac1e:2100::/48 0;' in n, 'hassio IPv6 carve-out missing'
+# The bridge address must never be promoted back into the LAN tier: the
+# Cloudflare tunnel is host-networked on real deployments and arrives from it,
+# which would publish the database manager to the internet.
+import re as _re
+_geo = n.split('geo $woow_lan_src')[1].split('}')[0]
+_lan_entries = _re.findall(r'^\s*([0-9a-fA-F.:]+/\d+)\s+1;', _geo, _re.M)
+assert not any(e.startswith('172.30.32.') or e.startswith('172.30.33.')
+               for e in _lan_entries), f'bridge/add-on network must not be LAN: {_lan_entries}'
 assert 'geo $woow_lan_src' in n
 assert '%%LAN_NETWORKS%%' in n
 

@@ -113,10 +113,10 @@ denied unless you add their prefix; do not add a broad `fd00::/8`.
 
 Two consequences worth knowing:
 
-- The Home Assistant host itself reaches Odoo through the bridge address and is
-  treated as LAN. Anything host-networked shares that address, so a
-  host-networked reverse proxy pointed at `8069` would hand its callers the LAN
-  tier.
+- Traffic from the Home Assistant host arrives through the add-on network bridge
+  address and is **off-LAN**. Host-networked add-ons — the Cloudflare tunnel
+  commonly among them — share that address, so treating it as LAN would publish
+  the database manager. Use the ingress panel from the host instead.
 - `8072` is behind the same gate. Odoo binds its workers to loopback, so nginx
   owns that port and the gevent worker sits on an internal `8073`; the port
   answers whether `workers` is 0 or more.

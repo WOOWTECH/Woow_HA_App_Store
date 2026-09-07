@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.3.38 — 2026-09-08
+
+### Security
+- Remove the add-on network bridge address `172.30.32.1` from the LAN tier.
+  0.3.36 treated it as LAN so the Home Assistant host could reach Odoo directly,
+  on the assumption the Cloudflare tunnel arrives from its own container
+  address. On a real deployment the tunnel add-on is host-networked and arrives
+  from the bridge, so it inherited the LAN tier and `/web/database/manager`
+  answered `200` to the public internet. Traffic from the bridge is now off-LAN;
+  anything on the host that needs the full application uses the ingress panel.
+
+### Testing
+- Assert the bridge address carries no LAN entry, so it cannot be promoted back.
+
 ## 0.3.37 — 2026-09-08
 
 ### Fixed

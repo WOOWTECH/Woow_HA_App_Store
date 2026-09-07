@@ -59,12 +59,14 @@ http {
         # listener from. Carve it out explicitly: the configured ranges very
         # plausibly contain it -- 172.16.0.0/12 does -- and without this the
         # tunnel would inherit the LAN tier along with the database manager.
+        #
+        # This includes the bridge address 172.30.32.1. Host-networked add-ons
+        # share it, and the Cloudflare tunnel is commonly one of them, so
+        # traffic arriving from it is off-LAN even though it looks host-local.
+        # Anything on the Home Assistant host that needs the full application
+        # goes through the ingress panel.
         172.30.32.0/23      0;
         fd0c:ac1e:2100::/48 0;
-        # The Home Assistant host itself, as seen through the bridge SNAT.
-        # Anything host-networked shares this address, so a host-networked
-        # reverse proxy pointed at 8069 would hand its callers the LAN tier.
-        172.30.32.1/32      1;
     }
 
     # Stays empty unless public_url is configured, so an unconfigured
