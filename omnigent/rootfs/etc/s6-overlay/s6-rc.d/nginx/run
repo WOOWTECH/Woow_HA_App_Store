@@ -1,0 +1,6 @@
+#!/command/with-contenv sh
+# svc-nginx — HA Ingress reverse proxy on :8080. Only the Supervisor
+# (172.30.32.2) is allowed to hit it — see nginx.conf. Rewrites the React
+# SPA to work from an arbitrary `x-ingress-path` prefix.
+mkdir -p /var/log/nginx /var/lib/nginx/tmp
+exec nginx -c /etc/nginx/nginx.conf -g 'daemon off;'

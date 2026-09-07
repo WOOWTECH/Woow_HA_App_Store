@@ -1,0 +1,4 @@
+#!/command/with-contenv sh
+# svc-postgres — the bundled postmaster. Binds 127.0.0.1:5432 only.
+# Runs as system `postgres` user; PGDATA lives in /data (persisted).
+exec s6-setuidgid postgres postgres -D /data/postgres
