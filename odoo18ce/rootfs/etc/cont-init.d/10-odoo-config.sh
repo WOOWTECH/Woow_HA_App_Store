@@ -123,10 +123,13 @@ limit_time_cpu = ${TIME_CPU}
 limit_time_real = ${TIME_REAL}
 EOF
 
-# Longpolling port (used when workers > 0)
+# WebSocket upstream. Odoo binds every listener to http_interface, which is
+# loopback, so the gevent worker can never answer the published 8072 host
+# port itself. Keep it on an internal port and let nginx own 8072, so the
+# same origin gate applies there as on 8069.
 if [ "${WORKERS}" -gt 0 ]; then
-    echo "gevent_port = 8072" >> "${CONF}"
-    WS_PORT=8072
+    echo "gevent_port = 8073" >> "${CONF}"
+    WS_PORT=8073
 else
     WS_PORT=8070
 fi

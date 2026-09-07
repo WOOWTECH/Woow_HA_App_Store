@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.3.37 — 2026-09-08
+
+### Fixed
+- Answer on the published `8072` host port. Odoo binds every listener to
+  `http_interface`, which is loopback, so the gevent worker could never serve
+  that port itself and it refused every LAN connection even with `workers` > 0.
+  nginx now owns `8072` and the worker moves to an internal `8073`.
+
+### Security
+- The `8072` origin is behind the same source-address gate as `8069`, so the
+  WebSocket worker is not exposed unfiltered to whatever can reach the host.
+
+### Testing
+- Assert nginx owns `8072`, that gevent is off it, and that both origins carry
+  the deny gate.
+
 ## 0.3.36 — 2026-09-08
 
 ### Added

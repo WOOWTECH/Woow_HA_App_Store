@@ -28,6 +28,10 @@ assert '18.0.20260806' in d
 assert '60def7fca9f7005be9575f70f17e7db4e4e43190b36d0f34832fb0248beb6ba5' in d
 
 s=(root/'rootfs/etc/cont-init.d/10-odoo-config.sh').read_text()
+# gevent must not sit on 8072: nginx owns that port so the gate applies there.
+assert 'gevent_port = 8073' in s
+assert 'WS_PORT=8073' in s
+assert 'gevent_port = 8072' not in s
 assert 'http_interface = 127.0.0.1' in s
 assert 'http_port = 8070' in s
 assert 'proxy_mode = True' in s
@@ -60,8 +64,12 @@ for loc in ['location ^~ /web/database/','location = /xmlrpc/db','location = /xm
     i=n.index(loc)
     assert 'if ($woow_origin_gate != "lan") { return 404; }' in n[i:i+220], loc
 
-# Off-LAN callers that present no recognised Host are dropped outright.
-assert 'if ($woow_origin_gate = "deny") { return %%DENY_STATUS%%; }' in n
+# Off-LAN callers that present no recognised Host are dropped outright, on
+# the WebSocket origin as well as the HTTP one.
+assert n.count('if ($woow_origin_gate = "deny") { return %%DENY_STATUS%%; }') == 2
+# Odoo binds gevent to loopback, so nginx has to own the published 8072 port
+# and the worker has to sit on an internal one.
+assert 'listen 8072 default_server;' in n
 # An unset public_url must not leave a Host that maps to the public tier.
 assert 'map $http_host $woow_public_host' in n
 assert '%%PUBLIC_HOST_MAP%%' in n
@@ -207,11 +215,13 @@ for name, replacements in scenarios.items():
     # directory rather than probing and releasing TCP ports, which has a
     # TOCTOU race with other processes.
     public_socket = test_dir / f"{name}-public.sock"
+    websocket_socket = test_dir / f"{name}-ws.sock"
     ingress_socket = test_dir / f"{name}-ingress.sock"
-    for socket_path in (public_socket, ingress_socket):
+    for socket_path in (public_socket, websocket_socket, ingress_socket):
         assert not socket_path.exists(), f"unexpected pre-existing socket: {socket_path}"
     for original, replacement in [
         ("listen 8069 default_server;", f"listen unix:{public_socket} default_server;"),
+        ("listen 8072 default_server;", f"listen unix:{websocket_socket} default_server;"),
         ("listen 5691;", f"listen unix:{ingress_socket};"),
     ]:
         assert config.count(original) == 1, f"expected one listener to replace: {original}"

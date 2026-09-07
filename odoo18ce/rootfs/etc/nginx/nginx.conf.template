@@ -161,6 +161,30 @@ http {
         }
     }
 
+    # Direct WebSocket origin. Odoo binds its gevent worker to loopback, so
+    # without this listener the published 8072 host port refuses every
+    # connection. Routing it through nginx also puts it behind the same tier
+    # gate as 8069 instead of exposing the worker unfiltered, and it answers
+    # for workers=0 too, where the upstream is the main HTTP worker.
+    server {
+        listen 8072 default_server;
+        client_max_body_size 512M;
+        if ($woow_origin_gate = "deny") { return %%DENY_STATUS%%; }
+
+        location / {
+            proxy_pass http://odoo_websocket;
+            proxy_http_version 1.1;
+            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Connection $connection_upgrade;
+            proxy_set_header Host $http_host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-Host $http_host;
+            proxy_set_header X-Forwarded-Proto $woow_origin_proto;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_read_timeout 3600s;
+        }
+    }
+
     # HA Supervisor Ingress adapter.
     server {
         listen 5691;

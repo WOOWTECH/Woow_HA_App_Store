@@ -29,7 +29,7 @@ Medium Enterprise) deployment on Home Assistant OS hosts, including Raspberry Pi
 - nginx port `5691` provides authenticated Home Assistant Ingress at `/odoo`
 - nginx port `8069` is the origin for both the Cloudflare tunnel and the LAN;
   callers are separated by source address, not by hiding the port
-- `/websocket` automatically uses 8070 for `workers=0` or gevent 8072 for `workers>0`
+- `/websocket` automatically uses 8070 for `workers=0` or gevent 8073 for `workers>0`
 - All persistent data is stored under `/data`
 
 ## Configuration
@@ -117,8 +117,9 @@ Two consequences worth knowing:
   treated as LAN. Anything host-networked shares that address, so a
   host-networked reverse proxy pointed at `8069` would hand its callers the LAN
   tier.
-- `8072` is the gevent WebSocket and is published directly, so it is not behind
-  this gate. It only listens while `workers` > 0.
+- `8072` is behind the same gate. Odoo binds its workers to loopback, so nginx
+  owns that port and the gevent worker sits on an internal `8073`; the port
+  answers whether `workers` is 0 or more.
 
 ## Ports
 
@@ -127,7 +128,7 @@ Two consequences worth knowing:
 | 5691 | TCP | HA Supervisor Ingress (container-internal) |
 | 8069 | TCP | Odoo origin — LAN gets full access, the tunnel stays restricted |
 | 8070 | TCP | Odoo HTTP backend bound to localhost |
-| 8072 | TCP | gevent WebSocket — only listens while `workers` > 0 |
+| 8072 | TCP | WebSocket origin, same LAN gate as 8069 (worker itself on 8073) |
 
 ## External HTTPS
 
