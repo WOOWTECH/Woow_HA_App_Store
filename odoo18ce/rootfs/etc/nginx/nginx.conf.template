@@ -43,30 +43,104 @@ http {
         "~*^text/html(?:;|$)" '<script>window.__INGRESS_PATH__="$safe_ingress_path";(function(){var P=window.__INGRESS_PATH__||"";if(!P)return;var path=function(u){if(typeof u!=="string")return u;if(u.charAt(0)==="#")return u;try{var x=new URL(u,location.href);if(x.origin===location.origin){var q=x.pathname+x.search+x.hash;while(q.indexOf(P+P)===0)q=q.slice(P.length);if(q.indexOf(P)===0)return q;if(q.charAt(0)==="/")return P+q}}catch(e){}return u};var F=window.fetch;window.fetch=function(i,o){if(typeof i==="string")i=path(i);else if(i instanceof URL)i=path(i.href);else if(i&&i.url){var u=path(i.url);if(u!==i.url)i=new Request(u,i)}return F(i,o)};var X=XMLHttpRequest.prototype.open;XMLHttpRequest.prototype.open=function(m,u){arguments[1]=path(u);return X.apply(this,arguments)};var H=function(fn){return function(s,t,u){if(typeof u==="string")arguments[2]=path(u);else if(u instanceof URL)arguments[2]=path(u.href);return fn.apply(this,arguments)}};var HP=History.prototype.pushState,HR=History.prototype.replaceState;History.prototype.pushState=H(HP);History.prototype.replaceState=H(HR);var A=Element.prototype.setAttribute;Element.prototype.setAttribute=function(n,v){if((n==="href"||n==="src"||n==="action")&&typeof v==="string")v=path(v);return A.call(this,n,v)};var prop=function(proto,n){if(!proto)return;var d=Object.getOwnPropertyDescriptor(proto,n);if(!d||!d.set)return;Object.defineProperty(proto,n,{get:d.get,set:function(v){return d.set.call(this,path(v))},configurable:true})};prop(window.HTMLAnchorElement&&HTMLAnchorElement.prototype,"href");prop(window.HTMLLinkElement&&HTMLLinkElement.prototype,"href");prop(window.HTMLScriptElement&&HTMLScriptElement.prototype,"src");prop(window.HTMLImageElement&&HTMLImageElement.prototype,"src");prop(window.HTMLImageElement&&HTMLImageElement.prototype,"srcset");prop(window.HTMLFormElement&&HTMLFormElement.prototype,"action");var O=window.open;window.open=function(u){if(typeof u==="string")arguments[0]=path(u);return O.apply(this,arguments)};var WK=window.Worker;if(WK){window.Worker=function(u,o){return new WK(path(String(u)),o)};window.Worker.prototype=WK.prototype}var SW=window.SharedWorker;if(SW){window.SharedWorker=function(u,o){return new SW(path(String(u)),o)};window.SharedWorker.prototype=SW.prototype}var W=window.WebSocket;window.WebSocket=function(u,p){var s=String(u),h=location.host;if(s.indexOf("ws://"+h)===0||s.indexOf("wss://"+h)===0){var x=new URL(s);if(x.pathname.indexOf(P)!==0)x.pathname=P+x.pathname;s=x.toString()}return p===undefined?new W(s):new W(s,p)};window.WebSocket.prototype=W.prototype;window.WebSocket.CONNECTING=W.CONNECTING;window.WebSocket.OPEN=W.OPEN;window.WebSocket.CLOSING=W.CLOSING;window.WebSocket.CLOSED=W.CLOSED;try{if(navigator.serviceWorker){var C={addEventListener:function(){},removeEventListener:function(){},postMessage:function(){}};var K="woow-odoo-sw-clean-%%INGRESS_CACHE_VERSION%%";if(navigator.serviceWorker.getRegistrations)navigator.serviceWorker.getRegistrations().then(function(rs){var removed=false;return Promise.all(rs.map(function(r){var a=r.active||r.waiting||r.installing,s=a&&a.scriptURL||"";if(r.scope.indexOf("/odoo")!==-1||s.indexOf("/web/service-worker.js")!==-1)return r.unregister().then(function(ok){removed=removed||ok});return Promise.resolve()})).then(function(){if(removed&&!sessionStorage.getItem(K)){sessionStorage.setItem(K,"1");location.reload()}})});try{Object.defineProperty(navigator.serviceWorker,"controller",{get:function(){return C},configurable:true})}catch(e){};navigator.serviceWorker.register=function(){return Promise.resolve({scope:P+"/",installing:null,waiting:null,active:C,update:function(){return Promise.resolve()},unregister:function(){return Promise.resolve(true)},addEventListener:function(){},removeEventListener:function(){}})}}}catch(e){}})()</script>';
     }
 
+    # ---- Origin listener (8069): who is calling? ----
+    # Docker preserves the real client address for traffic arriving on the
+    # published host port, so the source address is what separates a trusted
+    # LAN caller from the Cloudflare tunnel -- the tunnel always reaches this
+    # listener from inside the add-on network. `geo` resolves by longest
+    # prefix, so the hassio carve-out below overrides the broad RFC1918
+    # ranges regardless of the order they are written in.
+    geo $woow_lan_src {
+        default             0;
+        127.0.0.0/8         1;
+        ::1/128             1;
+        %%LAN_NETWORKS%%
+        # The add-on network is where the Cloudflare tunnel reaches this
+        # listener from. Carve it out explicitly: the configured ranges very
+        # plausibly contain it -- 172.16.0.0/12 does -- and without this the
+        # tunnel would inherit the LAN tier along with the database manager.
+        172.30.32.0/23      0;
+        fd0c:ac1e:2100::/48 0;
+        # The Home Assistant host itself, as seen through the bridge SNAT.
+        # Anything host-networked shares this address, so a host-networked
+        # reverse proxy pointed at 8069 would hand its callers the LAN tier.
+        172.30.32.1/32      1;
+    }
+
+    # Stays empty unless public_url is configured, so an unconfigured
+    # public_url can never promote an off-LAN caller past the gate.
+    map $http_host $woow_public_host {
+        default 0;
+        %%PUBLIC_HOST_MAP%%
+    }
+
+    # lan-source + public-host decide the privilege tier on 8069.
+    map $woow_lan_src$woow_public_host $woow_origin_gate {
+        default "deny";
+        "10"    "lan";
+        "11"    "lan";
+        "01"    "public";
+    }
+
+    # The tunnel is pinned to its configured scheme; the LAN keeps whatever
+    # scheme it actually used. Marking a session cookie Secure over plain LAN
+    # http means the browser never sends it back, which reads as a successful
+    # login that immediately bounces to the login page.
+    map $woow_origin_gate $woow_origin_proto {
+        "public" %%PUBLIC_PROTO%%;
+        default  $scheme;
+    }
+    map $woow_origin_proto $woow_origin_cookie_secure {
+        "https" "secure";
+        default "nosecure";
+    }
+
+    # The LAN reaches Odoo's RPC endpoint directly; the tunnel keeps the
+    # policy filter in front of it.
+    map $woow_origin_gate $woow_jsonrpc_upstream {
+        "lan"   "127.0.0.1:8070";
+        default "127.0.0.1:8071";
+    }
+
     upstream odoo_http { server 127.0.0.1:8070; }
     upstream odoo_websocket { server 127.0.0.1:%%WS_PORT%%; }
 
-    # Internal public origin. The host port is not published; cloudflared
-    # reaches this listener through the add-on's hassio-network DNS name.
+    # Origin listener. Reached two ways: the Cloudflare tunnel, via the
+    # add-on's hassio-network DNS name, and -- when the 8069 host port is
+    # published -- directly from the LAN. The gate above decides which.
     server {
         listen 8069 default_server;
         client_max_body_size 512M;
-        %%PUBLIC_HOST_GUARD%%
+        if ($woow_origin_gate = "deny") { return %%DENY_STATUS%%; }
 
-        # Database lifecycle operations are deliberately HA-Ingress-only.
-        location ^~ /web/database/ { return 404; }
-        location = /xmlrpc/db { return 404; }
-        location = /xmlrpc/2/db { return 404; }
+        # Inherited by every location that does not set its own headers.
+        proxy_http_version 1.1;
+        proxy_set_header Host $http_host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-Host $http_host;
+        proxy_set_header X-Forwarded-Proto $woow_origin_proto;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_request_buffering off;
+        proxy_read_timeout 720s;
+        proxy_send_timeout 720s;
+
+        # Database lifecycle stays off the public tunnel. The LAN is trusted,
+        # so it reaches the same database manager the ingress panel exposes.
+        location ^~ /web/database/ {
+            if ($woow_origin_gate != "lan") { return 404; }
+            proxy_pass http://odoo_http;
+        }
+        location = /xmlrpc/db {
+            if ($woow_origin_gate != "lan") { return 404; }
+            proxy_pass http://odoo_http;
+        }
+        location = /xmlrpc/2/db {
+            if ($woow_origin_gate != "lan") { return 404; }
+            proxy_pass http://odoo_http;
+        }
+
         location = /jsonrpc {
-            proxy_pass http://127.0.0.1:8071;
-            proxy_http_version 1.1;
-            proxy_set_header Host $http_host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-Host $http_host;
-            proxy_set_header X-Forwarded-Proto %%PUBLIC_PROTO%%;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_request_buffering off;
-            proxy_read_timeout 720s;
+            proxy_pass http://$woow_jsonrpc_upstream;
         }
 
         location = /websocket {
@@ -76,23 +150,14 @@ http {
             proxy_set_header Connection $connection_upgrade;
             proxy_set_header Host $http_host;
             proxy_set_header X-Forwarded-Host $http_host;
-            proxy_set_header X-Forwarded-Proto %%PUBLIC_PROTO%%;
+            proxy_set_header X-Forwarded-Proto $woow_origin_proto;
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
             proxy_read_timeout 3600s;
         }
 
         location / {
             proxy_pass http://odoo_http;
-            proxy_http_version 1.1;
-            proxy_set_header Host $http_host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-Host $http_host;
-            proxy_set_header X-Forwarded-Proto %%PUBLIC_PROTO%%;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_request_buffering off;
-            proxy_read_timeout 720s;
-            proxy_send_timeout 720s;
-            proxy_cookie_flags session_id secure httponly samesite=lax;
+            proxy_cookie_flags session_id $woow_origin_cookie_secure httponly samesite=lax;
         }
     }
 

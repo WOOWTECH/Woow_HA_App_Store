@@ -55,7 +55,7 @@ def request(socket: Path, route: str) -> str:
 
 
 def assert_template_contract(template: str) -> None:
-    public_start = template.index("# Internal public origin.")
+    public_start = template.index("# Origin listener.")
     ingress_start = template.index("# HA Supervisor Ingress adapter.")
     public = template[public_start:ingress_start]
     ingress = template[ingress_start:]

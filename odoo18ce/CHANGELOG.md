@@ -1,5 +1,44 @@
 # Changelog
 
+## 0.3.36 — 2026-09-08
+
+### Added
+- Reach Odoo directly from the LAN on the published `8069` host port. The origin
+  listener now classifies callers by source address — which Docker preserves on a
+  published port — and serves the LAN the full application, database manager
+  included, while the Cloudflare tunnel keeps its restricted tier.
+- `lan_networks`: space-separated IPv4/IPv6 CIDRs that define the trusted LAN
+  (default `192.168.0.0/16 10.0.0.0/8 172.16.0.0/12`). Malformed entries fail
+  start-up rather than reaching the nginx `geo` block.
+
+### Changed
+- Publish `8069` and `8072` on the HA host by default. The privilege split is
+  enforced by source address inside nginx, not by leaving the ports unmapped.
+- Default `workers` is now `2`. The gevent WebSocket on `8072` only listens while
+  Odoo runs multi-process, so a published `8072` was previously always dead.
+- The 8069 origin forwards the scheme the caller actually used and only marks the
+  session cookie `Secure` when that scheme is HTTPS. A `Secure` cookie is never
+  returned over plain LAN http, which previously would have made a successful
+  login bounce straight back to the login page.
+
+### Security
+- The Cloudflare tunnel reaches the add-on from inside the add-on network, which
+  the default LAN range `172.16.0.0/12` contains. `172.30.32.0/23` and the
+  add-on network's IPv6 prefix are carved out of the LAN tier explicitly so the
+  tunnel can never inherit LAN privileges, and the carve-out is asserted in the
+  test suite.
+- IPv6 callers are denied unless an operator adds their own prefix, keeping the
+  default fail-closed on a dual-stack LAN.
+- With `public_url` unset, no `Host` maps to the public tier, so an off-LAN
+  caller is refused instead of falling through to the LAN tier.
+
+### Testing
+- Assert the add-on network carve-out, the LAN-only gate on every database
+  lifecycle route, the tier-selected RPC upstream, and the conditional cookie and
+  forwarded scheme.
+- Render and `nginx -t` both configurations — `public_url` set and unset — rather
+  than only the configured one.
+
 ## 0.3.35 — 2026-09-03
 
 ### Fixed

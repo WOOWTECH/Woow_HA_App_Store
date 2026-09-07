@@ -58,6 +58,13 @@ configuration:
     description: >-
       Canonical HTTPS URL used for website metadata, email links and callbacks.
       Example: https://odoo.example.com
+  lan_networks:
+    name: Trusted LAN Networks
+    description: >-
+      Space-separated IPv4 CIDRs allowed full access on port 8069, database
+      manager included. (Default: 192.168.0.0/16 10.0.0.0/8 172.16.0.0/12)
+      The Cloudflare tunnel reaches the add-on from inside the add-on network
+      and never matches these, so it keeps the restricted public tier.
   proxy_mode:
     name: Proxy Mode (managed)
     description: >-

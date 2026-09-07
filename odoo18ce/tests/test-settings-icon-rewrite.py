@@ -91,7 +91,7 @@ def assert_actual_nginx_literal_rewrite() -> None:
 
 def main() -> None:
     template = TEMPLATE.read_text(encoding="utf-8")
-    public_start = template.index("# Internal public origin.")
+    public_start = template.index("# Origin listener.")
     ingress_start = template.index("# HA Supervisor Ingress adapter.")
     public = template[public_start:ingress_start]
     ingress = template[ingress_start:]

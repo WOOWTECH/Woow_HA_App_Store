@@ -1,7 +1,7 @@
 ---
 name: "Odoo 18 CE"
 description: "Odoo 18 Community Edition + PostgreSQL 16 — bundled all-in-one add-on for SME"
-version: "0.3.35"
+version: "0.3.36"
 slug: "odoo18ce"
 url: "https://github.com/WOOWTECH/Woow_ha_odoo"
 startup: application
@@ -22,12 +22,12 @@ arch:
   - aarch64
 
 ports:
-  8069/tcp: null
-  8072/tcp: null
+  8069/tcp: 8069
+  8072/tcp: 8072
 
 ports_description:
-  8069/tcp: "Internal Cloudflare origin (not exposed on HA host)"
-  8072/tcp: "Internal gevent WebSocket (workers > 0; not exposed on HA host)"
+  8069/tcp: "Odoo origin — LAN clients get full access, the Cloudflare tunnel stays restricted (see lan_networks)"
+  8072/tcp: "gevent WebSocket — only listens while workers > 0"
 
 webui: "http://[HOST]:[PORT:8069]"
 
@@ -65,6 +65,7 @@ schema:
   # Network
   public_url: "url?"
   proxy_mode: "bool?"
+  lan_networks: "str?"
 
   # Modules
   odoo_extra_addons: "str?"
@@ -96,7 +97,7 @@ options:
   # /web/database/manager, which this gates. Turn it off once your
   # databases exist and the add-on is reachable from outside the LAN.
   list_db: true
-  workers: 0
+  workers: 2
   max_cron_threads: 1
   limit_memory_hard: 2684354560
   limit_memory_soft: 2147483648
@@ -106,6 +107,11 @@ options:
   # Home Assistant validates present URL fields strictly.
   # Retained for backwards compatibility; 0.3.0+ safely forces this on.
   proxy_mode: true
+  # Space-separated IPv4 CIDRs treated as trusted LAN on port 8069. Sources
+  # inside these ranges reach the full application, database manager included.
+  # The Cloudflare tunnel arrives from the add-on network and is never matched
+  # by these, so it keeps the restricted public tier.
+  lan_networks: "192.168.0.0/16 10.0.0.0/8 172.16.0.0/12"
   dev_mode: false
   log_level: "info"
   without_demo: true

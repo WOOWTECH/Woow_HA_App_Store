@@ -59,6 +59,13 @@ configuration:
     description: >-
       Website metadata、郵件連結與callback使用的標準HTTPS網址。
       例如：https://odoo.example.com
+  lan_networks:
+    name: 信任的區網網段
+    description: >-
+      以空白分隔的 IPv4 CIDR,列入者從 8069 埠可完整存取,含資料庫管理員。
+      (預設:192.168.0.0/16 10.0.0.0/8 172.16.0.0/12)
+      Cloudflare 通道是從 add-on 內部網路進來的,不會符合這些網段,
+      因此仍維持受限的公開層級。
   proxy_mode:
     name: 代理模式（系統管理）
     description: >-

@@ -131,11 +131,17 @@ else
     WS_PORT=8070
 fi
 
-# Render the dual nginx gateway. When public_url is configured, authenticate
-# the expected Host header and pin the forwarded scheme instead of trusting
-# arbitrary add-on-network headers.
+# Render the dual nginx gateway.
+#
+# The 8069 origin listener serves two callers and gives them different
+# privileges. A LAN caller -- matched on source address, which Docker
+# preserves on the published host port -- gets the full application including
+# the database manager. The Cloudflare tunnel always arrives from inside the
+# add-on network, so it never matches the LAN list and stays on the
+# restricted tier behind its expected Host header.
 PUBLIC_PROTO='https'
-PUBLIC_HOST_GUARD='return 503;'
+PUBLIC_HOST_MAP=''
+DENY_STATUS='503'
 if bashio::config.has_value 'public_url'; then
     PUBLIC_URL="$(bashio::config 'public_url')"
     PUBLIC_PROTO="${PUBLIC_URL%%://*}"
@@ -145,12 +151,38 @@ if bashio::config.has_value 'public_url'; then
     fi
     PUBLIC_HOST="${PUBLIC_URL#*://}"
     PUBLIC_HOST="${PUBLIC_HOST%%/*}"
-    PUBLIC_HOST_GUARD="if (\$http_host != \"${PUBLIC_HOST}\") { return 444; }"
+    # An off-LAN caller is only recognised when it presents this exact Host.
+    PUBLIC_HOST_MAP="\"${PUBLIC_HOST}\" 1; \"${PUBLIC_HOST}:443\" 1;"
+    DENY_STATUS='444'
 fi
+
+# LAN allow-list for the 8069 origin. Every entry is validated as an IPv4
+# CIDR before it reaches the nginx geo block, so a malformed option fails the
+# start-up instead of injecting a directive. nginx statements are terminated
+# by ';' rather than by newlines, so one rendered line is valid config.
+LAN_NETWORKS="$(bashio::config 'lan_networks' 2>/dev/null || true)"
+# IPv4 private ranges only. IPv6 clients therefore fall through to the
+# deny tier unless an operator adds their own prefix, which keeps the
+# default fail-closed on a dual-stack LAN.
+if [ -z "${LAN_NETWORKS}" ]; then
+    LAN_NETWORKS='192.168.0.0/16 10.0.0.0/8 172.16.0.0/12'
+fi
+LAN_GEO=''
+for LAN_CIDR in ${LAN_NETWORKS}; do
+    if ! echo "${LAN_CIDR}" | grep -Eq '^([0-9]{1,3}(\.[0-9]{1,3}){3}/[0-9]{1,2}|[0-9A-Fa-f:]+/[0-9]{1,3})$'; then
+        bashio::log.error "lan_networks entry is not an IPv4/IPv6 CIDR: ${LAN_CIDR}"
+        exit 1
+    fi
+    LAN_GEO="${LAN_GEO}${LAN_CIDR} 1; "
+done
+bashio::log.info "8069 origin: LAN tier = ${LAN_NETWORKS}"
+
 ADDON_VERSION="$(bashio::addon.version 2>/dev/null || echo unknown)"
 sed -e "s/%%WS_PORT%%/${WS_PORT}/g" \
     -e "s#%%PUBLIC_PROTO%%#${PUBLIC_PROTO}#g" \
-    -e "s#%%PUBLIC_HOST_GUARD%%#${PUBLIC_HOST_GUARD}#g" \
+    -e "s#%%PUBLIC_HOST_MAP%%#${PUBLIC_HOST_MAP}#g" \
+    -e "s#%%DENY_STATUS%%#${DENY_STATUS}#g" \
+    -e "s#%%LAN_NETWORKS%%#${LAN_GEO}#g" \
     -e "s#%%INGRESS_CACHE_VERSION%%#${ADDON_VERSION}#g" \
     /etc/nginx/nginx.conf.template > /etc/nginx/nginx.conf
 
