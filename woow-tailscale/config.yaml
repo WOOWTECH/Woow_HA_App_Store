@@ -1,6 +1,6 @@
 ---
 name: "Woow Tailscale"
-version: "0.1.0"
+version: "0.1.1"
 slug: "woow-tailscale"
 description: "Tailscale client for Tailscale and Headscale"
 url: "https://github.com/WOOWTECH/Woow_HA_App_Store"
