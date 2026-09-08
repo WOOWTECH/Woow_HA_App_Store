@@ -1,4 +1,4 @@
-# Odoo 18 CE — Home Assistant Add-on
+# Woow Odoo 18 — Home Assistant Add-on
 
 Odoo 18 Community Edition + PostgreSQL 16, bundled as a single Home Assistant add-on
 for SME deployment.

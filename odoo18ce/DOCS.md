@@ -1,4 +1,4 @@
-# Odoo 18 CE — Home Assistant Add-on
+# Woow Odoo 18 — Home Assistant Add-on
 
 ## Overview
 
@@ -12,13 +12,13 @@ Medium Enterprise) deployment on Home Assistant OS hosts, including Raspberry Pi
 ┌─────────────────────────────────┐
 │  Home Assistant Supervisor      │
 │  ┌───────────────────────────┐  │
-│  │  Odoo 18 CE Add-on       │  │
-│  │  ┌─────────┐ ┌────────┐  │  │
-│  │  │ Odoo 18 │ │ PG 16  │  │  │
-│  │  │ :8069   │ │ :5432  │  │  │
-│  │  └────┬────┘ └────┬───┘  │  │
-│  │       └─────┬─────┘      │  │
-│  │         /data (persist)  │  │
+│  │  Woow Odoo 18 Add-on      │  │
+│  │  ┌─────────┐ ┌────────┐   │  │
+│  │  │ Odoo 18 │ │ PG 16  │   │  │
+│  │  │ :8069   │ │ :5432  │   │  │
+│  │  └────┬────┘ └────┬───┘   │  │
+│  │       └─────┬─────┘       │  │
+│  │         /data (persist)   │  │
 │  └───────────────────────────┘  │
 └─────────────────────────────────┘
 ```
