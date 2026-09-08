@@ -1,5 +1,115 @@
 # Changelog
 
+## 0.14.3
+
+- **Fix: 0.14.2's slash repair never ran on the request that breaks the page.** The diagnosis in 0.14.2 was right and is unchanged; the patch was applied in only one of three places.
+
+  `FS()` was wired into `window.fetch` only on the branch that handles a **string** argument. Next.js's RSC fetch builds its URL as `new URL(href, location.origin)` and hands `fetch` a **URL object**, so the one request that 404s the page went through the untouched branch. Everything else the app fetches *is* a string, which is why `/api/sessions`, `/api/home`, `/api/models` and the rest were correctly prefixed while the page still died — the shim looked like it was working.
+
+  Confirmed on the live box after deploying 0.14.2, from the browser's own network log:
+
+  ```
+  GET /api/hassio_ingress/<token>?_rsc=QLBdCDjfpGkLRHBX   404   <- RSC prefetch, no slash
+  GET /api/hassio_ingress/<token>                         404   <- hard navigation, page dies
+  ```
+
+  `FS()` now runs on all three argument shapes (string, `URL`, `Request`).
+
+- **Independently confirmed that this can only be fixed client-side.** Measured against HA Core directly from the box: the slash-less URL returns `404` and the add-on's own log does not move (102 lines before, 102 after), while the same URL with the slash reaches the add-on. Core rejects the request before the Supervisor or the add-on ever sees it, so no amount of nginx configuration in this add-on can repair it — only the browser can, before the request leaves.
+
+- **`tests/shim-routes.mjs` covers the argument shapes.** Verified to discriminate: against the 0.14.2 shim the URL-object and Request-object cases fail (the string case passes, exactly matching the deployed behaviour); against 0.14.3, **32 passed, 0 failed**. A stub bug was fixed along the way — the fake `Request` copied `init.url` over the repaired URL, which the real constructor does not do and which produced one false failure.
+
+## 0.14.2
+
+- **Fix (the real one): the UI rendered correctly and then became a Home Assistant `404: Not Found` about a second later.** Introduced by 0.14.0; 0.13.2 was unaffected. **0.14.1 did not fix this** — see the note below.
+
+  Root cause, reproduced end to end with a real browser against the live ingress URL. Next.js App Router fires an RSC prefetch ~0.5-1 s after hydration, and builds that URL from the canonical pathname with the **trailing slash normalised off**:
+
+  ```
+  GET /api/hassio_ingress/<token>?_rsc=QLBdCDjfpGkLRHBX     <- no slash after the token
+  ```
+
+  Home Assistant Core routes ingress as `/api/hassio_ingress/{token}/{path}`. With no slash the route does not match, so **HA Core returns 404 before the Supervisor or this add-on ever sees the request** — which is exactly why the add-on's own nginx log stayed clean while the user saw a 404. Next.js then takes its failure path (`"Error occurred during navigation, falling back to hard navigation"`) and hard-navigates the document to that same slash-less URL, so the whole page turns into `404: Not Found`.
+
+  Verified on the box: HA Core direct with the trailing slash -> `200`; without it -> `404: Not Found`; without it plus `?_rsc=` (the exact browser URL) -> `404`. Repairing that single request re-inserted the slash and the app loaded and stayed up.
+
+  The shim was passing it through because of its own "already prefixed, leave it alone" early-out (`if (p.indexOf("/api/hassio_ingress/") === 0) return false`), added to prevent double-prefixing. The slash-less URL starts with the prefix, so it matched that guard. The shim never removed the slash — Next.js did — but the shim is the only layer that can put it back, because HA Core rejects the request before anything downstream runs. `FS()` now re-inserts it for the bare prefix, prefix + query and prefix + fragment, at every entry point (fetch / EventSource / XHR / pushState / replaceState).
+
+- **Fix: `/provider-icons.svg` escaped the ingress prefix.** The client renders `<use href="/provider-icons.svg#...">` for provider logos, and that path was not in the shim's allowlist, so it went to HA Core and 404'd. Found by code inspection, not observed in a trace — it only renders in provider-model UI the first screen does not reach, so it broke icons, not the page. Added to the allowlist.
+
+- **`tests/shim-routes.mjs` covers both.** Checked for discriminating power rather than assumed: against the 0.14.1 shim the trailing-slash block fails all three of its cases, including the exact failing RSC prefetch URL; against 0.14.2, **29 passed, 0 failed**.
+
+### Note on 0.14.1
+
+0.14.1 was released against a **wrong diagnosis**. It attributed the 404 to pi-web 0.9.0's new push code obtaining Home Assistant's own service worker through `navigator.serviceWorker.getRegistration()`, which the 0.14.0 shim did not stub. Browser traces later showed `/sw.js` was never requested and no service worker was ever registered, so that was not the cause of this bug. The hardening 0.14.1 added is kept — stubbing the whole `ServiceWorkerContainer` surface rather than only `register()` is still correct for an add-on that is a guest on another application's origin — but it fixed nothing user-visible. Upgrade straight to 0.14.2.
+
+## 0.14.1
+
+- **Fix: the UI showed the correct screen and then turned into a Home Assistant 404 about a second later.** Introduced by 0.14.0 (pi-web 0.9.0); 0.13.2 was unaffected.
+
+  Root cause. The add-on runs in an iframe on the Home Assistant origin, and **Home Assistant registers its own service worker at scope `/` on that same origin** (`GET /service_worker.js` -> 200, `hass_frontend/service_worker.js`). pi-web 0.9.0 added push-notification code that reaches for a service worker registration. The v0.14.0 ingress shim replaced only `navigator.serviceWorker.register()` — it did **not** replace `getRegistration()`, `getRegistrations()`, `ready` or `controller`. So pi-web's push code called `getRegistration()`, got **Home Assistant's** worker back, and subscribed its own VAPID key to it.
+
+  Evidence, measured on the live box rather than inferred: the add-on's own nginx logged **zero** 404s (so the 404 was never served by the add-on), while the same log showed `GET /api/push/config` -> 200 followed by `POST /api/push/subscribe` -> 200 — and a push subscription can only succeed against a *real* registration, of which the only one on that origin is Home Assistant's. The 0.8.4 -> 0.9.0 delta confirms the trigger: `pushManager` appears **0** times in the 0.8.4 client bundle and **2** times in 0.9.0 (`serviceWorker` goes 2 -> 6). 0.8.4 also registered a worker, but the old shim's `register()` stub was enough to contain it; 0.9.0's push path goes around that stub.
+
+  Fix: `rootfs/etc/nginx/nginx.conf` now neutralises the whole `ServiceWorkerContainer` surface — `register`, `getRegistration`, `getRegistrations`, `ready` (a promise that never settles) and `controller` (null) — so pi-web cleanly concludes there is no service worker and skips the push path instead of latching onto Home Assistant's.
+
+  **This is add-on specific.** The Podman and k3s packages serve pi-web at the root of their own origin, where registering a worker at scope `/` is correct behaviour; only the add-on is a guest on another application's origin.
+
+  **Note for anyone who ran 0.14.0:** your Home Assistant push subscription may have been overwritten while 0.14.0 was installed. If HA notifications stopped arriving, re-enable them in Home Assistant.
+
+- **`tests/shim-routes.mjs` now covers the service-worker surface.** The harness stubs a Home-Assistant-like worker registered at scope `/` and asserts every accessor is neutralised. Verified to discriminate rather than merely pass: against the v0.14.0 shim it reports **4 failures** (`getRegistration`, `getRegistrations`, `controller`, `ready`); against 0.14.1, **24 passed, 0 failed**.
+
+## 0.14.0
+
+- **Upgrade to pi-web 0.9.0** (from 0.8.4) and the pi coding agent 0.85.1 (from 0.83.0).
+
+- **New: a browser terminal inside the add-on UI.** pi-web 0.9.0 ships its own terminal — `POST /api/terminal` opens a PTY, `/api/terminal/<id>/events` streams the output back over SSE. It runs in the add-on container with the same `$HOME`, the same `/data/pi-agent` volume and the same `PATH` as the agent, so `pi install <skill>`, `pi config` and an interactive TUI session are all reachable from the HA sidebar without an SSH session. SSE is a good fit for Ingress: `ingress_stream: true` and the sidecar's `proxy_buffering off` were already in place for chat streaming.
+
+- **`SHELL=/bin/bash` baked into the image.** The terminal spawns `process.env.SHELL || "/bin/sh"` with `["-l"]`. Debian's `/bin/sh` is dash, so without this every terminal session would silently lose history, tab completion and bash arrays while still looking like it worked.
+
+- **The Dockerfile is now multi-stage, because 0.9.0 needs a C++ compiler to build.** The terminal depends on `node-pty` 1.1.0, a native addon that ships prebuilt binaries for darwin and win32 only — on linux its install script falls through to `node-gyp rebuild`. Measured against the 0.13.2 image, which has neither `make` nor `g++`: `gyp ERR! stack Error: not found: make`. A compiler is therefore required to *build* the add-on, but not to *run* it, and the agent's bash tool executes model-authored commands inside this container — so the toolchain lives in a builder stage and only the finished tree is copied into the shipped image. The builder deliberately uses the same `${BUILD_FROM}` base as the runtime stage rather than a plain Debian image: the add-on builds for amd64 and aarch64, and a native module compiled against a different glibc or Node ABI than the one that loads it produces a terminal that attaches and never prompts. A cross-stage `require()` assertion turns that into a failed build instead.
+
+- **New: `pi` on `PATH` — without it the new terminal could not do the thing people open a terminal for.** Upstream installs `@earendil-works/pi-coding-agent` only as a *transitive* dependency of pi-web, so npm never links its `pi` bin and the CLI ships inside the image with no entry on `PATH`. That did not matter while the add-on had no terminal. It matters now: the first thing tried in the new terminal was `pi --version`, and it was command-not-found, which would have made `pi install <skill>`, `pi config` and the TUI all unreachable. Both sibling packages have carried this launcher since their first release; this add-on had not. `rootfs/usr/local/bin/pi` resolves the nested `dist/cli.js` at run time across four candidate paths with a `find` fallback, and the Dockerfile asserts `pi --version` at build time so a future layout change fails the build instead of shipping a broken terminal.
+
+- **Fix: two `sub_filter` rules were missing for JSON-escaped asset paths.** 0.9.0 emits `/manifest.webmanifest` and `/icons/*` twice — once as real `<link>` tags in the SSR HTML (already rewritten) and once JSON-escaped inside the RSC flight payload React hydrates from (not rewritten). `nginx.conf` had escaped-form rules for `\"/_next/` and `\"/favicon` but not for those two. The client shim's property patches would have caught them when React applied them, so nothing was visibly broken — but that left the byte layer and the runtime layer disagreeing about the same URL, and the shim is the half that stops working first if upstream changes how it sets link hrefs. Measured before: 3 escaped paths left un-prefixed. After: 0, with the only remaining un-prefixed occurrences being the shim's own predicate string literals, which must stay literal.
+
+- **Fix: the `SUPERVISOR_TOKEN` guard in `pi-web/run` was dead code.** `[ -z "${SUPERVISOR_TOKEN}" ]` was written to handle a missing token, but bashio runs under `set -u`, so the bare expansion aborted the script *before* the guard could test it. The failure mode was "pi-web never starts and nginx 502s forever", reachable only outside Home Assistant — i.e. exactly when someone is running the image locally to debug something and least wants a misleading error. Now `${SUPERVISOR_TOKEN:-}`, and the warning it was always meant to print actually prints.
+
+- **New regression test: `tests/shim-routes.mjs`.** The Ingress URL shim in `nginx.conf` is what stops pi-web's absolute paths (`/api/...`, `/_next/...`) escaping the iframe and landing on HA Core. A route it fails to match does not error — one panel in the UI just breaks permanently, which is expensive to trace back to the shim. The test extracts the shim straight out of `nginx.conf` (so it cannot drift from what is served) and asserts the prefixing behaviour of `fetch`, `EventSource` and `XMLHttpRequest` across the whole 0.9.0 route surface, including the new `/api/terminal/<id>/events` SSE stream, `/api/subagents/*`, `/api/sessions/search`, `/api/tools/settings`, `/api/push/*` and `/api/app-update` — plus the two negative cases that matter: an already-prefixed path must not be double-prefixed, and an absolute external URL must not be touched. **19/19 against 0.9.0, with no shim change needed.**
+
+- **No `nginx.conf` change was required, and that was checked rather than assumed.** Two halves had to hold. The client-side shim matches on the `/api/` prefix rather than a route list, so new routes pass through it unchanged — verified by `tests/shim-routes.mjs`, 19/19. The byte-level `sub_filter` rules match on prefixes too, and every absolute path 0.9.0 actually emits in its SSR HTML is still covered: `href="/favicon.ico?<hash>"`, `href="/manifest.webmanifest"`, `href="/icons/…"`, and `href=`/`src="/_next/…"`. (0.9.0 moved from `/manifest.json` to `/manifest.webmanifest`; the rule matches `href="/manifest`, so it caught the rename for free.) Upstream's added and removed routes (`/api/agent/running/events` and `/api/auth/all-providers` are gone in 0.9.0) pass through it unchanged. Two upstream changes were checked and have no effect here, both read out of the built `middleware.js` rather than release notes: the trust guard's matcher widened from `"/api/:path*"` to `["/", "/api/:path*"]`, so the HTML entry point is host-checked too and returns a plain-text `403 Untrusted request` on failure — the sidecar already rewrites `Host` to `localhost` for the whole `location /`, so this is inert, but it is the first thing to suspect if a future `nginx.conf` change breaks Ingress entirely rather than partially; and `PI_WEB_PASSWORD` now enables built-in HTTP Basic Auth, which this add-on does not set because HA's own authentication already sits in front of Ingress.
+
+- **Known limitation, unchanged: web push does not work under Ingress.** 0.9.0 added `/api/push/*` and a service worker, but the shim fakes `navigator.serviceWorker.register()` success (it has done since 0.10.4, to silence a console error) and a service worker cannot be scoped to an ingress prefix anyway. Chat, streaming and the terminal are unaffected. Not a regression — there was no push support before either.
+
+- **New: the CJK path patch, which this add-on was the last of the three packages to be missing.** Upstream folds U+00A0, U+2000–200A, U+202F, U+205F and **U+3000** to an ASCII space on every read, write and edit, and builds the read fallback chain from the already-folded path. Two silent consequences: a write to `台灣　報告.txt` lands at `台灣 報告.txt` while the success message is built from the original path ("Successfully wrote 10 bytes" to a file that does not exist), and two files differing only by space type **cross-read** — you ask for one and get the other's contents, with no error. U+3000 IDEOGRAPHIC SPACE is ordinary in Traditional Chinese filenames, so for a zh-TW add-on this is data loss with a success message rather than an edge case. `patches/fix-unicode-space-paths.mjs` makes the folding a read-only fallback (a path pasted with a non-breaking space still resolves) and never rewrites a write. It asserts every hunk, so an upstream bump fails the build instead of quietly dropping the fix. Still unfixed upstream at 0.85.1 — the only change to those files since 0.83.0 was renaming a `signal` parameter to `context`.
+
+### Verification
+
+Built for amd64 with `podman build --format=docker` and exercised locally.
+The add-on cannot boot fully outside Home Assistant — the *base image's* own
+`base-addon-log-level` service requires the Supervisor API and exits 1, which
+brings the container down — so the end-to-end checks were run against nginx +
+pi-web started directly, using the real `rootfs/etc/nginx/nginx.conf`:
+
+- `tests/shim-routes.mjs` — 19/19 across the full 0.9.0 route surface.
+- Ingress body rewriting with a valid `X-Ingress-Path`: 24 `_next` + 2
+  `favicon` + 2 `manifest` + 4 `icons` occurrences prefixed; the only
+  un-prefixed absolute paths left are the shim's own predicate literals.
+- Header whitelisting: `X-Ingress-Path: "; alert(1); //` collapses to
+  `window.__INGRESS_PATH__=""`, so the injected literal cannot be shaped by a
+  client.
+- 0.9.0 routes through the sidecar: `/api/home`, `/api/tools/settings`,
+  `/api/agent/running` all `200`.
+- Browser terminal through the sidecar: session created, SSE round-tripped,
+  login shell `/bin/bash`, `pi --version` → `0.85.1` inside it.
+- CJK: the U+3000 file reads its own contents and both space variants coexist
+  as distinct files.
+- Runtime image carries no `gcc`, `g++`, `make`, `cc` or `ld`.
+
+**Not verified on real Home Assistant.** Ingress behaviour was simulated by
+setting `X-Ingress-Path` by hand; the Supervisor sidebar POST, the watchdog and
+the actual HAOS ingress proxy have not been exercised.
+
 ## 0.13.2
 
 - **Fix skills downloaded via the Add-skill flow being invisible in the pi-web UI.** Regression introduced in 0.13.0: the run-script rewrite that stripped out per-provider bashio blocks also deleted the v0.12.0 `~/.pi/agent/skills` → `/data/pi-agent/skills` symlink block. Because we set `HOME=/data/pi-agent/home` and `PI_CODING_AGENT_DIR=/data/pi-agent`, the `skills` CLI (used by the Add-skill modal) writes to `${HOME}/.pi/agent/skills/` while pi-web itself reads from `${PI_CODING_AGENT_DIR}/skills/` — so every `Add skill` succeeded at the CLI level but the skill never showed up in the modal or in `<available_skills>`. Restored the pinning block in `rootfs/etc/s6-overlay/s6-rc.d/pi-web/run`: creates `/data/pi-agent/skills/`, migrates any pre-existing content out of `~/.pi/agent/skills/` (both `/root` and `${HOME}` variants) into it, then replaces the CLI's target with a symlink so both code paths land on the same on-disk directory. Skills downloaded on 0.13.0 / 0.13.1 are auto-migrated on first boot of 0.13.2 — no manual `cp` required.

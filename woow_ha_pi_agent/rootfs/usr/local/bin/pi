@@ -1,0 +1,42 @@
+#!/bin/bash
+# `pi` — launcher for the pi coding agent CLI/TUI.
+#
+# Why this file exists: @earendil-works/pi-coding-agent declares bin.pi, but it
+# is only ever installed as a TRANSITIVE dependency of @agegr/pi-web. npm does
+# not link bins of transitive deps, so the CLI ships inside the image with no
+# entry on PATH. Every "open a terminal and configure the agent" workflow —
+# `pi config`, `pi auth`, `pi install <skill>`, an interactive session — is
+# dead without it.
+#
+# Resolution is done at runtime rather than baked as a symlink so that a
+# pi-web version bump (which can move the nested node_modules path) does not
+# silently produce a dangling link.
+set -euo pipefail
+
+CLI=""
+for candidate in \
+  /usr/lib/node_modules/@agegr/pi-web/node_modules/@earendil-works/pi-coding-agent/dist/cli.js \
+  /usr/lib/node_modules/@earendil-works/pi-coding-agent/dist/cli.js \
+  /usr/local/lib/node_modules/@agegr/pi-web/node_modules/@earendil-works/pi-coding-agent/dist/cli.js \
+  /usr/local/lib/node_modules/@earendil-works/pi-coding-agent/dist/cli.js
+do
+  [ -f "${candidate}" ] && { CLI="${candidate}"; break; }
+done
+
+if [ -z "${CLI}" ]; then
+  # Last resort: search. Slower, but a wrong path here means the terminal is
+  # useless, so it is worth the extra second before giving up.
+  CLI="$(find /usr/lib/node_modules /usr/local/lib/node_modules \
+           -path '*@earendil-works/pi-coding-agent/dist/cli.js' -print -quit 2>/dev/null || true)"
+fi
+
+if [ -z "${CLI}" ]; then
+  echo "pi: could not locate @earendil-works/pi-coding-agent CLI in this image." >&2
+  echo "pi: this is a packaging bug — the image must ship @agegr/pi-web." >&2
+  exit 127
+fi
+
+# shellcheck source=/dev/null
+[ -r /usr/local/bin/pi-agent-env.sh ] && source /usr/local/bin/pi-agent-env.sh
+
+exec node "${CLI}" "$@"

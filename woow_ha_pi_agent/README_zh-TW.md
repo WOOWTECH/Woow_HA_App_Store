@@ -15,7 +15,7 @@
   <img src="https://img.shields.io/badge/arch-amd64%20%7C%20aarch64-lightgrey" alt="Architectures"/>
   <img src="https://img.shields.io/badge/base-debian--base%209.1.0-red?logo=debian&logoColor=white" alt="Base image"/>
   <img src="https://img.shields.io/badge/node-22.x-339933?logo=node.js&logoColor=white" alt="Node 22"/>
-  <img src="https://img.shields.io/badge/pi--web-0.8.4-8A2BE2" alt="pi-web version"/>
+  <img src="https://img.shields.io/badge/pi--web-0.9.0-8A2BE2" alt="pi-web version"/>
   <img src="https://img.shields.io/badge/license-MIT-green" alt="MIT"/>
 </p>
 
@@ -221,7 +221,7 @@ Skill 預設為 user-scope —— `PI_CODING_AGENT_DIR/skills/` 下每個資料�
 
 | 套件 | 版本 | 角色 |
 |---|---|---|
-| [`@agegr/pi-web`](https://www.npmjs.com/package/@agegr/pi-web) | `0.8.4`（釘死） | Next.js 16 瀏覽器工作區 —— 走 nginx 從 port 30141 對外 |
+| [`@agegr/pi-web`](https://www.npmjs.com/package/@agegr/pi-web) | `0.9.0`（釘死） | Next.js 16 瀏覽器工作區 —— 走 nginx 從 port 30141 對外 |
 | [`@earendil-works/pi-coding-agent`](https://www.npmjs.com/package/@earendil-works/pi-coding-agent) | transitive | pi SDK —— pi-web 直接 in-process import，沒有獨立 daemon |
 | [`skills`](https://www.npmjs.com/package/skills) | `1.5.21` | Add-skill 用的 CLI；會 shell 出 `git` / `ssh` / `gh` |
 | `simple-git` | 隨 `skills` | 包裝 `git clone` 給 repo 型安裝 |
@@ -330,7 +330,7 @@ docker buildx build \
 編輯 `Dockerfile`：
 
 ```dockerfile
-ARG PI_WEB_VERSION=0.8.4   # ← 改這行
+ARG PI_WEB_VERSION=0.9.0   # ← 改這行
 ```
 
 然後跑完整 e2e 再打 tag —— shim 依賴上游確切的 asset 形狀。

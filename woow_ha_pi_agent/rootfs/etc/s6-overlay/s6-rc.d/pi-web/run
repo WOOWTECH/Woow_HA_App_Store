@@ -44,7 +44,13 @@ done
 # Args: 1=JSON body, 2=success log, 3=failure log.
 supervisor_options_post() {
   local body="$1" success_msg="$2" failure_msg="$3"
-  [ -z "${SUPERVISOR_TOKEN}" ] && { bashio::log.warning "${failure_msg} (no SUPERVISOR_TOKEN)"; return 1; }
+  # `:-` is load-bearing. bashio runs under `set -u`, so a bare
+  # ${SUPERVISOR_TOKEN} expansion aborts the script BEFORE this guard can
+  # test it — which made the guard dead code and turned "no Supervisor" into
+  # "pi-web never starts, nginx 502s forever". Only reachable outside HA (a
+  # local `podman run` of the image), which is exactly when you are trying to
+  # debug something and least want a misleading failure.
+  [ -z "${SUPERVISOR_TOKEN:-}" ] && { bashio::log.warning "${failure_msg} (no SUPERVISOR_TOKEN)"; return 1; }
   if curl -sSL --max-time 5 -o /dev/null -w '%{http_code}' \
       -X POST \
       -H "Authorization: Bearer ${SUPERVISOR_TOKEN}" \

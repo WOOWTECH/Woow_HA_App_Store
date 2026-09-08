@@ -15,7 +15,7 @@
   <img src="https://img.shields.io/badge/arch-amd64%20%7C%20aarch64-lightgrey" alt="Architectures"/>
   <img src="https://img.shields.io/badge/base-debian--base%209.1.0-red?logo=debian&logoColor=white" alt="Base image"/>
   <img src="https://img.shields.io/badge/node-22.x-339933?logo=node.js&logoColor=white" alt="Node 22"/>
-  <img src="https://img.shields.io/badge/pi--web-0.8.4-8A2BE2" alt="pi-web version"/>
+  <img src="https://img.shields.io/badge/pi--web-0.9.0-8A2BE2" alt="pi-web version"/>
   <img src="https://img.shields.io/badge/license-MIT-green" alt="MIT"/>
 </p>
 
@@ -77,6 +77,8 @@ Use the Models panel's **Test** button to verify each new provider — the addon
 ### Runtime & operations
 
 - **In-process SDK.** `pi-web` imports `@earendil-works/pi-coding-agent` — one Node process, no separate agent daemon.
+- **Browser terminal (v0.14.0).** pi-web 0.9.0 serves a real PTY in the UI (`/api/terminal`, output over SSE) with the same `$HOME`, volume and `PATH` as the agent — so `pi install`, `pi config` and an interactive TUI session are reachable from the HA sidebar with no SSH. Requires a native module; see the note under [Container image](#container-image).
+- **CJK-safe file paths (v0.14.0).** Upstream folds U+3000 and other Unicode spaces to ASCII on every read/write/edit, which makes a write to `台灣　報告.txt` land at `台灣 報告.txt` while reporting success. Patched at build time.
 - **HA Ingress + sidebar auto-enable.** No published ports; sidebar tile shows on first boot via Supervisor API POST (fixed in v0.8.0).
 - **s6-overlay supervisor.** `nginx` (front) + `pi-web` (upstream) + `video-tools-init` (oneshot).
 - **Models managed inside pi-web.** `/data/pi-agent/models.json` is owned by the pi-web UI — add / rename / rotate providers without restarting the addon.
@@ -221,8 +223,9 @@ The runtime is composed from the following packages (all bundled in the image):
 
 | Package | Version | Role |
 |---|---|---|
-| [`@agegr/pi-web`](https://www.npmjs.com/package/@agegr/pi-web) | `0.8.4` (pinned) | Next.js 16 browser workspace — served behind nginx on port 30141 |
-| [`@earendil-works/pi-coding-agent`](https://www.npmjs.com/package/@earendil-works/pi-coding-agent) | transitive | The pi SDK — imported in-process by pi-web, no separate daemon |
+| [`@agegr/pi-web`](https://www.npmjs.com/package/@agegr/pi-web) | `0.9.0` (pinned) | Next.js 16 browser workspace — served behind nginx on port 30141 |
+| [`@earendil-works/pi-coding-agent`](https://www.npmjs.com/package/@earendil-works/pi-coding-agent) | `0.85.1`, transitive | The pi SDK — imported in-process by pi-web, no separate daemon |
+| [`node-pty`](https://www.npmjs.com/package/node-pty) | `1.1.0`, transitive | Native PTY behind the browser terminal. **Compiled at image build time** — upstream ships no linux prebuild |
 | [`skills`](https://www.npmjs.com/package/skills) | `1.5.21` | CLI for the Add-skill flow; shells out to `git` / `ssh` / `gh` |
 | `simple-git` | via `skills` | Wraps `git clone` for repo-backed installs |
 | `node-tar` | via `skills` | Extraction for tarball-backed installs |
@@ -234,7 +237,7 @@ The runtime is composed from the following packages (all bundled in the image):
 | rclone | Current .deb from `downloads.rclone.org` | Google Drive upload step |
 | s6-overlay | via `hassio-addons/debian-base:9.1.0` | Service supervisor |
 
-**Pinning rationale.** `@agegr/pi-web` is pinned (not `@latest`) because the upstream ships 40+ hardcoded `/api/*` routes and absolute-path assets that the nginx shim depends on. An upstream refactor of `_next` chunk names, RSC prefetch shape, or a new `/api/*` route can silently regress the shim without any local code change. Bump manually only after end-to-end validating a new release.
+**Pinning rationale.** `@agegr/pi-web` is pinned (not `@latest`) because the upstream ships 100+ hardcoded `/api/*` routes and absolute-path assets that the nginx shim depends on. An upstream refactor of `_next` chunk names, RSC prefetch shape, or a new `/api/*` route can silently regress the shim without any local code change — and the failure mode is not an error, it is one panel of the UI quietly breaking. Bump manually, and run [`tests/shim-routes.mjs`](tests/shim-routes.mjs) with the new release's routes added before shipping.
 
 ### Container image
 
@@ -245,6 +248,8 @@ Multi-arch images built by [`.github/workflows/build.yml`](.github/workflows/bui
 
 Base: `ghcr.io/hassio-addons/debian-base:9.1.0`.
 
+**The Dockerfile is multi-stage as of v0.14.0.** pi-web 0.9.0's terminal pulls in `node-pty`, a native addon with no linux prebuild, so `node-gyp rebuild` runs during the build. A compiler is therefore needed to *build* the add-on but not to *run* it — and the agent's bash tool executes model-authored commands inside this container — so `build-essential` lives in a throwaway builder stage and only the finished tree is copied into the shipped image. The builder uses the same `${BUILD_FROM}` base as the runtime stage, not a plain Debian image: the add-on builds for amd64 and aarch64, and a native module compiled against a different glibc or Node ABI than the one that loads it yields a terminal that attaches and never prompts. A cross-stage `require()` assertion turns that into a failed build.
+
 ## Security
 
 | Layer | Guarantee | Trust boundary |
@@ -254,7 +259,8 @@ Base: `ghcr.io/hassio-addons/debian-base:9.1.0`.
 | `X-Ingress-Path` | Whitelist-validated (`^/api/hassio_ingress/[A-Za-z0-9_-]{16,128}$`) before body-rewrite | Defense-in-depth vs. misconfigured upstream proxy |
 | API keys | Stored **inside pi-web** under `/data/pi-agent/` (persistent, backed up by HA snapshots). Addon `options.json` no longer holds any AI keys since v0.13.0 | HA host filesystem |
 | `env_vars` escape hatch | Values are exported verbatim into the pi-web process — unvalidated content. `name` is regex-validated only | Treat as `/data/options.json` — do not paste secrets you wouldn't otherwise trust there |
-| pi-web app auth | **None.** Access control is delegated to HA. | Anyone with HA admin login = full pi-web access |
+| pi-web app auth | **None**, deliberately — access control is delegated to HA. pi-web 0.9.0 added `PI_WEB_PASSWORD` (built-in Basic Auth), which this add-on does not set: HA's own login already sits in front of Ingress and a second password would be friction without a matching gain. | Anyone with HA admin login = full pi-web access |
+| Browser terminal (v0.14.0) | A real root shell in the add-on container, reachable at `POST /api/terminal`. It is **not** a new trust boundary here — the agent's `bash` tool already ran arbitrary commands in the same container, so anyone who could chat could already do this. What changed is that it is now direct rather than model-mediated. | Same as above: HA admin login |
 | `rclone.conf` | Inside HA snapshots (unlike caches) so Drive tokens survive restore | HA backup encryption |
 
 If you need per-user pi-web auth beyond HA login, put an auth-proxy in front of HA itself — do not try to add auth inside pi-web (the ingress layer strips headers before pi-web sees them).
@@ -263,6 +269,7 @@ If you need per-user pi-web auth beyond HA login, put an auth-proxy in front of 
 
 - **In-app provider Test button** — use the pi-web Models panel to probe any provider on demand (v0.13.0 replaces the old boot-time self-check).
 - **HA Supervisor watchdog** — `http://[HOST]:[PORT:30142]/api/home` polled on interval; auto-restart on hang.
+- **Ingress shim regression test** — `node tests/shim-routes.mjs`. Extracts the URL shim straight out of `nginx.conf` (so it cannot drift from what is served) and asserts `fetch` / `EventSource` / `XMLHttpRequest` prefixing across the full pi-web route surface, including the terminal's SSE stream — plus the negative cases: an already-prefixed path must not be double-prefixed, and an absolute external URL must not be touched. **Run this on every `PI_WEB_VERSION` bump.**
 - **End-to-end verification cadence.** Every version tag goes through: (a) fresh install → sidebar tile visible → add a provider inside pi-web → first chat succeeds; (b) Skills → Add skill from GitHub URL → skill appears in `<available_skills>`; (c) `pitch_video` dry-run through `python video/verify.py`. See [`tests/`](tests/) for the recorded fixtures.
 
 ## Troubleshooting
@@ -330,7 +337,7 @@ docker buildx build \
 Edit `Dockerfile`:
 
 ```dockerfile
-ARG PI_WEB_VERSION=0.8.4   # ← bump here
+ARG PI_WEB_VERSION=0.9.0   # ← bump here
 ```
 
 Then run the full end-to-end suite before tagging a release — the shim depends on upstream's exact asset shape.

@@ -56,6 +56,19 @@ The sidebar entry is enabled automatically on every boot via a Supervisor API PO
 
 Before v0.10.0, `pi-cwd-*` worktrees landed on the container root filesystem and vanished on every image update. `HOME` is now redirected into `/data/pi-agent/home` so the pi coding agent's default workspaces persist alongside sessions.
 
+## CJK filenames (v0.14.0)
+
+Upstream `@earendil-works/pi-coding-agent` folds U+00A0, U+2000–200A, U+202F, U+205F and **U+3000 IDEOGRAPHIC SPACE** to an ASCII space on every read, write and edit, and builds its read fallback chain from the already-folded path. Untreated, that produces two silent failures:
+
+- a write to `台灣　報告.txt` lands at `台灣 報告.txt`, while the success message is built from the path you asked for — *"Successfully wrote 10 bytes"* to a file that does not exist;
+- two files differing only by space type **cross-read**: ask for `Q1　報告.txt` and you get the contents of `Q1 報告.txt`, with no error raised.
+
+U+3000 is ordinary in Traditional Chinese and Japanese filenames, so this is data loss with a success message rather than an edge case.
+
+Since v0.14.0 the image patches this at build time (`patches/fix-unicode-space-paths.mjs`). Folding becomes a **read-only fallback** — a path pasted with a non-breaking space from a web page still resolves — while writes always land exactly where you asked. The patch asserts every hunk it applies, so a future `PI_WEB_VERSION` bump fails the build rather than shipping an image that quietly lost the fix.
+
+Still unfixed upstream as of pi-coding-agent 0.85.1.
+
 ## Video pipeline (v0.11.0+)
 
 The addon ships every CLI the `pitch_video` workflow (TTS → capture → segments → xfade → SRT → burn → verify → Drive upload) needs. Split across two layers:
@@ -138,6 +151,7 @@ Logs from each retry show up in the addon Logs tab under the `video-tools-init` 
 - Provider API keys are stored **inside pi-web** under `/data/pi-agent/` (persistent, covered by HA snapshots). Neither the addon nor pi log the values. Since v0.13.0 the addon `options.json` no longer holds any AI keys — rotate them in the pi-web Models panel.
 - The `env_vars` escape hatch is unvalidated *content-wise* — anything you set becomes a process env var. Do not paste secrets you would not otherwise trust in `/data/options.json`; that file lives on the HA host disk and is snapshotted with backups.
 - The nginx `X-Ingress-Path` header is whitelist-validated against `^/api/hassio_ingress/[A-Za-z0-9_-]{16,128}$` before it can reach any `sub_filter` body-rewrite or the shim's `window.__INGRESS_PATH__` literal — defense-in-depth against a misconfigured upstream proxy letting the client shape the header.
+- **The browser terminal (v0.14.0) is a root shell in the add-on container**, reachable from the UI at `POST /api/terminal`. This is not a new trust boundary: the agent's `bash` tool has always run arbitrary commands in the same container with the same privileges, so anyone who could open a chat could already do everything the terminal allows. What changed is that it is now direct rather than model-mediated. HA login plus `panel_admin: true` remain the controls. pi-web 0.9.0's own `PI_WEB_PASSWORD` Basic Auth is deliberately not set — a second password in front of an already-authenticated Ingress endpoint is friction without a matching gain.
 
 ## Troubleshooting
 
