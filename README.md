@@ -36,9 +36,9 @@ ha store add https://github.com/WOOWTECH/Woow_HA_App_Store
 | `woow_lan_gateway` | Woow LAN Gateway | 0.1.4 | 工廠註冊 LAN 的 fail-closed 公網 IPv4 閘道 |
 | `woow-n8n` | Woow n8n | 2.12.16 | AI/自動化 workflow |
 | `woow-nextcloud` | Woow Nextcloud | 33.0.3 | 自架雲端硬碟 |
-| `woow-tailscale` | Woow Tailscale | 0.1.0 | Tailscale / Headscale VPN 用戶端 |
-| `woow_ha_pi_agent` | Woow HA Pi Agent | 0.13.2 | pi-web + coding agent SDK + 影音管線 |
-| `woow_ha_opendesign` | Woow HA OpenDesign | 0.1.0 | Ingress-only BYOK 設計工作台 + PDF／圖片／PPTX 匯出 |
+| `woow-tailscale` | Woow Tailscale | 0.1.1 | Tailscale / Headscale VPN 用戶端 |
+| `woow_ha_pi_agent` | Woow HA Pi Agent | 0.14.3 | pi-web + coding agent SDK + 影音管線 |
+| `woow_ha_opendesign` | Woow HA OpenDesign | 0.1.7 | Ingress-only BYOK 設計工作台 + PDF／圖片／PPTX 匯出 |
 | `woow-omnigent` | Woow Omnigent | 0.1.15 | Omnigent 編排伺服器 + 內建 Postgres（外部 runner 註冊制） |
 | `woow_ha_core_1..5` | Woowtech HA Core 1-5 | 2.3.0 | 巢狀 HA Core 實例（每個獨立 onboarding，port 8124-8128） |
 
@@ -46,10 +46,10 @@ ha store add https://github.com/WOOWTECH/Woow_HA_App_Store
 | Slug | 名稱 | Ver | 上游 |
 |---|---|---|---|
 | `dnsmasq-dhcp` | Dnsmasq-DHCP | 5.1.0 | [f18m/ha-addon-dnsmasq-dhcp](https://github.com/f18m/ha-addon-dnsmasq-dhcp) |
-| `hamh` | Home-Assistant-Matter-Hub | 2.0.54 | [riddix/home-assistant-matter-hub](https://github.com/riddix/home-assistant-matter-hub) |
+| `hamh` | Home-Assistant-Matter-Hub | 2.0.56 | [riddix/home-assistant-matter-hub](https://github.com/riddix/home-assistant-matter-hub) |
 | `frigate` | Frigate | 0.17.2 | [blakeblackshear/frigate-hass-addons](https://github.com/blakeblackshear/frigate-hass-addons) |
 | `jellyfin` | Jellyfin | 0.1.0 | [hassio-addons/repository](https://github.com/hassio-addons/repository) |
-| `music_assistant` | Music Assistant | 2.9.13 | [music-assistant.io](https://music-assistant.io) |
+| `music_assistant` | Music Assistant | 2.10.2 | [music-assistant.io](https://music-assistant.io) |
 | `vscode` | Studio Code Server | 7.0.0 | [hassio-addons/repository](https://github.com/hassio-addons/repository) |
 | `knxd` | KNXD daemon | 0.6.1 | [da-anda/hass-io-addons](https://github.com/da-anda/hass-io-addons/tree/main/knxd) |
 
@@ -68,7 +68,12 @@ ha store add https://github.com/WOOWTECH/Woow_HA_App_Store
 - Dnsmasq-DHCP 先同步到 `WOOWTECH/Woow_ha_dnsmasq_dhcp_add_on`，再由此流程匯入集中 store
 - Frigate / Jellyfin / Studio Code Server 同理：各自的鏡像 repo 每日從上游同步並把容器映像
   重新託管到 `ghcr.io/woowtech/ha-mirror-*`，本 store 再從鏡像 repo 匯入
-- `hamh`、`music_assistant`、`knxd` 仍為手動釘版本，尚未納入自動同步
+- `hamh`、`music_assistant` 已於 2026-09-09 納入自動同步（此前它們的鏡像 repo 每晚
+  都在跟上游，但 store 內的複本各落後兩個版本）
+- 仍未納管的兩個，各有理由：
+  - `knxd`：沒有對應的 WOOWTECH 鏡像 repo，對 da-anda 上游手動釘版本
+  - `woow-tailscale`：**store 才是權威**（0.1.1，來源 repo 仍為 0.1.0）。把它加進
+    MAPPINGS 會讓使用者被降級——同步流程已有防降級護欄會擋下，但請不要加
 - 想單獨安裝：加入對應的**個別 repo URL**（例如 `WOOWTECH/Woow_ha_dnsmasq_dhcp_add_on`）
 - 想用單一入口：加入**本 store URL**
 

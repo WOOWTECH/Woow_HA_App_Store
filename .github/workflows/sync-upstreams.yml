@@ -9,9 +9,16 @@ name: Sync upstream addons
 # workflow, every release requires a manual clone-and-copy round-trip; the
 # pi-agent 0.13.2 incident (2026-08-19) is what triggered it.
 #
-# Legacy external mirrors (hamh, music_assistant, knxd) remain pinned by hand.
-# Dnsmasq-DHCP is synced because its WOOWTECH defensive mirror is now the
-# canonical source consumed by this store.
+# Every add-on whose WOOWTECH mirror repo is the canonical source is mapped
+# here, so a release there reaches the store the same night. hamh and
+# music_assistant joined on 2026-09-09 — their mirror repos had been syncing
+# upstream nightly for weeks while the store copies sat two releases behind.
+#
+# Still unmapped, deliberately:
+#   knxd           — no WOOWTECH mirror repo; pinned by hand against da-anda.
+#   woow-tailscale — the STORE is authoritative (0.1.1 vs the source repo's
+#                    0.1.0). Mapping it would downgrade users; the guard in the
+#                    sync loop now blocks that, but do not add it.
 #
 # Cron time: 20:00 UTC = 04:00 Asia/Taipei — off-peak for the team.
 
@@ -42,7 +49,9 @@ jobs:
             emqx|Woow_ha_emqx|emqx
             frigate|Woow_ha_frigate_add_on|frigate
             headscale|Woow_ha_vpn_headscale_package|headscale
+            hamh|Woow_ha_matter_hub_add_on|hamh
             jellyfin|Woow_ha_jellyfin_add_on|jellyfin
+            music_assistant|Woow_ha_music_assistant_add_on|music_assistant
             n8n|Woow_ha_n8n|n8n
             omnigent|Woow_ha_omnigent_addon|omnigent
             vscode|Woow_ha_vscode_add_on|vscode
@@ -61,6 +70,7 @@ jobs:
           set -euo pipefail
           mkdir -p /tmp/upstream
           synced=()
+          downgrades=()
 
           while IFS='|' read -r slug repo sub; do
             [ -z "${slug:-}" ] && continue
@@ -73,6 +83,22 @@ jobs:
               echo "::error::${slug}: required upstream subdir ${sub} not found in ${repo}"
               exit 1
             fi
+            # Refuse to move an add-on backwards. rsync has no notion of
+            # "newer" — it just overwrites — so a mapping pointed at a source
+            # repo that trails the store silently rolls users back. woow-tailscale
+            # is the live example: the store carries 0.1.1 while its source repo
+            # is still 0.1.0, so mapping it would be a downgrade, not a sync.
+            store_ver=$(grep -m1 '^version:' "${slug}/config.yaml" 2>/dev/null | sed 's/version: *//;s/"//g;s/ *$//' || true)
+            src_ver=$(grep -m1 '^version:' "${src_dir}/config.yaml" 2>/dev/null | sed 's/version: *//;s/"//g;s/ *$//' || true)
+            if [ -n "${store_ver}" ] && [ -n "${src_ver}" ] && [ "${store_ver}" != "${src_ver}" ]; then
+              older=$(printf '%s\n%s\n' "${store_ver}" "${src_ver}" | sort -V | head -1)
+              if [ "${older}" = "${src_ver}" ]; then
+                echo "::error::${slug}: source ${repo}/${sub} is at ${src_ver}, behind the store's ${store_ver} — refusing to downgrade. Either drop the mapping (the store is authoritative for this add-on) or release the source repo first."
+                downgrades+=("${slug}: store ${store_ver} -> source ${src_ver}")
+                continue
+              fi
+            fi
+
             # Mirror into the App Store subdir. Excludes cover the 4 files
             # that structurally belong to the upstream repo alone (its own
             # git history, its own CI, its own single-addon store manifest).
@@ -89,9 +115,17 @@ jobs:
             fi
           done <<< "${MAPPINGS}"
 
+          report_downgrades() {
+            [ ${#downgrades[@]} -eq 0 ] && return 0
+            echo "Blocked downgrades (nothing was overwritten for these):"
+            printf '  - %s\n' "${downgrades[@]}"
+            return 1
+          }
+
           if [ ${#synced[@]} -eq 0 ]; then
             echo "All mapped subdirs already in sync with upstream — no commit needed."
-            exit 0
+            report_downgrades
+            exit $?
           fi
 
           git config user.name  'github-actions[bot]'
@@ -109,3 +143,6 @@ jobs:
           title="chore(sync): mirror ${#synced[@]} upstream addon(s)"
           git commit -m "${title}${body}"
           git push
+
+          # Surface any blocked downgrade as a red run so the bad mapping is noticed.
+          report_downgrades

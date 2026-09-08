@@ -1,3 +1,44 @@
+## [2.0.56](https://github.com/RiDDiX/home-assistant-matter-hub/compare/v2.0.55...v2.0.56) (2026-08-26)
+
+
+### Bug Fixes
+
+* **#450:** keep late endpoint flushes and test teardown off the update chain ([ef7b5cd](https://github.com/RiDDiX/home-assistant-matter-hub/commit/ef7b5cde3e3bdd4f2385f6c9fe050132f9dfd677)), closes [#450](https://github.com/RiDDiX/home-assistant-matter-hub/issues/450)
+* **#450:** retry battery auto-mapping and report honest charge state ([a15466e](https://github.com/RiDDiX/home-assistant-matter-hub/commit/a15466e5d116145baa02470e0d6b0577f1addc4e)), closes [#450](https://github.com/RiDDiX/home-assistant-matter-hub/issues/450)
+* **#452:** advertise the full mandatory color feature set ([9182a71](https://github.com/RiDDiX/home-assistant-matter-hub/commit/9182a71dbcf0b81975d19c61dce0b4bef6626f8c)), closes [#452](https://github.com/RiDDiX/home-assistant-matter-hub/issues/452)
+* cover type and end product stay consistent with the feature map ([b75b7bc](https://github.com/RiDDiX/home-assistant-matter-hub/commit/b75b7bc12a257a62fca75ba67cb6ce82e50bc2e2)), closes [#304](https://github.com/RiDDiX/home-assistant-matter-hub/issues/304)
+* preserve explicit actions during debounce ([f66b771](https://github.com/RiDDiX/home-assistant-matter-hub/commit/f66b771c5e921e3a0f7d01e67f12d84683fee63e))
+
+
+### Features
+
+* **#449:** flag to accept the terms and conditions commissioning commands ([56db6af](https://github.com/RiDDiX/home-assistant-matter-hub/commit/56db6afdcc9253e44d53ed636b74953f19a6b18c)), closes [#449](https://github.com/RiDDiX/home-assistant-matter-hub/issues/449)
+* **#449:** flag to enable matter over tcp ([6c636a6](https://github.com/RiDDiX/home-assistant-matter-hub/commit/6c636a6eb3a129c34ceaed96bb859de797002809)), closes [#449](https://github.com/RiDDiX/home-assistant-matter-hub/issues/449)
+* **#449:** flag to mask the Matter version identifiers as 1.5.1 ([035afc0](https://github.com/RiDDiX/home-assistant-matter-hub/commit/035afc07c5649a4e3423c27dca56bb90c51ee167)), closes [#449](https://github.com/RiDDiX/home-assistant-matter-hub/issues/449)
+* **i18n:** add Korean (ko) translation ([12c0bcd](https://github.com/RiDDiX/home-assistant-matter-hub/commit/12c0bcde8432254537a5abfaff432669bcd49fc3))
+* pm2.5, pm10 and co2 sensor overrides ([31d89c2](https://github.com/RiDDiX/home-assistant-matter-hub/commit/31d89c29304ed1f11e9476cf0f3570c4eb588609))
+
+## [2.0.55](https://github.com/RiDDiX/home-assistant-matter-hub/compare/v2.0.54...v2.0.55) (2026-08-13)
+
+
+### Bug Fixes
+
+* **#155:** plugin devices mount with bridged basic information ([b25e422](https://github.com/RiDDiX/home-assistant-matter-hub/commit/b25e4223293a5026e2271801fe4f5f2e973c6bd8)), closes [#155](https://github.com/RiDDiX/home-assistant-matter-hub/issues/155)
+* **#438:** a disabled device keeps its Matter number to itself ([ae599d1](https://github.com/RiDDiX/home-assistant-matter-hub/commit/ae599d1b50ddd0fe0f7a419afb8c9be8ac5e4948)), closes [#438](https://github.com/RiDDiX/home-assistant-matter-hub/issues/438)
+* **#438:** devices keep their Matter numbers across HA restarts ([031655e](https://github.com/RiDDiX/home-assistant-matter-hub/commit/031655e6fc5c0b7d3c8cb582d90b09eb23be28f1)), closes [#438](https://github.com/RiDDiX/home-assistant-matter-hub/issues/438)
+* **#438:** keep devices when HA briefly reports no entities ([fff546e](https://github.com/RiDDiX/home-assistant-matter-hub/commit/fff546e7bb3ff2ec85bce072cbc36cf7ecc4f8b9)), closes [#438](https://github.com/RiDDiX/home-assistant-matter-hub/issues/438)
+* **#441:** power on reaches the climate when the cache lags ([4a2a3b1](https://github.com/RiDDiX/home-assistant-matter-hub/commit/4a2a3b191551db892daa9d271d3fc7300e07c006)), closes [#441](https://github.com/RiDDiX/home-assistant-matter-hub/issues/441)
+* **#442:** fan speed zero clamps to the slowest real mode ([0313e6e](https://github.com/RiDDiX/home-assistant-matter-hub/commit/0313e6ec5c19f2f57feb24b3669eb40014dc60c0)), closes [#442](https://github.com/RiDDiX/home-assistant-matter-hub/issues/442)
+* **#445:** plugin endpoints no longer stall or vanish from entity updates ([a03a7a9](https://github.com/RiDDiX/home-assistant-matter-hub/commit/a03a7a9d818e5ec70728836b3cd66bcedeee2d76)), closes [#445](https://github.com/RiDDiX/home-assistant-matter-hub/issues/445)
+* **#446:** a command that cannot reach Home Assistant fails instead of lying ([ed67bf4](https://github.com/RiDDiX/home-assistant-matter-hub/commit/ed67bf4145be67ec3fd1c5264fd7942d0c831505)), closes [#446](https://github.com/RiDDiX/home-assistant-matter-hub/issues/446)
+* **#447:** identify presses the identify button of the device ([2d6be4c](https://github.com/RiDDiX/home-assistant-matter-hub/commit/2d6be4c965398d7a0ff4b80d45950dd3406411ac)), closes [#447](https://github.com/RiDDiX/home-assistant-matter-hub/issues/447)
+* stop closing a controller session while it is still priming ([4a7faa1](https://github.com/RiDDiX/home-assistant-matter-hub/commit/4a7faa1e01260b81924bb58dd92c50e7470717ff))
+
+
+### Features
+
+* **#443:** fan slider debounce, and number flags render as numbers ([ff5ae1d](https://github.com/RiDDiX/home-assistant-matter-hub/commit/ff5ae1d509bea13f34cc87e1dbf724e420a964e0)), closes [#443](https://github.com/RiDDiX/home-assistant-matter-hub/issues/443)
+
 ## [2.0.54](https://github.com/RiDDiX/home-assistant-matter-hub/compare/v2.0.53...v2.0.54) (2026-08-09)
 
 
