@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.39 — 2026-09-08
+
+### Changed
+- Rename the add-on from `Odoo 18 CE` to `Woow Odoo 18`, matching every other
+  WoowTech add-on in the store (`Woow EMQX`, `Woow Immich`, `Woow Nextcloud`,
+  `Woow n8n`, …). The slug stays `odoo18ce`: Home Assistant keys an installed
+  add-on by slug, so changing it would strand the running instance and its
+  Odoo database behind a new identity. Supervisor picks the new name up on the
+  next add-on update; no configuration or data changes.
+
 ## 0.3.38 — 2026-09-08
 
 ### Security
