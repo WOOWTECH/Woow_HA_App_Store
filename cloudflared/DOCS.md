@@ -1,4 +1,4 @@
-# Home Assistant App (Add-on): Cloudflared Web GUI
+# Home Assistant App (Add-on): Woow Cloudflared
 
 Cloudflared connects your Home Assistant Instance via a secure tunnel to a domain
 or subdomain at Cloudflare. This allows you to expose your Home Assistant

@@ -1,5 +1,26 @@
 # Changelog
 
+## 1.0.4 — 2026-09-08
+
+### Fixed
+- Unbreak the image build. `ARG YQ_VERSION` pinned `yq-go=4.53.3-r0`, which
+  Alpine has since rebuilt as `-r0` -> `-r1`, so `apk add` could not resolve it
+  and every build since 2026-08-07 failed. The base image
+  `ghcr.io/hassio-addons/base:21.0.1` is Alpine 3.24.1, whose community repo
+  carries `4.53.3-r1` on both `x86_64` and `aarch64`; the pin now matches. The
+  Renovate hint alongside it named `alpine_3_22`, a branch the base left behind,
+  which is why the bump was never proposed automatically — it now reads
+  `alpine_3_24`.
+
+### Changed
+- Rename the add-on from `Cloudflared Web GUI` to `Woow Cloudflared`, the house
+  prefix every other WOOWTECH-authored add-on in the App Store carries. The
+  slug stays `cloudflared`: Home Assistant keys an installed add-on by slug, so
+  changing it would strand the running instance and its tunnel credentials.
+- Carry the new name into the surfaces baked into the image — the web GUI page
+  title, the FastAPI app title and the startup log line — since the version
+  bump republishes it anyway.
+
 ## 1.0.3
 
 Hardening and test coverage following live verification on HAOS. Both sides
