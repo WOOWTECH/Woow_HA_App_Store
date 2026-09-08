@@ -1,6 +1,6 @@
 #!/bin/sh
 # ==============================================================================
-# Home Assistant App (Add-on): Cloudflared Web GUI
+# Home Assistant App (Add-on): Woow Cloudflared
 #
 # Container build of the Web GUI backend runtime (Python + FastAPI)
 # ==============================================================================

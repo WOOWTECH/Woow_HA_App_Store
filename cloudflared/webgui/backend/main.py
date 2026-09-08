@@ -1,4 +1,4 @@
-"""Cloudflared Web GUI — FastAPI application entry point.
+"""Woow Cloudflared — FastAPI application entry point.
 
 Served exclusively through Home Assistant Ingress (no host port is
 published), so authentication is handled by Home Assistant itself. As
@@ -30,7 +30,7 @@ async def lifespan(app: FastAPI):
     await supervisor.close()
 
 
-app = FastAPI(title="Cloudflared Web GUI", lifespan=lifespan)
+app = FastAPI(title="Woow Cloudflared", lifespan=lifespan)
 
 
 @app.middleware("http")

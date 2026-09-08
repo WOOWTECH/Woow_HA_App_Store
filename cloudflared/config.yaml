@@ -1,6 +1,6 @@
 ---
-name: Cloudflared Web GUI
-version: 1.0.3
+name: Woow Cloudflared
+version: 1.0.4
 breaking_versions:
   - 5.3.7
   - 6.0.0
