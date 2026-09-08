@@ -40,9 +40,12 @@ jobs:
             cloudflared|Woow_ha_cloudflare_tunnel_webgui|cloudflared
             dnsmasq-dhcp|Woow_ha_dnsmasq_dhcp_add_on|dnsmasq-dhcp
             emqx|Woow_ha_emqx|emqx
+            frigate|Woow_ha_frigate_add_on|frigate
             headscale|Woow_ha_vpn_headscale_package|headscale
+            jellyfin|Woow_ha_jellyfin_add_on|jellyfin
             n8n|Woow_ha_n8n|n8n
             omnigent|Woow_ha_omnigent_addon|omnigent
+            vscode|Woow_ha_vscode_add_on|vscode
             nextcloud|Woow_ha_nextcloud|nextcloud
             odoo18ce|Woow_ha_odoo|odoo18ce
             woow-immich|Woow_ha_immich|woow-immich
