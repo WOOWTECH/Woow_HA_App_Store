@@ -1,0 +1,72 @@
+name: Woow Omnigent
+version: 0.1.15
+slug: woow-omnigent
+image: ghcr.io/woowtech/woow-ha-omnigent-{arch}
+description: >-
+  Omnigent 0.12.0 meta-harness — orchestration server + bundled Postgres.
+  External runners (pi / claude / codex / …) register from wherever via
+  `omnigent host --server http://homeassistant.local:8000`. HTTP for LAN;
+  pair with the Cloudflared add-on for HTTPS.
+url: https://github.com/WOOWTECH/Woow_ha_omnigent_addon
+arch: [amd64, aarch64]
+init: false
+# bashio::config talks to the Supervisor API to read /data/options.json,
+# so hassio_api must be true even though our own code doesn't call it.
+hassio_api: true
+homeassistant_api: false
+ingress: true
+ingress_port: 8080
+ingress_stream: true
+panel_icon: mdi:brain
+panel_title: Woow Omnigent
+panel_admin: true
+# NOTE: `ingress_entry: login` was tried but interacts badly with
+# `proxy_redirect` in nginx — HA Supervisor keeps redirecting the root
+# path to the entry, our nginx re-prefixes, and the browser hits
+# ERR_TOO_MANY_REDIRECTS. Leave unset — Supervisor opens at root.
+webui: "http://[HOST]:[PORT:8000]"
+watchdog: "http://[HOST]:[PORT:8080]/health"
+ports:
+  8000/tcp: 8000
+ports_description:
+  8000/tcp: >-
+    Web UI + runner tunnel endpoint (LAN). Bind to a public-reachable URL
+    via the Cloudflared HA add-on if remote runners need to dial in.
+map:
+  - type: addon_config
+    read_only: false
+  - type: share
+    read_only: false
+  - type: backup
+    read_only: false
+backup: cold
+backup_exclude:
+  - "**/logs/**"
+  - "**/pg_wal/**"
+schema:
+  # --- Admin identity ------------------------------------------------------
+  admin_username: str
+  admin_password: password
+  # --- Public URL runners dial in on ---------------------------------------
+  # Only set this if you have a Cloudflared add-on route pointing at us —
+  # runners registered via that URL use it in webhook links and invite URLs.
+  # Leave empty to use http://homeassistant.local:8000 (LAN default).
+  base_url: str?
+  # --- Feature flags forwarded via OMNIGENT_FEATURES= ---------------------
+  # Comma-separated. Defaults to "usage_page,harness_install" (every known
+  # feature in omnigent 0.12.0). Unknown feature keys make the server
+  # refuse to boot, so keep to the documented list.
+  features: str?
+  # --- Extra env vars (arbitrary passthrough) ------------------------------
+  env_vars:
+    - key: match(^[A-Z][A-Z0-9_]*$)
+      value: str
+options:
+  admin_username: woow
+  admin_password: woowtech2026
+  base_url: ""
+  features: "usage_page,harness_install"
+  env_vars: []
+# No `services:` — Postgres is bundled inside the container via s6 (same
+# pattern as Woow_ha_n8n's bundled redis). External runners register over
+# HTTP, so no MariaDB or other Supervisor service dependency is needed.

@@ -1,0 +1,97 @@
+#!/command/with-contenv sh
+# init-addon-config — read /data/options.json (managed by HA Supervisor)
+# and materialise every value into an env file + /var/run/s6 env dir.
+#
+# We use `jq` on the on-disk file rather than `bashio::config`, because
+# bashio talks to the Supervisor API and the token isn't reliably wired
+# into the env when running as an s6 oneshot on this base image
+# (`Unable to access the API, forbidden`). The Supervisor writes the same
+# options.json to disk at boot, so we bypass the API entirely.
+set -e
+
+OPTIONS_FILE=/data/options.json
+CONFIG_ENV=/var/run/omnigent.env
+# s6-overlay v3 reads /run/s6/container_environment/<VAR>. Anything under
+# /command/with-contenv inherits from there — that includes svc-postgres,
+# svc-omnigent-server, and init-admin-claim.
+S6_ENV_DIR=/run/s6/container_environment
+mkdir -p "${S6_ENV_DIR}"
+: > "${CONFIG_ENV}"
+
+log() { echo "[init-addon-config] $*" >&2; }
+
+if [ ! -f "${OPTIONS_FILE}" ]; then
+    log "FATAL: ${OPTIONS_FILE} missing — is this really an HA add-on?"
+    exit 1
+fi
+
+# --- Helpers ---------------------------------------------------------------
+set_env() {
+    key="$1"; value="$2"
+    printf '%s=%s\n' "${key}" "${value}" >> "${CONFIG_ENV}"
+    printf '%s' "${value}" > "${S6_ENV_DIR}/${key}"
+}
+# jq-with-default that never emits the literal string "null".
+optget() {
+    path="$1"; default="$2"
+    v=$(jq -r ".${path} // \"\"" "${OPTIONS_FILE}")
+    [ -z "${v}" ] || [ "${v}" = "null" ] && v="${default}"
+    printf '%s' "${v}"
+}
+
+# --- Admin identity (feeds init-admin-claim + omnigent-server bootstrap) ----
+ADMIN_USERNAME="$(optget admin_username 'woow')"
+ADMIN_PASSWORD="$(optget admin_password 'woowtech2026')"
+set_env OMNIGENT_ADMIN_USERNAME "${ADMIN_USERNAME}"
+set_env OMNIGENT_ADMIN_PASSWORD "${ADMIN_PASSWORD}"
+
+# --- Base URL --------------------------------------------------------------
+# Auto-derive from LAN if user didn't set one. Runners use this in their
+# `omnigent host --server <URL>` invocations for tunnel dial-in.
+BASE_URL="$(optget base_url '')"
+if [ -z "${BASE_URL}" ]; then
+    BASE_URL="http://homeassistant.local:8000"
+fi
+set_env OMNIGENT_ACCOUNTS_BASE_URL "${BASE_URL}"
+
+# --- Feature flags ---------------------------------------------------------
+# Default to enabling every feature omnigent 0.12.0 knows about, matching
+# the k3s + podman deployments. Users can override via the add-on
+# `features:` option (comma-separated list). Known keys: usage_page,
+# harness_install. Unknown keys make omnigent-server refuse to boot.
+FEATURES="$(optget features 'usage_page,harness_install')"
+[ -n "${FEATURES}" ] && set_env OMNIGENT_FEATURES "${FEATURES}"
+
+# --- Postgres wiring (all localhost — we bundle the DB in the same pod) ----
+POSTGRES_PASSWORD="woowtech"   # internal only; not published on any port
+set_env POSTGRES_PASSWORD "${POSTGRES_PASSWORD}"
+set_env DATABASE_URL "postgresql+psycopg://omnigent:${POSTGRES_PASSWORD}@127.0.0.1:5432/omnigent"
+
+# --- Static server config --------------------------------------------------
+set_env HOST "0.0.0.0"
+set_env PORT "8000"
+set_env OMNIGENT_AUTH_ENABLED "1"
+set_env ARTIFACT_DIR "/data/artifacts"
+set_env OMNIGENT_ADMIN_CREDENTIALS_PATH "/data/admin-credentials"
+set_env HOME "/data/omnigent-home"
+mkdir -p /data/omnigent-home /data/artifacts
+
+# --- Optional extra env vars (arbitrary user passthrough) ------------------
+n=$(jq '.env_vars | length' "${OPTIONS_FILE}" 2>/dev/null || echo 0)
+i=0
+while [ "${i}" -lt "${n}" ]; do
+    k=$(jq -r ".env_vars[${i}].key // \"\"" "${OPTIONS_FILE}")
+    v=$(jq -r ".env_vars[${i}].value // \"\"" "${OPTIONS_FILE}")
+    [ -n "${k}" ] && set_env "${k}" "${v}"
+    i=$((i + 1))
+done
+
+# --- TZ / localtime --------------------------------------------------------
+TZ_VAL="$(optget tz 'Asia/Taipei')"
+if [ -f "/usr/share/zoneinfo/${TZ_VAL}" ]; then
+    ln -sf "/usr/share/zoneinfo/${TZ_VAL}" /etc/localtime
+    echo "${TZ_VAL}" > /etc/timezone
+    set_env TZ "${TZ_VAL}"
+fi
+
+log "config materialised → ${CONFIG_ENV} (admin=${ADMIN_USERNAME}, base_url=${BASE_URL})"

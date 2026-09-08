@@ -1,0 +1,29 @@
+#!/command/with-contenv sh
+# svc-omnigent-server — the upstream Python service.
+#
+# `with-contenv` snapshots /run/s6/container_environment/ once at boot, so
+# vars written *after* boot by init-addon-config (which runs later in the
+# graph) aren't visible here. Source the env file explicitly instead —
+# that's the same file init-addon-config wrote, guaranteed present because
+# our dependencies.d chain forces it to complete first.
+[ -r /var/run/omnigent.env ] && . /var/run/omnigent.env
+
+export PATH="/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+
+# Extract Postgres URI (postgresql+psycopg://…) — same value we set in
+# init-addon-config. omnigent's `--database-uri` accepts anything
+# SQLAlchemy understands.
+DB_URI="${DATABASE_URL:-postgresql+psycopg://omnigent:woowtech@127.0.0.1:5432/omnigent}"
+BIND_HOST="${HOST:-0.0.0.0}"
+BIND_PORT="${PORT:-8000}"
+
+# Don't set --admin-password here — the admin username also needs to be
+# controllable, and upstream's --admin-password only sets password with
+# username "admin". Instead let init-admin-claim POST /auth/setup with
+# BOTH configured values after this server binds.
+# --no-open because we're headless (no user-facing browser to redeem).
+exec omnigent server \
+    --host "${BIND_HOST}" \
+    --port "${BIND_PORT}" \
+    --database-uri "${DB_URI}" \
+    --no-open

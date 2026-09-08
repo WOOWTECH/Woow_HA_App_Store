@@ -42,6 +42,7 @@ jobs:
             emqx|Woow_ha_emqx|emqx
             headscale|Woow_ha_vpn_headscale_package|headscale
             n8n|Woow_ha_n8n|n8n
+            omnigent|Woow_ha_omnigent_addon|omnigent
             nextcloud|Woow_ha_nextcloud|nextcloud
             odoo18ce|Woow_ha_odoo|odoo18ce
             woow-immich|Woow_ha_immich|woow-immich

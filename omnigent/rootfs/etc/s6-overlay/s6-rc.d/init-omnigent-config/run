@@ -1,0 +1,16 @@
+#!/command/with-contenv sh
+# init-omnigent-config — wait for postgres to accept queries before letting
+# svc-omnigent-server start. Bare `pg_isready` from the loopback socket.
+set -eu
+
+log() { echo "[init-omnigent-config] $*" >&2; }
+
+for i in $(seq 1 30); do
+    if pg_isready -q -h 127.0.0.1 -p 5432 -U omnigent; then
+        log "postgres ready after ~${i}s"
+        exit 0
+    fi
+    sleep 1
+done
+log "ERROR: postgres never came up — svc-omnigent-server will fail to bind"
+exit 1
