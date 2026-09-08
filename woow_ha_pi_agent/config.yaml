@@ -1,5 +1,5 @@
 name: Woow HA Pi Agent
-version: "0.14.0"
+version: "0.14.2"
 slug: woow_ha_pi_agent
 description: pi-web 0.9.0 + pi coding agent SDK, with a browser terminal, AI providers configured inside the pi-web UI, and a video pipeline (ffmpeg / Playwright / edge-tts / rclone)
 url: https://github.com/WOOWTECH/Woow_ha_pi_agent_add_on
