@@ -20,15 +20,30 @@ name: Sync upstream addons
 #                    0.1.0). Mapping it would downgrade users; the guard in the
 #                    sync loop now blocks that, but do not add it.
 #
+# A mapping may name a ref. "release" means the upstream's latest GitHub
+# Release tag, so the store never carries commits that were not released;
+# the default is the upstream's main branch. An upstream can also trigger
+# this sweep the moment it publishes a Release, through `repository_dispatch`
+# (event type `upstream-release`), so a Release reaches the store in minutes
+# instead of at the next cron tick. Odoo (Woow_ha_odoo) does both.
+#
 # Cron time: 20:00 UTC = 04:00 Asia/Taipei — off-peak for the team.
 
 on:
   schedule:
     - cron: '0 20 * * *'
   workflow_dispatch: {}
+  repository_dispatch:
+    types: [upstream-release]
 
 permissions:
   contents: write
+
+# A dispatch arriving during the nightly sweep queues behind it rather than
+# racing it for the same push.
+concurrency:
+  group: sync-upstreams
+  cancel-in-progress: false
 
 jobs:
   sync:
@@ -40,9 +55,23 @@ jobs:
           # Full history is not needed — we only push new commits on top.
           fetch-depth: 1
 
+      - name: Note the trigger
+        if: github.event_name == 'repository_dispatch'
+        env:
+          SLUG: ${{ github.event.client_payload.slug }}
+          VERSION: ${{ github.event.client_payload.version }}
+          SENDER: ${{ github.event.client_payload.repository }}
+        run: |
+          echo "::notice::dispatched by ${SENDER:-unknown}: ${SLUG:-?} ${VERSION:-?} — syncing every mapped addon"
+
       - name: Sync each upstream subdir
         env:
-          # slug|upstream-repo|upstream-subdir  (subdir "." = repo root)
+          GH_TOKEN: ${{ github.token }}
+          # slug|upstream-repo|upstream-subdir|ref
+          #   subdir "."   = repo root
+          #   ref  (empty) = the upstream's main branch
+          #   ref "release" = the upstream's latest GitHub Release tag; until
+          #                   the upstream has published one, main, with a warning
           MAPPINGS: |
             cloudflared|Woow_ha_cloudflare_tunnel_webgui|cloudflared
             dnsmasq-dhcp|Woow_ha_dnsmasq_dhcp_add_on|dnsmasq-dhcp
@@ -56,7 +85,7 @@ jobs:
             omnigent|Woow_ha_omnigent_addon|omnigent
             vscode|Woow_ha_vscode_add_on|vscode
             nextcloud|Woow_ha_nextcloud|nextcloud
-            odoo18ce|Woow_ha_odoo|odoo18ce
+            odoo18ce|Woow_ha_odoo|odoo18ce|release
             woow-immich|Woow_ha_immich|woow-immich
             woow-lan-gateway|woow-lan-gateway|app
             woow_ha_core_1|woowtech_ha_multi_ha_core|woow_ha_core_1
@@ -71,16 +100,27 @@ jobs:
           mkdir -p /tmp/upstream
           synced=()
           downgrades=()
+          declare -A synced_ref
 
-          while IFS='|' read -r slug repo sub; do
+          while IFS='|' read -r slug repo sub ref; do
             [ -z "${slug:-}" ] && continue
+            ref="${ref:-main}"
+            if [ "${ref}" = "release" ]; then
+              tag="$(gh api "repos/WOOWTECH/${repo}/releases/latest" --jq '.tag_name' 2>/dev/null || true)"
+              if [ -n "${tag}" ]; then
+                ref="${tag}"
+              else
+                echo "::warning::${slug}: ${repo} has no GitHub Release yet; syncing main until the first Release"
+                ref="main"
+              fi
+            fi
             src="/tmp/upstream/${slug}"
-            git clone --depth 1 --branch main --single-branch --quiet \
+            git clone --depth 1 --branch "${ref}" --single-branch --quiet \
               "https://github.com/WOOWTECH/${repo}.git" "${src}"
             src_dir="${src}"
             [ "${sub}" != "." ] && src_dir="${src}/${sub}"
             if [ ! -d "${src_dir}" ]; then
-              echo "::error::${slug}: required upstream subdir ${sub} not found in ${repo}"
+              echo "::error::${slug}: required upstream subdir ${sub} not found in ${repo} at ${ref}"
               exit 1
             fi
             # Refuse to move an add-on backwards. rsync has no notion of
@@ -110,8 +150,9 @@ jobs:
               "${src_dir}/" "${slug}/"
             if [ -n "$(git status --porcelain -- "${slug}")" ]; then
               synced+=("${slug}")
+              synced_ref["${slug}"]="${ref}"
               upver=$(grep -m1 '^version:' "${slug}/config.yaml" 2>/dev/null | sed 's/version: *//;s/"//g;s/ *$//' || echo unknown)
-              echo "::notice::${slug}: drift detected — new version ${upver}"
+              echo "::notice::${slug}: drift detected — new version ${upver} (from ${repo}@${ref})"
             fi
           done <<< "${MAPPINGS}"
 
@@ -134,11 +175,12 @@ jobs:
             git add "${slug}"
           done
 
-          # Body lists which subdirs changed and their new versions so the
-          # commit is self-documenting when reviewed on GitHub.
+          # Body lists which subdirs changed, their new versions and the
+          # upstream ref they came from, so the commit is self-documenting
+          # when reviewed on GitHub.
           body="$(printf '\n\n'; for s in "${synced[@]}"; do
             v=$(grep -m1 '^version:' "${s}/config.yaml" 2>/dev/null | sed 's/version: *//;s/"//g;s/ *$//' || echo unknown)
-            printf -- '- %s -> %s\n' "$s" "$v"
+            printf -- '- %s -> %s (%s)\n' "$s" "$v" "${synced_ref[$s]}"
           done)"
           title="chore(sync): mirror ${#synced[@]} upstream addon(s)"
           git commit -m "${title}${body}"
