@@ -1,3 +1,4 @@
+---
 gateways:
   ingress:
     kind: actual-ha-iframe

@@ -278,3 +278,7 @@ def self_test() -> None:
 if __name__ == "__main__":
     self_test()
     print("dual-surface commerce harness scaffold self-test passed")
+
+
+def test_dual_surface_commerce_harness_scaffold() -> None:
+    self_test()

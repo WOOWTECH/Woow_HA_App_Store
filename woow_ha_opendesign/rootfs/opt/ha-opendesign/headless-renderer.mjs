@@ -235,6 +235,35 @@ export function planCapture({ mode, count, index, stitch, paginate, documentHeig
   return { pages };
 }
 
+/**
+ * Screenshot options for one segment of a paginated page capture.
+ *
+ * `fullPage: true` is REQUIRED alongside `clip`, not an optimisation. Without
+ * it Playwright treats `clip` as VIEWPORT-relative, so every segment past the
+ * first (y >= the viewport height) lands outside the captured area and the
+ * whole export dies with "Clipped area is either empty or outside the
+ * resulting image". With it, `clip` is document-relative and each segment is
+ * captured where planCapture actually meant it.
+ *
+ * That one missing flag meant any page taller than the capture viewport could
+ * not be exported to PDF at all: a short page plans a single segment and
+ * worked, a tall page plans two or more and always failed. Anything
+ * article- or report-shaped is taller than the viewport, so in practice PDF
+ * export was broken for every long-form artifact.
+ */
+export function planPageScreenshot({ paginate, segment, viewportWidth, documentWidth }) {
+  if (!paginate) return { fullPage: true };
+  return {
+    fullPage: true,
+    clip: {
+      x: 0,
+      y: segment.y,
+      width: Math.min(viewportWidth, documentWidth),
+      height: segment.height,
+    },
+  };
+}
+
 function executablePath() {
   const candidates = [
     process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH,
@@ -752,11 +781,15 @@ async function capturePage(page, input, outputBudget) {
   for (let index = 0; index < plan.pages.length; index += 1) {
     const segment = plan.pages[index];
     const filepath = confinedOutputPath(input.outputDir, `page-${index}.${ext}`);
-    if (input.paginate) {
-      await page.screenshot({ ...screenshotOptions(filepath, input.pageImageFormat), clip: { x: 0, y: segment.y, width: Math.min(input.width, dimensions.width), height: segment.height } });
-    } else {
-      await page.screenshot({ ...screenshotOptions(filepath, input.pageImageFormat), fullPage: true });
-    }
+    await page.screenshot({
+      ...screenshotOptions(filepath, input.pageImageFormat),
+      ...planPageScreenshot({
+        paginate: input.paginate,
+        segment,
+        viewportWidth: input.width,
+        documentWidth: dimensions.width,
+      }),
+    });
     await recordOutputFile(filepath, outputBudget);
     files.push(filepath);
   }

@@ -1,5 +1,36 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- GitHub Actions PR gate: hadolint, shellcheck, yamllint, the Home Assistant
+  add-on linter, a CRLF check, the static test tier, and an amd64 image build
+  on every pull request. A pull request that bumps the version also builds
+  aarch64 before it can merge.
+- Release bookkeeping enforced by CI: the `config.yaml` version must head the
+  CHANGELOG, versions must descend, and both translation files must cover the
+  option schema exactly. An `## Unreleased` section is allowed only while the
+  version is unchanged.
+- LGPL-3.0 `LICENSE` file, matching the licence the README has always named.
+- Dependabot for GitHub Actions, weekly, grouped into one pull request.
+- The Home Assistant add-on linter runs on every pull request as advisory
+  output. It also asks for `webui` to go (Ingress is enabled) and for
+  `watchdog` to become a Docker `HEALTHCHECK`; both change runtime
+  behaviour and are deferred to the 0.4.0 Release, after which the linter
+  becomes blocking.
+
+### Changed
+- `config.yaml` no longer states `startup: application`, `boot: auto` and
+  `panel_admin: true`; these are Supervisor defaults and the linter rejects
+  restating them. Nothing changes for installed add-ons.
+- The static tests are pytest modules under `odoo18ce/tests/` with one
+  entrypoint, `pytest odoo18ce/tests`, replacing `test-dual-gateway.sh`.
+- The Settings E2E harness no longer defaults to a real deployment; the HA
+  and public URLs must be supplied through the environment.
+- Dockerfile: `pipefail` for the piped downloads, `--no-install-recommends`
+  on the PostgreSQL install, apt lists removed from the first layer, and the
+  unused `lsb-release` package dropped. No runtime behaviour changes.
+
 ## 0.3.39 — 2026-09-08
 
 ### Changed

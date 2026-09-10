@@ -121,3 +121,10 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+
+def test_settings_icon_rewrite_contracts() -> None:
+    from conftest import require_tool
+
+    require_tool("nginx")
+    main()

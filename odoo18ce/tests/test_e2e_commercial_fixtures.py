@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Self-tests for the offline commercial fixture ledger."""
 import json
+import os
 import stat
 import tempfile
 import unittest
@@ -83,7 +84,8 @@ class CommercialFixtureLedgerTest(unittest.TestCase):
             path = self.ledger.persist(directory, "../commercial-ledger")
             self.assertEqual(Path(directory), path.parent)
             self.assertEqual("commercial-ledger.json", path.name)
-            self.assertEqual(0o600, stat.S_IMODE(path.stat().st_mode))
+            if os.name == "posix":
+                self.assertEqual(0o600, stat.S_IMODE(path.stat().st_mode))
             text = path.read_text(encoding="utf-8")
             self.assertNotIn("should-not-persist", text)
             self.assertNotIn("state=value", text)

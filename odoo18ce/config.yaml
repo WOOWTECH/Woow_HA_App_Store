@@ -4,8 +4,6 @@ description: "Odoo 18 Community Edition + PostgreSQL 16 — bundled all-in-one a
 version: "0.3.39"
 slug: "odoo18ce"
 url: "https://github.com/WOOWTECH/Woow_ha_odoo"
-startup: application
-boot: auto
 init: false
 
 ingress: true
@@ -14,7 +12,6 @@ ingress_entry: odoo
 ingress_stream: true
 panel_icon: mdi:domain
 panel_title: Woow Odoo
-panel_admin: true
 watchdog: "http://[HOST]:[PORT:5691]/web/login"
 
 arch:

@@ -1,3 +1,4 @@
+---
 configuration:
   admin_passwd:
     name: 管理主密碼

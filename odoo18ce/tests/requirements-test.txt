@@ -1,0 +1,7 @@
+# Static tier. Install with: pip install -r odoo18ce/tests/requirements-test.txt
+# nginx, node and curl come from the OS package manager.
+pytest>=8,<9
+PyYAML>=6,<7
+# The Playwright Python package is imported by the Settings harness whose
+# self-tests run in the static tier. No browser download is needed for that.
+playwright>=1.45

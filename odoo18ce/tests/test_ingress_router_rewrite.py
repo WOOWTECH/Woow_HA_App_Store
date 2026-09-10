@@ -163,3 +163,10 @@ assert.deepEqual(odooxBrowser.history.pushed, []);
 
 if __name__ == "__main__":
     main()
+
+
+def test_ingress_router_rewrite_contracts() -> None:
+    from conftest import require_tool
+
+    require_tool("node")
+    main()

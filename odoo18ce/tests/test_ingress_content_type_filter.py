@@ -181,3 +181,11 @@ http {{
 
 if __name__ == "__main__":
     main()
+
+
+def test_ingress_content_type_filter_contracts() -> None:
+    from conftest import require_tool
+
+    require_tool("nginx")
+    require_tool("curl")
+    main()

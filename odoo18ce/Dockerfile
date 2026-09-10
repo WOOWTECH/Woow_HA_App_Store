@@ -1,16 +1,21 @@
 ARG BUILD_FROM
 FROM ${BUILD_FROM}
 
+# Every RUN below pipes curl into another tool; without pipefail a failed
+# download would be masked by the consumer exiting 0.
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
 # ──────────────────────────────────────────────
 # 1. Add PostgreSQL 16 APT repository
 # ──────────────────────────────────────────────
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
-        gnupg2 curl ca-certificates lsb-release \
+        gnupg2 curl ca-certificates \
     && echo "deb http://apt.postgresql.org/pub/repos/apt bookworm-pgdg main" \
         > /etc/apt/sources.list.d/pgdg.list \
     && curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
-        | gpg --dearmor -o /etc/apt/trusted.gpg.d/postgresql.gpg
+        | gpg --dearmor -o /etc/apt/trusted.gpg.d/postgresql.gpg \
+    && rm -rf /var/lib/apt/lists/*
 
 # ──────────────────────────────────────────────
 # 2. Install PostgreSQL 16 and pin the exact Odoo build already deployed.
@@ -20,7 +25,7 @@ RUN apt-get update \
 ARG ODOO_DEB_VERSION="18.0.20260806"
 ARG ODOO_DEB_SHA256="60def7fca9f7005be9575f70f17e7db4e4e43190b36d0f34832fb0248beb6ba5"
 RUN apt-get update \
-    && apt-get install -y \
+    && apt-get install -y --no-install-recommends \
         postgresql-16 \
         postgresql-client-16 \
     && curl -fsSL \

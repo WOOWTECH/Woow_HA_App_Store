@@ -18,8 +18,10 @@ from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from playwright.sync_api import sync_playwright
 
-HA_BASE = os.environ.get("HA_BASE_URL", "https://woowtech-ha.woowtech.io").rstrip("/")
-PUBLIC_BASE = os.environ.get("ODOO_PUBLIC_URL", "https://woowtech-odooo.woowtech.io").rstrip("/")
+# No defaults: a clone of this public repository must never point at a real
+# deployment unless the operator names it explicitly.
+HA_BASE = os.environ.get("HA_BASE_URL", "").rstrip("/")
+PUBLIC_BASE = os.environ.get("ODOO_PUBLIC_URL", "").rstrip("/")
 HA_USER = os.environ.get("HA_TEST_USER")
 HA_PASSWORD = os.environ.get("HA_TEST_PASSWORD")
 ODOO_LOGIN = os.environ.get("ODOO_TEST_LOGIN")
@@ -171,7 +173,7 @@ def login_ha_and_open_panel(page):
     # disappeared.  Wait for the actual sidebar item rather than assuming a
     # fixed delay means the dashboard is ready.
     for attempt in range(3):
-        page.goto(HA_BASE, wait_until="domcontentloaded", timeout=120000)
+        page.goto(require(HA_BASE, "HA_BASE_URL"), wait_until="domcontentloaded", timeout=120000)
         for _ in range(100):
             username = page.locator('input[name="username"]')
             if username.count() and username.is_visible() and username.is_enabled():
@@ -377,7 +379,8 @@ def run_public(browser):
     evidence = {"surface": "public", "started": dt.datetime.now(dt.timezone.utc).isoformat(), "http_failures": [], "request_failures": [], "console_errors": [], "page_errors": [], "frame_navigations": []}
     add_evidence(page, evidence)
     try:
-        page.goto(f"{PUBLIC_BASE}/web/login?redirect=/odoo/settings", wait_until="domcontentloaded", timeout=120000)
+        public_base = require(PUBLIC_BASE, "ODOO_PUBLIC_URL")
+        page.goto(f"{public_base}/web/login?redirect=/odoo/settings", wait_until="domcontentloaded", timeout=120000)
         if page.locator('input[name="login"]').count():
             page.locator('input[name="login"]').fill(ODOO_LOGIN)
             page.locator('input[name="password"]').fill(ODOO_PASSWORD)

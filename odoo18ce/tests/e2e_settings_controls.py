@@ -173,6 +173,21 @@ def unique_matching_control(controls, item):
 
 
 def assert_self_tests():
+    """Run the policy self-tests against fixed example origins.
+
+    The retry and classification policies compare frame and link URLs with
+    the configured HA and public origins. The self-tests must not depend on
+    the environment, so they pin example origins for their duration.
+    """
+    saved = (shared.HA_BASE, shared.PUBLIC_BASE)
+    shared.HA_BASE, shared.PUBLIC_BASE = "https://ha.example", "https://odoo.example"
+    try:
+        _run_self_tests()
+    finally:
+        shared.HA_BASE, shared.PUBLIC_BASE = saved
+
+
+def _run_self_tests():
     shared.assert_sanitizer_contract()
     cases = [
         ({"name": "Manage Users", "odoo_type": "action"}, "action"),
@@ -802,6 +817,10 @@ def main():
     if args.self_test:
         print("Settings controls self-tests passed")
         return
+    if args.surface in {"ingress", "both"}:
+        shared.require(shared.HA_BASE, "HA_BASE_URL")
+    if args.surface in {"public", "both"}:
+        shared.require(shared.PUBLIC_BASE, "ODOO_PUBLIC_URL")
     reports = {}
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(headless=True)

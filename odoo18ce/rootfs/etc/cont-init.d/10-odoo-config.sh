@@ -43,8 +43,7 @@ TIME_REAL=$(bashio::config 'limit_time_real')
 TIME_REAL="${TIME_REAL:-120}"
 
 # Network: Odoo is bound to localhost and only the bundled nginx gateways
-# can reach it, so forwarded headers are always safe to trust.
-PROXY_MODE="true"
+# can reach it, so proxy_mode is always True in the rendered config below.
 
 # Database
 LIST_DB=$(bashio::config 'list_db')
@@ -65,7 +64,6 @@ LOG_LEVEL=$(bashio::config 'log_level')
 LOG_LEVEL="${LOG_LEVEL:-info}"
 
 # Map boolean to Odoo config values
-if bashio::var.true "${PROXY_MODE}"; then PROXY_MODE_VAL="True"; else PROXY_MODE_VAL="False"; fi
 if bashio::var.true "${LIST_DB}"; then LIST_DB_VAL="True"; else LIST_DB_VAL="False"; fi
 if bashio::var.true "${WITHOUT_DEMO}"; then WITHOUT_DEMO_VAL="all"; else WITHOUT_DEMO_VAL="False"; fi
 

@@ -15,6 +15,7 @@ import {
   injectBaseHref,
   isLoopbackHttpUrl,
   planCapture,
+  planPageScreenshot,
   RENDER_LIMITS,
   routeRendererRequest,
   runWithAbsoluteDeadline,
@@ -275,6 +276,29 @@ test('absolute deadline aborts work even when it remains active', async () => {
 
 test('capture planning covers one slide, all slides, stitching and pagination', () => {
   assert.deepEqual(planCapture({ mode: 'deck', count: 3 }), { indices: [0, 1, 2], stitch: false });
+test('a paginated page segment is clipped against the DOCUMENT, not the viewport', () => {
+  // Regression. planCapture happily plans segments at y = 1000, 2000, ... but
+  // page.screenshot({ clip }) WITHOUT fullPage measures clip against the
+  // viewport, so every segment after the first was outside the captured area
+  // and Playwright answered "Clipped area is either empty or outside the
+  // resulting image". A short page plans one segment and worked; anything
+  // article- or report-shaped plans two or more and could not be exported to
+  // PDF at all.
+  const plan = planCapture({ mode: 'page', paginate: true, documentHeight: 2200, viewportHeight: 1000 });
+  for (const segment of plan.pages) {
+    const options = planPageScreenshot({
+      paginate: true, segment, viewportWidth: 1440, documentWidth: 1200,
+    });
+    assert.equal(options.fullPage, true, `segment at y=${segment.y} must capture full-page`);
+    assert.equal(options.clip.y, segment.y);
+    assert.equal(options.clip.height, segment.height);
+    // The clip never widens past the document, so a narrow page is not padded.
+    assert.equal(options.clip.width, 1200);
+  }
+  // A page that fits the viewport is captured whole, with no clip at all.
+  assert.deepEqual(planPageScreenshot({ paginate: false, segment: { y: 0, height: 800 }, viewportWidth: 1440, documentWidth: 1200 }), { fullPage: true });
+});
+
   assert.deepEqual(planCapture({ mode: 'deck', count: 3, index: 1, stitch: true }), { indices: [1], stitch: true });
   assert.equal(planCapture({ mode: 'deck', count: 2, index: 2 }).errorCode, 'SLIDE_INDEX_OUT_OF_RANGE');
   assert.deepEqual(
