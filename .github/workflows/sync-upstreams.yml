@@ -106,8 +106,11 @@ jobs:
             [ -z "${slug:-}" ] && continue
             ref="${ref:-main}"
             if [ "${ref}" = "release" ]; then
-              tag="$(gh api "repos/WOOWTECH/${repo}/releases/latest" --jq '.tag_name' 2>/dev/null || true)"
-              if [ -n "${tag}" ]; then
+              # On a 404 `gh api` prints the JSON error body to stdout and
+              # exits 1, so the exit status has to be checked and the tag
+              # validated before it is handed to git as a branch name.
+              if tag="$(gh api "repos/WOOWTECH/${repo}/releases/latest" --jq '.tag_name' 2>/dev/null)" \
+                && [ -n "${tag}" ] && [ "${tag}" != "null" ] && [[ "${tag}" =~ ^[A-Za-z0-9._-]+$ ]]; then
                 ref="${tag}"
               else
                 echo "::warning::${slug}: ${repo} has no GitHub Release yet; syncing main until the first Release"
