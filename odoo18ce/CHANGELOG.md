@@ -13,6 +13,14 @@
   version is unchanged.
 - LGPL-3.0 `LICENSE` file, matching the licence the README has always named.
 - Dependabot for GitHub Actions, weekly, grouped into one pull request.
+- Release workflow: a version bump merged to `main` now builds and pushes
+  `ghcr.io/woowtech/woow-ha-odoo-{amd64,aarch64}:<version>` (version tag
+  only, never overwritten), creates the `v<version>` tag and a GitHub
+  Release from this file's section, and asks the App Store to sync at once.
+  Supervisor keeps building on-device until `image:` is added to
+  `config.yaml` in a later Release.
+- Image labels (`io.hass.*`, `org.opencontainers.image.*`) filled in by the
+  publish workflow.
 - The Home Assistant add-on linter runs on every pull request as advisory
   output. It also asks for `webui` to go (Ingress is enabled) and for
   `watchdog` to become a Docker `HEALTHCHECK`; both change runtime

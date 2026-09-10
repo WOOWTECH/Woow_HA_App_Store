@@ -69,3 +69,30 @@ RUN chmod a+rx /etc/cont-init.d/*.sh \
     && chmod a+rx /usr/local/bin/odoo-jsonrpc-filter
 
 EXPOSE 8069 5691 8072
+
+# ──────────────────────────────────────────────
+# 7. Image labels. The publish workflow fills these in; a local or CI
+#    build leaves them empty, which is harmless.
+# ──────────────────────────────────────────────
+ARG BUILD_ARCH
+ARG BUILD_DATE
+ARG BUILD_DESCRIPTION
+ARG BUILD_NAME
+ARG BUILD_REF
+ARG BUILD_REPOSITORY
+ARG BUILD_VERSION
+LABEL \
+    io.hass.name="${BUILD_NAME}" \
+    io.hass.description="${BUILD_DESCRIPTION}" \
+    io.hass.arch="${BUILD_ARCH}" \
+    io.hass.type="addon" \
+    io.hass.version="${BUILD_VERSION}" \
+    org.opencontainers.image.title="${BUILD_NAME}" \
+    org.opencontainers.image.description="${BUILD_DESCRIPTION}" \
+    org.opencontainers.image.vendor="WoowTech" \
+    org.opencontainers.image.licenses="LGPL-3.0-only" \
+    org.opencontainers.image.source="https://github.com/${BUILD_REPOSITORY}" \
+    org.opencontainers.image.documentation="https://github.com/${BUILD_REPOSITORY}/blob/main/odoo18ce/DOCS.md" \
+    org.opencontainers.image.created="${BUILD_DATE}" \
+    org.opencontainers.image.revision="${BUILD_REF}" \
+    org.opencontainers.image.version="${BUILD_VERSION}"
