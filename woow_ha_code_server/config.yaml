@@ -1,0 +1,82 @@
+name: Woow Code Server
+version: "0.1.5"
+slug: woow_ha_code_server
+description: code-server 4.135.0 with the pi coding agent (0.83.0), pi-acp and the ACP Client chat sidebar baked in — WOOWTECH build layered on the Home Assistant Community vscode add-on
+url: https://github.com/WOOWTECH/Woow_ha_code_server_add_on
+arch:
+  - amd64
+  - aarch64
+init: false
+startup: services
+boot: auto
+uart: true
+hassio_api: true
+hassio_role: manager
+homeassistant_api: true
+ingress: true
+ingress_port: 1337
+ingress_stream: true
+panel_icon: mdi:microsoft-visual-studio-code
+panel_title: Code Server
+panel_admin: true
+watchdog: "http://[HOST]:[PORT:1337]/healthz"
+map:
+  - type: addons
+    read_only: false
+  - type: all_addon_configs
+    read_only: false
+  - type: backup
+    read_only: false
+  - type: homeassistant_config
+    read_only: false
+    path: /config
+  - type: media
+    read_only: false
+  - type: share
+    read_only: false
+  - type: ssl
+    read_only: false
+services:
+  - mysql:want
+  - mqtt:want
+backup: cold
+backup_exclude:
+  - "**/vscode/logs/**"
+  - "**/vscode/CachedProfilesData/**"
+  - "**/pi-agent/models-store.json"
+  - "**/pi-agent/home/**/node_modules/**"
+  - "**/pi-agent/sessions/*.jsonl.tmp"
+ports:
+  1338/tcp: null
+ports_description:
+  1338/tcp: >-
+    Direct (non-ingress) access front. Leave unmapped. Only map this if the
+    ACP chat sidebar does not render under HA ingress — and only together
+    with direct_password, which gates it with HTTP Basic auth.
+options:
+  log_level: info
+  config_path: /share/projects
+  packages: []
+  init_commands: []
+  timezone: ""
+  pi_default_provider: ""
+  pi_default_model: ""
+  direct_password: ""
+  reset_pi_state: false
+  env_vars: []
+schema:
+  log_level: list(trace|debug|info|notice|warning|error|fatal)?
+  config_path: str?
+  packages:
+    - str
+  init_commands:
+    - str
+  timezone: str?
+  pi_default_provider: str?
+  pi_default_model: str?
+  direct_password: password?
+  reset_pi_state: bool
+  env_vars:
+    - name: str
+      value: str
+image: ghcr.io/woowtech/woow-ha-code-server-{arch}

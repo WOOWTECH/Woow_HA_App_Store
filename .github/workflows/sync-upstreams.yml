@@ -14,6 +14,14 @@ name: Sync upstream addons
 # music_assistant joined on 2026-09-09 — their mirror repos had been syncing
 # upstream nightly for weeks while the store copies sat two releases behind.
 #
+# 2026-09-11: `vscode` (the defensive mirror of hassio-addons/app-vscode) was
+# removed from the store and its mapping dropped. It is replaced by
+# `woow_ha_code_server`, WOOWTECH's own add-on, which is a different add-on
+# rather than a newer version of the same one — different slug, different
+# options schema, its own image. Anyone still running the old `vscode` keeps
+# it, but it is no longer offered here. The Woow_ha_vscode_add_on mirror repo
+# is untouched and simply stops feeding the store.
+#
 # Still unmapped, deliberately:
 #   knxd           — no WOOWTECH mirror repo; pinned by hand against da-anda.
 #   woow-tailscale — the STORE is authoritative (0.1.1 vs the source repo's
@@ -83,7 +91,6 @@ jobs:
             music_assistant|Woow_ha_music_assistant_add_on|music_assistant
             n8n|Woow_ha_n8n|n8n
             omnigent|Woow_ha_omnigent_addon|omnigent
-            vscode|Woow_ha_vscode_add_on|vscode
             nextcloud|Woow_ha_nextcloud|nextcloud
             odoo18ce|Woow_ha_odoo|odoo18ce|release
             woow-immich|Woow_ha_immich|woow-immich
@@ -93,6 +100,7 @@ jobs:
             woow_ha_core_3|woowtech_ha_multi_ha_core|woow_ha_core_3
             woow_ha_core_4|woowtech_ha_multi_ha_core|woow_ha_core_4
             woow_ha_core_5|woowtech_ha_multi_ha_core|woow_ha_core_5
+            woow_ha_code_server|Woow_ha_code_server_add_on|.
             woow_ha_pi_agent|Woow_ha_pi_agent_add_on|.
             woow_ha_opendesign|Woow_ha_opendesign_add_on|.
         run: |

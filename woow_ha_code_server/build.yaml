@@ -1,0 +1,10 @@
+build_from:
+  amd64: ghcr.io/hassio-addons/vscode/amd64:7.0.0
+  aarch64: ghcr.io/hassio-addons/vscode/aarch64:7.0.0
+labels:
+  org.opencontainers.image.title: Woow Code Server
+  org.opencontainers.image.description: code-server + pi coding agent + ACP chat sidebar, packaged as a HA add-on
+  org.opencontainers.image.vendor: WOOWTECH
+  org.opencontainers.image.authors: WOOWTECH <woowtech@designsmart.com.tw>
+  org.opencontainers.image.source: https://github.com/WOOWTECH/Woow_ha_code_server_add_on
+  org.opencontainers.image.licenses: MIT

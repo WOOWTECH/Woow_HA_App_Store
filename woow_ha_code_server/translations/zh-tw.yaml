@@ -1,0 +1,60 @@
+configuration:
+  log_level:
+    name: 日誌等級
+    description: >-
+      控制 bashio（init-woow 開機階段）與 code-server 自身輸出的詳細程度。
+      排查 pi 狀態初始化或 settings.json 合併問題時用 `debug`；
+      想安靜一點用 `warning`。
+  config_path:
+    name: 工作目錄
+    description: >-
+      code-server 開機時開啟的資料夾，必須是掛載進來的路徑之一
+      （例如 /share 或 /config 底下）。預設 `/share/projects`。
+  packages:
+    name: 額外 apt 套件
+    description: >-
+      沿用上游 Studio Code Server 的選項，保留作為逃生口；
+      本 add-on 自己的 pi/ACP 接線不依賴這個。
+  init_commands:
+    name: 額外初始化指令
+    description: >-
+      沿用上游 Studio Code Server 的選項，保留作為逃生口；
+      本 add-on 自己的 pi/ACP 接線不依賴這個。
+  timezone:
+    name: 時區
+    description: >-
+      IANA 時區名稱（例如 `Asia/Taipei`、`America/New_York`）。空白 = 沿用
+      base image 預設。只影響 add-on 日誌的時間戳記。
+  pi_default_provider:
+    name: pi 預設 provider
+    description: >-
+      只在這個部署的 pi 還沒有 settings.json（也就是還沒 `pi login` 過）
+      時套用。pi 登入後會自己改寫 settings，所以這只是首次啟動的預設值，
+      不是永久覆蓋。例：`openai-codex`。
+  pi_default_model:
+    name: pi 預設模型
+    description: >-
+      跟 pi_default_provider 搭配使用——只在全新的 pi 儲存狀態上套用的
+      預設模型 id。例：`gpt-5.6-sol`。
+  direct_password:
+    name: 直連密碼（F2 備援）
+    description: >-
+      進階／備援用途，預設留空即可。只有在你的環境下 ACP 聊天側欄在
+      Home Assistant ingress 底下打不開時才需要設定（見 DOCS.md）。設定後
+      會另外開一個不經過 ingress、用 HTTP Basic 驗證保護的 1338 埠。還要
+      在「網路」區塊把 1338 對外開放才連得到。務必同時設一組夠強的密碼——
+      底層的 code-server 本身是關掉驗證的（平常只靠 HA ingress 那一關）。
+  reset_pi_state:
+    name: 重置 pi 狀態（一次性）
+    description: >-
+      開啟並重啟 add-on 會清空 /data/pi-agent（登入、sessions、skills、
+      模型設定）並重新初始化。執行完會自動把選項改回 false，不用手動關。
+  env_vars:
+    name: 額外環境變數
+    description: >-
+      進階逃生口。每一筆會變成一個 KEY=VALUE，code-server 本身、它的
+      extension host、以及每一個內建終端機都看得到。名稱必須符合
+      `[A-Za-z_][A-Za-z0-9_]*`——不合法的名稱會被跳過並顯示警告，
+      不會讓開機失敗。
+network:
+  1338/tcp: 直連存取（F2 備援）

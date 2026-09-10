@@ -1,0 +1,65 @@
+configuration:
+  log_level:
+    name: Log level
+    description: >-
+      Controls verbosity for bashio (init-woow startup) and code-server's own
+      log output. Use `debug` when troubleshooting the pi state seeding or
+      settings.json merge; `warning` to silence chatty info messages.
+  config_path:
+    name: Workspace directory
+    description: >-
+      The folder code-server opens on startup — must already be reachable
+      through one of the mapped shares (e.g. under /share or /config).
+      Default `/share/projects`.
+  packages:
+    name: Extra apt packages
+    description: >-
+      Inherited from the upstream Studio Code Server add-on. Kept as an
+      escape hatch; nothing in this add-on's own pi/ACP wiring depends on it.
+  init_commands:
+    name: Extra init commands
+    description: >-
+      Inherited from the upstream Studio Code Server add-on. Kept as an
+      escape hatch; nothing in this add-on's own pi/ACP wiring depends on it.
+  timezone:
+    name: Timezone
+    description: >-
+      IANA timezone (e.g. `Asia/Taipei`, `America/New_York`). Empty = base
+      image default. Affects add-on log timestamps.
+  pi_default_provider:
+    name: pi default provider
+    description: >-
+      Applied only when this deployment's pi has no settings.json yet (i.e.
+      before the first `pi login`). pi rewrites its own settings after
+      login, so this is a first-run default, not a persistent override.
+      Example: `openai-codex`.
+  pi_default_model:
+    name: pi default model
+    description: >-
+      Paired with pi_default_provider — the default model id, applied only
+      on a fresh pi state store. Example: `gpt-5.6-sol`.
+  direct_password:
+    name: Direct access password (F2 fallback)
+    description: >-
+      Advanced / fallback only. Leave empty unless the ACP chat sidebar does
+      not render under Home Assistant ingress on your setup (see DOCS.md).
+      Setting this starts a second, non-ingress front on port 1338 gated by
+      HTTP Basic auth. You must also map port 1338 in the Network section
+      for it to be reachable. Never enable without also setting a strong
+      password here — the underlying code-server runs with authentication
+      disabled (HA ingress is normally the only gate).
+  reset_pi_state:
+    name: Reset pi state (one-shot)
+    description: >-
+      Enable and restart the add-on to wipe /data/pi-agent (login, sessions,
+      skills, model config) and reseed it fresh. Auto-toggles OFF after
+      execution — you do NOT need to disable it manually.
+  env_vars:
+    name: Extra environment variables
+    description: >-
+      Advanced escape hatch. Each entry becomes a KEY=VALUE export visible
+      to code-server, its extension host, and every integrated terminal.
+      Names must match `[A-Za-z_][A-Za-z0-9_]*` — invalid names are skipped
+      with a warning rather than crashing startup.
+network:
+  1338/tcp: Direct access (F2 fallback)

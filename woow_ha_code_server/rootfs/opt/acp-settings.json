@@ -1,0 +1,14 @@
+{
+    "acp.agents": {
+        "pi": {
+            "command": "pi-code",
+            "args": [],
+            "env": {}
+        }
+    },
+    "security.workspace.trust.enabled": false,
+    "security.workspace.trust.startupPrompt": "never",
+    "security.workspace.trust.banner": "never",
+    "security.workspace.trust.emptyWindow": false,
+    "extensions.autoUpdate": "off"
+}

@@ -1,0 +1,166 @@
+#!/command/with-contenv bashio
+# ------------------------------------------------------------------------------
+# init-woow — WOOWTECH bootstrap for the upstream Studio Code Server add-on.
+#
+# Runs as a s6-rc oneshot BEFORE init-code-server (see
+# s6-rc.d/init-code-server/dependencies.d/init-woow), because step 4 below
+# must create the configured workspace directory before init-code-server's
+# own bashio::exit.nok guard checks it exists.
+#
+# Everything here is additive to upstream: no upstream file is edited, only
+# read (config_path) or appended to (settings.json via jq merge, PI_* env via
+# /run/s6/container_environment).
+# ------------------------------------------------------------------------------
+set -e
+exec 2>&1
+
+DATA=/data/pi-agent
+
+# --- 1. Log level / timezone / env_vars -----------------------------------
+# Same idioms as Woow_ha_pi_agent_add_on's pi-web/run: bashio::log.level for
+# this script's own verbosity, TZ symlink + export for Node, and the
+# validated KEY=VALUE escape hatch.
+LOG_LEVEL="$(bashio::config 'log_level' 'info')"
+bashio::log.level "${LOG_LEVEL}"
+
+if bashio::config.has_value 'timezone'; then
+    TZ_VALUE="$(bashio::config 'timezone')"
+    if [ -f "/usr/share/zoneinfo/${TZ_VALUE}" ]; then
+        ln -sf "/usr/share/zoneinfo/${TZ_VALUE}" /etc/localtime
+        echo "${TZ_VALUE}" > /etc/timezone
+        bashio::log.info "init-woow: timezone set to ${TZ_VALUE}"
+    else
+        bashio::log.warning "init-woow: timezone '${TZ_VALUE}' not found in /usr/share/zoneinfo — leaving default"
+    fi
+fi
+
+if bashio::config.has_value 'env_vars'; then
+    ENV_VARS_COUNT="$(bashio::config 'env_vars | length')"
+    for i in $(seq 0 $((ENV_VARS_COUNT - 1))); do
+        ev_name="$(bashio::config "env_vars[${i}].name")"
+        ev_value="$(bashio::config "env_vars[${i}].value")"
+        if [[ ! "${ev_name}" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
+            bashio::log.warning "init-woow: env_vars[${i}]: skipping invalid name '${ev_name}' (must match [A-Za-z_][A-Za-z0-9_]*)"
+            continue
+        fi
+        printf '%s' "${ev_value}" > "/run/s6/container_environment/${ev_name}"
+        bashio::log.info "init-woow: env_vars: exported ${ev_name}"
+    done
+fi
+
+# --- 2. Sidebar panel -------------------------------------------------------
+# Every user who installs this add-on wants the sidebar entry; the ingress
+# token handshake works the same whether or not the panel is shown, so this
+# is a pure convenience with no downside. No-op once already enabled.
+if [ -n "${SUPERVISOR_TOKEN:-}" ]; then
+    if curl -sSL --max-time 5 -o /dev/null -w '%{http_code}' \
+        -X POST \
+        -H "Authorization: Bearer ${SUPERVISOR_TOKEN}" \
+        -H "Content-Type: application/json" \
+        -d '{"ingress_panel": true}' \
+        http://supervisor/addons/self/options 2>/dev/null | grep -q '^200$'; then
+        bashio::log.info "init-woow: sidebar panel enabled via Supervisor API"
+    else
+        bashio::log.warning "init-woow: could not auto-enable sidebar — toggle 'Show in sidebar' manually if it's missing"
+    fi
+else
+    bashio::log.warning "init-woow: no SUPERVISOR_TOKEN — skipping sidebar auto-enable (expected outside HA, e.g. a local test run)"
+fi
+
+# --- 3. reset_pi_state (one-shot maintenance) -------------------------------
+if bashio::config.true 'reset_pi_state'; then
+    bashio::log.warning "init-woow: reset_pi_state=true — wiping ${DATA}"
+    rm -rf "${DATA}"
+    if [ -n "${SUPERVISOR_TOKEN:-}" ]; then
+        curl -sSL --max-time 5 -o /dev/null \
+            -X POST \
+            -H "Authorization: Bearer ${SUPERVISOR_TOKEN}" \
+            -H "Content-Type: application/json" \
+            -d '{"options": {"reset_pi_state": false}}' \
+            http://supervisor/addons/self/options 2>/dev/null \
+        && bashio::log.info "init-woow: reset_pi_state auto-reverted to false" \
+        || bashio::log.warning "init-woow: could not auto-revert reset_pi_state — turn it OFF manually to avoid re-wiping next boot"
+    fi
+fi
+
+# --- 4. Workspace dir --------------------------------------------------------
+# Must happen before init-code-server, which bashio::exit.nok's if the
+# configured path does not exist yet. This is the reason for the
+# dependencies.d edge on this oneshot.
+CONFIG_PATH="$(bashio::config 'config_path' '/share/projects')"
+mkdir -p "${CONFIG_PATH}"
+bashio::log.info "init-woow: workspace directory ${CONFIG_PATH} ready"
+
+# F1 fallback: a one-keystroke way to reach terminal pi regardless of the
+# ACP webview's status. Seeded only if the workspace has no tasks.json yet,
+# so a user's own tasks are never overwritten.
+if [ ! -f "${CONFIG_PATH}/.vscode/tasks.json" ]; then
+    mkdir -p "${CONFIG_PATH}/.vscode"
+    cat > "${CONFIG_PATH}/.vscode/tasks.json" <<'TASKSEOF'
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "pi",
+            "type": "shell",
+            "command": "pi",
+            "options": { "cwd": "${workspaceFolder}" },
+            "presentation": { "panel": "dedicated" },
+            "problemMatcher": []
+        }
+    ]
+}
+TASKSEOF
+    bashio::log.info "init-woow: seeded ${CONFIG_PATH}/.vscode/tasks.json with the pi task (F1 fallback)"
+fi
+
+# --- 5. pi-seed --------------------------------------------------------------
+PI_DEFAULT_PROVIDER="$(bashio::config 'pi_default_provider' '')" \
+PI_DEFAULT_MODEL="$(bashio::config 'pi_default_model' '')" \
+PI_AGENT_DATA_DIR="${DATA}" \
+    /usr/local/bin/pi-seed
+chmod 700 "${DATA}"
+bashio::log.info "init-woow: pi state store seeded at ${DATA}"
+
+# --- 6. ~/.pi link -----------------------------------------------------------
+# Same HOME-relative vs env-relative bridge Woow_ha_pi_agent_add_on's
+# pi-web/run documents: the `skills` CLI writes to $HOME/.pi/agent/skills,
+# pi-code's HOME-scoped subprocess reads $PI_CODING_AGENT_DIR/skills.
+mkdir -p "${DATA}/home/.pi/agent"
+ln -sfn "${DATA}/skills" "${DATA}/home/.pi/agent/skills"
+ln -sfn "${DATA}/home/.pi" /root/.pi
+
+# --- 7. settings.json --------------------------------------------------------
+# Baking a new default into /root/.code-server/settings.json would NOT reach
+# an existing install: upstream's init-code-server only re-copies the
+# default when the live file's sha512 matches one of 14
+# PREVIOUS_DEFAULT_CONFIG_HASHES. An idempotent jq merge is unconditional,
+# preserves unrelated user edits, and survives an upstream base bump.
+VSCODE_SETTINGS_DIR=/data/vscode/User
+VSCODE_SETTINGS="${VSCODE_SETTINGS_DIR}/settings.json"
+mkdir -p "${VSCODE_SETTINGS_DIR}"
+if [ ! -f "${VSCODE_SETTINGS}" ]; then
+    if [ -f /root/.code-server/settings.json ]; then
+        cp /root/.code-server/settings.json "${VSCODE_SETTINGS}"
+    else
+        echo '{}' > "${VSCODE_SETTINGS}"
+    fi
+fi
+TMP_SETTINGS="$(mktemp)"
+jq -S --slurpfile acp /opt/acp-settings.json '. * $acp[0]' "${VSCODE_SETTINGS}" > "${TMP_SETTINGS}" \
+    && mv "${TMP_SETTINGS}" "${VSCODE_SETTINGS}"
+bashio::log.info "init-woow: settings.json merged with the required ACP + workspace-trust keys"
+
+# --- 8. PI_* env for every consumer ------------------------------------------
+# s6-overlay v3 mechanism for publishing env to later with-contenv services.
+# Upstream's code-server/run is #!/command/with-contenv bashio, so exec
+# code-server inherits these — and therefore so does the extension host and
+# every integrated terminal, regardless of shell. Fixes the drift the live
+# 0.74.2 install has today, where only a separate pi-ha wrapper had the env
+# and plain `pi` in the terminal re-prompted for login.
+printf '%s' "${DATA}"        > /run/s6/container_environment/PI_AGENT_DATA_DIR
+printf '%s' "${DATA}"        > /run/s6/container_environment/PI_CODING_AGENT_DIR
+printf '%s' "0"              > /run/s6/container_environment/PI_TELEMETRY
+printf '%s' "1"              > /run/s6/container_environment/PI_SKIP_VERSION_CHECK
+
+bashio::log.info "init-woow: done"

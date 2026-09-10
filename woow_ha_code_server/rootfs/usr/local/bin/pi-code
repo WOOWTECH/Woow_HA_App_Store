@@ -1,0 +1,54 @@
+#!/bin/sh
+# pi-code — the wrapper the ACP Client extension invokes as the pi adapter.
+#
+# It exists because the ACP flow is:
+#     VS Code extension  ─→ pi-code  ─→ pi-acp  ─→ pi --mode rpc
+#
+# and only this wrapper has permission to reshape HOME before pi (via
+# pi-acp) gets called. If the extension invoked pi-acp directly, pi's state
+# would land under the login user's HOME — which is NOT on the persistent
+# volume on any of the three deployments, so provider auth and session
+# history would reset on every container recreate. Moving HOME here (and
+# NOT in code-server's own environment) is what keeps the IDE side
+# unaffected while giving pi subprocesses the persistent state directory.
+#
+# This file is byte-identical across the podman package, the k3s chart and
+# the HA add-on, and hash-pinned in rootfs/opt/SHA256SUMS. Keep every
+# comment here true on all three — the login user is `coder` on podman/k3s
+# and `root` on HA, so do not name it. See PARITY_CONTRACT.md §2.4.
+set -eu
+
+: "${PI_AGENT_DATA_DIR:=/data/pi-agent}"
+
+if [ ! -d "${PI_AGENT_DATA_DIR}" ]; then
+    echo "pi-code: ${PI_AGENT_DATA_DIR} is not mounted." >&2
+    echo "pi-code: mount the pi state volume (or an equivalent bind mount)" >&2
+    echo "pi-code: at that path — see README.md."                           >&2
+    exit 78
+fi
+
+# Capture the LOGIN home before we overwrite HOME, so git identity survives
+# the switch. Without this, the ACP panel's pi and the terminal's pi
+# disagree about who is committing: git resolves ~/.gitconfig relative to
+# HOME, so re-pointing HOME at the state volume hides the identity the user
+# (or the host, via a mount) configured for the login account. GIT_CONFIG_GLOBAL
+# names the global config file explicitly, which is exactly the escape hatch
+# for a process whose HOME is not the user's home. System config
+# (/etc/gitconfig) is unaffected and still read.
+_pi_login_home="${HOME:-}"
+
+export HOME="${PI_AGENT_DATA_DIR}/home"
+export PI_CODING_AGENT_DIR="${PI_AGENT_DATA_DIR}"
+export PI_TELEMETRY="${PI_TELEMETRY:-0}"
+export PI_SKIP_VERSION_CHECK="${PI_SKIP_VERSION_CHECK:-1}"
+
+if [ -z "${GIT_CONFIG_GLOBAL:-}" ] \
+   && [ -n "${_pi_login_home}" ] \
+   && [ -f "${_pi_login_home}/.gitconfig" ]; then
+    export GIT_CONFIG_GLOBAL="${_pi_login_home}/.gitconfig"
+fi
+unset _pi_login_home
+
+# pi-acp finds pi via PATH. That's the launcher npm installed into the
+# default prefix's bin dir — nothing else on PATH is called `pi`.
+exec pi-acp "$@"

@@ -1,0 +1,42 @@
+#!/bin/sh
+# pi-seed — idempotently materialise the pi state store at PI_AGENT_DATA_DIR.
+#
+# Shared byte-for-byte across all three WOOWTECH code-server deployments
+# (podman, HA add-on, k3s chart) — see PARITY_CONTRACT.md. On podman it
+# runs implicitly at build time (a named volume is seeded from image
+# content on first mount); the HA add-on runs it from an s6 oneshot and
+# the k3s chart runs it from an initContainer, both at every start, which
+# is why every step below must be safe to repeat and must never overwrite
+# state a real pi login has already written.
+set -eu
+
+: "${PI_AGENT_DATA_DIR:=/data/pi-agent}"
+
+mkdir -p "${PI_AGENT_DATA_DIR}"
+cp -an /opt/pi-agent-skel/. "${PI_AGENT_DATA_DIR}/" 2>/dev/null || true
+mkdir -p "${PI_AGENT_DATA_DIR}/home/.pi/agent"
+ln -sfn "${PI_AGENT_DATA_DIR}/skills" "${PI_AGENT_DATA_DIR}/home/.pi/agent/skills"
+# Best-effort: chmod on a directory requires OWNING it, not just having
+# write access to its contents. On podman the named volume is created by
+# (and therefore owned by) this same uid, so this succeeds. On k3s a
+# fresh PVC's mount root is typically owned by root even after fsGroup
+# grants this process group-write access — chmod then fails EPERM even
+# though every file operation above it succeeds, which used to crash-loop
+# the initContainer forever (`set -eu`) over a permission bit that
+# fsGroup + a pod-private PVC already made moot. Never fatal.
+chmod 700 "${PI_AGENT_DATA_DIR}" 2>/dev/null || true
+
+# Seed the model choice only on a store that has none. pi rewrites this
+# file itself once the user logs in, so we must not fight it.
+if [ ! -f "${PI_AGENT_DATA_DIR}/settings.json" ] && [ -n "${PI_DEFAULT_MODEL:-}" ]; then
+    printf '{"defaultProvider":"%s","defaultModel":"%s"}\n' \
+        "${PI_DEFAULT_PROVIDER:-openai-codex}" "${PI_DEFAULT_MODEL}" \
+        > "${PI_AGENT_DATA_DIR}/settings.json"
+    chmod 600 "${PI_AGENT_DATA_DIR}/settings.json"
+fi
+
+# Optional API-key providers (none in use today; models.json is {"providers":{}}).
+if [ -n "${PI_PROVIDER_KEYS_JSON:-}" ] && [ ! -f "${PI_AGENT_DATA_DIR}/models.json" ]; then
+    printf '%s\n' "${PI_PROVIDER_KEYS_JSON}" > "${PI_AGENT_DATA_DIR}/models.json"
+    chmod 600 "${PI_AGENT_DATA_DIR}/models.json"
+fi
