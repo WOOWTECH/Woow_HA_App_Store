@@ -22,8 +22,8 @@ RUN apt-get update \
 #    Ingress changes must not silently upgrade a nightly Odoo package and
 #    trigger an unrelated database migration.
 # ──────────────────────────────────────────────
-ARG ODOO_DEB_VERSION="18.0.20260806"
-ARG ODOO_DEB_SHA256="60def7fca9f7005be9575f70f17e7db4e4e43190b36d0f34832fb0248beb6ba5"
+ARG ODOO_DEB_VERSION="18.0.20260914"
+ARG ODOO_DEB_SHA256="378a53702f9971722260d1182bfb7dd650e9c3b859f92b1c0d520a222e1bc3dd"
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         postgresql-16 \
@@ -75,7 +75,7 @@ EXPOSE 8069 5691 8072
 # tier, so this exercises nginx and Odoo together. The start period covers
 # first-boot database creation and a module update after an upgrade.
 HEALTHCHECK --interval=60s --timeout=10s --start-period=600s --retries=3 \
-    CMD curl -fsS --max-time 8 http://127.0.0.1:8069/web/login >/dev/null || exit 1
+    CMD ["curl", "-fsS", "--max-time", "8", "-o", "/dev/null", "http://127.0.0.1:8069/web/login"]
 
 # ──────────────────────────────────────────────
 # 7. Image labels. The publish workflow fills these in; a local or CI

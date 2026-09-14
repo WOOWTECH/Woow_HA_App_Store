@@ -1,7 +1,7 @@
 ---
 name: "Woow Odoo 18"
 description: "Odoo 18 Community Edition + PostgreSQL 16 — bundled all-in-one add-on for SME"
-version: "0.4.0"
+version: "0.4.1"
 slug: "odoo18ce"
 url: "https://github.com/WOOWTECH/Woow_ha_odoo"
 # Prebuilt by .github/workflows/release.yml on every Release; Supervisor

@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.4.1 — 2026-09-14
+
+First Release produced entirely by the pipeline: the weekly bump proposed
+the Odoo package, a human merged it, and the Release workflow did the rest.
+No database migration: none of the installed modules changed version
+upstream in this window.
+
+### Changed
+- Odoo nightly package 18.0.20260806 -> 18.0.20260914.
+- Debian base image bookworm -> bookworm-2026.08.0.
+- `HEALTHCHECK` uses the exec (JSON) form. Same probe, no shell; hadolint
+  3.5 flags the shell form (DL3025).
+
+### Added
+- Perimeter check workflow: after each Release and daily at 05:30 Taipei, a
+  GitHub runner confirms from outside that every public origin listed in the
+  `ODOO_PUBLIC_URLS` repository variable keeps `/web/database/*` and the
+  XML-RPC/JSON-RPC database services closed, and that its basic pages load.
+- Weekly Odoo nightly bump workflow: finds the newest 18.0 nightly package
+  and dated Debian base-image tag, pins them with a fresh SHA256, records
+  the change here, and opens a pull request that the PR gate builds. Never
+  merged automatically.
+
 ## 0.4.0 — 2026-09-10
 
 This Release changes how the add-on is installed. Supervisor now pulls a
