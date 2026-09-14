@@ -70,6 +70,13 @@ RUN chmod a+rx /etc/cont-init.d/*.sh \
 
 EXPOSE 8069 5691 8072
 
+# Supervisor reads container health instead of polling from outside
+# (the manifest `watchdog` key is obsolete). Loopback on 8069 is the LAN
+# tier, so this exercises nginx and Odoo together. The start period covers
+# first-boot database creation and a module update after an upgrade.
+HEALTHCHECK --interval=60s --timeout=10s --start-period=600s --retries=3 \
+    CMD curl -fsS --max-time 8 http://127.0.0.1:8069/web/login >/dev/null || exit 1
+
 # ──────────────────────────────────────────────
 # 7. Image labels. The publish workflow fills these in; a local or CI
 #    build leaves them empty, which is harmless.

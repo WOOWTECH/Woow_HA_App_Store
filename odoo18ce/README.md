@@ -12,6 +12,7 @@ for SME deployment.
 - Multi-arch: amd64 + aarch64 (Raspberry Pi 5)
 - Traditional Chinese / English translations
 - Cold backup with automatic exclusions
+- Prebuilt images on GHCR for both architectures; updates are pulls, not rebuilds
 - Auto-create database on first startup
 
 ## Quick Start
@@ -19,7 +20,7 @@ for SME deployment.
 1. Set **Admin Master Password** and **Database Password** in the add-on settings
 2. (Optional) Set **Default Database** name for automatic database creation
 3. Click **Start**
-4. Open **Web UI** or the **Woow Odoo** sidebar panel (HA Ingress)
+4. Open the **Woow Odoo** sidebar panel (HA Ingress); the LAN origin on port 8069 is described in the Documentation tab
 5. For public access, point Cloudflare Tunnel to the add-on internal origin `http://<repo-hash>-odoo18ce:8069`
 
 ## Ports

@@ -134,7 +134,7 @@ Two consequences worth knowing:
 
 The add-on has two simultaneous entrances:
 
-- **Home Assistant Ingress** — Open Web UI/sidebar opens `/odoo`; HA authentication is followed by normal Odoo authentication. The HA origin must use HTTPS because the Odoo session cookie is deliberately marked `Secure`.
+- **Home Assistant Ingress** — the sidebar panel (and the add-on page's OPEN WEB UI button) opens `/odoo`; HA authentication is followed by normal Odoo authentication. The HA origin must use HTTPS because the Odoo session cookie is deliberately marked `Secure`.
 - **Cloudflare Tunnel** — publish the complete root-path Odoo UI/API/WebSocket by routing the hostname to `http://<repo-hash>-odoo18ce:8069` on the internal add-on network.
 
 The Cloudflare gateway blocks `/web/database/*`; database lifecycle management
@@ -148,6 +148,21 @@ Place custom Odoo modules in `/share/odoo_addons/` (mapped from HA's shared
 storage). They will be automatically added to the addons path.
 
 For additional paths, use the `odoo_extra_addons` configuration option.
+
+## Updates and images
+
+Since 0.4.0 Supervisor pulls a prebuilt image,
+`ghcr.io/woowtech/woow-ha-odoo-<arch>:<version>`, published for amd64 and
+aarch64 by the repository's Release workflow. Nothing is built on your
+device. A version tag is immutable: the same version always means the same
+image.
+
+Health is reported by a container `HEALTHCHECK` that fetches the login page
+through nginx on loopback every 60 seconds. The Watchdog toggle on the
+add-on page restarts the add-on when the container has been unhealthy for
+three checks in a row. The first 10 minutes after a start are exempt so
+that database creation and post-upgrade module updates can finish; for a
+very large module update, switch Watchdog off for the duration.
 
 ## Backup
 

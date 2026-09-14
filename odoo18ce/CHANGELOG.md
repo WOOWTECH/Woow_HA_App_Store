@@ -1,6 +1,27 @@
 # Changelog
 
-## Unreleased
+## 0.4.0 — 2026-09-10
+
+This Release changes how the add-on is installed. Supervisor now pulls a
+prebuilt image instead of building the Dockerfile on your device, so this
+update downloads an image once and later updates are pulls, not rebuilds.
+Your database, filestore and options are untouched.
+
+### Changed
+- `image: ghcr.io/woowtech/woow-ha-odoo-{arch}`: prebuilt images for amd64
+  and aarch64, published by the Release workflow with an immutable version
+  tag. No more 245 MB Odoo download and PostgreSQL install on every update,
+  and a released version stays installable even after nightly.odoo.com
+  drops its package.
+- The manifest `watchdog` URL is replaced by a Docker `HEALTHCHECK` that
+  fetches the login page through nginx on loopback every 60 s, with a
+  10-minute start period so first-boot database creation and post-upgrade
+  module updates are not mistaken for a hang. The Watchdog toggle on the
+  add-on page keeps working; it now reads container health.
+- `webui` removed: with Ingress enabled the OPEN WEB UI button opens the
+  sidebar panel. Direct LAN access on port 8069 is unchanged and documented
+  under "LAN access".
+- The Home Assistant add-on linter is now a blocking check.
 
 ### Added
 - GitHub Actions PR gate: hadolint, shellcheck, yamllint, the Home Assistant

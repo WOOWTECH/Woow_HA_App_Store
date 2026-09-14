@@ -264,3 +264,15 @@ def test_rendered_gateway_configs_are_valid_nginx(tmp_path: Path) -> None:
             capture_output=True, text=True, check=False,
         )
         assert result.returncode == 0, f"{name}: {result.stderr}"
+
+def test_prebuilt_image_and_health_contract() -> None:
+    c = yaml.safe_load(read(CONFIG))
+    # Supervisor pulls the published image; on-device builds ended in 0.4.0.
+    assert c["image"] == "ghcr.io/woowtech/woow-ha-odoo-{arch}"
+    # With Ingress on, the manifest webui URL is redundant and the add-on
+    # linter rejects it; watchdog is replaced by the container HEALTHCHECK.
+    assert "webui" not in c
+    assert "watchdog" not in c
+    d = read(DOCKERFILE)
+    assert re.search(r"^HEALTHCHECK .*--start-period=600s", d, re.M)
+    assert "http://127.0.0.1:8069/web/login" in d

@@ -1,9 +1,12 @@
 ---
 name: "Woow Odoo 18"
 description: "Odoo 18 Community Edition + PostgreSQL 16 — bundled all-in-one add-on for SME"
-version: "0.3.39"
+version: "0.4.0"
 slug: "odoo18ce"
 url: "https://github.com/WOOWTECH/Woow_ha_odoo"
+# Prebuilt by .github/workflows/release.yml on every Release; Supervisor
+# pulls ghcr.io/woowtech/woow-ha-odoo-<arch>:<version> instead of building.
+image: "ghcr.io/woowtech/woow-ha-odoo-{arch}"
 init: false
 
 ingress: true
@@ -12,7 +15,6 @@ ingress_entry: odoo
 ingress_stream: true
 panel_icon: mdi:domain
 panel_title: Woow Odoo
-watchdog: "http://[HOST]:[PORT:5691]/web/login"
 
 arch:
   - amd64
@@ -25,8 +27,6 @@ ports:
 ports_description:
   8069/tcp: "Odoo origin — LAN clients get full access, the Cloudflare tunnel stays restricted (see lan_networks)"
   8072/tcp: "gevent WebSocket — only listens while workers > 0"
-
-webui: "http://[HOST]:[PORT:8069]"
 
 map:
   - share:rw
