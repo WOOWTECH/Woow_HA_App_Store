@@ -138,6 +138,13 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 # Node.js 22 (pi-web requires >=22.19.0). glibc-based Debian base is required
 # because Bun / pi native modules will not run on Alpine musl.
 #
+# tmux — kept in parity with the k3s and Podman sibling packages, which had
+# to add this after Omnigent's native-terminal launcher (used to drive the Pi
+# harness there) turned out to shell out to `tmux` unconditionally and fail
+# without it. Not yet exercised on this add-on (no Omnigent integration
+# here today), but a runtime apt install would disappear on every Supervisor
+# restart anyway, so it has to be image-baked before it can matter.
+#
 # Video pipeline dependencies (v0.11.0):
 #   - python3 + venv/pip: TTS scripts, Playwright bindings, srt/verify helpers.
 #   - ffmpeg (+ libass, libx264, aac bundled by Debian): segment build, xfade
@@ -156,7 +163,7 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 # apt security updates.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
-       ca-certificates curl git gnupg jq nginx openssh-client \
+       ca-certificates curl git gnupg jq nginx openssh-client tmux \
        python3 python3-venv python3-pip \
        ffmpeg \
        fonts-noto-cjk fonts-noto-color-emoji fontconfig \
@@ -212,7 +219,8 @@ RUN chmod +x \
     # cannot do the thing people open it for. Both sibling packages have
     # carried this wrapper since their first release; this add-on had not.
     && test -x "$(command -v pi)" \
-    && pi --version
+    && pi --version \
+    && tmux -V
 
 # SHELL is what pi-web 0.9.0's browser terminal spawns:
 #     process.env.SHELL || "/bin/sh"   with argv ["-l"]
