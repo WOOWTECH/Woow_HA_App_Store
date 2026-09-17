@@ -59,6 +59,8 @@ configuration:
     name: 公開網址
     description: >-
       Website metadata、郵件連結與callback使用的標準HTTPS網址。
+      每次啟動時寫入並鎖定到每個資料庫；留空則改用 Home Assistant
+      主機的區網位址加 8069 埠。
       例如：https://odoo.example.com
   lan_networks:
     name: 信任的區網網段

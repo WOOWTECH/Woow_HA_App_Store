@@ -40,7 +40,11 @@ def test_manifest_contract() -> None:
     assert c["options"]["lan_networks"] == "192.168.0.0/16 10.0.0.0/8 172.16.0.0/12"
     # 8072 only carries the gevent WebSocket while Odoo runs multi-process.
     assert c["options"]["workers"] > 0
-    assert not c.get("hassio_api", False)
+    # Supervisor API access is on since 0.4.2: the maintenance bootstrap reads
+    # the host LAN address and the published 8069 port for the Ingress-only
+    # Canonical URL. The default role is enough for those two /info calls.
+    assert c["hassio_api"] is True
+    assert "hassio_role" not in c
     assert all("backup" not in str(x) for x in c["map"])
     assert c["schema"]["public_url"] == "url?"
     assert "public_url" not in c["options"]
@@ -178,13 +182,17 @@ def test_nginx_template_contract() -> None:
 
 
 def test_maintenance_bootstrap_contract() -> None:
+    # String presence only; the decision logic is covered by
+    # test_maintenance_bootstrap.py.
     m = read(BOOTSTRAP)
-    assert "web.base.url.freeze" in m
+    assert "/usr/local/lib/odoo-maintenance.py" in m
+    assert "web.base.url.freeze" in read(ROOT / "rootfs/usr/local/lib/odoo-maintenance.py")
     assert "bootstrap-user.json" in m
-    assert "base.group_system" in m
-    assert "base.group_erp_manager" in m
     assert "root:600" in m
     assert "must contain at least 20 characters" in m
+    account = read(ROOT / "rootfs/usr/local/lib/odoo-maintenance-account.py")
+    assert "base.group_system" in account
+    assert "base.group_erp_manager" in account
 
 
 def test_postgres_init_contract() -> None:

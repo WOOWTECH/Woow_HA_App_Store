@@ -1,8 +1,22 @@
 #!/usr/bin/with-contenv bashio
+# ==============================================================================
+# odoo-maintenance-bootstrap
+# Runs once per add-on start, after PostgreSQL is up and before Odoo serves
+# requests. For every Odoo database it writes and locks the Canonical URL
+# (web.base.url + web.base.url.freeze) and mirrors it into the default
+# website's domain; see /usr/local/lib/odoo-maintenance.py for the rules.
+# Then, only in default_db, it applies the one-shot bootstrap-user.json.
+#
+# Exit status: non-zero only for a bootstrap-user.json policy violation. A
+# failure inside one database is logged and the pass moves on, so Odoo
+# always starts.
+# ==============================================================================
 set -euo pipefail
 
 CONF="${1:-/data/odoo.conf}"
 BOOTSTRAP_FILE="/config/bootstrap-user.json"
+MAINT_LIB="/usr/local/lib/odoo-maintenance.py"
+ACCOUNT_LIB="/usr/local/lib/odoo-maintenance-account.py"
 
 DB_NAME=""
 if bashio::config.has_value 'default_db'; then
@@ -14,6 +28,7 @@ if bashio::config.has_value 'public_url'; then
     PUBLIC_URL="$(bashio::config 'public_url')"
 fi
 
+# ---------- 1. bootstrap-user.json policy (the only fatal errors) ----------
 TEST_LOGIN=""
 TEST_PASSWORD=""
 TEST_ADMIN="false"
@@ -36,61 +51,91 @@ if [ -e "${BOOTSTRAP_FILE}" ]; then
     fi
 fi
 
-if [ -z "${PUBLIC_URL}" ] && [ -z "${TEST_LOGIN}" ]; then
-    exit 0
-fi
-if [ -z "${DB_NAME}" ]; then
-    bashio::log.error "default_db is required when public_url or bootstrap-user.json is configured"
-    exit 1
+# ---------- 2. Canonical URL inputs ----------
+# Without public_url the Canonical URL is the host's LAN address with the
+# published Odoo port, both read from the Supervisor (needs hassio_api).
+LAN_IPV4=""
+PUBLISHED_PORT=""
+if [ -z "${PUBLIC_URL}" ]; then
+    LAN_IPV4="$(bashio::network.ipv4_address 2>/dev/null || true)"
+    PUBLISHED_PORT="$(bashio::addon.port 8069 2>/dev/null || true)"
+    if [ -z "${LAN_IPV4}" ]; then
+        bashio::log.warning "public_url is unset and the Supervisor reported no host LAN address"
+    fi
 fi
 
 export ODOO_MAINT_PUBLIC_URL="${PUBLIC_URL}"
-export ODOO_MAINT_USER_LOGIN="${TEST_LOGIN}"
-export ODOO_MAINT_USER_PASSWORD="${TEST_PASSWORD}"
-export ODOO_MAINT_USER_ADMIN="${TEST_ADMIN}"
+export ODOO_MAINT_LAN_IPV4="${LAN_IPV4}"
+export ODOO_MAINT_PORT="${PUBLISHED_PORT}"
 
-bashio::log.info "Applying Odoo canonical URL and maintenance account state..."
-s6-setuidgid odoo /usr/bin/odoo shell \
-    -c "${CONF}" -d "${DB_NAME}" --no-http <<'PY'
-import os
+# ---------- 3. Canonical URL, every Odoo database ----------
+# Every database owned by the odoo role that carries ir_config_parameter is
+# an Odoo database. postgres and the templates are never listed.
+psql_as_postgres() {
+    s6-setuidgid postgres psql -v ON_ERROR_STOP=1 -tA "$@"
+}
 
-public_url = os.environ.get("ODOO_MAINT_PUBLIC_URL", "").strip().rstrip("/")
-if public_url:
-    params = env["ir.config_parameter"].sudo()
-    params.set_param("web.base.url", public_url)
-    params.set_param("web.base.url.freeze", "True")
+# Forward the lib's "maintenance db=<name>: ..." lines at the right level.
+log_maintenance_lines() {
+    local line
+    while IFS= read -r line; do
+        [ -n "${line}" ] || continue
+        case "${line}" in
+            *WARNING*) bashio::log.warning "${line}" ;;
+            *) bashio::log.info "${line}" ;;
+        esac
+    done
+}
 
-login = os.environ.get("ODOO_MAINT_USER_LOGIN", "").strip()
-password = os.environ.get("ODOO_MAINT_USER_PASSWORD", "")
-admin = os.environ.get("ODOO_MAINT_USER_ADMIN", "false").lower() == "true"
-if login:
-    Users = env["res.users"].sudo().with_context(no_reset_password=True)
-    user = Users.search([("login", "=", login)], limit=1)
-    values = {
-        "name": "HA Ingress E2E",
-        "login": login,
-        "password": password,
-        "active": True,
-        "share": False,
-    }
-    if user:
-        user.write(values)
-    else:
-        user = Users.create(values)
-    internal = env.ref("base.group_user")
-    access_rights = env.ref("base.group_erp_manager")
-    system = env.ref("base.group_system")
-    commands = [(4, internal.id)]
-    if admin:
-        commands += [(4, access_rights.id), (4, system.id)]
-    else:
-        commands += [(3, system.id), (3, access_rights.id)]
-    user.write({"groups_id": commands})
-
-env.cr.commit()
-PY
-
-if [ -f "${BOOTSTRAP_FILE}" ]; then
-    rm -f "${BOOTSTRAP_FILE}"
-    bashio::log.info "One-shot Odoo maintenance account file consumed"
+DATABASES=()
+if DB_LIST="$(psql_as_postgres -c "
+        SELECT datname FROM pg_database
+        WHERE NOT datistemplate AND datallowconn
+          AND datname <> 'postgres'
+          AND pg_get_userbyid(datdba) = 'odoo'
+        ORDER BY datname")"; then
+    if [ -n "${DB_LIST}" ]; then
+        mapfile -t DATABASES <<< "${DB_LIST}"
+    else
+        bashio::log.info "No Odoo database yet; the Canonical URL is applied on the next start"
+    fi
+else
+    bashio::log.error "maintenance: PostgreSQL databases could not be listed; no Canonical URL was written this start"
 fi
+
+for DB in "${DATABASES[@]}"; do
+    IS_ODOO="$(psql_as_postgres -d "${DB}" \
+        -c "SELECT to_regclass('public.ir_config_parameter') IS NOT NULL" 2>/dev/null || echo f)"
+    if [ "${IS_ODOO}" != "t" ]; then
+        bashio::log.info "maintenance db=${DB}: not an Odoo database, skipped"
+        continue
+    fi
+    if OUTPUT="$(ODOO_MAINT_DB="${DB}" s6-setuidgid odoo /usr/bin/odoo shell \
+            -c "${CONF}" -d "${DB}" --no-http < "${MAINT_LIB}")"; then
+        log_maintenance_lines <<< "${OUTPUT}"
+    else
+        log_maintenance_lines <<< "${OUTPUT}"
+        bashio::log.error "maintenance db=${DB}: Canonical URL pass failed; see the traceback above"
+    fi
+done
+
+# ---------- 4. One-shot maintenance account, default_db only ----------
+if [ -n "${TEST_LOGIN}" ]; then
+    if [ -z "${DB_NAME}" ]; then
+        bashio::log.warning "bootstrap-user.json is present but default_db is unset; the account is skipped and the file is kept for the next start"
+    else
+        export ODOO_MAINT_USER_LOGIN="${TEST_LOGIN}"
+        export ODOO_MAINT_USER_PASSWORD="${TEST_PASSWORD}"
+        export ODOO_MAINT_USER_ADMIN="${TEST_ADMIN}"
+        bashio::log.info "Applying the maintenance account in ${DB_NAME}..."
+        if s6-setuidgid odoo /usr/bin/odoo shell \
+                -c "${CONF}" -d "${DB_NAME}" --no-http < "${ACCOUNT_LIB}"; then
+            rm -f "${BOOTSTRAP_FILE}"
+            bashio::log.info "One-shot Odoo maintenance account file consumed"
+        else
+            bashio::log.error "maintenance account could not be written in ${DB_NAME}; the file is kept for the next start"
+        fi
+    fi
+fi
+
+exit 0

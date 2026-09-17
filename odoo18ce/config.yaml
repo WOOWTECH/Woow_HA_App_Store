@@ -1,13 +1,19 @@
 ---
 name: "Woow Odoo 18"
 description: "Odoo 18 Community Edition + PostgreSQL 16 — bundled all-in-one add-on for SME"
-version: "0.4.1"
+version: "0.4.2"
 slug: "odoo18ce"
 url: "https://github.com/WOOWTECH/Woow_ha_odoo"
 # Prebuilt by .github/workflows/release.yml on every Release; Supervisor
 # pulls ghcr.io/woowtech/woow-ha-odoo-<arch>:<version> instead of building.
 image: "ghcr.io/woowtech/woow-ha-odoo-{arch}"
 init: false
+
+# The maintenance bootstrap asks the Supervisor for the host's LAN address
+# and the published 8069 port when public_url is unset, so an Ingress-only
+# install still gets a Canonical URL instead of an Ingress token. The
+# default role covers the two /info endpoints used.
+hassio_api: true
 
 ingress: true
 ingress_port: 5691

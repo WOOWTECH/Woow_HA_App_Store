@@ -58,6 +58,8 @@ configuration:
     name: Public URL
     description: >-
       Canonical HTTPS URL used for website metadata, email links and callbacks.
+      Written and locked into every database on each start. Leave empty and
+      the Home Assistant host's LAN address on port 8069 is used instead.
       Example: https://odoo.example.com
   lan_networks:
     name: Trusted LAN Networks

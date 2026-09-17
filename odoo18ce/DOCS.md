@@ -140,7 +140,43 @@ The add-on has two simultaneous entrances:
 The Cloudflare gateway blocks `/web/database/*`; database lifecycle management
 stays available through HA Ingress and from the trusted LAN. Odoo itself remains HTTP on localhost while TLS terminates at HA or Cloudflare.
 
-Set the required HTTPS `public_url` to the canonical Cloudflare URL so Odoo-generated website metadata, email links and callbacks never fall back to the internal HTTP origin. `default_db` is required when `public_url` or `auto_update_module` is configured.
+Set the HTTPS `public_url` to the Public origin so that Odoo-generated website metadata, email links and callbacks carry that address. How the add-on locks it in is described under "Canonical URL" below. `default_db` is required only for `auto_update_module` and the one-shot maintenance account file.
+
+## Canonical URL
+
+Odoo builds every server-side link (email links, share links, portal
+access links, report QR codes) from `web.base.url`. Unless that value is
+frozen, Odoo overwrites it with whatever address an administrator last
+logged in from. Through Ingress that address is the Supervisor path
+`/api/hassio_ingress/<token>/...`, so one admin login would put the Ingress
+token into every outgoing email.
+
+On every start, before Odoo serves requests, the add-on therefore visits
+each Odoo database in its PostgreSQL and writes a Canonical URL:
+
+| Shape | Canonical URL |
+|---|---|
+| `public_url` set | `public_url`, without a trailing slash |
+| `public_url` empty | `http://<Home Assistant host LAN address>:<published 8069 port>` |
+| neither available | none this start |
+
+With a Canonical URL, `web.base.url` is set to it, `web.base.url.freeze`
+is set to `True`, and the default website's domain (when the `website`
+module is installed) is set to the same value. Without one, an existing
+clean `web.base.url` is frozen as it is; an absent value is left alone and
+a token-carrying value is removed, both with a warning in the add-on log
+that the database is unprotected. A stored value that contains
+`/api/hassio_ingress/` is never kept. The log shows one line per database.
+
+The LAN fallback reads the host address and the published port from the
+Supervisor, which is why the add-on declares `hassio_api` in its manifest.
+It uses only the default role's `/info` endpoints. The fallback address is
+plain HTTP, reachable from the LAN tier; set `public_url` when links must
+work from outside the LAN.
+
+The `website` module is not installed on a database created by
+`default_db` (only `base` is); the domain is set on the first start after
+the module is installed.
 
 ## Custom Modules
 

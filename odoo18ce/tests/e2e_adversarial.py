@@ -3,7 +3,7 @@
 import json
 import os
 from pathlib import Path
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import TimeoutError as PlaywrightTimeoutError, sync_playwright
 
 BASE = os.environ["ODOO_BASE_URL"].rstrip("/")
 LOGIN = os.environ.get("ODOO_TEST_LOGIN", "")
@@ -20,6 +20,21 @@ def url(path):
 
 def ignored_url(value):
     return "/cdn-cgi/" in value or "service-worker" in value
+
+def assert_rendered(page, route, label="blank page", minimum=20, timeout=30000):
+    """Fail unless the body shows more than `minimum` characters of text.
+
+    Polls rather than sampling once at domcontentloaded: a bare Odoo login
+    page (a database without `website`) shows only "Powered by Odoo" until
+    its stylesheet arrives, and the perimeter check must not call that blank.
+    """
+    try:
+        page.wait_for_function(
+            "([n]) => document.body && document.body.innerText.trim().length > n",
+            arg=[minimum], timeout=timeout,
+        )
+    except PlaywrightTimeoutError:
+        raise AssertionError(f"{label}: {route}") from None
 
 def relevant_console(text):
     ignored = ("Failed to load resource", "Service worker registration failed", "certificate error")
@@ -38,7 +53,7 @@ with sync_playwright() as p:
     for route in ("/", "/web/login", "/odoo", "/shop", "/contactus"):
         response = page.goto(url(route), wait_until="domcontentloaded", timeout=120000)
         assert response and response.status < 500, (route, response.status if response else None)
-        assert len(page.locator("body").inner_text()) > 20, f"blank page: {route}"
+        assert_rendered(page, route)
     if DB_POLICY != "skip":
         db_status = page.request.get(url("/web/database/manager")).status
         xmlrpc_status = page.request.get(url("/xmlrpc/2/db")).status
@@ -68,7 +83,7 @@ with sync_playwright() as p:
             response = page.goto(url(route), wait_until="domcontentloaded", timeout=120000)
             page.wait_for_timeout(2500)
             assert response and response.status < 500, (route, response.status if response else None)
-            assert len(page.locator("body").inner_text()) > 20, f"blank authenticated page: {route}"
+            assert_rendered(page, route, "blank authenticated page")
             assert (len(failed), len(server_errors), len(console_errors)) == before, {
                 "route": route, "failed": failed[before[0]:], "server": server_errors[before[1]:], "console": console_errors[before[2]:]
             }
