@@ -645,3 +645,25 @@ fi
 if occ app:list | grep -q "notify_push:"; then
     occ app:disable notify_push > /dev/null 2>&1 || true
 fi
+
+# Allow the public/direct Nextcloud UI to be framed by the Home Assistant panel
+# wrapper. This keeps the HA headbar visible (matching apps such as Woow n8n)
+# while avoiding the unstable /api/hassio_ingress/<token> Nextcloud session path.
+if [[ -f /config/nginx/site-confs/default.conf ]]; then
+    python3 - <<'PY'
+p = '/config/nginx/site-confs/default.conf'
+s = open(p).read()
+# Remove a previous failed headers-more attempt if present.
+start = s.find('    # WOOWTECH frame compatibility: allow Nextcloud to render inside the HA sidebar.\n')
+if start != -1:
+    end = s.find('    # HTTP response headers borrowed from Nextcloud `.htaccess`\n', start)
+    if end != -1:
+        s = s[:start] + s[end:]
+s = s.replace('    add_header X-Frame-Options                   "SAMEORIGIN"        always;\n', '    # WOOWTECH: X-Frame-Options disabled so Nextcloud can render in HA sidebar.\n')
+needle = '    # HTTP response headers borrowed from Nextcloud `.htaccess`\n'
+insert = '''    # WOOWTECH frame compatibility: allow Nextcloud to render inside the HA sidebar.\n    fastcgi_hide_header Content-Security-Policy;\n    fastcgi_hide_header X-Frame-Options;\n    add_header Content-Security-Policy "frame-ancestors 'self' https://woowtech-ha.woowtech.io https://tech-ha.woowtech.io http://100.85.247.107:8123 http://homeassistant:8123" always;\n\n'''
+if 'fastcgi_hide_header Content-Security-Policy;' not in s:
+    s = s.replace(needle, insert + needle)
+open(p, 'w').write(s)
+PY
+fi

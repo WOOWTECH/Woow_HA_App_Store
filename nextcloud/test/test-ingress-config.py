@@ -25,11 +25,12 @@ required = [
     "allow 172.30.32.2;",
     "location = /healthz",
     "NEXTCLOUD_PUBLIC_URL",
-    "window.top.location.replace(u)",
-    "target=\"_top\"",
+    "<iframe id=\"nc\"",
+    "document.getElementById(\"nc\").src=u",
+    "target=\"_blank\"",
 ]
 for needle in required:
-    assert needle in run, f"missing sidebar launcher directive: {needle}"
+    assert needle in run, f"missing sidebar wrapper directive: {needle}"
 
 for forbidden in [
     "proxy_pass http://127.0.0.1:80;",

@@ -24,12 +24,12 @@ if [[ -f "${OPTIONS_FILE}" ]]; then
     fi
 fi
 
-# Last-resort local URL keeps the launcher useful on LAN-only installs.
+# Last-resort local URL keeps the wrapper useful on LAN-only installs.
 if [[ -z "${PUBLIC_URL}" ]]; then
     PUBLIC_URL="http://homeassistant:8000"
 fi
 
-# Make sidebar opens land on the Files app after login.
+# Land on the Files app after login.
 PUBLIC_URL="${PUBLIC_URL%/}"
 case "${PUBLIC_URL}" in
     */apps/*|*/login|*/index.php*) ;;
@@ -37,13 +37,11 @@ case "${PUBLIC_URL}" in
 esac
 
 cat > /config/nginx/site-confs/woow-nextcloud-ingress.conf <<NGINX
-# WOOWTECH Home Assistant sidebar launcher for Nextcloud.
+# WOOWTECH Home Assistant sidebar wrapper for Nextcloud.
 #
-# Nextcloud's full web UI intentionally runs on the stable direct/public URL.
-# HA Supervisor Ingress uses /api/hassio_ingress/<token>, which causes
-# Nextcloud session-cookie and post-login redirect loops. Therefore this
-# listener is only a sidebar launcher; WebDAV, desktop/mobile sync, Office/WOPI,
-# and the browser UI all use the direct/public endpoint.
+# The Nextcloud app itself is served by the stable direct/public endpoint, while
+# this HA ingress listener provides the same Home Assistant headbar/chrome as
+# other sidebar apps (for example Woow n8n).
 server {
     listen 8090 default_server;
     server_name _;
@@ -61,7 +59,7 @@ server {
         default_type text/html;
         charset utf-8;
         add_header Cache-Control 'no-store' always;
-        return 200 '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Opening Woow Nextcloud</title><script>const u="${PUBLIC_URL}";try{window.top.location.replace(u)}catch(e){window.location.replace(u)}</script></head><body style="font-family:system-ui,sans-serif;padding:2rem"><h1>Opening Woow Nextcloud…</h1><p>If it does not open automatically, <a target="_top" href="${PUBLIC_URL}">open Woow Nextcloud</a>.</p></body></html>';
+        return 200 '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Woow Nextcloud</title><style>html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#111}iframe{border:0;width:100vw;height:100vh;display:block;position:relative;z-index:2}.fallback{position:absolute;z-index:1;inset:0;display:grid;place-items:center;color:white;font-family:system-ui,sans-serif;background:#111}.fallback a{color:#4ea3ff}</style></head><body><div class="fallback"><p>Opening Woow Nextcloud… <a id="open" target="_blank">open in new tab</a></p></div><iframe id="nc" allow="clipboard-read; clipboard-write; fullscreen; camera; microphone; display-capture"></iframe><script>(function(){var u="${PUBLIC_URL}";document.getElementById("open").href=u;document.getElementById("nc").src=u;})();</script></body></html>';
     }
 }
 NGINX
