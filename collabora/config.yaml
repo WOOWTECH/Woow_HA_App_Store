@@ -14,6 +14,7 @@ arch:
 # Admin UI in Home Assistant sidebar. The WOPI/Office endpoint should still use
 # the direct port/public hostname, not the HA ingress token URL.
 ingress: true
+ingress_panel: true
 ingress_port: 9980
 ingress_entry: browser/dist/admin/admin.html
 ingress_stream: true
