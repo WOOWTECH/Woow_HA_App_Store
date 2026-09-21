@@ -61,7 +61,7 @@ server {
         proxy_redirect ~^(/.*)$ $safe_ingress_path$1;
 
         sub_filter_once off;
-        sub_filter_types text/html text/css text/xml application/javascript text/javascript application/json application/xml;
+        sub_filter_types *;
 
         # Static markup and CSS URLs emitted by Nextcloud core/apps.
         sub_filter 'href="/' 'href="$safe_ingress_path/';
