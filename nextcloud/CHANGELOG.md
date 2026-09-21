@@ -1,5 +1,14 @@
 # Changelog
 
+## 33.0.5
+
+### Fixed
+- Align ingress adapter cache headers with the direct port: upstream Nextcloud
+  cache policy is now preserved instead of forcing `Cache-Control: no-store` on
+  every ingress response.
+- Remove the duplicate `text/html` sub_filter type warning from nginx while
+  keeping HTML rewriting enabled through nginx's default sub_filter type.
+
 ## 33.0.4
 
 ### Added
