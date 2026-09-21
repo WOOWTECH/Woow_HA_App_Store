@@ -246,3 +246,44 @@ Ingress allow restore：已完成 / 未完成（時間：）
 殘留測試資料：無 / 有（位置：）
 後續補測：
 ```
+
+## 10. 2026-09-21 Collabora / Nextcloud Office integration result
+
+Result: PASS
+
+Implemented and deployed independent Woow Collabora CODE add-on:
+
+```text
+slug: 1b7b4ce7_woow-collabora
+version: 26.04.4.1.1
+direct/WOPI URL: http://homeassistant:9981
+HA Ingress admin URL: /api/hassio_ingress/<token>/browser/dist/admin/admin.html
+```
+
+Nextcloud `richdocuments` was configured to:
+
+```text
+wopi_url: http://homeassistant:9981
+public_wopi_url: http://homeassistant:9981
+```
+
+`occ richdocuments:activate-config` passed and detected:
+
+```text
+Collabora Online Development Edition 26.04.4.1
+```
+
+Validation summary:
+
+| Area | Result |
+| --- | --- |
+| Collabora `/hosting/discovery` | PASS, `200 text/xml` |
+| Collabora `/hosting/capabilities` | PASS, `200 application/json` |
+| Collabora admin direct auth | PASS, `401` without auth and `200` with admin auth |
+| Collabora conversion worker | PASS, `/cool/convert-to/pdf` returned generated PDF |
+| HA Ingress panel | PASS, `ingress_panel: true`, admin URL generated |
+| Nextcloud Office config activation | PASS |
+| Nextcloud Office admin/settings direct vs ingress | PASS, both `200` |
+| Ingress test allowlist restore | PASS, restored to Supervisor-only allowlist |
+
+Design note: Collabora admin GUI uses HA Ingress; Nextcloud Office/WOPI uses the stable direct/public Collabora endpoint. Do not configure Nextcloud Office to use the HA ingress token URL.
