@@ -1,9 +1,17 @@
 name: Woow Nextcloud
-version: "33.0.3"
+version: "33.0.4"
 slug: woow-nextcloud
 description: Nextcloud all-in-one with PostgreSQL 16 (HTTP for LAN, use Cloudflare Tunnel for HTTPS)
 url: https://github.com/WOOWTECH/Woow_ha_nextcloud
 webui: "http://[HOST]:[PORT:80]"
+ingress: true
+ingress_port: 8090
+ingress_entry: login
+ingress_stream: true
+panel_icon: mdi:cloud-outline
+panel_title: Woow Nextcloud
+panel_admin: false
+watchdog: "http://[HOST]:[PORT:8090]/healthz"
 # Needed to read the host's LAN IPv4 and the installed add-ons from the
 # Supervisor (GET /network/info, GET /network/interface/<name>/info, GET
 # /addons) so the host addresses can be trusted and a Cloudflare Tunnel
@@ -180,7 +188,7 @@ options:
   storage_mounts: []
   env_vars: []
 ports:
-  80/tcp: 80
+  80/tcp: 8000
   5432/tcp: null
   6379/tcp: null
 ports_description:

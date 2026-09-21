@@ -112,6 +112,7 @@ configuration:
     description: >-
       傳遞給容器的額外環境變數。
 network:
-  80/tcp: HTTP 網頁介面
+  80/tcp: HTTP 網頁介面 / Cloudflare Tunnel（預設 host port 8000）
+  8090/tcp: Home Assistant Ingress adapter
   5432/tcp: PostgreSQL 資料庫
   6379/tcp: Redis 資料庫

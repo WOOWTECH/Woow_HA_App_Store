@@ -6,6 +6,7 @@
 - 將 MariaDB 替換為 **PostgreSQL 16**（效能更佳、相容性更好）
 - 移除 SSL/HTTPS（僅使用 HTTP，適用於區域網路 LAN 環境）
 - 外部存取建議使用 **Cloudflare Tunnel** 提供 HTTPS
+- 支援 Home Assistant **Ingress / 側邊欄**，所有 HA 使用者都可從側邊欄開啟 Nextcloud UI
 
 ![Nextcloud](https://raw.githubusercontent.com/nextcloud/screenshots/master/nextcloud-hub-files-25-preview.png)
 
@@ -46,6 +47,7 @@ Then navigate to **Settings → Add-ons → Add-on Store**, find "Woow Nextcloud
 3. 設定管理員帳號和密碼
 4. 啟動 Add-on
 5. 點擊 **開啟 Web UI** 進入 Nextcloud
+6. 或從 Home Assistant 側邊欄開啟 **Woow Nextcloud**（Ingress）
 
 ## 設定說明
 
@@ -74,9 +76,21 @@ Then navigate to **Settings → Add-ons → Add-on Store**, find "Woow Nextcloud
 
 ### 反向代理設定（Cloudflare Tunnel）
 
-此 Add-on 僅提供 HTTP（連接埠 80），外部 HTTPS 存取建議使用 Cloudflare Tunnel：
+此 Add-on 僅提供 HTTP（連接埠 80），外部 HTTPS 存取建議使用 Cloudflare Tunnel。
+WebDAV、手機 App、桌面同步程式、公開分享連結與大檔案上傳，建議都走這個外部 hostname，不要走 HA Ingress token URL。
 
-1. 在 Cloudflare 建立 Tunnel，指向 `http://<ha-ip>:80`
+在你的環境可由 Cloudflare Tunnel 指向 Home Assistant add-on 入口，例如：
+
+```text
+https://nextcloud.example.com
+→ Cloudflare Tunnel
+→ http://homeassistant:8000
+→ Woow Nextcloud add-on port 80
+```
+
+一般設定步驟：
+
+1. 在 Cloudflare 建立 Tunnel，指向 Nextcloud add-on 的 HTTP 入口，例如 `http://homeassistant:8000` 或你的 HA/add-on 內部位址
 2. 在 Add-on 設定中進行以下配置：
 
 | 設定項 | 範例值 | 說明 |
@@ -86,6 +100,25 @@ Then navigate to **Settings → Add-ons → Add-on Store**, find "Woow Nextcloud
 | `OVERWRITECLIURL` | `https://cloud.example.com` | 完整存取 URL |
 | `trusted_proxies` | `172.30.33.0/24` | Cloudflare Tunnel 代理 IP |
 | `trusted_domains` | `cloud.example.com` | 允許存取的域名 |
+
+### Home Assistant 側邊欄 / Ingress
+
+從 `33.0.4` 起，此 Add-on 會建立 HA Ingress 入口：
+
+```text
+Home Assistant sidebar
+→ /api/hassio_ingress/<token>
+→ add-on ingress adapter :8090
+→ Nextcloud port 80
+```
+
+Ingress 只用於 HA 內嵌 UI，所有 HA 使用者都能看到側邊欄面板。直接存取 `http://[HOST]:[PORT:80]`（預設 host port `8000`，例如 `http://homeassistant:8000`）和 Cloudflare Tunnel 的行為不會被 ingress 改寫影響。
+
+注意事項：
+
+- Ingress URL 具有 HA token prefix，適合瀏覽器側邊欄 UI。
+- WebDAV、手機 App、桌面同步、CalDAV/CardDAV 建議使用 Cloudflare public hostname。
+- 若更新後瀏覽器仍載入舊 ingress 資源，請強制重新整理；若 HA 本身在 Cloudflare 後方，也可針對 `/api/hassio_ingress` 前綴清一次 Cloudflare cache。
 
 ### SMTP 郵件設定
 
@@ -138,7 +171,8 @@ env_vars:
 
 | 連接埠 | 服務 | 說明 |
 |--------|------|------|
-| 80/tcp | HTTP | Nextcloud 網頁介面 |
+| 80/tcp | HTTP | Nextcloud 網頁介面；LAN 與 Cloudflare Tunnel 使用，預設 host port `8000` |
+| 8090/tcp | HA Ingress | 側邊欄 adapter，僅 Supervisor 內部使用，不需手動映射 |
 | 5432/tcp | PostgreSQL | 資料庫（預設不對外暴露） |
 | 6379/tcp | Redis | 快取（預設不對外暴露） |
 

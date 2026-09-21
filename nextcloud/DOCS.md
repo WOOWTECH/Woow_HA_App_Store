@@ -12,7 +12,7 @@
 3. （選填）設定 `db_password` 修改 PostgreSQL 資料庫密碼
 4. （選填）設定 `覆寫 URL` 為你存取 Nextcloud 的 URL，例如：`https://cloud.example.com`
 5. 啟動 Nextcloud
-6. 開啟 Web UI
+6. 開啟 Web UI，或從 Home Assistant 側邊欄開啟 **Woow Nextcloud**
 
 ## 資料庫
 
@@ -35,13 +35,42 @@
 
 ### 反向代理設定（Cloudflare Tunnel）
 
-若透過 Cloudflare Tunnel 或其他反向代理存取：
+若透過 Cloudflare Tunnel 或其他反向代理存取，建議讓公開 hostname 指向 add-on 的直接 HTTP 入口，而不是 HA Ingress URL：
+
+```text
+https://nextcloud.example.com
+→ Cloudflare Tunnel
+→ http://homeassistant:8000
+→ Woow Nextcloud port 80
+```
+
+設定項目：
 
 1. `OVERWRITEPROTOCOL`：設為 `https`
 2. `OVERWRITEHOST`：設為你的域名，例如 `cloud.example.com`
 3. `OVERWRITECLIURL`：設為完整 URL，例如 `https://cloud.example.com`
 4. `trusted_proxies`：加入反向代理的 IP 位址
 5. `trusted_domains`：加入你的域名
+
+WebDAV、手機 App、桌面同步、CalDAV/CardDAV 與大檔案上傳應使用 Cloudflare public hostname。HA Ingress 僅作為 Home Assistant 側邊欄 UI。
+
+### Home Assistant Ingress / 側邊欄
+
+此 Add-on 啟用 `ingress: true`，並在 `8090` 啟動一個 ingress adapter：
+
+```text
+Home Assistant sidebar
+→ /api/hassio_ingress/<token>
+→ add-on ingress adapter :8090
+→ Nextcloud port 80
+```
+
+特性：
+
+- 側邊欄標題：`Woow Nextcloud`
+- 對所有 HA 使用者開放（`panel_admin: false`）
+- 直接 HTTP 入口行為不變，可同時給 LAN / Cloudflare 使用；預設 host port 為 `8000`，例如 `http://homeassistant:8000`
+- adapter 會改寫 Nextcloud 的 root-relative UI URL、redirect 與 cookie path，讓瀏覽器 UI 留在 HA ingress prefix 底下
 
 ### SMTP 郵件設定
 

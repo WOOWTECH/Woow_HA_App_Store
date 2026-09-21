@@ -103,6 +103,7 @@ configuration:
     description: >-
       Additional environment variables to pass to the container.
 network:
-  80/tcp: HTTP
+  80/tcp: HTTP / Cloudflare Tunnel (default host port 8000)
+  8090/tcp: Home Assistant Ingress adapter
   5432/tcp: PostgreSQL DB
   6379/tcp: Redis DB

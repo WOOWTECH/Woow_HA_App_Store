@@ -1,5 +1,25 @@
 # Changelog
 
+## 33.0.4
+
+### Added
+- **Home Assistant Ingress / sidebar support for all users.** The add-on now
+  exposes a dedicated ingress adapter on port `8090`, adds a Woow Nextcloud
+  sidebar panel, and keeps the direct HTTP service on container port `80`
+  unchanged for LAN and Cloudflare Tunnel access.
+- The ingress adapter rewrites Nextcloud root-relative UI links, redirects,
+  cookie paths, and JavaScript webroot bootstrap values to the dynamic
+  `/api/hassio_ingress/<token>` prefix. This is intended for the HA sidebar UI.
+
+### Changed
+- The default host mapping for container `80/tcp` is now `8000`, matching the
+  Cloudflare Tunnel target `http://homeassistant:8000`.
+
+### Notes
+- WebDAV, mobile apps, desktop sync clients, and large public sharing flows
+  should continue to use the direct Cloudflare hostname that routes to
+  `http://homeassistant:8000` / add-on port `80`, not the HA ingress URL.
+
 ## 33.0.3
 
 ### Fixed
