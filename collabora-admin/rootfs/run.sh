@@ -8,7 +8,6 @@ PASSWORD="$(bashio::config 'password')"
 AUTH="$(printf '%s:%s' "$USERNAME" "$PASSWORD" | base64 | tr -d '\n')"
 
 cat >/etc/nginx/nginx.conf <<'NGINX'
-load_module modules/ngx_http_subs_filter_module.so;
 worker_processes 1;
 events { worker_connections 1024; }
 http {

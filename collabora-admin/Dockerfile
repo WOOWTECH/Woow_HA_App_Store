@@ -3,7 +3,7 @@ FROM ghcr.io/hassio-addons/base:21.0.1
 ARG BUILD_ARCH="amd64"
 ENV S6_VERBOSITY="1"
 
-RUN apk add --no-cache nginx nginx-mod-http-subs-filter apache2-utils
+RUN apk add --no-cache nginx apache2-utils
 COPY rootfs /
 CMD ["/run.sh"]
 
