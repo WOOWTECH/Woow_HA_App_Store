@@ -5,28 +5,52 @@ set -euo pipefail
 
 mkdir -p /config/nginx/site-confs
 
-cat > /config/nginx/site-confs/woow-nextcloud-ingress.conf <<'NGINX'
-# WOOWTECH Home Assistant Ingress adapter for Nextcloud.
-# Direct access on port 80 is intentionally untouched; this listener is only
-# used by Home Assistant Supervisor via /api/hassio_ingress/<token>.
+OPTIONS_FILE="/data/options.json"
+PUBLIC_URL=""
+if [[ -f "${OPTIONS_FILE}" ]]; then
+    PUBLIC_URL=$(jq -r '.NEXTCLOUD_PUBLIC_URL // empty' "${OPTIONS_FILE}" 2>/dev/null || true)
+    if [[ -z "${PUBLIC_URL}" ]]; then
+        overwrite_host=$(jq -r '.OVERWRITEHOST // empty' "${OPTIONS_FILE}" 2>/dev/null || true)
+        overwrite_proto=$(jq -r '.OVERWRITEPROTOCOL // "https"' "${OPTIONS_FILE}" 2>/dev/null || true)
+        if [[ -n "${overwrite_host}" ]]; then
+            PUBLIC_URL="${overwrite_proto}://${overwrite_host}"
+        fi
+    fi
+    if [[ -z "${PUBLIC_URL}" ]]; then
+        overwrite_cli=$(jq -r '.OVERWRITECLIURL // empty' "${OPTIONS_FILE}" 2>/dev/null || true)
+        if [[ -n "${overwrite_cli}" ]]; then
+            PUBLIC_URL="${overwrite_cli}"
+        fi
+    fi
+fi
+
+# Last-resort local URL keeps the launcher useful on LAN-only installs.
+if [[ -z "${PUBLIC_URL}" ]]; then
+    PUBLIC_URL="http://homeassistant:8000"
+fi
+
+# Make sidebar opens land on the Files app after login.
+PUBLIC_URL="${PUBLIC_URL%/}"
+case "${PUBLIC_URL}" in
+    */apps/*|*/login|*/index.php*) ;;
+    *) PUBLIC_URL="${PUBLIC_URL}/apps/files/" ;;
+esac
+
+cat > /config/nginx/site-confs/woow-nextcloud-ingress.conf <<NGINX
+# WOOWTECH Home Assistant sidebar launcher for Nextcloud.
+#
+# Nextcloud's full web UI intentionally runs on the stable direct/public URL.
+# HA Supervisor Ingress uses /api/hassio_ingress/<token>, which causes
+# Nextcloud session-cookie and post-login redirect loops. Therefore this
+# listener is only a sidebar launcher; WebDAV, desktop/mobile sync, Office/WOPI,
+# and the browser UI all use the direct/public endpoint.
 server {
     listen 8090 default_server;
     server_name _;
 
-    # Home Assistant Ingress requests are proxied by the Supervisor. Keep the
-    # UI private to HA; direct LAN/Cloudflare access must use port 80 instead.
     allow 172.30.32.2;
     deny all;
 
-    absolute_redirect off;
-    client_max_body_size 0;
-    proxy_request_buffering off;
-    proxy_buffering off;
-    proxy_read_timeout 3600s;
-    proxy_send_timeout 3600s;
-
-    # Watchdog endpoint for Supervisor. It must not hit Nextcloud because early
-    # install/upgrade states can return redirects or maintenance pages.
     location = /healthz {
         access_log off;
         add_header Content-Type text/plain;
@@ -34,50 +58,9 @@ server {
     }
 
     location / {
-        set $safe_ingress_path "";
-        if ($http_x_ingress_path ~ "^/api/hassio_ingress/[A-Za-z0-9_-]{16,128}$") {
-            set $safe_ingress_path $http_x_ingress_path;
-        }
-        if ($safe_ingress_path = "") {
-            return 400;
-        }
-
-        proxy_pass http://127.0.0.1:80;
-        proxy_http_version 1.1;
-        proxy_set_header Host $http_host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Host $http_host;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_set_header X-Forwarded-Prefix $safe_ingress_path;
-        proxy_set_header Accept-Encoding "";
-        proxy_set_header If-None-Match "";
-        proxy_set_header If-Modified-Since "";
-
-        proxy_cookie_path / $safe_ingress_path/;
-        # Nextcloud may emit either origin-relative redirects or absolute URLs
-        # based on overwritehost/overwriteprotocol. Keep both inside HA ingress.
-        proxy_redirect ~^https?://[^/]+(/.*)$ $safe_ingress_path$1;
-        proxy_redirect ~^(/.*)$ $safe_ingress_path$1;
-
-        sub_filter_once off;
-        sub_filter_types *;
-
-        # Static markup and CSS URLs emitted by Nextcloud core/apps.
-        sub_filter 'href="/' 'href="$safe_ingress_path/';
-        sub_filter 'src="/' 'src="$safe_ingress_path/';
-        sub_filter 'action="/' 'action="$safe_ingress_path/';
-        sub_filter 'content="/' 'content="$safe_ingress_path/';
-        sub_filter 'url(/' 'url($safe_ingress_path/';
-
-        # Nextcloud JavaScript bootstrap. Keeping oc_webroot prefix-aware makes
-        # generated fetch/XHR/navigation URLs behave the same as direct port 80.
-        sub_filter 'var _oc_webroot="";' 'var _oc_webroot="$safe_ingress_path";';
-        sub_filter "var _oc_webroot='';" "var _oc_webroot='$safe_ingress_path';";
-        sub_filter '"_oc_webroot":""' '"_oc_webroot":"$safe_ingress_path"';
-        sub_filter '"webroot":""' '"webroot":"$safe_ingress_path"';
-        sub_filter 'OC.webroot=""' 'OC.webroot="$safe_ingress_path"';
-        sub_filter "OC.webroot=''" "OC.webroot='$safe_ingress_path'";
+        add_header Content-Type 'text/html; charset=utf-8' always;
+        add_header Cache-Control 'no-store' always;
+        return 200 '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Opening Woow Nextcloud</title><script>const u="${PUBLIC_URL}";try{window.top.location.replace(u)}catch(e){window.location.replace(u)}</script><meta http-equiv="refresh" content="0;url=${PUBLIC_URL}"></head><body style="font-family:system-ui,sans-serif;padding:2rem"><h1>Opening Woow Nextcloud…</h1><p>If it does not open automatically, <a target="_top" href="${PUBLIC_URL}">open Woow Nextcloud</a>.</p></body></html>';
     }
 }
 NGINX

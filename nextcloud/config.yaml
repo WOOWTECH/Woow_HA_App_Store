@@ -1,5 +1,5 @@
 name: Woow Nextcloud
-version: "33.0.8"
+version: "33.0.9"
 slug: woow-nextcloud
 description: Nextcloud all-in-one with PostgreSQL 16 (HTTP for LAN, use Cloudflare Tunnel for HTTPS)
 url: https://github.com/WOOWTECH/Woow_ha_nextcloud
@@ -7,7 +7,7 @@ webui: "http://[HOST]:[PORT:80]"
 ingress: true
 ingress_port: 8090
 ingress_entry: login
-ingress_stream: true
+ingress_stream: false
 panel_icon: mdi:cloud-outline
 panel_title: Woow Nextcloud
 panel_admin: false
@@ -150,6 +150,7 @@ schema:
   OVERWRITEPROTOCOL: list(http|https)?
   OVERWRITEHOST: str?
   OVERWRITECLIURL: str?
+  NEXTCLOUD_PUBLIC_URL: str?
   NEXTCLOUD_DATADIR: str
   storage_mounts:
     - path: str
@@ -185,6 +186,7 @@ options:
   ADMIN_PASS: null
   db_password: null
   NEXTCLOUD_DATADIR: /share/nextcloud
+  NEXTCLOUD_PUBLIC_URL: https://woowtech-nextcloud.woowtech.io
   storage_mounts: []
   env_vars: []
 ports:
