@@ -272,3 +272,79 @@ Admin proxy with X-Ingress-Path test:
 Public hostname:
 woowtech-ha.woowtech.io resolves from the production HA host
 ```
+
+## 2026-09-22 mobile Cloudflare ingress screenshots investigation
+
+User screenshots showed two symptoms when browsing from Cloudflare/phone:
+
+1. Nextcloud panel showed browser error: redirect count too high.
+2. Collabora panel loaded the dashboard but opened a modal: `伺服器已關閉；請重新載入頁面。`
+
+Important observation: the screenshots' address bar shows `tech-ha.woowtech.io`, while the production hostname under test is `woowtech-ha.woowtech.io`. On the production HA host, Cloudflared config only routes `woowtech-ha.woowtech.io` to HA. `tech-ha.woowtech.io` does not resolve from the HA host and should not be used for this deployment.
+
+Findings and fixes:
+
+### Nextcloud
+
+The production Nextcloud Ingress config was not applying `sub_filter` to HTML responses, only to CSS/JS/XML/JSON. That left some login page root-relative links insufficiently handled under HA Ingress/Cloudflare.
+
+Fix:
+
+```nginx
+sub_filter_types *;
+```
+
+Deployed version:
+
+```text
+Woow Nextcloud 33.0.8
+state: started
+```
+
+Live config verified inside container:
+
+```text
+/config/nginx/site-confs/woow-nextcloud-ingress.conf
+sub_filter_types *;
+```
+
+### Collabora
+
+The Collabora dashboard modal was caused by the admin websocket being rejected by Collabora. Logs showed:
+
+```text
+Rejecting origin [https://woowtech-ha.woowtech.io] expected [http://homeassistant:9981] instead
+Rejecting admin WebSocket upgrade due to disallowed origin
+```
+
+The admin proxy previously proxied the admin HTML correctly, but it forwarded the upstream local host/proto (`homeassistant:9981`, `http`) to Collabora. Collabora validates `/cool/adminws` websocket origin against this perceived external URL, so the websocket was closed and the UI showed `伺服器已關閉`.
+
+Fix in `Woow Collabora` admin proxy:
+
+```nginx
+proxy_set_header Host "<public-ha-host>";
+proxy_set_header X-Forwarded-Proto https;
+```
+
+Deployed version:
+
+```text
+Woow Collabora 0.1.2
+state: started
+ingress_panel: true
+```
+
+Validation:
+
+```text
+GET http://homeassistant:9981/hosting/discovery => 200
+GET http://homeassistant:9981/hosting/capabilities => 200
+Collabora admin websocket with Origin https://woowtech-ha.woowtech.io => HTTP/1.1 101 Switching Protocols
+```
+
+Current production add-ons:
+
+```text
+Woow Nextcloud: 33.0.8 started
+Woow Collabora: 0.1.2 started
+```
