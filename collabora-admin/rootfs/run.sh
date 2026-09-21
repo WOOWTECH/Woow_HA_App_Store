@@ -6,6 +6,10 @@ PUBLIC_HA_URL="$(bashio::config 'public_ha_url')"
 PUBLIC_HA_HOST="${PUBLIC_HA_URL#https://}"
 PUBLIC_HA_HOST="${PUBLIC_HA_HOST#http://}"
 PUBLIC_HA_HOST="${PUBLIC_HA_HOST%%/*}"
+COLLABORA_SCHEME="${COLLABORA_URL%%://*}"
+COLLABORA_HOST="${COLLABORA_URL#*://}"
+COLLABORA_HOST="${COLLABORA_HOST%%/*}"
+COLLABORA_ORIGIN="${COLLABORA_SCHEME}://${COLLABORA_HOST}"
 USERNAME="$(bashio::config 'username')"
 PASSWORD="$(bashio::config 'password')"
 AUTH="$(printf '%s:%s' "$USERNAME" "$PASSWORD" | base64 | tr -d '\n')"
@@ -36,14 +40,15 @@ server {
         proxy_pass ${COLLABORA_URL};
         proxy_http_version 1.1;
         # Collabora validates admin websocket Origin against the perceived
-        # external scheme/host. Under HA Ingress + Cloudflare the browser
-        # Origin is the public HA host, while the upstream engine is reached
-        # over local HTTP. Present the public origin to Collabora so
-        # /cool/adminws is accepted instead of closing the admin console.
-        proxy_set_header Host "${PUBLIC_HA_HOST}";
+        # upstream scheme/host. Under HA Ingress the browser Origin is the
+        # HA URL (Cloudflare or VPN), while the engine is reached as the
+        # internal collabora_url. Normalize Host/Origin to collabora_url so
+        # /cool/adminws stays accepted from both public and VPN HA URLs.
+        proxy_set_header Host "${COLLABORA_HOST}";
+        proxy_set_header Origin "${COLLABORA_ORIGIN}";
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header X-Forwarded-Proto ${COLLABORA_SCHEME};
         proxy_set_header X-Forwarded-Prefix \$http_x_ingress_path;
         proxy_set_header Upgrade \$http_upgrade;
         proxy_set_header Connection \$connection_upgrade;
@@ -51,7 +56,7 @@ server {
 
         proxy_hide_header Content-Security-Policy;
         proxy_hide_header X-Frame-Options;
-        add_header Content-Security-Policy "frame-ancestors 'self' ${PUBLIC_HA_URL}; default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob:; connect-src 'self' ${PUBLIC_HA_URL} ws: wss:; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self' data:;" always;
+        add_header Content-Security-Policy "frame-ancestors 'self' ${PUBLIC_HA_URL} http://100.85.247.107:8123 http://homeassistant:8123; default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob:; connect-src 'self' ${PUBLIC_HA_URL} http://100.85.247.107:8123 http://homeassistant:8123 ws: wss:; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self' data:;" always;
 
         proxy_cookie_path / \$http_x_ingress_path/;
         proxy_cookie_path /browser/dist/ \$http_x_ingress_path/browser/dist/;
