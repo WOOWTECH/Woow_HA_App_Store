@@ -54,6 +54,9 @@ server {
         proxy_set_header If-Modified-Since "";
 
         proxy_cookie_path / $safe_ingress_path/;
+        # Nextcloud may emit either origin-relative redirects or absolute URLs
+        # based on overwritehost/overwriteprotocol. Keep both inside HA ingress.
+        proxy_redirect ~^https?://[^/]+(/.*)$ $safe_ingress_path$1;
         proxy_redirect ~^(/.*)$ $safe_ingress_path$1;
 
         sub_filter_once off;

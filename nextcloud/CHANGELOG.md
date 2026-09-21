@@ -1,5 +1,12 @@
 # Changelog
 
+## 33.0.6
+
+### Fixed
+- Keep absolute Nextcloud redirects generated from `overwritehost` inside the
+  Home Assistant ingress prefix. Requests such as ingress `/` now redirect to
+  `/api/hassio_ingress/<token>/login` instead of the public Cloudflare hostname.
+
 ## 33.0.5
 
 ### Fixed
