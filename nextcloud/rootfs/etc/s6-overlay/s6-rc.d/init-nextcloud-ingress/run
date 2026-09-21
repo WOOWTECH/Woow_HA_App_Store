@@ -58,7 +58,8 @@ server {
     }
 
     location / {
-        add_header Content-Type 'text/html; charset=utf-8' always;
+        default_type text/html;
+        charset utf-8;
         add_header Cache-Control 'no-store' always;
         return 200 '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Opening Woow Nextcloud</title><script>const u="${PUBLIC_URL}";try{window.top.location.replace(u)}catch(e){window.location.replace(u)}</script><meta http-equiv="refresh" content="0;url=${PUBLIC_URL}"></head><body style="font-family:system-ui,sans-serif;padding:2rem"><h1>Opening Woow Nextcloud…</h1><p>If it does not open automatically, <a target="_top" href="${PUBLIC_URL}">open Woow Nextcloud</a>.</p></body></html>';
     }
