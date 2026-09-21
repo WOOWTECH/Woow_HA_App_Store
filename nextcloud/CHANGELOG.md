@@ -1,5 +1,12 @@
 # Changelog
 
+## 33.0.7
+
+### Fixed
+- Return ingress redirects as relative `/api/hassio_ingress/<token>/...` paths
+  instead of absolute adapter-host URLs, so redirects remain stable under the
+  Home Assistant frontend origin.
+
 ## 33.0.6
 
 ### Fixed
