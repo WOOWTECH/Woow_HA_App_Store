@@ -26,7 +26,7 @@ required = [
     "location = /healthz",
     "NEXTCLOUD_PUBLIC_URL",
     "window.top.location.replace(u)",
-    "meta http-equiv=\"refresh\"",
+    "target=\"_top\"",
 ]
 for needle in required:
     assert needle in run, f"missing sidebar launcher directive: {needle}"

@@ -637,3 +637,11 @@ if [[ -d /config/www/nextcloud/apps/files_versions ]]; then
     touch /config/www/nextcloud/apps/files_versions/css/sidebar-tab.css
     lsiown -R abc:abc /config/www/nextcloud/apps/files_versions/css
 fi
+
+# The notify_push app needs a matching push daemon/proxy route. This add-on does
+# not ship that daemon, so leaving the app enabled produces ws://localhost/push/ws
+# browser errors on the public Cloudflare UI. Disable it unless a future image
+# explicitly adds the service.
+if occ app:list | grep -q "notify_push:"; then
+    occ app:disable notify_push > /dev/null 2>&1 || true
+fi
