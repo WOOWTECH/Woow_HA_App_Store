@@ -133,7 +133,7 @@ Then navigate to **Settings → Add-ons → Add-on Store**, find "Woow n8n" and 
 | `N8N_WEBHOOK_URL` | URL | （空） | n8n 2.35+ 使用的公開 Webhook URL；會與舊版設定自動同步 |
 | `WEBHOOK_URL` | URL | （自動產生） | n8n 2.35 以前使用的 Webhook URL；會與新版設定自動同步 |
 | `N8N_PROXY_HOPS` | 整數 | （空） | n8n 前方可信任的反向代理層數；標準 Cloudflare Tunnel 設為 `1` |
-| `N8N_SECURE_COOKIE` | 布林 | `false` | 區域網路 HTTP 預設停用；僅透過 HTTPS 存取時應設為 `true` |
+| `N8N_SECURE_COOKIE` | 布林 | `false` | HTTP 版本會在啟動時強制有效值為 `false`，避免 n8n 在 `http://` 下阻擋登入 |
 | `clean_redis` | 布林 | `false` | 啟動時清除 Redis 快取 |
 | `env_vars` | 列表 | `[]` | 自訂環境變數（key-value 對） |
 
@@ -178,7 +178,7 @@ env_vars:
    N8N_WEBHOOK_URL: https://n8n.your-domain.com
    WEBHOOK_URL: https://n8n.your-domain.com
    N8N_PROXY_HOPS: 1
-   N8N_SECURE_COOKIE: true
+   N8N_SECURE_COOKIE: false
    ```
 4. 重新啟動附加元件。
 

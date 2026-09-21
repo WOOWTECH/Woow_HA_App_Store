@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.12.17
+
+- Force the effective runtime `N8N_SECURE_COOKIE=false` on boot so existing installs that retained `true` can still open the n8n owner/sign-in UI over plain HTTP through direct LAN access or Home Assistant Ingress.
+- This release keeps n8n and Task Runner pinned to 2.12.3 and does not run a database migration.
+
 ## 2.12.16
 
 - Home Assistant Supervisor now pulls versioned, prebuilt add-on images from `ghcr.io/woowtech/woow-ha-n8n-{arch}` instead of building the add-on from Docker Hub during installation. Separate `amd64` and `aarch64` images are published with the exact add-on version tag.

@@ -43,11 +43,11 @@ This design simplifies the setup for users who access n8n only within their home
      N8N_WEBHOOK_URL: https://n8n.example.com
      WEBHOOK_URL: https://n8n.example.com
      N8N_PROXY_HOPS: 1
-     N8N_SECURE_COOKIE: true
+     N8N_SECURE_COOKIE: false
      ```
    - Restart the add-on.
 
-The current bundled n8n uses the legacy `WEBHOOK_URL`; the add-on mirrors it with `N8N_WEBHOOK_URL` for forward compatibility with n8n 2.35 and later. Keep `N8N_PROTOCOL=http`: TLS terminates at Cloudflare while the add-on origin remains HTTP.
+The current bundled n8n uses the legacy `WEBHOOK_URL`; the add-on mirrors it with `N8N_WEBHOOK_URL` for forward compatibility with n8n 2.35 and later. Keep `N8N_PROTOCOL=http`: TLS terminates at Cloudflare while the add-on origin remains HTTP. The add-on forces the effective `N8N_SECURE_COOKIE=false` value at boot so the same installation remains browseable over direct HTTP and HA Ingress.
 
 Cloudflare Tunnel supports WebSockets, so the editor's `/rest/push` connection works on the same public HTTPS hostname. This publishes the complete n8n entry point; protect the n8n owner account with a strong password. Cloudflare Access on the same hostname needs explicit bypass rules for public webhook paths.
 

@@ -27,7 +27,7 @@ configuration:
     description: Number of trusted reverse proxy hops in front of n8n. Use 1 for the standard Cloudflare Tunnel setup.
   N8N_SECURE_COOKIE:
     name: Secure cookie
-    description: Disabled by default for LAN HTTP access. Enable this when accessing n8n exclusively through HTTPS.
+    description: Forced off at runtime for this HTTP add-on so n8n remains browseable over direct LAN HTTP and Home Assistant Ingress.
   clean_redis:
     name: Clean Redis cache
     description: >-

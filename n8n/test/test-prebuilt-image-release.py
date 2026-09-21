@@ -13,7 +13,7 @@ ADDON_DIR = Path(__file__).resolve().parents[1]
 REPOSITORY_DIR = ADDON_DIR.parent
 WORKFLOW = REPOSITORY_DIR / ".github/workflows/publish-n8n-addon-images.yml"
 EXPECTED_IMAGE = "ghcr.io/woowtech/woow-ha-n8n-{arch}"
-EXPECTED_VERSION = "2.12.16"
+EXPECTED_VERSION = "2.12.17"
 
 
 def main() -> None:

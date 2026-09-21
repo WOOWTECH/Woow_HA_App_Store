@@ -13,7 +13,7 @@ import yaml
 with open(sys.argv[1], encoding="utf-8") as handle:
     config = yaml.safe_load(handle)
 
-assert config["version"] == "2.12.16"
+assert config["version"] == "2.12.17"
 assert config["ingress"] is True
 assert config["ingress_port"] == 5690
 assert config["ingress_entry"] == "signin"
@@ -90,6 +90,10 @@ fallback_dir="$(run_init fallback)"
 [[ "$(<"${fallback_dir}/N8N_WEBHOOK_URL")" == "http://192.0.2.10:5678" ]]
 [[ "$(<"${fallback_dir}/N8N_HOST")" == "192.0.2.10" ]]
 [[ "$(<"${fallback_dir}/N8N_PROTOCOL")" == "http" ]]
+[[ "$(<"${fallback_dir}/N8N_SECURE_COOKIE")" == "false" ]]
+
+http_cookie_dir="$(run_init http_cookie N8N_SECURE_COOKIE=true)"
+[[ "$(<"${http_cookie_dir}/N8N_SECURE_COOKIE")" == "false" ]]
 
 both_dir="${tmp}/both"
 mkdir -p "${both_dir}"

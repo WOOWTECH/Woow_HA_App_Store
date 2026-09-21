@@ -27,6 +27,13 @@ fi
 
 set_s6_env N8N_PROTOCOL "$protocol"
 
+# This add-on's supported origin is plain HTTP (direct LAN port and HA
+# Ingress). n8n refuses sign-in over http:// when N8N_SECURE_COOKIE=true, and
+# existing Home Assistant installations may keep an older/user-provided true
+# option across add-on updates. Force the effective runtime value to false so
+# the whole UI remains browseable through HTTP.
+set_s6_env N8N_SECURE_COOKIE "false"
+
 if [ -z "${N8N_HOST:-}" ]; then
     set_s6_env N8N_HOST "$ha_address"
 fi
