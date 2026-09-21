@@ -628,3 +628,12 @@ if [[ -n "$MAIL_DOMAIN" ]]; then
 else
     occ config:system:delete mail_domain > /dev/null 2>&1
 fi
+
+# Nextcloud 33 may still reference the legacy files_versions sidebar CSS even
+# though the app now ships that UI as a bundled module. Provide an empty CSS
+# file so browsers do not receive the HTML fallback with a CSS MIME error.
+if [[ -d /config/www/nextcloud/apps/files_versions ]]; then
+    mkdir -p /config/www/nextcloud/apps/files_versions/css
+    touch /config/www/nextcloud/apps/files_versions/css/sidebar-tab.css
+    lsiown -R abc:abc /config/www/nextcloud/apps/files_versions/css
+fi
