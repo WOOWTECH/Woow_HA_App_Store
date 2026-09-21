@@ -3,6 +3,9 @@ set -euo pipefail
 
 COLLABORA_URL="$(bashio::config 'collabora_url')"
 PUBLIC_HA_URL="$(bashio::config 'public_ha_url')"
+PUBLIC_HA_HOST="${PUBLIC_HA_URL#https://}"
+PUBLIC_HA_HOST="${PUBLIC_HA_HOST#http://}"
+PUBLIC_HA_HOST="${PUBLIC_HA_HOST%%/*}"
 USERNAME="$(bashio::config 'username')"
 PASSWORD="$(bashio::config 'password')"
 AUTH="$(printf '%s:%s' "$USERNAME" "$PASSWORD" | base64 | tr -d '\n')"
@@ -32,10 +35,15 @@ server {
     location / {
         proxy_pass ${COLLABORA_URL};
         proxy_http_version 1.1;
-        proxy_set_header Host \$proxy_host;
+        # Collabora validates admin websocket Origin against the perceived
+        # external scheme/host. Under HA Ingress + Cloudflare the browser
+        # Origin is the public HA host, while the upstream engine is reached
+        # over local HTTP. Present the public origin to Collabora so
+        # /cool/adminws is accepted instead of closing the admin console.
+        proxy_set_header Host "${PUBLIC_HA_HOST}";
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_set_header X-Forwarded-Proto https;
         proxy_set_header X-Forwarded-Prefix \$http_x_ingress_path;
         proxy_set_header Upgrade \$http_upgrade;
         proxy_set_header Connection \$connection_upgrade;
