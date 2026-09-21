@@ -19,7 +19,7 @@ assert config["stage"] == "stable", "Collabora must not show the experimental ba
 assert config.get("advanced") is not True, "App must be visible in the normal apps list"
 
 assert config["ingress"] is True, "Admin GUI must be available through HA ingress"
-assert config["ingress_panel"] is True, "Ingress panel must be enabled by default"
+assert config["ingress_panel"] is False, "Raw Collabora admin must not be exposed directly in sidebar; use collabora-admin proxy"
 assert config["ingress_port"] == 9980
 assert config["ingress_entry"] == "browser/dist/admin/admin.html"
 assert config["ingress_stream"] is True, "Collabora admin websockets/events need ingress streaming"
