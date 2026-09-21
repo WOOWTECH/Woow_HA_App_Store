@@ -144,3 +144,62 @@ A full browser document-open/edit/save flow requires an authenticated Nextcloud 
 ## Final result
 
 PASS: Woow Collabora CODE add-on is installed, running, reachable by direct WOPI URL, exposed in HA Ingress for admin GUI, and successfully integrated with Nextcloud Office.
+
+## 2026-09-21 correct production HA instance retest
+
+Requested production HA URLs:
+
+```text
+HA UI: https://woowtech-ha.woowtech.io
+SSH:   woowtech-ssh.woowtech.io via cloudflared access ssh
+```
+
+TDD sequence:
+
+1. Ran live visibility test first on `woowtech-ssh.woowtech.io`.
+2. Expected failure occurred:
+
+```text
+AssertionError: 1b7b4ce7_woow-collabora missing from installed applications list
+```
+
+3. Installed and configured `1b7b4ce7_woow-collabora` on the correct HA instance.
+4. Enabled `ingress_panel: true`.
+5. Installed/enabled Nextcloud `richdocuments` on the correct Nextcloud instance and configured:
+
+```text
+wopi_url: http://homeassistant:9981
+public_wopi_url: http://homeassistant:9981
+```
+
+6. `occ richdocuments:activate-config` passed and detected:
+
+```text
+Collabora Online Development Edition 26.04.4.1
+```
+
+7. Re-ran live visibility test with public hostname assertion:
+
+```bash
+EXPECTED_HA_PUBLIC_HOST=woowtech-ha.woowtech.io bash /tmp/live-ha-collabora-visibility.sh
+```
+
+Final result:
+
+```text
+HA installed/store/ingress metadata passed
+Checking Collabora direct endpoints...
+Checking Nextcloud pairing target...
+Checking expected public HA hostname woowtech-ha.woowtech.io...
+Woow Collabora live visibility checks passed for 1b7b4ce7_woow-collabora
+```
+
+Correct production instance status:
+
+```text
+slug: 1b7b4ce7_woow-collabora
+stage: stable
+state: started
+ingress_panel: true
+ingress_url: /api/hassio_ingress/<token>/browser/dist/admin/admin.html
+```
