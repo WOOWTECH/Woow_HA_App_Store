@@ -268,8 +268,11 @@ nextcloud/
 ├── translations/
 │   ├── en.yaml          # 英文翻譯
 │   └── zh-Hant.yaml     # 繁體中文翻譯
+├── docs/
+│   └── testing-direct-ingress-checklist.md  # Direct / Ingress 測試報告與 checklist
 ├── test/
 │   ├── options.json     # 測試用設定
+│   ├── live-direct-ingress-equivalence.sh
 │   ├── docker-compose.amd64.yml
 │   └── docker-compose.aarch64.yml
 ├── .common/
