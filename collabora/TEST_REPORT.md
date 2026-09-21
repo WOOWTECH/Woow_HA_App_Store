@@ -203,3 +203,72 @@ state: started
 ingress_panel: true
 ingress_url: /api/hassio_ingress/<token>/browser/dist/admin/admin.html
 ```
+
+## 2026-09-21 Cloudflare / sidebar blank-page fix
+
+Problem observed from `https://woowtech-ha.woowtech.io`:
+
+- Clicking Collabora from the HA sidebar rendered a blank page.
+
+Root cause:
+
+- The raw Collabora admin console is not suitable for direct HA iframe ingress.
+- It returns CSP containing `frame-ancestors 'none'`.
+- It also emits absolute `/browser/...` asset URLs, which escape the HA ingress token path when loaded through Cloudflare/HA sidebar.
+- Therefore a plain `ingress_port: 9980` panel can show as a blank page even though direct `/hosting/discovery` and direct admin basic-auth work.
+
+Fix implemented:
+
+- Added a dedicated HA Ingress admin proxy add-on:
+
+```text
+slug: 1b7b4ce7_woow-collabora-admin
+name: Woow Collabora
+version: 0.1.1
+ingress_panel: true
+```
+
+- The proxy:
+  - injects the configured Collabora admin Basic auth header server-side;
+  - replaces Collabora's CSP with an HA/Cloudflare iframe-compatible policy;
+  - rewrites absolute `/browser/...` and `/cool/...` URLs to the active HA ingress prefix;
+  - keeps Nextcloud Office/WOPI on the direct engine URL `http://homeassistant:9981`.
+
+Production state on `woowtech-ssh.woowtech.io` / `https://woowtech-ha.woowtech.io`:
+
+```text
+Woow Collabora app: 1b7b4ce7_woow-collabora-admin
+state: started
+stage: stable
+version: 0.1.1
+ingress_panel: true
+```
+
+Runtime Collabora CODE engine:
+
+```text
+container: woow-collabora-code-manual
+port: 9981 -> 9980
+```
+
+Note: the manual engine container is a temporary fallback because pulling `ghcr.io/alexbelgium/collabora-amd64:26.04.4.1.1` repeatedly stalled on one layer from the production HA host. The user-facing HA app/sidebar is the `Woow Collabora` ingress proxy, and Nextcloud Office points to the stable direct engine URL.
+
+Validation after fix:
+
+```text
+GET http://homeassistant:9981/hosting/discovery
+=> 200, 42453 bytes
+
+GET http://homeassistant:9981/hosting/capabilities
+=> 200, 533 bytes
+
+Admin proxy with X-Ingress-Path test:
+=> HTTP/1.1 200 OK
+=> HTML size 13864
+=> ingress-prefixed /browser assets: 5
+=> raw root /browser assets: 0
+=> CSP contains frame-ancestors allowing HA/Cloudflare iframe
+
+Public hostname:
+woowtech-ha.woowtech.io resolves from the production HA host
+```
