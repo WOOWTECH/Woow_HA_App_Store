@@ -34,7 +34,7 @@ ha store add https://github.com/WOOWTECH/Woow_HA_App_Store
 | `woow-headscale` | Woow Headscale VPN | 0.1.0 | 自架 Headscale + Headplane GUI |
 | `woow-immich` | Woow Immich | 2.5.7 | 自架相簿（Google Photos 替代） |
 | `woow_lan_gateway` | Woow LAN Gateway | 0.1.4 | 工廠註冊 LAN 的 fail-closed 公網 IPv4 閘道 |
-| `woow-n8n` | Woow n8n | 2.12.16 | AI/自動化 workflow |
+| `woow-n8n` | Woow n8n | 2.12.17 | AI/自動化 workflow |
 | `woow-nextcloud` | Woow Nextcloud | 33.0.3 | 自架雲端硬碟 |
 | `woow-tailscale` | Woow Tailscale | 0.1.1 | Tailscale / Headscale VPN 用戶端 |
 | `woow_ha_code_server` | Woow Code Server | 0.1.5 | code-server + pi coding agent + ACP 側邊欄（取代原 `vscode` 鏡像） |
