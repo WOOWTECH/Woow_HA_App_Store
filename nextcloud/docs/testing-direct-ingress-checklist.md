@@ -28,7 +28,7 @@
 | Memories | enabled `8.1.0` | UI endpoint PASS；部分 albums API path returned 404 equally direct/ingress |
 | Talk / Spreed | enabled `23.0.11` | UI + room OCS API PASS；完整通話需 TURN/HPB 等外部服務另測 |
 | Office / richdocuments | enabled `10.3.1` | Nextcloud Office integration app installed |
-| Collabora CODE / richdocumentscode | enabled `26.4.303` | Official built-in CODE server downloaded/installed; runtime blocked by LSIO Alpine/musl (`no_glibc`), so full document editing needs external Collabora/CODE service or glibc-based image |
+| Collabora CODE / richdocumentscode | removed | Identified as Collabora-provided built-in CODE server for local/non-production use, not Nextcloud-owned. It also cannot run in the current LSIO Alpine/musl container (`no_glibc`), so it was disabled/removed from the app directory. Full Office editing requires an external Collabora/CODE backend or a future glibc-compatible packaging strategy. |
 
 ### 0.2 Direct vs Ingress 實測結果
 
@@ -46,14 +46,15 @@
 | DAV extra | `/remote.php/dav/`, principals, calendars root, addressbooks root | PASS |
 | New app UI | Notes, Calendar, Contacts, Deck, Forms, Memories, Talk | PASS |
 | New app API | Notes, Deck, Forms, Talk | PASS |
-| Office / Collabora | richdocuments + official richdocumentscode installed; direct/ingress equivalent; CODE runtime returns `no_glibc` on Alpine/musl | PARTIAL |
+| Detailed app functions | Notes create/update/delete, Calendar ICS create/read/delete, Contacts VCF create/read/delete, Deck board/stack create/list/delete, Forms create/list/delete, Memories JPEG upload + UI, Talk room/create message/delete | PASS |
+| Office / Collabora | Nextcloud Office (`richdocuments`) installed; built-in CODE removed; direct/ingress equivalent for installed app state | PARTIAL |
 
 ### 0.3 注意事項
 
 - raw test clients must not follow the ingress root redirect when validating `/`; follow mode may request the prefixed URL against the adapter directly and produce a misleading 404. Correct validation is `curl --max-redirs 0` and expecting `Location: /api/hassio_ingress/<token>/login`.
 - Talk is enabled and direct/ingress UI + room API pass. Full production calling still needs TURN/HPB/signaling validation.
-- Notes, Calendar, Contacts, Deck, Forms, Memories, Talk, Nextcloud Office, and the official Collabora built-in CODE server were downloaded/installed from Nextcloud apps.
-- Built-in CODE (`richdocumentscode`) installs, but LSIO-based container uses Alpine/musl; CODE expects glibc, so discovery/proxy returns `no_glibc`. Direct and ingress fail identically, which means ingress equivalence is fine but full Office editing requires an external Collabora/CODE backend or a glibc-compatible packaging strategy.
+- Notes, Calendar, Contacts, Deck, Forms, Memories, Talk, and Nextcloud Office were downloaded/installed from Nextcloud apps.
+- Collabora built-in CODE (`richdocumentscode`) was checked. Its app metadata identifies it as `Collabora Online - Built-in CODE Server` by `Collabora Productivity`, for local/non-production use. Because it is not Nextcloud-owned and does not run in the current Alpine/musl container (`no_glibc`), it was removed. Full Office editing requires an external Collabora/CODE backend or a future glibc-compatible packaging strategy.
 - All temporary ingress allow rules used for tests were removed after validation.
 
 ## 1. 測試環境
