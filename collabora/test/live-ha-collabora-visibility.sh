@@ -38,7 +38,7 @@ assert admin_installed, f"{admin_slug} missing from installed applications list"
 assert store_row, f"{slug} missing from store list"
 assert admin_store_row, f"{admin_slug} missing from store list"
 assert installed["name"] == "Woow Collabora CODE"
-assert admin_installed["name"] == "Woow Collabora Admin"
+assert admin_installed["name"] == "Woow Collabora"
 assert installed["stage"] == "stable", installed
 assert admin_installed["stage"] == "stable", admin_installed
 assert store_row["stage"] == "stable", store_row

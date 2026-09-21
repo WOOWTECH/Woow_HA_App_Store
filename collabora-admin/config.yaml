@@ -1,7 +1,7 @@
-name: Woow Collabora Admin
-version: 0.1.0
+name: Woow Collabora
+version: 0.1.1
 slug: woow-collabora-admin
-description: Home Assistant Ingress admin proxy for Woow Collabora CODE
+description: Collabora Online admin console for Woow Nextcloud Office
 url: https://github.com/WOOWTECH/Woow_HA_App_Store
 startup: services
 stage: stable
