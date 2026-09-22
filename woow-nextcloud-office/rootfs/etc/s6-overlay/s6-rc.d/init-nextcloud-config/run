@@ -4,8 +4,9 @@ source /run/woow-office/env
 until pg_isready -q -h /run/postgresql -U postgres; do sleep 1; done
 until redis-cli -s /run/redis/redis.sock ping >/dev/null 2>&1; do sleep 1; done
 # DB/user are idempotent under local socket trust.
-gosu postgres psql -h /run/postgresql -tc "SELECT 1 FROM pg_roles WHERE rolname='nextcloud'" | grep -q 1 || gosu postgres psql -h /run/postgresql -v dbpass="$DB_PASS" -c "CREATE ROLE nextcloud LOGIN PASSWORD :'dbpass'"
-gosu postgres psql -h /run/postgresql -v dbpass="$DB_PASS" -c "ALTER ROLE nextcloud PASSWORD :'dbpass'" >/dev/null
+DB_PASS_SQL=${DB_PASS//\'/\'\'}
+gosu postgres psql -h /run/postgresql -tc "SELECT 1 FROM pg_roles WHERE rolname='nextcloud'" | grep -q 1 || gosu postgres psql -h /run/postgresql -c "CREATE ROLE nextcloud LOGIN PASSWORD '${DB_PASS_SQL}'"
+gosu postgres psql -h /run/postgresql -c "ALTER ROLE nextcloud PASSWORD '${DB_PASS_SQL}'" >/dev/null
 gosu postgres psql -h /run/postgresql -tc "SELECT 1 FROM pg_database WHERE datname='nextcloud'" | grep -q 1 || gosu postgres createdb -h /run/postgresql -O nextcloud nextcloud
 # Persistent config/custom apps/data.
 mkdir -p /data/nextcloud/config /data/nextcloud/custom_apps "$NEXTCLOUD_DATADIR"
