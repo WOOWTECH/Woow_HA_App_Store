@@ -54,6 +54,11 @@ if [[ -f "${OPTIONS_FILE}" ]]; then
         export DEFAULT_PHONE_REGION="${OPT_DEFAULT_PHONE_REGION}"
     fi
 
+    OPT_NEXTCLOUD_PUBLIC_URL=$(jq -r '.NEXTCLOUD_PUBLIC_URL // empty' "${OPTIONS_FILE}")
+    if [[ -n "${OPT_NEXTCLOUD_PUBLIC_URL}" ]]; then
+        export NEXTCLOUD_PUBLIC_URL="${OPT_NEXTCLOUD_PUBLIC_URL}"
+    fi
+
     # SMTP settings
     for key in SMTP_HOST SMTP_SECURE SMTP_PORT SMTP_AUTH SMTP_AUTHTYPE SMTP_USER SMTP_PASS MAIL_FROM_ADDRESS MAIL_DOMAIN; do
         val=$(jq -r ".${key} // empty" "${OPTIONS_FILE}")
@@ -649,21 +654,82 @@ fi
 # Allow the public/direct Nextcloud UI to be framed by the Home Assistant panel
 # wrapper. This keeps the HA headbar visible (matching apps such as Woow n8n)
 # while avoiding the unstable /api/hassio_ingress/<token> Nextcloud session path.
+# Also expose Collabora's /hosting, /browser and /cool paths through the public
+# Nextcloud HTTPS hostname. Browsers cannot load a private http://homeassistant
+# Collabora URL from the public Nextcloud UI, so this same-origin HTTPS proxy is
+# required for document editing to work from Cloudflare, VPN and mobile clients.
 if [[ -f /config/nginx/site-confs/default.conf ]]; then
-    python3 - <<'PY'
+    python3 - <<'INNERPY'
 p = '/config/nginx/site-confs/default.conf'
 s = open(p).read()
-# Remove a previous failed headers-more attempt if present.
-start = s.find('    # WOOWTECH frame compatibility: allow Nextcloud to render inside the HA sidebar.\n')
-if start != -1:
-    end = s.find('    # HTTP response headers borrowed from Nextcloud `.htaccess`\n', start)
-    if end != -1:
-        s = s[:start] + s[end:]
+# Remove previous WOOWTECH managed blocks before re-inserting them idempotently.
+for marker, next_marker in [
+    ('    # WOOWTECH frame compatibility: allow Nextcloud to render inside the HA sidebar.\n', '    # HTTP response headers borrowed from Nextcloud `.htaccess`\n'),
+    ('    # WOOWTECH: public Collabora endpoint proxied under Nextcloud host for browser-safe HTTPS.\n', '    # Rule borrowed from `.htaccess`\n'),
+]:
+    start = s.find(marker)
+    if start != -1:
+        end = s.find(next_marker, start)
+        if end != -1:
+            s = s[:start] + s[end:]
 s = s.replace('    add_header X-Frame-Options                   "SAMEORIGIN"        always;\n', '    # WOOWTECH: X-Frame-Options disabled so Nextcloud can render in HA sidebar.\n')
-needle = '    # HTTP response headers borrowed from Nextcloud `.htaccess`\n'
-insert = '''    # WOOWTECH frame compatibility: allow Nextcloud to render inside the HA sidebar.\n    fastcgi_hide_header Content-Security-Policy;\n    fastcgi_hide_header X-Frame-Options;\n    add_header Content-Security-Policy "frame-ancestors 'self' https://woowtech-ha.woowtech.io https://tech-ha.woowtech.io http://100.85.247.107:8123 http://homeassistant:8123" always;\n\n'''
-if 'fastcgi_hide_header Content-Security-Policy;' not in s:
-    s = s.replace(needle, insert + needle)
+header_needle = '    # HTTP response headers borrowed from Nextcloud `.htaccess`\n'
+header_insert = '''    # WOOWTECH frame compatibility: allow Nextcloud to render inside the HA sidebar.
+    fastcgi_hide_header Content-Security-Policy;
+    fastcgi_hide_header X-Frame-Options;
+    add_header Content-Security-Policy "frame-ancestors 'self' https://woowtech-ha.woowtech.io https://tech-ha.woowtech.io http://100.85.247.107:8123 http://homeassistant:8123" always;
+
+'''
+s = s.replace(header_needle, header_insert + header_needle)
+proxy_needle = '    # Rule borrowed from `.htaccess`\n'
+proxy_insert = '''    # WOOWTECH: public Collabora endpoint proxied under Nextcloud host for browser-safe HTTPS.
+    location ^~ /hosting/ {
+        proxy_pass http://homeassistant:9981;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_read_timeout 3600s;
+    }
+
+    location ^~ /browser/ {
+        proxy_pass http://homeassistant:9981;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_read_timeout 3600s;
+    }
+
+    location ^~ /cool/ {
+        proxy_pass http://homeassistant:9981;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_read_timeout 3600s;
+        proxy_buffering off;
+    }
+
+'''
+s = s.replace(proxy_needle, proxy_insert + proxy_needle)
 open(p, 'w').write(s)
-PY
+INNERPY
+fi
+
+# Nextcloud Office / Collabora: use the public Nextcloud hostname as the browser
+# Collabora endpoint. The nginx rules above proxy /hosting, /browser and /cool to
+# the Collabora engine, avoiding mixed-content and private-hostname failures.
+COLLABORA_PUBLIC_URL="${NEXTCLOUD_PUBLIC_URL:-}"
+if [[ -z "${COLLABORA_PUBLIC_URL}" && -n "${OVERWRITECLIURL:-}" && "${OVERWRITECLIURL}" != "http://localhost" ]]; then
+    COLLABORA_PUBLIC_URL="${OVERWRITECLIURL}"
+fi
+if [[ -z "${COLLABORA_PUBLIC_URL}" && -n "${OVERWRITEHOST:-}" ]]; then
+    COLLABORA_PUBLIC_URL="${OVERWRITEPROTOCOL:-https}://${OVERWRITEHOST}"
+fi
+if [[ -n "${COLLABORA_PUBLIC_URL}" ]] && occ app:list | grep -q "richdocuments:"; then
+    occ richdocuments:activate-config         --wopi-url="${COLLABORA_PUBLIC_URL%/}"         --callback-url="${COLLABORA_PUBLIC_URL%/}" > /dev/null 2>&1 || true
 fi
