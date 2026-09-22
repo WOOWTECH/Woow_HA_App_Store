@@ -1,5 +1,5 @@
 name: Woow Nextcloud Office
-version: "0.1.5"
+version: "0.1.6"
 slug: woow-nextcloud-office
 description: Nextcloud with built-in PostgreSQL, Redis, and Collabora Online Office
 url: https://github.com/WOOWTECH/Woow_HA_App_Store

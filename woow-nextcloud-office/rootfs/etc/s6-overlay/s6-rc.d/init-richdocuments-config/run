@@ -40,6 +40,8 @@ if (is_file($p)) {
 PHP
 occ app:disable richdocuments || true
 occ app:enable richdocuments || true
+# php-fpm starts before this init step; restart it so Nextcloud drops route caches loaded before the patch.
+if [[ -s /run/php/php8.2-fpm.pid ]]; then kill -TERM "$(cat /run/php/php8.2-fpm.pid)" || true; sleep 2; fi
 # Back-end WOPI URL stays internal; public URL is discovered from coolwsd server_name via discovery.
 occ config:app:set --value "http://127.0.0.1:9980" richdocuments wopi_url || true
 occ richdocuments:activate-config || true
