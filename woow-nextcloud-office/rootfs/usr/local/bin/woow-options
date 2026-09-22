@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+set -euo pipefail
+key="$1"; default="${2:-}"
+if [[ -f /data/options.json ]]; then
+  jq -r --arg k "$key" --arg d "$default" 'if .[$k] == null then $d elif (.[$k]|type)=="array" or (.[$k]|type)=="object" then (.[$k]|tojson) else (.[$k]|tostring) end' /data/options.json
+else
+  printf '%s\n' "$default"
+fi

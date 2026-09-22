@@ -1,0 +1,32 @@
+#!/command/with-contenv bash
+set -euo pipefail
+mkdir -p /run/woow-office /data/nextcloud/config /data/nextcloud/custom_apps /data/postgres /data/redis /share/nextcloud
+PUBLIC_URL="$(woow-options NEXTCLOUD_PUBLIC_URL https://woowtech-nextcloud.woowtech.io)"; PUBLIC_URL="${PUBLIC_URL%/}"
+PUBLIC_HOST="${PUBLIC_URL#http://}"; PUBLIC_HOST="${PUBLIC_HOST#https://}"; PUBLIC_HOST="${PUBLIC_HOST%%/*}"
+HA_PUBLIC_URL="$(woow-options HA_PUBLIC_URL https://woowtech-ha.woowtech.io)"; HA_PUBLIC_URL="${HA_PUBLIC_URL%/}"
+ADMIN_USER="$(woow-options ADMIN_USER admin)"
+ADMIN_PASS="$(woow-options ADMIN_PASS '')"
+DB_PASS="$(woow-options db_password '')"
+[[ -n "$DB_PASS" && "$DB_PASS" != "null" ]] || DB_PASS="$(openssl rand -hex 24)"
+[[ -n "$ADMIN_PASS" && "$ADMIN_PASS" != "null" ]] || ADMIN_PASS="$(openssl rand -hex 24)"
+COLLABORA_ADMIN_USER="$(woow-options COLLABORA_ADMIN_USER admin)"
+COLLABORA_ADMIN_PASS="$(woow-options COLLABORA_ADMIN_PASS '')"
+[[ -n "$COLLABORA_ADMIN_PASS" && "$COLLABORA_ADMIN_PASS" != "null" ]] || COLLABORA_ADMIN_PASS="$(openssl rand -hex 24)"
+cat > /run/woow-office/env <<ENV
+PUBLIC_URL='$PUBLIC_URL'
+PUBLIC_HOST='$PUBLIC_HOST'
+HA_PUBLIC_URL='$HA_PUBLIC_URL'
+ADMIN_USER='$ADMIN_USER'
+ADMIN_PASS='$ADMIN_PASS'
+DB_PASS='$DB_PASS'
+COLLABORA_ADMIN_USER='$COLLABORA_ADMIN_USER'
+COLLABORA_ADMIN_PASS='$COLLABORA_ADMIN_PASS'
+NEXTCLOUD_DATADIR='$(woow-options NEXTCLOUD_DATADIR /share/nextcloud)'
+DEFAULT_PHONE_REGION='$(woow-options DEFAULT_PHONE_REGION TW)'
+ENABLE_COLLABORA='$(woow-options ENABLE_COLLABORA true)'
+ENABLE_COLLABORA_ADMIN='$(woow-options ENABLE_COLLABORA_ADMIN true)'
+ENV
+chown -R www-data:www-data /data/nextcloud /share/nextcloud
+chown -R postgres:postgres /data/postgres /run/postgresql
+chown -R redis:redis /data/redis /run/redis
+chmod 700 /data/postgres

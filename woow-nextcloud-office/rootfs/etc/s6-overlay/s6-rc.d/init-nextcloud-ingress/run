@@ -1,0 +1,26 @@
+#!/command/with-contenv bash
+set -euo pipefail
+source /run/woow-office/env
+cat > /etc/nginx/conf.d/nextcloud-office-ingress.conf <<NGINX
+server {
+    listen 8090 default_server;
+    server_name _;
+    allow 172.30.32.2;
+    allow 127.0.0.1;
+    deny all;
+
+    location = /healthz {
+        allow all;
+        access_log off;
+        proxy_pass http://127.0.0.1:8000/healthz;
+    }
+
+    location / {
+        default_type text/html;
+        charset utf-8;
+        add_header Cache-Control 'no-store' always;
+        return 200 '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Woow Nextcloud Office</title><style>html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#111}iframe{border:0;width:100vw;height:100vh;display:block;position:relative;z-index:2}.fallback{position:absolute;z-index:1;inset:0;display:grid;place-items:center;color:white;font-family:system-ui,sans-serif;background:#111}.fallback a{color:#4ea3ff}</style></head><body><div class="fallback"><p>Opening Woow Nextcloud Office… <a id="open" target="_blank">open in new tab</a></p></div><iframe id="nc" allow="clipboard-read; clipboard-write; fullscreen; camera; microphone; display-capture"></iframe><script>(function(){var u="${PUBLIC_URL}/apps/files/";document.getElementById("open").href=u;document.getElementById("nc").src=u;})();</script></body></html>';
+    }
+}
+NGINX
+nginx -t

@@ -1,0 +1,18 @@
+#!/command/with-contenv bash
+set -euo pipefail
+source /run/woow-office/env
+if [[ "$ENABLE_COLLABORA" != "true" ]]; then exit 0; fi
+for i in $(seq 1 90); do curl -fsS http://127.0.0.1:9980/hosting/capabilities >/dev/null 2>&1 && break; sleep 1; done
+for i in $(seq 1 90); do curl -fsS http://127.0.0.1:8000/hosting/discovery >/dev/null 2>&1 && break; sleep 1; done
+# Install/enable richdocuments. app:install may fail if already installed or no appstore; continue to app:enable.
+occ app:install richdocuments || true
+occ app:enable richdocuments || true
+# Back-end WOPI URL stays internal; public URL is discovered from coolwsd server_name via discovery.
+occ config:app:set --value "http://127.0.0.1:9980" richdocuments wopi_url || true
+occ richdocuments:activate-config || true
+occ config:app:set --value "$PUBLIC_URL" richdocuments wopi_callback_url || true
+# Explicit fallback: keep all three values sane if activate-config is flaky for this richdocuments version.
+occ config:app:set --value "$PUBLIC_URL" richdocuments public_wopi_url || true
+occ config:app:get richdocuments wopi_url || true
+occ config:app:get richdocuments public_wopi_url || true
+occ config:app:get richdocuments wopi_callback_url || true

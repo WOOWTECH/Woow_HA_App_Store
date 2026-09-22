@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+set -euo pipefail
+cd /var/www/nextcloud
+exec gosu www-data php occ "$@"

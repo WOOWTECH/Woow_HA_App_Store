@@ -1,0 +1,3 @@
+#!/command/with-contenv bash
+set -euo pipefail
+exec nginx -g 'daemon off;'

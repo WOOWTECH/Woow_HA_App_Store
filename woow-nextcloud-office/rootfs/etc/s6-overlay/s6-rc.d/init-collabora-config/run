@@ -1,0 +1,20 @@
+#!/command/with-contenv bash
+set -euo pipefail
+source /run/woow-office/env
+if [[ "$ENABLE_COLLABORA" != "true" ]]; then exit 0; fi
+# coolconfig is provided by coolwsd package. Use it instead of collabora/code docker env shims.
+coolconfig set ssl.enable false || true
+coolconfig set ssl.termination true || true
+coolconfig set net.proto IPv4 || true
+coolconfig set net.listen loopback || true
+coolconfig set server_name "$PUBLIC_HOST" || true
+coolconfig set storage.wopi.host "127\\.0\\.0\\.1" || true
+coolconfig set storage.wopi.host "$PUBLIC_HOST" || true
+coolconfig set admin_console.username "$COLLABORA_ADMIN_USER" || true
+coolconfig set admin_console.password "$COLLABORA_ADMIN_PASS" || true
+coolconfig set admin_console.enable_pam false || true
+coolconfig set mount_jail_tree false || true
+coolconfig set security.seccomp false || true
+coolconfig set security.capabilities false || true
+# Prevent package service from fighting s6 in HA add-on container.
+systemctl disable coolwsd 2>/dev/null || true

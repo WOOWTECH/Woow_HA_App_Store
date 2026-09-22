@@ -1,0 +1,16 @@
+#!/command/with-contenv bash
+set -euo pipefail
+source /run/woow-office/env
+if [[ "$ENABLE_COLLABORA" != "true" ]]; then exec sleep infinity; fi
+mkdir -p /data/coolwsd-jail /data/coolwsd-cache /var/cache/coolwsd
+chown -R cool:cool /data/coolwsd-jail /data/coolwsd-cache /var/cache/coolwsd 2>/dev/null || true
+exec gosu cool /usr/bin/coolwsd \
+  --version \
+  --o:sys_template_path=/opt/cool/systemplate \
+  --o:child_root_path=/data/coolwsd-jail \
+  --o:file_server_root_path=/usr/share/coolwsd \
+  --o:cache_files.path=/data/coolwsd-cache \
+  --o:ssl.enable=false \
+  --o:ssl.termination=true \
+  --o:net.listen=loopback \
+  --o:server_name="$PUBLIC_HOST"

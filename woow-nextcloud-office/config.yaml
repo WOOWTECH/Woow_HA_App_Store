@@ -1,0 +1,82 @@
+name: Woow Nextcloud Office
+version: "0.1.0"
+slug: woow-nextcloud-office
+description: Nextcloud with built-in PostgreSQL, Redis, and Collabora Online Office
+url: https://github.com/WOOWTECH/Woow_HA_App_Store
+startup: services
+stage: experimental
+webui: "http://[HOST]:[PORT:8000]"
+ingress: true
+ingress_port: 8090
+ingress_entry: login
+ingress_stream: false
+panel_icon: mdi:file-cloud-outline
+panel_title: Woow Nextcloud Office
+panel_admin: false
+watchdog: "http://[HOST]:[PORT:8090]/healthz"
+hassio_api: true
+hassio_role: manager
+arch:
+  - amd64
+  - aarch64
+init: false
+map:
+  - type: data
+    read_only: false
+  - type: share
+    read_only: false
+  - type: addon_config
+    read_only: false
+  - type: ssl
+    read_only: true
+backup: cold
+backup_exclude:
+  - "**/log"
+tmpfs: true
+privileged:
+  - SYS_ADMIN
+schema:
+  TZ: str?
+  NEXTCLOUD_PUBLIC_URL: url
+  HA_PUBLIC_URL: url?
+  ADMIN_USER: str
+  ADMIN_PASS: password
+  db_password: password?
+  NEXTCLOUD_DATADIR: str
+  DEFAULT_PHONE_REGION: str?
+  COLLABORA_ADMIN_USER: str
+  COLLABORA_ADMIN_PASS: password
+  ENABLE_COLLABORA: bool
+  ENABLE_COLLABORA_ADMIN: bool
+  trusted_domains:
+    - str?
+  trusted_proxies:
+    - str?
+  SMTP_HOST: str?
+  SMTP_SECURE: list(STARTTLS|SSL)?
+  SMTP_PORT: port?
+  SMTP_AUTH: bool?
+  SMTP_AUTHTYPE: list(LOGIN|PLAIN)?
+  SMTP_USER: str?
+  SMTP_PASS: password?
+  MAIL_FROM_ADDRESS: str?
+  MAIL_DOMAIN: str?
+options:
+  TZ: Asia/Taipei
+  NEXTCLOUD_PUBLIC_URL: https://woowtech-nextcloud.woowtech.io
+  HA_PUBLIC_URL: https://woowtech-ha.woowtech.io
+  ADMIN_USER: admin
+  ADMIN_PASS: null
+  db_password: null
+  NEXTCLOUD_DATADIR: /share/nextcloud
+  DEFAULT_PHONE_REGION: TW
+  COLLABORA_ADMIN_USER: admin
+  COLLABORA_ADMIN_PASS: null
+  ENABLE_COLLABORA: true
+  ENABLE_COLLABORA_ADMIN: true
+  trusted_domains: []
+  trusted_proxies: []
+ports:
+  8000/tcp: 18080
+ports_description:
+  8000/tcp: Staging HTTP origin for Nextcloud Office

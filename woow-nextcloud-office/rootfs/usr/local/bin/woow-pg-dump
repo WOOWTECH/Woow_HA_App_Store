@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+set -euo pipefail
+mkdir -p /backup
+gosu postgres pg_dump -h /run/postgresql -U nextcloud -Fc nextcloud > /backup/nextcloud-postgres.dump

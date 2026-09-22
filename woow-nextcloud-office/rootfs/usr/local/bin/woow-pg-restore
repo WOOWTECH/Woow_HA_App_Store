@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+set -euo pipefail
+DUMP="${1:-/backup/nextcloud-postgres.dump}"
+[[ -f "$DUMP" ]] || { echo "Missing dump: $DUMP" >&2; exit 1; }
+gosu postgres dropdb --if-exists -h /run/postgresql nextcloud
+gosu postgres createdb -h /run/postgresql -O nextcloud nextcloud
+gosu postgres pg_restore -h /run/postgresql -U nextcloud -d nextcloud "$DUMP"

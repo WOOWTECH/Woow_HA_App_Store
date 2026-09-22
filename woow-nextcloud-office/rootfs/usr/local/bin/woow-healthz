@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+set -euo pipefail
+pg_isready -q -h /run/postgresql -U nextcloud
+redis-cli -s /run/redis/redis.sock ping >/dev/null
+curl -fsS http://127.0.0.1:8000/status.php >/dev/null
+if [[ "$(woow-options ENABLE_COLLABORA true)" == "true" ]]; then curl -fsS http://127.0.0.1:9980/hosting/capabilities >/dev/null; fi
+printf 'ok\n'

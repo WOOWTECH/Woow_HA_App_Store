@@ -1,0 +1,45 @@
+#!/command/with-contenv bash
+set -euo pipefail
+source /run/woow-office/env
+until pg_isready -q -h /run/postgresql -U postgres; do sleep 1; done
+until redis-cli -s /run/redis/redis.sock ping >/dev/null 2>&1; do sleep 1; done
+# DB/user are idempotent under local socket trust.
+gosu postgres psql -h /run/postgresql -tc "SELECT 1 FROM pg_roles WHERE rolname='nextcloud'" | grep -q 1 || gosu postgres psql -h /run/postgresql -c "CREATE ROLE nextcloud LOGIN PASSWORD '${DB_PASS}'"
+gosu postgres psql -h /run/postgresql -tc "SELECT 1 FROM pg_database WHERE datname='nextcloud'" | grep -q 1 || gosu postgres createdb -h /run/postgresql -O nextcloud nextcloud
+# Persistent config/custom apps/data.
+mkdir -p /data/nextcloud/config /data/nextcloud/custom_apps "$NEXTCLOUD_DATADIR"
+if [[ ! -L /var/www/nextcloud/config ]]; then rm -rf /var/www/nextcloud/config; ln -s /data/nextcloud/config /var/www/nextcloud/config; fi
+if [[ ! -L /var/www/nextcloud/custom_apps ]]; then rm -rf /var/www/nextcloud/custom_apps; ln -s /data/nextcloud/custom_apps /var/www/nextcloud/custom_apps; fi
+chown -R www-data:www-data /data/nextcloud "$NEXTCLOUD_DATADIR" /var/www/nextcloud
+if [[ ! -s /data/nextcloud/config/config.php ]]; then
+  echo "Installing Nextcloud..."
+  occ maintenance:install \
+    --database pgsql \
+    --database-host /run/postgresql \
+    --database-name nextcloud \
+    --database-user nextcloud \
+    --database-pass "$DB_PASS" \
+    --admin-user "$ADMIN_USER" \
+    --admin-pass "$ADMIN_PASS" \
+    --data-dir "$NEXTCLOUD_DATADIR"
+else
+  occ upgrade --no-interaction || true
+fi
+# Core config that keeps public/direct URL stable and HA iframe usable.
+occ config:system:set trusted_domains 0 --value "$PUBLIC_HOST"
+occ config:system:set trusted_domains 1 --value localhost
+occ config:system:set trusted_domains 2 --value 127.0.0.1
+occ config:system:set trusted_domains 3 --value homeassistant
+occ config:system:set overwrite.cli.url --value "$PUBLIC_URL"
+occ config:system:set overwriteprotocol --value https
+occ config:system:set default_phone_region --value "$DEFAULT_PHONE_REGION" || true
+occ config:system:set memcache.local --value '\OC\Memcache\APCu'
+occ config:system:set memcache.locking --value '\OC\Memcache\Redis'
+occ config:system:set redis host --value /run/redis/redis.sock
+occ config:system:set redis port --value 0 --type integer
+occ config:system:set maintenance_window_start --value 1 --type integer || true
+# Allow framing by HA/public hosts.
+php -r '$f="/data/nextcloud/config/config.php"; include $f; $c=$CONFIG ?? []; $tp=$c["trusted_proxies"]??[]; if (!is_array($tp)) { $tp=[$tp]; } $c["trusted_proxies"]=array_values(array_unique(array_merge($tp, ["127.0.0.1","172.30.32.2"]))); $c["overwritehost"]="'"$PUBLIC_HOST"'"; $out="<?php\n\$CONFIG = ".var_export($c,true).";\n"; file_put_contents($f,$out);'
+# Disable first-run modal and notify_push unless explicitly configured later.
+occ app:disable firstrunwizard || true
+occ app:disable notify_push || true
