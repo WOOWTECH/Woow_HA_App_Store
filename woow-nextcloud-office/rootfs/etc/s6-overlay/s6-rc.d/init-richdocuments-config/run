@@ -7,6 +7,39 @@ for i in $(seq 1 90); do curl -fsS http://127.0.0.1:8000/hosting/discovery >/dev
 # Install/enable richdocuments. app:install may fail if already installed or no appstore; continue to app:enable.
 occ app:install richdocuments || true
 occ app:enable richdocuments || true
+# Nextcloud 33 + richdocuments 10.3.x can leave several app routes without a leading slash,
+# which makes /apps/richdocuments/token return 404 and prevents Collabora from opening files.
+php <<'PHP'
+<?php
+$p = '/var/www/nextcloud/apps/richdocuments/appinfo/routes.php';
+if (is_file($p)) {
+    $s = file_get_contents($p);
+    $repl = [
+        "'url' => 'index'" => "'url' => '/index'",
+        "'url' => 'remote'" => "'url' => '/remote'",
+        "'url' => 'indexTemplate'" => "'url' => '/indexTemplate'",
+        "'url' => 'editonline'" => "'url' => '/editonline'",
+        "'url' => 'editonline/{fileId}/{target}'" => "'url' => '/editonline/{fileId}/{target}'",
+        "'url' => 'ajax/personal.php'" => "'url' => '/ajax/personal.php'",
+        "'url' => 'ajax/admin.php'" => "'url' => '/ajax/admin.php'",
+        "'url' => 'ajax/settings.php'" => "'url' => '/ajax/settings.php'",
+        "'url' => 'settings/watermark'" => "'url' => '/settings/watermark'",
+        "'url' => 'settings/check'" => "'url' => '/settings/check'",
+        "'url' => 'settings/demo'" => "'url' => '/settings/demo'",
+        "'url' => 'settings/fonts'" => "'url' => '/settings/fonts'",
+        "'url' => 'settings/fonts.json'" => "'url' => '/settings/fonts.json'",
+        "'url' => 'settings/fonts/{name}'" => "'url' => '/settings/fonts/{name}'",
+        "'url' => 'settings/{type}/{token}/{category}/{name}'" => "'url' => '/settings/{type}/{token}/{category}/{name}'",
+        "'url' => 'settings/generateToken/{type}'" => "'url' => '/settings/generateToken/{type}'",
+        "'url' => 'assets'" => "'url' => '/assets'",
+        "'url' => 'assets/tasks'" => "'url' => '/assets/tasks'",
+        "'url' => 'assets/{token}'" => "'url' => '/assets/{token}'",
+    ];
+    file_put_contents($p, strtr($s, $repl));
+}
+PHP
+occ app:disable richdocuments || true
+occ app:enable richdocuments || true
 # Back-end WOPI URL stays internal; public URL is discovered from coolwsd server_name via discovery.
 occ config:app:set --value "http://127.0.0.1:9980" richdocuments wopi_url || true
 occ richdocuments:activate-config || true
