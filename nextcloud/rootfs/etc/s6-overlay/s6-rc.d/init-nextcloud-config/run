@@ -667,11 +667,12 @@ for marker, next_marker in [
     ('    # WOOWTECH frame compatibility: allow Nextcloud to render inside the HA sidebar.\n', '    # HTTP response headers borrowed from Nextcloud `.htaccess`\n'),
     ('    # WOOWTECH: public Collabora endpoint proxied under Nextcloud host for browser-safe HTTPS.\n', '    # Rule borrowed from `.htaccess`\n'),
 ]:
-    start = s.find(marker)
-    if start != -1:
+    while marker in s:
+        start = s.find(marker)
         end = s.find(next_marker, start)
-        if end != -1:
-            s = s[:start] + s[end:]
+        if end == -1:
+            break
+        s = s[:start] + s[end:]
 s = s.replace('    add_header X-Frame-Options                   "SAMEORIGIN"        always;\n', '    # WOOWTECH: X-Frame-Options disabled so Nextcloud can render in HA sidebar.\n')
 header_needle = '    # HTTP response headers borrowed from Nextcloud `.htaccess`\n'
 header_insert = '''    # WOOWTECH frame compatibility: allow Nextcloud to render inside the HA sidebar.
@@ -681,7 +682,7 @@ header_insert = '''    # WOOWTECH frame compatibility: allow Nextcloud to render
 
 '''
 s = s.replace(header_needle, header_insert + header_needle)
-proxy_needle = '    # Rule borrowed from `.htaccess`\n'
+proxy_needle = '    # Rule borrowed from `.htaccess`\n    location /remote'
 proxy_insert = '''    # WOOWTECH: public Collabora endpoint proxied under Nextcloud host for browser-safe HTTPS.
     location ^~ /hosting/ {
         proxy_pass http://homeassistant:9981;
@@ -715,7 +716,7 @@ proxy_insert = '''    # WOOWTECH: public Collabora endpoint proxied under Nextcl
     }
 
 '''
-s = s.replace(proxy_needle, proxy_insert + proxy_needle)
+s = s.replace(proxy_needle, proxy_insert + proxy_needle, 1)
 open(p, 'w').write(s)
 INNERPY
 fi
