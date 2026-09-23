@@ -11,7 +11,7 @@ ingress_port: 5690
 ingress_entry: signin
 ingress_stream: true
 panel_icon: mdi:sitemap-outline
-panel_title: Woow n8n
+panel_title: n8n
 panel_admin: true
 watchdog: "http://[HOST]:[PORT:5690]/healthz"
 arch:

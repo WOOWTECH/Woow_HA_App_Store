@@ -9,7 +9,7 @@ ingress_port: 0
 ingress_stream: true
 startup: services
 panel_icon: mdi:vpn
-panel_title: "Woow Tailscale"
+panel_title: Tailscale
 arch:
   - aarch64
   - amd64

@@ -18,7 +18,7 @@ ingress: true
 ingress_port: 8080
 ingress_stream: true
 panel_icon: mdi:brain
-panel_title: Woow Omnigent
+panel_title: Omnigent
 panel_admin: true
 # NOTE: `ingress_entry: login` was tried but interacts badly with
 # `proxy_redirect` in nginx — HA Supervisor keeps redirecting the root

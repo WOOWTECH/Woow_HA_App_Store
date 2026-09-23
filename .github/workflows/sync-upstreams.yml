@@ -159,6 +159,9 @@ jobs:
               --exclude='.gitignore' \
               --exclude='repository.yaml' \
               "${src_dir}/" "${slug}/"
+            # Sidebar-only metadata is store policy, including release-pinned
+            # sources; do not retag application images just to change a label.
+            python3 .github/scripts/sidebar_titles.py "${slug}"
             if [ -n "$(git status --porcelain -- "${slug}")" ]; then
               synced+=("${slug}")
               synced_ref["${slug}"]="${ref}"

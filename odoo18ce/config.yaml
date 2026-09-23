@@ -20,7 +20,7 @@ ingress_port: 5691
 ingress_entry: odoo
 ingress_stream: true
 panel_icon: mdi:domain
-panel_title: Woow Odoo
+panel_title: Odoo
 
 arch:
   - amd64

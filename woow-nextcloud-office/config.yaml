@@ -11,7 +11,7 @@ ingress_port: 8090
 ingress_entry: login
 ingress_stream: false
 panel_icon: mdi:file-cloud-outline
-panel_title: Woow Nextcloud Office
+panel_title: Nextcloud Office
 panel_admin: false
 watchdog: "http://[HOST]:[PORT:8090]/healthz"
 hassio_api: true

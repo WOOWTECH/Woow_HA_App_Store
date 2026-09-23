@@ -12,6 +12,7 @@ host_network: true
 hassio_api: true
 homeassistant_api: true
 ingress: true
+panel_title: LAN Gateway
 ingress_port: 45987
 ingress_stream: false
 watchdog: http://[HOST]:[PORT:45987]/health
