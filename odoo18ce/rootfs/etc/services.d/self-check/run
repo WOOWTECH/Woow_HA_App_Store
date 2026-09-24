@@ -1,0 +1,79 @@
+#!/usr/bin/with-contenv bashio
+# ==============================================================================
+# The start-time self-check (issue #79, ADR 0005).
+#
+# Once nginx answers, request the database-manager route the way the
+# Cloudflare tunnel does: from the container's add-on-network address, on
+# the published origin port, with the public host as `Host` when public_url
+# is set. `/usr/local/lib/self_check.py` holds the request and the verdict;
+# this script finds the inputs, waits, and acts on the answer.
+#
+# On pass it logs one info line and then sleeps, because an s6 service that
+# exits is restarted and would check again; the wait for nginx is logged at
+# debug so that line stays the only one. On fail the module has already
+# sent the notification; this logs the error and exits, and `finish` stops
+# the container, so the operator finds a stopped add-on with the cause.
+# ==============================================================================
+set -uo pipefail
+
+# The helper lives in the image; the Static tier points WOOW_LIB_DIR at the
+# tree to drive this script outside it. Without the helper there is no
+# read to make, and a check that never asked must not claim it waited: the
+# service stops with the cause, and `finish` halts the container.
+LIB_DIR="${WOOW_LIB_DIR:-/usr/local/lib}"
+# shellcheck disable=SC1091
+if ! . "${LIB_DIR}/supervisor-read.sh"; then
+    bashio::log.error "Self-check: ${LIB_DIR}/supervisor-read.sh could not be loaded; the add-on stops."
+    exit 1
+fi
+
+PUBLIC_URL=''
+if bashio::config.has_value 'public_url'; then
+    PUBLIC_URL="$(bashio::config 'public_url')"
+fi
+
+# ---------- 1. Wait until nginx answers ----------
+# Loopback is fine here: this only asks whether the listener is up, and any
+# HTTP status says it is. nginx waits up to 120 seconds for Odoo and halts
+# the container when Odoo is not there, so a nginx still silent after ten
+# minutes is not coming, and the check below then fails on no answer.
+# Bounded by the clock, not a count: a connection that hangs instead of
+# being refused takes the full curl timeout on every try. Without `-f`, curl
+# exits 0 on any HTTP status and non-zero only when nothing answered.
+bashio::log.debug "Self-check: waiting for nginx to answer on 8069..."
+DEADLINE=$((SECONDS + 600))
+until curl -s -o /dev/null --max-time 2 http://127.0.0.1:8069/web/login; do
+    if [ "${SECONDS}" -ge "${DEADLINE}" ]; then
+        bashio::log.error "Self-check: nginx did not answer on 8069 within 600 seconds"
+        break
+    fi
+    sleep 1
+done
+
+# ---------- 2. The add-on-network address, from the Supervisor ----------
+# Not loopback: 127.0.0.0/8 is LAN tier in the nginx template and would reach
+# the database manager on every correct install. The Supervisor can answer
+# empty for a moment at boot and bashio caches that answer, so the read is
+# retried for a bounded time with the cache flushed in between (issue #119;
+# the budget is the one decided on #108). It is read here, after nginx, so
+# the Supervisor has had the whole Odoo boot to learn the address before
+# the budget is spent at all. An answer that never comes is handed on as it
+# is, and the module fails the check on it.
+SUPERVISOR_BUDGET="${WOOW_SUPERVISOR_BUDGET}"
+SUPERVISOR_POLL="${WOOW_SUPERVISOR_POLL}"
+ADDRESS="$(woow::supervisor.read "${SUPERVISOR_BUDGET}" "${SUPERVISOR_POLL}" \
+    "addons.self.ip_address addons.self.info" bashio::addon.ip_address)" || true
+if [ -z "${ADDRESS}" ]; then
+    bashio::log.warning "Self-check: the Supervisor reported no add-on address after waiting at least ${SUPERVISOR_BUDGET} seconds; the check runs without one"
+fi
+
+# ---------- 3. The request and the verdict ----------
+STATUS=0
+MESSAGE="$(python3 /usr/local/lib/self_check.py \
+    --address "${ADDRESS}" --public-url "${PUBLIC_URL}")" || STATUS=$?
+if [ "${STATUS}" -eq 0 ]; then
+    bashio::log.info "${MESSAGE}"
+    exec sleep infinity
+fi
+bashio::log.error "${MESSAGE:-Self-check failed (exit ${STATUS}); the add-on stops.}"
+exit 1

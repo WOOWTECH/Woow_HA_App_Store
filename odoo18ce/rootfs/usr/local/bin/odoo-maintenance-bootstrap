@@ -53,14 +53,21 @@ fi
 
 # ---------- 2. Canonical URL inputs ----------
 # Without public_url the Canonical URL is the host's LAN address with the
-# published Odoo port, both read from the Supervisor (needs hassio_api).
+# published Odoo port. Both are what cont-init settled on this start and
+# published as WOOW_LAN_IPV4 and WOOW_LAN_PORT under WOOW_CANONICAL_SETTLED=1
+# (issue #108): it waited for the Supervisor there and already said so when
+# nothing came, and this side reuses the answer rather than asking again, so
+# one start has one address and one port on both sides (ADR 0006). This
+# script never asks the Supervisor itself: with no marker there is no LAN
+# address this start, because a second derivation is what ADR 0006 forbids.
 LAN_IPV4=""
 PUBLISHED_PORT=""
 if [ -z "${PUBLIC_URL}" ]; then
-    LAN_IPV4="$(bashio::network.ipv4_address 2>/dev/null || true)"
-    PUBLISHED_PORT="$(bashio::addon.port 8069 2>/dev/null || true)"
-    if [ -z "${LAN_IPV4}" ]; then
-        bashio::log.warning "public_url is unset and the Supervisor reported no host LAN address"
+    if [ "${WOOW_CANONICAL_SETTLED:-}" = 1 ]; then
+        LAN_IPV4="${WOOW_LAN_IPV4:-}"
+        PUBLISHED_PORT="${WOOW_LAN_PORT:-}"
+    else
+        bashio::log.warning "maintenance: cont-init published no settled Canonical URL inputs this start (it did not settle them, or could not publish them); no LAN address is used"
     fi
 fi
 

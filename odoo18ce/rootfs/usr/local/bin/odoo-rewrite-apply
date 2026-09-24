@@ -1,0 +1,36 @@
+#!/usr/bin/with-contenv bashio
+# ==============================================================================
+# odoo-rewrite-apply
+# One Rewrite scan round: read the asset bundles every Odoo database serves,
+# generate the Generated rewrite include file from the findings, validate the
+# candidate with `nginx -t` and reload the running nginx (ADR 0005, issue #93).
+#
+# This script exists to read one add-on option with bashio and to hand the
+# answer to the Python that does the work; `/usr/local/lib/rewrite_apply.py`
+# holds every rule and every refusal, and the Static tier drives that module
+# directly. The same shape as odoo-maintenance-bootstrap, which reads its
+# options here and calls /usr/local/lib/odoo-maintenance.py for the work.
+#
+# literal_rewrite_auto (default true) is the kill switch ADR 0005 promises:
+# with it off the scan still runs and still reports, and the include file is
+# never touched. Rules already in place stay live -- the option freezes
+# application, it does not roll back.
+#
+# It runs as root, because no single user can do both halves of the read:
+# `psql` peer-authenticates as `postgres` and the filestore is `odoo:odoo`
+# under `umask 077`. The query drops to `postgres` through `s6-setuidgid`.
+#
+# Exit status: 0 when the round ended in a state that needs nobody
+# (applied, unchanged, up to date, application off), 1 when the scan was
+# incomplete or nginx refused the candidate. The s6 service that runs this
+# every five minutes is issue #94; a failed round must never halt the
+# container.
+# ==============================================================================
+set -euo pipefail
+
+AUTO="--auto"
+if bashio::config.false 'literal_rewrite_auto'; then
+    AUTO="--no-auto"
+fi
+
+exec python3 /usr/local/lib/rewrite_apply.py "${AUTO}" "$@"

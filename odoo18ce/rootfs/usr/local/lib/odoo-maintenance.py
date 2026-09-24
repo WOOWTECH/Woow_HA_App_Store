@@ -25,6 +25,9 @@ BASE_URL_KEY = "web.base.url"
 FREEZE_KEY = "web.base.url.freeze"
 INGRESS_MARKER = "/api/hassio_ingress/"
 DEFAULT_PORT = "8069"
+# What Odoo stores in web.base.url for a database it creates: http_port is
+# 8070 in 10-odoo-config.sh.
+INSTALL_DEFAULT_URL = "http://localhost:8070"
 
 
 def _text(value) -> str:
@@ -55,6 +58,11 @@ def is_leaked(value) -> bool:
     return isinstance(value, str) and INGRESS_MARKER in value
 
 
+def is_install_default(value) -> bool:
+    """Odoo's own value for a new database (localhost on http_port), chosen by nobody."""
+    return isinstance(value, str) and value.strip().rstrip("/") == INSTALL_DEFAULT_URL
+
+
 class Decision(NamedTuple):
     action: str  # "write" | "keep" | "unprotected"
     base_url: Optional[str]  # value to write into web.base.url, None leaves it
@@ -66,7 +74,7 @@ class Decision(NamedTuple):
 def decide(canonical, stored) -> Decision:
     if canonical:
         return Decision("write", canonical, True, canonical, False)
-    if stored and not is_leaked(stored):
+    if stored and not is_leaked(stored) and not is_install_default(stored):
         return Decision("keep", None, True, None, False)
     return Decision("unprotected", None, False, None, is_leaked(stored))
 
@@ -104,6 +112,11 @@ def apply(env, db_name: str, canonical: Optional[str]) -> Decision:
         summary = (
             f"WARNING no Canonical URL and the stored {BASE_URL_KEY} carried an Ingress "
             "token; it was removed and the value is unprotected"
+        )
+    elif is_install_default(stored):
+        summary = (
+            f"WARNING no Canonical URL and the stored {BASE_URL_KEY}={stored} is Odoo's "
+            "install default; it was not kept as a Canonical URL and the value is unprotected"
         )
     else:
         summary = f"WARNING no Canonical URL and no stored {BASE_URL_KEY}; the value is unprotected"

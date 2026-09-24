@@ -26,6 +26,10 @@ HA_USER = os.environ.get("HA_TEST_USER")
 HA_PASSWORD = os.environ.get("HA_TEST_PASSWORD")
 ODOO_LOGIN = os.environ.get("ODOO_TEST_LOGIN")
 ODOO_PASSWORD = os.environ.get("ODOO_TEST_PASSWORD")
+# A host may run more than one of this add-on -- a Release beside a local
+# build, for instance -- and then the sidebar carries two panels with the same
+# name. Naming the slug says which one is under test.
+ADDON_SLUG = os.environ.get("ADDON_SLUG", "")
 BASELINE_TAB_KEYS = {"general_settings", "calendar", "website", "stock", "account", "point_of_sale"}
 STAMP = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
 RUN_ID = f"{STAMP}-{uuid.uuid4().hex}"
@@ -181,9 +185,29 @@ def login_ha_and_open_panel(page):
                 page.locator('input[name="password"]').fill(HA_PASSWORD)
                 page.locator('input[name="password"]').press("Enter")
             panel = page.get_by_text("Woow Odoo", exact=True)
-            if panel.count() and panel.is_visible():
-                panel.click(timeout=30000)
-                return direct_ingress_frame(page)
+            count = panel.count()
+            if count:
+                if ADDON_SLUG:
+                    # An ingress panel's sidebar link is its slug, so click
+                    # that one. A full navigation would lose the session,
+                    # which Home Assistant holds in memory here.
+                    link = page.locator(f'a[href="/{ADDON_SLUG}"]')
+                    if not link.count():
+                        raise AssertionError(
+                            f"no sidebar panel for ADDON_SLUG={ADDON_SLUG!r}; "
+                            "check the slug against `ha addons`"
+                        )
+                    link.first.click(timeout=30000)
+                    return direct_ingress_frame(page)
+                if count > 1:
+                    raise AssertionError(
+                        f"{count} sidebar panels are named 'Woow Odoo' on this host; "
+                        "set ADDON_SLUG to the add-on under test so the run cannot "
+                        "silently measure the wrong one"
+                    )
+                if panel.first.is_visible():
+                    panel.first.click(timeout=30000)
+                    return direct_ingress_frame(page)
             page.wait_for_timeout(300)
         # Retry the root URL after an incomplete/expired HA authorization
         # callback; do not reuse an iframe or page handle from that attempt.

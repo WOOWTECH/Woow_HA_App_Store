@@ -1,0 +1,129 @@
+#!/usr/bin/env python3
+"""Print what the Rewrite scan would read, and whether it is due (issue #92).
+
+A one-shot debugging tool for a person on the host: it lists, per Odoo
+database, the asset bundle attachments that database serves with their
+checksums, the per-database status, and the verdict `scan_state` reaches
+against the state kept from the last pass. Nothing parses this output --
+#93 and #94 import `rewrite_scan` instead -- so the format is free to say
+whatever is useful.
+
+It reads and never writes. Recording a state here would make the next real
+pass believe a scan that never happened had already been applied, and the
+Generated rewrites would stay as they are until a bundle changed by itself.
+
+It runs as root, because no single user can do both halves of the read:
+`psql` peer-authenticates as `postgres` and the filestore is `odoo:odoo`
+under `umask 077`. The query drops to `postgres` through `s6-setuidgid`,
+the shape the maintenance bootstrap already uses.
+
+Exit status: 0 for a complete scan, 1 when the listing or any database
+failed -- the same condition that makes #93 refuse to apply the result.
+
+The libraries are loaded by path from /usr/local/lib, or from
+ODOO_REWRITE_SCAN_LIB, so the Static tier can run this against the
+repository without installing it. Both must import with the standard
+library alone: nothing puts a third-party package in the image.
+"""
+import argparse
+import collections
+import importlib.util
+import os
+import sys
+
+LIB_DIR = os.environ.get("ODOO_REWRITE_SCAN_LIB", "/usr/local/lib")
+
+
+def load(name: str):
+    """Import a shipped library by path, as the other one-shot CLIs do."""
+    if name in sys.modules:
+        return sys.modules[name]
+    spec = importlib.util.spec_from_file_location(name, os.path.join(LIB_DIR, name + ".py"))
+    module = importlib.util.module_from_spec(spec)
+    # Both modules annotate their dataclasses lazily, and dataclasses
+    # resolves those annotations through sys.modules.
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+scan = load("rewrite_scan")
+gate = load("literal_rewrite_gate")
+
+
+def report(result, verdict, version, state_note, out) -> None:
+    """The whole report, one line at a time, Ingress tokens masked."""
+    def line(text: str = "") -> None:
+        out(gate.mask(text))
+
+    line("Rewrite scan (read path only; nothing is written)")
+    line(f"analysis version: {version}")
+    line(f"state: {state_note}")
+    if result.error:
+        line(f"error: {result.error}")
+
+    counts = collections.Counter(database.status for database in result.databases)
+    for database in result.databases:
+        line()
+        header = f"== {database.database} ({database.status})"
+        line(f"{header}: {database.error}" if database.error else header)
+        # The URL leads because it is half the key; the name is printed after
+        # the checksum because it does not identify anything on its own.
+        for row in database.rows:
+            line(f"  {row.url}")
+            line(f"      {row.checksum}  {row.file_size:>12,} B  {row.name}")
+        for row in database.skipped:
+            line(f"  {row.url}")
+            line("      skipped: unsupported storage (ir_attachment.location = db),"
+                 " nothing to read")
+
+    line()
+    line(
+        f"summary: databases {len(result.databases)} "
+        f"(ok {counts[scan.STATUS_OK]}, "
+        f"no bundles {counts[scan.STATUS_NO_BUNDLES]}, "
+        f"failed {counts[scan.STATUS_FAILED]}), "
+        f"bundles {len(result.rows)}, skipped {len(result.skipped)}, "
+        f"complete: {'yes' if result.complete else 'no'}"
+    )
+    line(f"verdict: {'rescan' if verdict.rescan else 'no rescan'} ({verdict.reason})")
+    if not result.complete:
+        # The verdict compares the previous state with a union that is short
+        # by the bundles nobody read, so the databases that failed look as
+        # though their bundles were removed. Saying so keeps a reader from
+        # believing the change; #93 refuses to apply an incomplete scan for
+        # the same reason.
+        line("  the verdict is against a short union: what a failed database "
+             "serves reads here as removed, and nothing may be applied from it")
+    for label, keys in (("added", verdict.added),
+                        ("changed", verdict.changed),
+                        ("removed", verdict.removed)):
+        for database, url in keys:
+            line(f"  {label:<8} {database}  {url}")
+
+
+def main(argv=None, run_query=None, version=None, out=print) -> int:
+    parser = argparse.ArgumentParser(
+        prog="odoo-rewrite-scan",
+        description="List the asset bundles each Odoo database serves and "
+                    "say whether a Rewrite scan is due. Read-only.",
+    )
+    parser.add_argument("--state", default=scan.STATE_PATH,
+                        help="the state kept by the last applied pass")
+    parser.add_argument("--include", default=scan.GENERATED_REWRITES_PATH,
+                        help="the Generated rewrite include file the state describes")
+    arguments = parser.parse_args(argv)
+
+    if version is None:
+        version = scan.analysis_version()
+    loaded = scan.load_state(arguments.state, arguments.include)
+    state_note = loaded.reason or f"{arguments.state}, {len(loaded.state.bundles)} bundles"
+
+    result = scan.scan_databases(run_query or scan.psql_query)
+    verdict = scan.scan_state(result.rows, loaded.state, version=version)
+    report(result, verdict, version, state_note, out)
+    return 0 if result.complete else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

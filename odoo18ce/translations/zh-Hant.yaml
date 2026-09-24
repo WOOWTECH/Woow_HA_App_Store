@@ -69,6 +69,13 @@ configuration:
       (預設:192.168.0.0/16 10.0.0.0/8 172.16.0.0/12)
       Cloudflare 通道是從 add-on 內部網路進來的,不會符合這些網段,
       因此仍維持受限的公開層級。
+  literal_rewrite_auto:
+    name: 自動套用產生的改寫規則
+    description: >-
+      讓 add-on 自動套用 Rewrite scan 找到的結果,頁面跳轉到 Ingress 規則
+      還沒涵蓋的網址時,不必等新版本就會修好。(預設:true)
+      關閉後規則會凍結在目前狀態:掃描與報告照常執行,日誌仍會說明原本
+      會改寫什麼,已經生效的規則也會繼續生效。
   proxy_mode:
     name: 代理模式（系統管理）
     description: >-

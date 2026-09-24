@@ -1,0 +1,15 @@
+#!/usr/bin/with-contenv bashio
+# ==============================================================================
+# The self-check service exited. It only exits when the check failed (or
+# could not run at all), because on pass it sleeps. Either way the database
+# manager has not been shown closed to the tunnel, so the container stops,
+# the way the four serving services stop it (issue #79, ADR 0005).
+#
+# 256 is s6 saying the process was killed by a signal: the sleep after a
+# pass, ended by a container shutdown. That is not a failure to report.
+# ==============================================================================
+if [ "${1}" -eq 256 ]; then
+    exit 0
+fi
+bashio::log.error "Self-check did not pass (exit code: ${1}), halting container..."
+exec /run/s6/basedir/bin/halt

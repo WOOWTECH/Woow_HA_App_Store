@@ -68,6 +68,14 @@ configuration:
       manager included. (Default: 192.168.0.0/16 10.0.0.0/8 172.16.0.0/12)
       The Cloudflare tunnel reaches the add-on from inside the add-on network
       and never matches these, so it keeps the restricted public tier.
+  literal_rewrite_auto:
+    name: Apply Generated Rewrites
+    description: >-
+      Let the add-on apply what its Rewrite scan finds, so a page that
+      navigates to an address the Ingress rules do not cover yet is fixed
+      without a new Release. (Default: true) Turn it off to freeze the rules
+      where they are: the scan and its report keep running, and the rules
+      already in place stay live.
   proxy_mode:
     name: Proxy Mode (managed)
     description: >-

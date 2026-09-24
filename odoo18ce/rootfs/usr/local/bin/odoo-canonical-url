@@ -1,0 +1,65 @@
+#!/usr/bin/env python3
+"""Print the Canonical URL for this start, or nothing when there is none.
+
+The Canonical URL is needed twice, at two different points of a start. The
+maintenance bootstrap writes and locks it into ``web.base.url`` once
+PostgreSQL is up (services.d). The nginx config that carries the Runtime
+shim, which publishes the same value to the browser for issue #70, is
+rendered earlier, at cont-init, where no Odoo and no maintenance bootstrap
+exist yet.
+
+The rule that chooses the value lives once, in ``canonical_url()`` in the
+maintenance library, and both points call it: the bootstrap through
+``odoo shell``, cont-init through this script. Neither derives the value on
+its own, so the address the browser is told and the address Odoo stores can
+never disagree.
+
+Inputs arrive in the environment under the names the bootstrap already uses::
+
+    ODOO_MAINT_PUBLIC_URL   the public_url option, may be empty
+    ODOO_MAINT_LAN_IPV4     host LAN address from the Supervisor, may be empty
+    ODOO_MAINT_PORT         host port mapped to 8069/tcp, may be empty
+
+The exit status is always 0. Having no Canonical URL is a supported shape --
+Ingress-only, with the Supervisor reporting no LAN address -- and the callers
+read empty output as "unknown", not as a failure.
+
+The library path is the first argument, so tests/test_ingress_canonical_url_global.py
+runs this script against the repository without installing it.
+"""
+import importlib.util
+import os
+import sys
+
+LIB = "/usr/local/lib/odoo-maintenance.py"
+
+
+def load(path: str):
+    """Import the maintenance library by path, as the static tier does.
+
+    The module guards its ``odoo shell`` entry point with ``__name__``, and
+    the name given here is not ``__main__``, so nothing but the pure
+    functions is evaluated.
+    """
+    spec = importlib.util.spec_from_file_location("odoo_maintenance", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def main(path: str = LIB) -> int:
+    try:
+        canonical = load(path).canonical_url(
+            os.environ.get("ODOO_MAINT_PUBLIC_URL"),
+            os.environ.get("ODOO_MAINT_LAN_IPV4"),
+            os.environ.get("ODOO_MAINT_PORT"),
+        )
+    except Exception as error:  # noqa: BLE001 - a start is never failed for this
+        print(f"canonical-url: {error}", file=sys.stderr, flush=True)
+        canonical = None
+    print(canonical or "")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1] if len(sys.argv) > 1 else LIB))

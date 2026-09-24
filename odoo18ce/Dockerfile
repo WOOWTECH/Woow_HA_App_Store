@@ -1,5 +1,14 @@
-ARG BUILD_FROM
-FROM ${BUILD_FROM}
+# The base image is pinned here, not in a build.yaml: Supervisor has
+# deprecated that file and passes a modernized build only BUILD_ARCH
+# (issues #110, #124). The tag is one dated Debian base tag for every
+# architecture. BUILD_ARCH has no default on purpose: Supervisor, CI and
+# the publish action all pass it, and a bare `docker build` that forgot
+# it fails on the image reference instead of quietly building amd64 on an
+# arm64 host. The weekly odoo-bump rewrites the BASE_IMAGE_TAG line the
+# way it rewrites ODOO_DEB_VERSION below; keep both lines in this shape.
+ARG BUILD_ARCH
+ARG BASE_IMAGE_TAG="bookworm-2026.08.0"
+FROM ghcr.io/home-assistant/${BUILD_ARCH}-base-debian:${BASE_IMAGE_TAG}
 
 # Every RUN below pipes curl into another tool; without pipefail a failed
 # download would be masked by the consumer exiting 0.
@@ -21,6 +30,18 @@ RUN apt-get update \
 # 2. Install PostgreSQL 16 and pin the exact Odoo build already deployed.
 #    Ingress changes must not silently upgrade a nightly Odoo package and
 #    trigger an unrelated database migration.
+#
+#    python3-yaml is here for the Rewrite scan: the exception list shipped
+#    in the image is YAML and still applies to Generated rewrites (ADR
+#    0005), and the container had no YAML reader at all (ADR 0008). The
+#    Debian package, not pip: nothing else in this image installs Python
+#    from outside the distribution.
+#
+#    python3-pycryptodome is for WOOWTECH's ECPay e-invoice module
+#    (ecpay_odoo18), which declares pycryptodomex and imports Cryptodome.
+#    Debian ships exactly that: the package registers as pycryptodomex and
+#    provides the Cryptodome namespace, so Odoo's dependency check passes
+#    (issue #141).
 # ──────────────────────────────────────────────
 ARG ODOO_DEB_VERSION="18.0.20260914"
 ARG ODOO_DEB_SHA256="378a53702f9971722260d1182bfb7dd650e9c3b859f92b1c0d520a222e1bc3dd"
@@ -39,6 +60,8 @@ RUN apt-get update \
         jq \
         git \
         nginx \
+        python3-yaml \
+        python3-pycryptodome \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* /tmp/odoo.deb
 
@@ -66,8 +89,16 @@ RUN chmod a+rx /etc/cont-init.d/*.sh \
     && chmod a+rx /etc/services.d/*/run \
     && chmod a+rx /etc/services.d/*/finish \
     && chmod a+rx /usr/local/bin/odoo-maintenance-bootstrap \
+    && chmod a+rx /usr/local/bin/odoo-canonical-url \
     && chmod a+r /usr/local/lib/odoo-maintenance.py /usr/local/lib/odoo-maintenance-account.py \
-    && chmod a+rx /usr/local/bin/odoo-jsonrpc-filter
+    && chmod a+r /usr/local/lib/literal_rewrite_gate.py /usr/local/lib/literal_rewrite_exceptions.yaml \
+    && chmod a+r /usr/local/lib/rewrite_scan.py /usr/local/lib/rewrite_apply.py \
+    && chmod a+r /usr/local/lib/self_check.py \
+    && chmod a+r /usr/local/lib/supervisor-read.sh \
+    && chmod a+rx /usr/local/bin/odoo-rewrite-scan \
+    && chmod a+rx /usr/local/bin/odoo-rewrite-apply \
+    && chmod a+rx /usr/local/bin/odoo-jsonrpc-filter \
+    && chmod -R a+rX /opt/woow-server-addons
 
 EXPOSE 8069 5691 8072
 
@@ -80,7 +111,8 @@ HEALTHCHECK --interval=60s --timeout=10s --start-period=600s --retries=3 \
 
 # ──────────────────────────────────────────────
 # 7. Image labels. The publish workflow fills these in; a local or CI
-#    build leaves them empty, which is harmless.
+#    build leaves all but io.hass.arch empty, which is harmless. BUILD_ARCH
+#    is the one every build passes, because the FROM above needs it.
 # ──────────────────────────────────────────────
 ARG BUILD_ARCH
 ARG BUILD_DATE
