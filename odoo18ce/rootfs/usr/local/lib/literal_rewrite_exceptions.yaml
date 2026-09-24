@@ -1,0 +1,23 @@
+# Approved exceptions for the Literal rewrite gate (ADR 0004, issue #58).
+#
+# The gate reports every root-relative literal in the served bundles whose
+# prefix the Literal rewrite does not cover, at the level the bundle consumes
+# it (FAIL: whole-page navigation, WARN: path comparison, INFO: anything the
+# Runtime shim intercepts). An entry here makes the gate report that
+# (prefix, level) as an exception hit instead of a finding. A FAIL entry is
+# the only thing that can turn a failing run green, so every entry needs a
+# reason and is reviewed like code.
+#
+# An entry excuses exactly one level. Registering a prefix at WARN does not
+# excuse a FAIL on the same prefix.
+#
+# Fields: prefix (as the gate prints it: `/name/` for a slashed literal,
+# `/name` for a bare one), level (FAIL | WARN | INFO), reason.
+---
+- prefix: /scoped_app
+  level: WARN
+  reason: >-
+    The OWL router compares the pathname after the Ingress prefix has been
+    stripped by the urlToState patch, so `pathname.startsWith("/scoped_app")`
+    is correct as written. Rewriting the literal would make the comparison
+    look for the prefix twice and never match.

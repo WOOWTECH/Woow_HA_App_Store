@@ -1,5 +1,302 @@
 # Changelog
 
+## 0.4.4 — 2026-09-24
+
+### Added
+- The image now carries `python3-pycryptodome`, so WOOWTECH's ECPay
+  e-invoice module (`ecpay_invoice_tw` from `ecpay_odoo18`, placed in
+  `/share/odoo_addons/`) can be installed. It declares `pycryptodomex` and
+  imports `Cryptodome`; Odoo refused it with "External dependency
+  pycryptodomex not installed". The Debian package registers as
+  `pycryptodomex` and provides `Cryptodome`, so no pip install is involved.
+  The PR gate now runs Odoo's own external-dependency check for it in the
+  built image. Issue #141.
+
+### Changed
+- The add-on's config folder is now mapped as `app_config:rw`, the name
+  Supervisor 2026.07.1 gave it, instead of the legacy `addon_config:rw`.
+  Nothing moves: Supervisor binds the same host folder to `/config`
+  either way, and a local build no longer logs the legacy map-type
+  warning. **The add-on now requires Supervisor 2026.07.1 or later**;
+  older Supervisors reject the manifest and the store cannot load the
+  add-on. Supported installs update Supervisor automatically. Issue #126.
+
+## 0.4.3 — 2026-09-23
+
+### Added
+- The add-on now checks at every start that its database manager is closed
+  to the Cloudflare tunnel. Once nginx answers, it requests
+  `/web/database/manager` the way the tunnel does: from its own add-on
+  network address (learned from the Supervisor, never loopback, which is
+  LAN tier), on port 8069, with the host of `public_url` as `Host`. It
+  starts normally on `404` with `public_url` set, or on `503` without it,
+  and logs one line. On any other answer — `200`, a 5xx, or none at all —
+  it logs an error naming the status and the route, sends a Home Assistant
+  notification, and stops the container. This replaces the nightly
+  Perimeter check's outside view. ADR 0005, issue #79.
+- The Rewrite scan now tells you in Home Assistant when it acts. A round
+  that adds Generated rewrites creates a persistent notification naming the
+  new prefixes, and a round whose generation, validation or reload failed
+  creates one naming the step; a round that changes nothing, and every
+  round with **Apply Generated Rewrites** off, sends nothing. Ingress
+  tokens are masked, a failure repeated every five minutes replaces its own
+  notification rather than stacking, and a notification that cannot be
+  sent is logged without changing the round. The add-on now asks for
+  `homeassistant_api`, which this needs. ADR 0005, issue #78.
+- The Rewrite scan now runs by itself. A new service scans once at start,
+  as soon as PostgreSQL is ready, and every five minutes after that, so an
+  application installed while the add-on is running has its navigation
+  prefixes rewritten within five minutes and without a restart. Every
+  round is written to the add-on log: the status of each database (`ok`,
+  `failed`, `no bundles`) by name, whether the scan was complete, and —
+  when bundles were read — what each one contains at each level, the
+  exception hits and the prefixes now in the include file, with every
+  Ingress token masked. A round that fails is a warning in the log and
+  nothing more: the rules already in place stay live, Odoo is untouched,
+  and the next round runs five minutes later. This is the first service in
+  the image that does not stop the container when it exits, because Odoo
+  must start and keep running whatever the scan does. ADR 0009, issue #94.
+- The Rewrite scan now applies what it finds: the navigation prefixes no
+  shipped rule covers become an nginx `include` file, which is validated
+  with `nginx -t` against a rendered configuration that loads the candidate
+  and is moved into place and reloaded only when nginx accepts it. A page
+  that navigates to an address the Ingress rules do not cover yet is
+  therefore fixed on the host, without a new Release. Four refusals guard
+  it: an incomplete scan is never applied, a bundle whose bytes are missing
+  fails its database, an unchanged generation is neither written nor
+  reloaded, and a candidate nginx refuses leaves the last good file in
+  place with Odoo still running. The new option **Apply Generated
+  Rewrites** (`literal_rewrite_auto`, default on) freezes application: the
+  scan and its report keep running and the rules already in place stay
+  live. The image gains `python3-yaml`, because the exception list that
+  ADR 0005 keeps applying is YAML and the container had no reader for it.
+  ADR 0008, issue #93.
+- A one-shot `odoo-rewrite-scan` command in the image prints, for every
+  Odoo database, the asset bundle attachments it serves with their
+  checksums, a per-database status, and whether a Rewrite scan is due. It
+  is the read half of the Generated rewrites in ADR 0005 and it only
+  reads: nothing is applied and no nginx rule changes yet. The bundles are
+  read with one `psql` query plus the filestore rather than by starting an
+  Odoo registry, which is about 60× cheaper per round and was measured
+  before the choice was made. ADR 0007, issue #92.
+- Ingress: the Runtime shim now publishes the Canonical URL to the page as
+  a read-only `window.__WOOW_CANONICAL_URL__`. Odoo 18 builds some links
+  for people outside in the browser, from the address in the address bar,
+  and through Ingress that is the Home Assistant host, so the link is a
+  Home Assistant 404 for whoever receives it; the lock on `web.base.url`
+  cannot reach those values because they never pass through the server.
+  This change publishes the value only. It moves no link yet — each one is
+  moved onto that base by its own exact-expression rewrite, starting with
+  the Discuss invitation link. Without a Canonical URL (Ingress-only and
+  the Supervisor reports no LAN address) the global is empty and nothing
+  changes. The Public origin is untouched. The rule that chooses the value
+  stays in `canonical_url()` in the maintenance library, which the config
+  rendering now calls through `odoo-canonical-url` and the maintenance
+  bootstrap still calls for `web.base.url`. ADR 0006, issue #70.
+
+### Fixed
+- A LAN address that arrives a moment after the add-on starts no longer
+  costs that start its Canonical URL. Without `public_url`, the address
+  came from one Supervisor read at boot, and bashio caches an empty answer
+  for the life of the container, so a DHCP lease that landed a few seconds
+  late left the Runtime shim with no Canonical URL and `web.base.url`
+  unwritten until the next restart. The read now waits up to 30 seconds,
+  two seconds apart, with bashio's cache flushed in between; the published
+  port is read again only while the Supervisor request itself fails; and
+  the address and port the start settles on are handed to the maintenance
+  bootstrap through the container environment, so one start has one LAN
+  address and one port on both sides and the bootstrap never asks the
+  Supervisor on its own. When no address comes, the start takes the
+  no-Canonical-URL path it always took, and the log says the add-on
+  waited. With `public_url` set nothing waits. Hosts
+  that never have an IPv4 address (a bridge, bond, WWAN or tun uplink, an
+  unmanaged interface, IPv6-only) pay the 30 seconds once per start, and
+  so does a Supervisor that cannot be asked at all: the address and the
+  port share the one budget. Issue #108.
+- The Rewrite scan's Home Assistant notification now covers every step of
+  a round. A state file or a database scan that raised used to end the
+  round with a traceback and no notification; both now notify, naming the
+  step (`state`, `scan`). A failure in the writes (the candidate, the move
+  into place, the state write) is reported as the `apply` step, and one
+  that came after the move says that the rules on disk are the new ones,
+  naming them and whether nginx loaded them, instead of claiming the
+  include file is untouched; the add-on log says the same, and the
+  service's own failure line no longer claims the file kept its old rules.
+  And a round that added rules before nginx was up says they take effect
+  when nginx starts rather than that they are live now. Issue #120.
+- The start-time self-check no longer stops a correct install because the
+  Supervisor answered empty once. It read the add-on's own network address
+  a single time at boot, and bashio caches an empty answer for the life of
+  the container, so one late Supervisor reply became a failed check, a
+  notification and a stopped add-on. The read is now retried for up to
+  30 seconds, two seconds apart, with bashio's cache flushed in between,
+  and only once nginx is up, so the Supervisor has the whole Odoo boot to
+  learn the address first (`/usr/local/lib/supervisor-read.sh`, written
+  for the LAN-address reads of issue #108 to use next). The Supervisor's
+  placeholder `0.0.0.0`, which it answers
+  before it has seen the container on the network, counts as no answer
+  too, and the check refuses it and any loopback address the way it
+  refuses an empty one. An address that never comes still fails the check,
+  the log says the add-on waited and, when the Supervisor refused the
+  request, what it said; the empty answer is not left in the cache. On pass the service logs one line; the "waiting for nginx" line
+  moved to debug. Issue #119.
+- A database created through the database manager on a host with no
+  Canonical URL no longer has Odoo's install default,
+  `http://localhost:8070`, locked in as its `web.base.url`. The start-up
+  bootstrap now leaves that value unfrozen and logs a warning, so the next
+  start that has a LAN address writes the Canonical URL over it; a value
+  someone set is still kept and frozen as before. Issue #89.
+- Ingress: a page's Share block no longer posts the Supervisor token to
+  Facebook, X or WhatsApp on a host with no Canonical URL. The rewrite
+  already moved the link onto that base; it now drops the Ingress prefix
+  whether or not the base exists, because the alternative was handing a
+  credential to a third party in exactly the deployment shapes where it is
+  easiest to end up — an uplink that is a bridge, bond, WWAN or tun device,
+  an interface NetworkManager does not manage, IPv6-only networking, or a
+  DHCP lease that arrives after the add-on starts. Without a Canonical URL
+  the link still points at the Home Assistant host and still does not work;
+  it simply carries no token. ADR 0006 amendment, issues #70 and #108.
+- Ingress: the three links Odoo builds in the browser for somebody
+  outside to open now carry the Canonical URL instead of the Home
+  Assistant host — the Discuss channel invitation link, the base shown
+  before a page's path in Website → Pages, and the address a page's Share
+  block hands to Facebook, X or WhatsApp. The share block was the worst of
+  the three: it posted the full Ingress URL, Supervisor token included.
+  Each one is moved by its own exact-expression rewrite, measured against
+  the bundles the control group serves with the parity plan's 25
+  applications installed and kept as a fixture; Odoo's shared URL helper is
+  left alone, because it also builds the in-Ingress addresses for images,
+  attachments and RPC. Without a Canonical URL nothing changes, and the
+  Public origin is untouched. ADR 0006, issue #70.
+- Three Prefix escapes under Ingress found by the Literal rewrite gate
+  once the parity plan's 25 applications were installed on the control
+  group: eCommerce's `redirect('/shop/cart')`, the payment flow's
+  `window.location='/payment/status'` and a website tour's
+  `window.location.href='/contactus'`. `/shop/`, `/payment/` and
+  `/contactus` are now rewritten in the Ingress asset location in the
+  three quote variants. Issue #58.
+- Ingress: Odoo's copy buttons (share links, Discuss invitations, copy-to-
+  clipboard widgets) work again when Home Assistant is opened over plain
+  http on the LAN. That page is not a secure context, so the browser hides
+  `navigator.clipboard` inside the Ingress iframe and every copy button
+  failed silently or with "Oops! Something went wrong". The Runtime shim
+  now supplies a `writeText` backed by `document.execCommand("copy")`
+  whenever `navigator.clipboard` is absent; HA over https and the Public
+  origin are untouched. Issue #60.
+- A database created between two add-on starts no longer takes its
+  Canonical URL from the first administrator login. Odoo writes
+  `web.base.url` from the request it authenticated whenever
+  `web.base.url.freeze` is unset, which is the state of every database the
+  database manager creates after a start; through Ingress the value it
+  wrote was the Home Assistant host, so every email, share, portal and
+  report link pointed at Home Assistant until the next restart. The image
+  now ships a server-wide module, `woow_base_url_guard`, that Odoo loads
+  into every process and installs in no database and that removes the
+  guess on every surface. The maintenance bootstrap stays the only writer
+  of the Canonical URL; writing the value explicitly from Settings or over
+  RPC is unaffected. Issue #67.
+
+### Changed
+- The Debian base image is pinned in the Dockerfile (`ARG BASE_IMAGE_TAG`,
+  composed into `FROM` with `BUILD_ARCH`) and `build.yaml` is gone.
+  Supervisor had deprecated `build.yaml` and passes a modernized local
+  build only `BUILD_ARCH`, so a Dockerfile that took its base from
+  `BUILD_FROM` could not be built on a host any more. The tag is the same
+  `bookworm-2026.08.0` for both architectures; CI, the publish action and
+  the weekly `odoo-bump` now read and write that one line instead of the
+  YAML file. A local build on a host no longer logs the `build.yaml`
+  deprecation warning. Issue #124, part of #110.
+- The two Live-tier workflows, the Perimeter check and the Literal rewrite
+  gate, no longer run on the nightly schedule; both are dispatch-only. The
+  add-on now does both jobs on the host itself — the start-time self-check
+  for the database-manager routes, the in-container Rewrite scan for the
+  Literal rewrite — and the test host that served as the control group is
+  being stopped, so a scheduled run would have had nothing to run against.
+  `workflow_dispatch` stays on both for whenever a control group exists
+  again, and release.yml still dispatches the perimeter check after a
+  Release. ADR 0005, issue #80.
+- The Literal rewrite gate CLI takes `--include-file`, a copy of the
+  Generated rewrite include file the host under test applied, and merges
+  its rules with the template's before evaluating. A run against a host
+  that applied Generated rewrites then reports 0 unregistered `FAIL`
+  instead of re-reporting the prefixes the add-on already covers there.
+  Issue #80.
+
+### Testing
+- The Literal rewrite gate now identifies a bundle by its URL path, from
+  `/web/assets/` on, instead of its file name. Odoo serves one name under a
+  website-scoped `/web/assets/1/<unique>/<name>` and an unscoped
+  `/web/assets/<unique>/<name>` with different content; the gate fetched
+  and scanned only the first it saw, so a navigation literal in the other
+  passed unreported. Both are now scanned, saved to separate files, kept
+  apart by `--from-dir`, and named apart in the report. Results of earlier
+  runs are a floor, not a complete count. Issue #98.
+- The PR gate now fails when the Canonical URL guard is not applied. The
+  `build (amd64)` job, which every pull request runs, including the Odoo
+  nightly bumps, starts `odoo shell` in the image it just built, with the
+  server-wide modules the add-on renders and no database, and checks that
+  `res.users.authenticate` carries `woow_base_url_guard`'s flag. It runs a
+  second time without the guard in `--load` and must then report it not
+  applied. Before, a nightly that moved `authenticate` merged green: the
+  guard's `ImportError` does not stop Odoo, whose server-wide loader logs
+  it and serves unguarded. Issue #88.
+- The Canonical URL guard gate proves more than the flag. The in-image
+  probe now checks the last `res.users` class in Odoo's `res_users` module
+  that declares `authenticate` (the one the registry runs), not the first
+  flagged one, and checks that the upstream `authenticate` the wrapper
+  wrapped still takes what the wrapper forwards by position (an added
+  optional parameter fits; a renamed, reordered or keyword-only one does
+  not), so a nightly that redefines the method later in the module or
+  changes its parameters goes red instead of shipping the guess back or
+  breaking every login. `build (amd64)` has a 30-minute limit, each
+  `docker run` a 300 s one, and a container that never reaches the probe
+  is reported as a container failure, not as the guard missing. Issue #121.
+- New static-tier contract test `test_ingress_clipboard_fallback.py`
+  executes the whole Runtime shim in a node `vm` context against a DOM
+  stand-in and pins the clipboard fallback: absent clipboard resolves
+  through one `execCommand("copy")`, removes its textarea and hands focus
+  back; a present clipboard keeps the same reference; a refused copy
+  rejects. It also fails when any quoted parameter in
+  `nginx.conf.template` reaches nginx's 4096-byte limit, which a missing
+  local nginx used to hide. Issue #60.
+- New Live-tier Literal rewrite gate, `tests/e2e_literal_rewrite_gate.py`
+  (issue #58, ADR 0004). It logs in to the control group's Public origin,
+  collects every asset bundle the backend, Discuss, the website and each
+  installed app's landing page load, extracts every root-relative string
+  literal, classifies each by how the bundle consumes it (`FAIL` whole-page
+  navigation, `WARN` path comparison, `INFO` anything the Runtime shim
+  intercepts) and compares the prefixes against the `sub_filter` rules in
+  the Ingress asset location of `nginx.conf.template`, parsed from the
+  template itself. An unlisted prefix in a whole-page navigation fails the
+  run unless `rootfs/usr/local/lib/literal_rewrite_exceptions.yaml`
+  records it with a reason. Ingress tokens are masked in the output.
+- The pure stages (extraction, classification, nginx rule parsing,
+  exception matching, evaluation) ship in the image as
+  `rootfs/usr/local/lib/literal_rewrite_gate.py`, next to the maintenance
+  library, so the same code can serve inside the container and out. The
+  static tier pins them in `test_literal_rewrite_gate.py`, which loads the
+  module from the image the way the maintenance bootstrap tests do.
+  Issue #75.
+- New static-tier contract test `test_workflow_triggers.py`: the Perimeter
+  check and the Literal rewrite gate declare `workflow_dispatch` and no
+  `schedule`. `test_literal_rewrite_gate.py` gains the effective-rules
+  cases — the include file parses as bare `sub_filter` lines, merged rules
+  union the quote variants per prefix, and the CLI run with
+  `--include-file` reports a `FAIL` prefix the file rewrites as covered.
+  Issue #80.
+- New workflow `literal-rewrite-gate.yml` runs the gate on demand against
+  every origin in `ODOO_PUBLIC_URLS` with the `ODOO_TEST_LOGIN` /
+  `ODOO_TEST_PASSWORD` secrets, failing early with the name of any missing
+  secret.
+- New static-tier test `test_base_url_guard.py` drives the patched login
+  path against a stand-in of Odoo's `res.users`: a `user_agent_env`
+  carrying a `base_location` produces no `web.base.url` write while the
+  authentication result comes back unchanged, and the same stand-in is
+  shown to make the write when nothing guards it. The config-script
+  contract in `test_dual_gateway.py` now also pins the
+  `server_wide_modules` line and the module's directory on the rendered
+  `addons_path`. Issue #67.
+
 ## 0.4.2 — 2026-09-16
 
 ### Security

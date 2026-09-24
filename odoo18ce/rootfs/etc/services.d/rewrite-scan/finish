@@ -1,0 +1,23 @@
+#!/usr/bin/with-contenv bashio
+# ==============================================================================
+# The Rewrite scan service exited. The other four services in this image
+# stop the container here and let the Supervisor restart it, because
+# without any of them the add-on is not serving. This one does the
+# opposite: #77 requires Odoo to start and keep running whatever the scan
+# does, so stopping the container over a rule that could not be generated
+# would turn a cosmetic problem into an outage. ADR 0009 records the
+# convention.
+#
+# The service is restarted and waits for PostgreSQL again before its next
+# round. No round can end the run script, so there are two ways to reach
+# here: PostgreSQL did not become ready inside the 30-second wait, which
+# already paces the restarts at roughly half a minute; or the script itself
+# could not run, which has no pace of its own. The pause below is the
+# throttle for that second case — without it a script that fails
+# immediately would be restarted as fast as the shell can fail, filling the
+# add-on log. It is shorter than s6's default `timeout-finish` of five
+# seconds, so the pause is taken rather than cut off half way.
+# ==============================================================================
+bashio::log.error "The Rewrite scan service exited (exit code: ${1}); Odoo is untouched and the service is restarted"
+
+exec sleep 3

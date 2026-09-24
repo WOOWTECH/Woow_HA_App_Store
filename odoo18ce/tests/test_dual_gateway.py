@@ -19,6 +19,13 @@ CONFIG_SCRIPT = ROOT / "rootfs/etc/cont-init.d/10-odoo-config.sh"
 POSTGRES_INIT = ROOT / "rootfs/etc/cont-init.d/00-postgres-init.sh"
 TEMPLATE = ROOT / "rootfs/etc/nginx/nginx.conf.template"
 BOOTSTRAP = ROOT / "rootfs/usr/local/bin/odoo-maintenance-bootstrap"
+# Odoo imports this module in every process through server_wide_modules; it
+# is installed in no database. See tests/test_base_url_guard.py.
+SERVER_ADDONS_DIR = "/opt/woow-server-addons"
+GUARD_MODULE = "woow_base_url_guard"
+# The file nginx includes the Generated rewrites from (ADR 0005). It lives on
+# /data because the running add-on rewrites it between starts.
+GENERATED_REWRITES = "/data/nginx-generated-rewrites.conf"
 
 
 def read(path: Path) -> str:
@@ -77,6 +84,25 @@ def test_config_script_contract() -> None:
     assert "PUBLIC_HOST_MAP=''" in s
     assert "DENY_STATUS='503'" in s
     assert "DENY_STATUS='444'" in s
+    # Odoo's own web.base.url guess is disabled by a server-wide module, so
+    # the maintenance bootstrap stays the only writer of the Canonical URL.
+    assert f"server_wide_modules = base,web,{GUARD_MODULE}" in s
+    # The module is imported by name, so the directory holding it has to be
+    # on the rendered addons_path and has to ship in the image.
+    base_addons = re.search(r'^BASE_ADDONS="([^"]+)"', s, re.M)
+    assert base_addons, "BASE_ADDONS is not one double-quoted, comma-separated list"
+    assert SERVER_ADDONS_DIR in base_addons.group(1).split(",")
+    shipped = ROOT / "rootfs" / SERVER_ADDONS_DIR.lstrip("/") / GUARD_MODULE
+    assert (shipped / "__manifest__.py").is_file()
+    assert (shipped / "__init__.py").is_file()
+    # nginx refuses to start while the included file is missing, so a fresh
+    # install needs an empty one. An existing file is the last good generation
+    # the running add-on wrote and is never truncated here.
+    assert f'GENERATED_REWRITES="{GENERATED_REWRITES}"' in s
+    assert 'if [ ! -e "${GENERATED_REWRITES}" ]; then\n' in s
+    truncations = re.findall(r'^[ \t]*: > "\$\{GENERATED_REWRITES\}"', s, re.M)
+    assert len(truncations) == 1, "the include file may only be created, never overwritten"
+    assert s.index('if [ ! -e "${GENERATED_REWRITES}" ]') < s.index(': > "${GENERATED_REWRITES}"')
 
 
 def test_nginx_template_contract() -> None:
@@ -180,6 +206,23 @@ def test_nginx_template_contract() -> None:
     assert "$upstream_http_x_frame_options" in n
     assert (ROOT / "tests/e2e_adversarial.py").is_file()
 
+    # --- generated rewrites (ADR 0005) ---
+    # Exactly one include, inside the Ingress asset location and written after
+    # the hand-written rules, so the block reads Shipped first then Generated.
+    # Precedence does not come from that order: the two sets never hold the
+    # same prefix, which is what keeps them from competing.
+    assert n.count(f"include {GENERATED_REWRITES};") == 1
+    ingress = n[n.index("# HA Supervisor Ingress adapter.") :]
+    assets_start = ingress.index("location ^~ /web/assets/ {")
+    assets = ingress[assets_start : ingress.index("\n        location / {", assets_start)]
+    assert f"include {GENERATED_REWRITES};" in assets
+    assert assets.rindex("include ") > assets.rindex("sub_filter ")
+    # Everything before the Ingress adapter -- the 8069 origin listener and
+    # the 8072 websocket listener -- stays untouched by the generated file.
+    listeners = n[n.index("# Origin listener.") : n.index("# HA Supervisor Ingress adapter.")]
+    assert "listen 8072 default_server;" in listeners
+    assert GENERATED_REWRITES not in listeners
+
 
 def test_maintenance_bootstrap_contract() -> None:
     # String presence only; the decision logic is covered by
@@ -220,9 +263,27 @@ def test_runtime_shim_is_valid_javascript(tmp_path: Path) -> None:
     assert result.returncode == 0, result.stderr
 
 
-def render_scenarios(test_dir: Path) -> dict:
-    """Render the template for both real-world shapes: public_url set and unset."""
+# What the Rewrite scan writes for two uncovered navigation prefixes, in the
+# byte-for-byte shape generate_include emits (tests/test_literal_rewrite_gate.py).
+TWO_PREFIX_INCLUDE = (
+    'sub_filter \'"/forum/\' \'"$safe_ingress_path/forum/\';\n'
+    'sub_filter "\'/forum/" "\'$safe_ingress_path/forum/";\n'
+    'sub_filter \'`/forum/\' \'`$safe_ingress_path/forum/\';\n'
+    'sub_filter \'"/livechat/\' \'"$safe_ingress_path/livechat/\';\n'
+    'sub_filter "\'/livechat/" "\'$safe_ingress_path/livechat/";\n'
+    'sub_filter \'`/livechat/\' \'`$safe_ingress_path/livechat/\';\n'
+)
+
+
+def render_scenarios(test_dir: Path, include_text: str = "") -> dict:
+    """Render the template for both real-world shapes: public_url set and unset.
+
+    The Generated rewrite file is redirected into `test_dir` and written with
+    `include_text`, so a rendering run never depends on a container's /data.
+    """
     template = read(TEMPLATE)
+    generated = test_dir / "generated-rewrites.conf"
+    generated.write_text(include_text, encoding="utf-8")
     common = {
         "%%WS_PORT%%": "8070",
         "%%PUBLIC_PROTO%%": "https",
@@ -233,10 +294,25 @@ def render_scenarios(test_dir: Path) -> dict:
         "public": dict(common, **{
             "%%PUBLIC_HOST_MAP%%": '"odoo-test.invalid" 1; "odoo-test.invalid:443" 1;',
             "%%DENY_STATUS%%": "444",
+            "%%CANONICAL_URL%%": "https://odoo-test.invalid",
         }),
         # public_url unset: the host map is empty, so no Host reaches the
         # public tier and every off-LAN caller falls through to the deny status.
-        "lanonly": dict(common, **{"%%PUBLIC_HOST_MAP%%": "", "%%DENY_STATUS%%": "503"}),
+        # The Canonical URL is then the host's LAN address with the published
+        # Odoo port (RFC 5737 documentation address).
+        "lanonly": dict(common, **{
+            "%%PUBLIC_HOST_MAP%%": "",
+            "%%DENY_STATUS%%": "503",
+            "%%CANONICAL_URL%%": "http://192.0.2.10:8069",
+        }),
+        # public_url unset and the Supervisor reported no LAN address: there
+        # is no Canonical URL at all, and the Runtime shim renders an empty
+        # global. nginx has to accept that value too (issue #70).
+        "lanonly-noaddr": dict(common, **{
+            "%%PUBLIC_HOST_MAP%%": "",
+            "%%DENY_STATUS%%": "503",
+            "%%CANONICAL_URL%%": "",
+        }),
     }
     rendered = {}
     for name, replacements in scenarios.items():
@@ -245,6 +321,8 @@ def render_scenarios(test_dir: Path) -> dict:
             assert placeholder in template, f"missing template placeholder: {placeholder}"
             config = config.replace(placeholder, value)
         assert "%%" not in config, f"unrendered placeholder remains in {name}"
+        assert config.count(f"include {GENERATED_REWRITES};") == 1
+        config = config.replace(f"include {GENERATED_REWRITES};", f"include {generated};")
         config = config.replace("pid /var/run/nginx.pid;", f"pid {test_dir}/{name}.pid;")
         config = config.replace("error_log /dev/stderr info;", f"error_log {test_dir}/{name}-error.log info;")
         config = config.replace("access_log /dev/stdout safe;", f"access_log {test_dir}/{name}-access.log safe;")
@@ -266,12 +344,17 @@ def render_scenarios(test_dir: Path) -> dict:
 
 def test_rendered_gateway_configs_are_valid_nginx(tmp_path: Path) -> None:
     nginx = require_tool("nginx")
-    for name, config in render_scenarios(tmp_path).items():
-        result = subprocess.run(
-            [nginx, "-t", "-p", str(tmp_path), "-c", str(config)],
-            capture_output=True, text=True, check=False,
-        )
-        assert result.returncode == 0, f"{name}: {result.stderr}"
+    # A fresh install has an empty Generated rewrite file; a running one has
+    # whatever the Rewrite scan last wrote. Both have to load.
+    for variant, include_text in (("empty", ""), ("two-prefix", TWO_PREFIX_INCLUDE)):
+        variant_dir = tmp_path / variant
+        variant_dir.mkdir()
+        for name, config in render_scenarios(variant_dir, include_text).items():
+            result = subprocess.run(
+                [nginx, "-t", "-p", str(variant_dir), "-c", str(config)],
+                capture_output=True, text=True, check=False,
+            )
+            assert result.returncode == 0, f"{variant}/{name}: {result.stderr}"
 
 def test_prebuilt_image_and_health_contract() -> None:
     c = yaml.safe_load(read(CONFIG))

@@ -1,7 +1,7 @@
 ---
 name: "Woow Odoo 18"
 description: "Odoo 18 Community Edition + PostgreSQL 16 — bundled all-in-one add-on for SME"
-version: "0.4.2"
+version: "0.4.4"
 slug: "odoo18ce"
 url: "https://github.com/WOOWTECH/Woow_ha_odoo"
 # Prebuilt by .github/workflows/release.yml on every Release; Supervisor
@@ -14,6 +14,10 @@ init: false
 # install still gets a Canonical URL instead of an Ingress token. The
 # default role covers the two /info endpoints used.
 hassio_api: true
+# The Rewrite scan creates a Home Assistant persistent notification when it
+# adds Generated rewrites or a step fails (ADR 0005, issue #78). That is
+# Home Assistant's own API through the Supervisor proxy, which needs this.
+homeassistant_api: true
 
 ingress: true
 ingress_port: 5691
@@ -36,7 +40,7 @@ ports_description:
 
 map:
   - share:rw
-  - addon_config:rw
+  - app_config:rw
 
 backup: cold
 backup_exclude:
@@ -44,7 +48,7 @@ backup_exclude:
   - "**/logs"
   - "**/sessions"
 
-# ---------- options schema (22 fields) ----------
+# ---------- options schema (23 fields) ----------
 schema:
   # Required
   admin_passwd: "password"
@@ -69,6 +73,7 @@ schema:
   public_url: "url?"
   proxy_mode: "bool?"
   lan_networks: "str?"
+  literal_rewrite_auto: "bool?"
 
   # Modules
   odoo_extra_addons: "str?"
@@ -115,6 +120,11 @@ options:
   # The Cloudflare tunnel arrives from the add-on network and is never matched
   # by these, so it keeps the restricted public tier.
   lan_networks: "192.168.0.0/16 10.0.0.0/8 172.16.0.0/12"
+  # The Rewrite scan applies what it finds as nginx Generated rewrites
+  # (ADR 0005). Turn this off to freeze the rules where they are: the scan
+  # and its report keep running, so the log still says what would have been
+  # rewritten, and the rules already in place stay live.
+  literal_rewrite_auto: true
   dev_mode: false
   log_level: "info"
   without_demo: true

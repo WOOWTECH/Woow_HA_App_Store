@@ -1,0 +1,1 @@
+class PageUrlField extends UrlField{static components={PageDependencies};static template="website.PageUrlField";static defaultProps={...UrlField.defaultProps,websitePath:true,};setup(){super.setup();this.serverUrl=`${window.location.origin}/`;this.inputRef=useRef("input");

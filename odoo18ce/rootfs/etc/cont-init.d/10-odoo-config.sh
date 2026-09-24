@@ -68,7 +68,9 @@ if bashio::var.true "${LIST_DB}"; then LIST_DB_VAL="True"; else LIST_DB_VAL="Fal
 if bashio::var.true "${WITHOUT_DEMO}"; then WITHOUT_DEMO_VAL="all"; else WITHOUT_DEMO_VAL="False"; fi
 
 # ---------- 3. Build addons_path ----------
-BASE_ADDONS="/usr/lib/python3/dist-packages/odoo/addons,/data/addons,/share/odoo_addons,/opt/woow-addons/addons"
+# /opt/woow-server-addons carries the add-on's own server-wide module and
+# has to be on the path for the server_wide_modules line below to import.
+BASE_ADDONS="/usr/lib/python3/dist-packages/odoo/addons,/data/addons,/share/odoo_addons,/opt/woow-addons/addons,/opt/woow-server-addons"
 if [ -n "${EXTRA_ADDONS}" ]; then
     ADDONS_PATH="${EXTRA_ADDONS},${BASE_ADDONS}"
 else
@@ -100,6 +102,14 @@ data_dir = ${DATA_DIR}
 
 ; --- Addons ---
 addons_path = ${ADDONS_PATH}
+
+; Odoo guesses web.base.url from the request an administrator logged in
+; from whenever web.base.url.freeze is unset, which is the state of every
+; database created between two starts. woow_base_url_guard removes that
+; guess in every process, so the maintenance bootstrap stays the only
+; writer of the Canonical URL. base and web are Odoo's own defaults and
+; have to be repeated because naming this option replaces them.
+server_wide_modules = base,web,woow_base_url_guard
 
 ; --- Logging ---
 logfile = ${LOG_DIR}/odoo-server.log
@@ -143,6 +153,7 @@ fi
 PUBLIC_PROTO='https'
 PUBLIC_HOST_MAP=''
 DENY_STATUS='503'
+PUBLIC_URL=''
 if bashio::config.has_value 'public_url'; then
     PUBLIC_URL="$(bashio::config 'public_url')"
     PUBLIC_PROTO="${PUBLIC_URL%%://*}"
@@ -178,14 +189,94 @@ for LAN_CIDR in ${LAN_NETWORKS}; do
 done
 bashio::log.info "8069 origin: LAN tier = ${LAN_NETWORKS}"
 
+# Canonical URL for the Runtime shim (issue #70).
+#
+# Odoo 18 builds some outbound links in the browser, from the address in the
+# address bar: the Discuss invitation link is `window.location.origin` joined
+# to `/chat/<id>/<uuid>`, and `@web/core/utils/urls` falls back to the browser
+# protocol and host because Odoo 18 session info carries no origin. Through
+# Ingress that address is the Home Assistant host, so the link is useless to
+# the person it is sent to, and the lock the maintenance bootstrap puts on
+# web.base.url cannot reach it: the value never passes through the server.
+# The Runtime shim publishes the Canonical URL to the page instead, so a
+# Literal rewrite can use it as the base of one exact expression at a time.
+#
+# The rule that chooses the value exists once, in canonical_url() in the
+# maintenance library. The bootstrap calls it later, in services.d, for
+# web.base.url; this step calls the same function through
+# /usr/local/bin/odoo-canonical-url with the same three inputs. Neither side
+# derives the value on its own.
+#
+# Without public_url the value is the host's LAN address with the published
+# Odoo port, both read from the Supervisor (needs hassio_api). When the
+# Supervisor reports no address there is no Canonical URL, the shim publishes
+# an empty string, and every rewrite keeps the browser origin it uses today.
+#
+# Both are read through the shared helper (issue #108): the Supervisor can
+# answer empty for a moment at boot, bashio caches that answer, and one read
+# used to make it the whole start. The helper waits, and publishes what it
+# settled on for the maintenance bootstrap, so both sides see one address
+# and one port per start (ADR 0006) and the bootstrap never asks on its own.
+# shellcheck disable=SC1091
+if ! . "${WOOW_LIB_DIR:-/usr/local/lib}/supervisor-read.sh"; then
+    bashio::log.error "supervisor-read.sh could not be loaded"
+    exit 1
+fi
+CANONICAL_LAN_IPV4=''
+CANONICAL_PORT=''
+if [ -z "${PUBLIC_URL}" ]; then
+    woow::supervisor.settle_canonical_inputs || true
+    CANONICAL_LAN_IPV4="${WOOW_LAN_IPV4}"
+    CANONICAL_PORT="${WOOW_LAN_PORT}"
+fi
+# A missing or broken helper costs the shim its value; it never costs the
+# operator the add-on, so `set -e` is kept away from this one command.
+CANONICAL_URL=''
+if ! CANONICAL_URL="$(
+    ODOO_MAINT_PUBLIC_URL="${PUBLIC_URL}" \
+    ODOO_MAINT_LAN_IPV4="${CANONICAL_LAN_IPV4}" \
+    ODOO_MAINT_PORT="${CANONICAL_PORT}" \
+    /usr/local/bin/odoo-canonical-url
+)"; then
+    bashio::log.warning "odoo-canonical-url failed; the Runtime shim publishes no Canonical URL"
+    CANONICAL_URL=''
+fi
+# The value is rendered into a JavaScript string literal that sits inside an
+# nginx quoted parameter. Only a bare http(s) origin may reach either, so a
+# value of any other shape is dropped rather than escaped; the shim then
+# publishes an empty string and nothing changes.
+if [ -n "${CANONICAL_URL}" ] \
+    && ! echo "${CANONICAL_URL}" | grep -Eq '^https?://[A-Za-z0-9._-]+(:[0-9]{1,5})?(/[A-Za-z0-9._~/-]*)?$'; then
+    bashio::log.warning "Canonical URL is not a bare origin; the Runtime shim will not publish it"
+    CANONICAL_URL=''
+fi
+if [ -n "${CANONICAL_URL}" ]; then
+    bashio::log.info "Runtime shim Canonical URL = ${CANONICAL_URL}"
+else
+    bashio::log.warning "No Canonical URL; links the browser builds keep the browser origin"
+fi
+
 ADDON_VERSION="$(bashio::addon.version 2>/dev/null || echo unknown)"
 sed -e "s/%%WS_PORT%%/${WS_PORT}/g" \
+    -e "s#%%CANONICAL_URL%%#${CANONICAL_URL}#g" \
     -e "s#%%PUBLIC_PROTO%%#${PUBLIC_PROTO}#g" \
     -e "s#%%PUBLIC_HOST_MAP%%#${PUBLIC_HOST_MAP}#g" \
     -e "s#%%DENY_STATUS%%#${DENY_STATUS}#g" \
     -e "s#%%LAN_NETWORKS%%#${LAN_GEO}#g" \
     -e "s#%%INGRESS_CACHE_VERSION%%#${ADDON_VERSION}#g" \
     /etc/nginx/nginx.conf.template > /etc/nginx/nginx.conf
+
+# Generated rewrites (ADR 0005). The Ingress asset location includes this
+# file unconditionally, so nginx refuses to start while it is missing. Create
+# it empty on a fresh install; an existing one is the last good generation
+# the running add-on wrote, so it is never overwritten here.
+declare GENERATED_REWRITES="/data/nginx-generated-rewrites.conf"
+if [ ! -e "${GENERATED_REWRITES}" ]; then
+    bashio::log.info "Creating empty ${GENERATED_REWRITES}"
+    : > "${GENERATED_REWRITES}"
+    # umask 077 above would otherwise leave it readable to root only.
+    chmod 0644 "${GENERATED_REWRITES}"
+fi
 
 # default_db → db_name
 if bashio::config.has_value 'default_db'; then

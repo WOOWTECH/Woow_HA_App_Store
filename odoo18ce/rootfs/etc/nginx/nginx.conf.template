@@ -38,9 +38,53 @@ http {
     # ingress JSON URL rewrites enabled, but make the runtime shim itself a
     # content-type-aware replacement: embedded preview HTML in JSON must remain
     # JSON rather than receiving raw script bytes.
+    #
+    # The Runtime shim is two scripts. nginx reads a single quoted parameter
+    # into a 4096-byte buffer and refuses the file ("too long parameter") when
+    # one exceeds it; the prefix script below is close to that limit, so every
+    # other part of the Runtime shim lives in its own map and is spliced into
+    # `$ingress_runtime_shim` by variable reference, as the clipboard script
+    # is. That keeps the text/html gate and the Ingress-only sub_filter as the
+    # single injection point.
+    #
+    # Clipboard script (issue #60). Home Assistant opened over plain http on
+    # the LAN is a supported usage, and that page is not a secure context, so
+    # `navigator.clipboard` does not exist inside the Ingress iframe and every
+    # Odoo copy button throws on `writeText`. When it is absent this defines
+    # `writeText` over a temporary textarea and `document.execCommand("copy")`,
+    # which still works without a secure context as long as it runs inside the
+    # user's click, then hands focus back to the element that had it. A real
+    # `navigator.clipboard` (HA over https) is never touched, and `write()`
+    # stays absent so Odoo keeps its own error path for Blob payloads.
+    map $upstream_http_content_type $ingress_clipboard_shim {
+        default '<script>(function(){try{if(!navigator.clipboard){var CB={writeText:function(t){return new Promise(function(ok,no){var d=document,f=d.activeElement,ta=d.createElement("textarea"),done=false;ta.value=String(t);ta.setAttribute("readonly","");ta.setAttribute("aria-hidden","true");ta.style.position="fixed";ta.style.top="0";ta.style.left="0";ta.style.width="1px";ta.style.height="1px";ta.style.opacity="0";(d.body||d.documentElement).appendChild(ta);try{ta.select();if(ta.setSelectionRange)ta.setSelectionRange(0,ta.value.length);done=d.execCommand("copy")===true}catch(e){done=false}if(ta.parentNode)ta.parentNode.removeChild(ta);if(f&&f.focus)f.focus();if(done)ok();else no(new Error("clipboard write failed"))})}};try{Object.defineProperty(navigator,"clipboard",{value:CB,configurable:true,writable:true})}catch(e){navigator.clipboard=CB}}}catch(e){}})()</script>';
+    }
+
+    # Canonical URL script (issue #70). Odoo 18 builds some outbound links in
+    # the browser, from the address in the address bar: the Discuss invitation
+    # link is `window.location.origin` joined to `/chat/<id>/<uuid>`, and
+    # `@web/core/utils/urls` falls back to the browser protocol and host
+    # because Odoo 18 session info carries no origin. Through Ingress that
+    # address is the Home Assistant host, so the link is useless to the person
+    # it is sent to, and the lock the maintenance bootstrap puts on
+    # web.base.url cannot reach it: the value never passes through the server.
+    #
+    # This publishes the Canonical URL to the page. It changes no address by
+    # itself; each Literal rewrite that moves a browser-built outbound link
+    # onto this base is added one exact expression at a time. An empty value
+    # -- Ingress-only, with the Supervisor reporting no LAN address -- leaves
+    # every one of them on the browser origin, which is today's behaviour.
+    #
+    # The global is read-only so a bundle cannot move the base of a link that
+    # has already been rewritten, and it carries no trailing slash because
+    # canonical_url() in the maintenance library strips one.
+    map $upstream_http_content_type $ingress_canonical_url_shim {
+        default '<script>(function(){var U="%%CANONICAL_URL%%";try{Object.defineProperty(window,"__WOOW_CANONICAL_URL__",{value:U,writable:false,configurable:false,enumerable:true})}catch(e){window.__WOOW_CANONICAL_URL__=U}})()</script>';
+    }
+
     map $upstream_http_content_type $ingress_runtime_shim {
         default "";
-        "~*^text/html(?:;|$)" '<script>window.__INGRESS_PATH__="$safe_ingress_path";(function(){var P=window.__INGRESS_PATH__||"";if(!P)return;var path=function(u){if(typeof u!=="string")return u;if(u.charAt(0)==="#")return u;try{var x=new URL(u,location.href);if(x.origin===location.origin){var q=x.pathname+x.search+x.hash;while(q.indexOf(P+P)===0)q=q.slice(P.length);if(q.indexOf(P)===0)return q;if(q.charAt(0)==="/")return P+q}}catch(e){}return u};var F=window.fetch;window.fetch=function(i,o){if(typeof i==="string")i=path(i);else if(i instanceof URL)i=path(i.href);else if(i&&i.url){var u=path(i.url);if(u!==i.url)i=new Request(u,i)}return F(i,o)};var X=XMLHttpRequest.prototype.open;XMLHttpRequest.prototype.open=function(m,u){arguments[1]=path(u);return X.apply(this,arguments)};var H=function(fn){return function(s,t,u){if(typeof u==="string")arguments[2]=path(u);else if(u instanceof URL)arguments[2]=path(u.href);return fn.apply(this,arguments)}};var HP=History.prototype.pushState,HR=History.prototype.replaceState;History.prototype.pushState=H(HP);History.prototype.replaceState=H(HR);var A=Element.prototype.setAttribute;Element.prototype.setAttribute=function(n,v){if((n==="href"||n==="src"||n==="action")&&typeof v==="string")v=path(v);return A.call(this,n,v)};var prop=function(proto,n){if(!proto)return;var d=Object.getOwnPropertyDescriptor(proto,n);if(!d||!d.set)return;Object.defineProperty(proto,n,{get:d.get,set:function(v){return d.set.call(this,path(v))},configurable:true})};prop(window.HTMLAnchorElement&&HTMLAnchorElement.prototype,"href");prop(window.HTMLLinkElement&&HTMLLinkElement.prototype,"href");prop(window.HTMLScriptElement&&HTMLScriptElement.prototype,"src");prop(window.HTMLImageElement&&HTMLImageElement.prototype,"src");prop(window.HTMLImageElement&&HTMLImageElement.prototype,"srcset");prop(window.HTMLFormElement&&HTMLFormElement.prototype,"action");var O=window.open;window.open=function(u){if(typeof u==="string")arguments[0]=path(u);return O.apply(this,arguments)};var WK=window.Worker;if(WK){window.Worker=function(u,o){return new WK(path(String(u)),o)};window.Worker.prototype=WK.prototype}var SW=window.SharedWorker;if(SW){window.SharedWorker=function(u,o){return new SW(path(String(u)),o)};window.SharedWorker.prototype=SW.prototype}var W=window.WebSocket;window.WebSocket=function(u,p){var s=String(u),h=location.host;if(s.indexOf("ws://"+h)===0||s.indexOf("wss://"+h)===0){var x=new URL(s);if(x.pathname.indexOf(P)!==0)x.pathname=P+x.pathname;s=x.toString()}return p===undefined?new W(s):new W(s,p)};window.WebSocket.prototype=W.prototype;window.WebSocket.CONNECTING=W.CONNECTING;window.WebSocket.OPEN=W.OPEN;window.WebSocket.CLOSING=W.CLOSING;window.WebSocket.CLOSED=W.CLOSED;try{if(navigator.serviceWorker){var C={addEventListener:function(){},removeEventListener:function(){},postMessage:function(){}};var K="woow-odoo-sw-clean-%%INGRESS_CACHE_VERSION%%";if(navigator.serviceWorker.getRegistrations)navigator.serviceWorker.getRegistrations().then(function(rs){var removed=false;return Promise.all(rs.map(function(r){var a=r.active||r.waiting||r.installing,s=a&&a.scriptURL||"";if(r.scope.indexOf("/odoo")!==-1||s.indexOf("/web/service-worker.js")!==-1)return r.unregister().then(function(ok){removed=removed||ok});return Promise.resolve()})).then(function(){if(removed&&!sessionStorage.getItem(K)){sessionStorage.setItem(K,"1");location.reload()}})});try{Object.defineProperty(navigator.serviceWorker,"controller",{get:function(){return C},configurable:true})}catch(e){};navigator.serviceWorker.register=function(){return Promise.resolve({scope:P+"/",installing:null,waiting:null,active:C,update:function(){return Promise.resolve()},unregister:function(){return Promise.resolve(true)},addEventListener:function(){},removeEventListener:function(){}})}}}catch(e){}})()</script>';
+        "~*^text/html(?:;|$)" '$ingress_clipboard_shim$ingress_canonical_url_shim<script>window.__INGRESS_PATH__="$safe_ingress_path";(function(){var P=window.__INGRESS_PATH__||"";if(!P)return;var path=function(u){if(typeof u!=="string")return u;if(u.charAt(0)==="#")return u;try{var x=new URL(u,location.href);if(x.origin===location.origin){var q=x.pathname+x.search+x.hash;while(q.indexOf(P+P)===0)q=q.slice(P.length);if(q.indexOf(P)===0)return q;if(q.charAt(0)==="/")return P+q}}catch(e){}return u};var F=window.fetch;window.fetch=function(i,o){if(typeof i==="string")i=path(i);else if(i instanceof URL)i=path(i.href);else if(i&&i.url){var u=path(i.url);if(u!==i.url)i=new Request(u,i)}return F(i,o)};var X=XMLHttpRequest.prototype.open;XMLHttpRequest.prototype.open=function(m,u){arguments[1]=path(u);return X.apply(this,arguments)};var H=function(fn){return function(s,t,u){if(typeof u==="string")arguments[2]=path(u);else if(u instanceof URL)arguments[2]=path(u.href);return fn.apply(this,arguments)}};var HP=History.prototype.pushState,HR=History.prototype.replaceState;History.prototype.pushState=H(HP);History.prototype.replaceState=H(HR);var A=Element.prototype.setAttribute;Element.prototype.setAttribute=function(n,v){if((n==="href"||n==="src"||n==="action")&&typeof v==="string")v=path(v);return A.call(this,n,v)};var prop=function(proto,n){if(!proto)return;var d=Object.getOwnPropertyDescriptor(proto,n);if(!d||!d.set)return;Object.defineProperty(proto,n,{get:d.get,set:function(v){return d.set.call(this,path(v))},configurable:true})};prop(window.HTMLAnchorElement&&HTMLAnchorElement.prototype,"href");prop(window.HTMLLinkElement&&HTMLLinkElement.prototype,"href");prop(window.HTMLScriptElement&&HTMLScriptElement.prototype,"src");prop(window.HTMLImageElement&&HTMLImageElement.prototype,"src");prop(window.HTMLImageElement&&HTMLImageElement.prototype,"srcset");prop(window.HTMLFormElement&&HTMLFormElement.prototype,"action");var O=window.open;window.open=function(u){if(typeof u==="string")arguments[0]=path(u);return O.apply(this,arguments)};var WK=window.Worker;if(WK){window.Worker=function(u,o){return new WK(path(String(u)),o)};window.Worker.prototype=WK.prototype}var SW=window.SharedWorker;if(SW){window.SharedWorker=function(u,o){return new SW(path(String(u)),o)};window.SharedWorker.prototype=SW.prototype}var W=window.WebSocket;window.WebSocket=function(u,p){var s=String(u),h=location.host;if(s.indexOf("ws://"+h)===0||s.indexOf("wss://"+h)===0){var x=new URL(s);if(x.pathname.indexOf(P)!==0)x.pathname=P+x.pathname;s=x.toString()}return p===undefined?new W(s):new W(s,p)};window.WebSocket.prototype=W.prototype;window.WebSocket.CONNECTING=W.CONNECTING;window.WebSocket.OPEN=W.OPEN;window.WebSocket.CLOSING=W.CLOSING;window.WebSocket.CLOSED=W.CLOSED;try{if(navigator.serviceWorker){var C={addEventListener:function(){},removeEventListener:function(){},postMessage:function(){}};var K="woow-odoo-sw-clean-%%INGRESS_CACHE_VERSION%%";if(navigator.serviceWorker.getRegistrations)navigator.serviceWorker.getRegistrations().then(function(rs){var removed=false;return Promise.all(rs.map(function(r){var a=r.active||r.waiting||r.installing,s=a&&a.scriptURL||"";if(r.scope.indexOf("/odoo")!==-1||s.indexOf("/web/service-worker.js")!==-1)return r.unregister().then(function(ok){removed=removed||ok});return Promise.resolve()})).then(function(){if(removed&&!sessionStorage.getItem(K)){sessionStorage.setItem(K,"1");location.reload()}})});try{Object.defineProperty(navigator.serviceWorker,"controller",{get:function(){return C},configurable:true})}catch(e){};navigator.serviceWorker.register=function(){return Promise.resolve({scope:P+"/",installing:null,waiting:null,active:C,update:function(){return Promise.resolve()},unregister:function(){return Promise.resolve(true)},addEventListener:function(){},removeEventListener:function(){}})}}}catch(e){}})()</script>';
     }
 
     # ---- Origin listener (8069): who is calling? ----
@@ -249,6 +293,20 @@ http {
             sub_filter "'/my/" "'$safe_ingress_path/my/";
             sub_filter '`/my/' '`$safe_ingress_path/my/';
             sub_filter '"/report/' '"$safe_ingress_path/report/';
+            # Prefixes the Literal rewrite gate found in whole-page
+            # navigations once the parity plan's 25 apps were installed
+            # (issue #58): website_sale's redirect('/shop/cart'), the
+            # payment flow's window.location='/payment/status', and a
+            # website tour's window.location.href='/contactus'.
+            sub_filter '"/shop/' '"$safe_ingress_path/shop/';
+            sub_filter "'/shop/" "'$safe_ingress_path/shop/";
+            sub_filter '`/shop/' '`$safe_ingress_path/shop/';
+            sub_filter '"/payment/' '"$safe_ingress_path/payment/';
+            sub_filter "'/payment/" "'$safe_ingress_path/payment/";
+            sub_filter '`/payment/' '`$safe_ingress_path/payment/';
+            sub_filter '"/contactus' '"$safe_ingress_path/contactus';
+            sub_filter "'/contactus" "'$safe_ingress_path/contactus";
+            sub_filter '`/contactus' '`$safe_ingress_path/contactus';
             # SettingsViewCompiler synthesizes each module fallback icon in the
             # web asset bundle. Prefix only that exact expression; a generic
             # module/static rewrite would affect unrelated application code.
@@ -274,6 +332,53 @@ http {
             sub_filter '"odoo:websocket_shared_worker"' '"odoo:websocket_shared_worker_%%INGRESS_CACHE_VERSION%%"';
             sub_filter '"odoo:websocket_worker"' '"odoo:websocket_worker_%%INGRESS_CACHE_VERSION%%"';
             sub_filter 'websocket_worker_bundle?v=' 'websocket_worker_bundle?woow_ingress=%%INGRESS_CACHE_VERSION%%&v=';
+            # Links the browser builds for somebody outside to open (issue
+            # #70, ADR 0006). These are absolute addresses, built in the page
+            # from whatever is in the address bar, so under Ingress they carry
+            # the Home Assistant host -- and, for the share snippet, the
+            # Ingress token itself. The Runtime shim publishes the Canonical
+            # URL as __WOOW_CANONICAL_URL__; each rule below moves one link
+            # onto that base and falls back to the browser origin when the
+            # global is empty, which is the behaviour without a Canonical URL.
+            #
+            # Every pattern is one exact expression, measured against the
+            # bundles this add-on's control group actually serves with the
+            # parity plan's 25 applications installed: each occurs exactly
+            # once per bundle and nowhere near an in-Ingress address. The
+            # bytes are kept as fixtures under tests/fixtures/bundles/ --
+            # an unmatched sub_filter is a silent no-op, so a rule written
+            # from a guess would never turn a test red.
+            #
+            # Discuss invitation link: `${window.location.origin}/chat/<id>/<uuid>`.
+            # /chat/ appears nowhere else in any served bundle.
+            sub_filter 'window.location.origin}/chat/' 'window.__WOOW_CANONICAL_URL__||window.location.origin}/chat/';
+            # Website page URL field: the base shown before the page path in
+            # the backend form (`this.serverUrl`), a display value only. The
+            # pattern carries the closing backtick and the semicolon, so it
+            # matches a template literal that is the whole statement and not
+            # an origin spliced into a larger in-Ingress URL.
+            sub_filter 'window.location.origin}/`;' 'window.__WOOW_CANONICAL_URL__||window.location.origin}/`;';
+            # Website share snippet (.s_share, .oe_share): the current page
+            # address handed to Facebook, X, WhatsApp and the rest. This one
+            # needs the path as well as the base, because under Ingress
+            # location.href carries the Supervisor token and posting it to a
+            # social network publishes it.
+            #
+            # The Ingress prefix is dropped whether or not a Canonical URL
+            # exists -- this rule is the one exception to "no Canonical URL
+            # means today's behaviour" (ADR 0006), because here today's
+            # behaviour hands a Supervisor token to a third party. Without a
+            # Canonical URL the link keeps the browser origin, so it is as
+            # broken as it was, but it no longer carries the token.
+            sub_filter 'const currentUrl=window.location.href;' 'const currentUrl=(function(){var L=window.location,B=window.__WOOW_CANONICAL_URL__||L.origin,P="$safe_ingress_path",p=L.pathname;if(P&&p.indexOf(P)===0)p=p.slice(P.length)||"/";return B+p+L.search+L.hash})();';
+            # Generated rewrites (ADR 0005). The add-on writes this file from
+            # its own Rewrite scan; the config-rendering init step creates it
+            # empty so a fresh install starts. It holds prefix rules only, and
+            # never a prefix the rules above already cover, so the two sets
+            # never compete for the same literal -- which matters because
+            # sub_filter resolves overlapping patterns by its own match table
+            # and not by the order the rules are written in.
+            include /data/nginx-generated-rewrites.conf;
         }
 
         location / {

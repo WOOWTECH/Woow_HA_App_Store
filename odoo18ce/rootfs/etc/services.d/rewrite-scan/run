@@ -1,0 +1,77 @@
+#!/usr/bin/with-contenv bashio
+# ==============================================================================
+# The Rewrite scan service — one round at start, then a round every five
+# minutes, for as long as the container runs (issue #94, ADR 0005/0009).
+#
+# A round is `odoo-rewrite-apply` (#93): it reads the add-on option, reads
+# the asset bundles every Odoo database serves, generates the Generated
+# rewrite include file from the findings, validates the candidate with
+# `nginx -t` and reloads the running nginx. Everything this script adds is
+# the loop, the wait for PostgreSQL, and one warning when a round ends
+# badly; the round writes its own report.
+#
+# This service must never stop Odoo (#77), which makes it the first in this
+# image that departs from the convention the other four share. Its `finish`
+# does not halt the container, and this script has no `set -e`: a round
+# that exits non-zero — an incomplete scan, or a candidate nginx refused —
+# is a degraded rule set, never a reason to take a serving Odoo down. The
+# five-minute loop is the retry, and ADR 0009 writes that down.
+#
+# It waits for PostgreSQL and for nothing else. The bundles are read with
+# `psql`, so postgres is all a round needs; waiting for Odoo's HTTP port,
+# the way the nginx service does, would put a scan between Odoo and its
+# gateway. nginx is quite likely not running for the first round, and the
+# apply path writes and validates the file anyway — nginx loads it when it
+# starts.
+# ==============================================================================
+set -uo pipefail
+
+# Five minutes (#77), measured between rounds rather than on a fixed clock,
+# so a slow round never overlaps the next one. Not shorter: a pass costs
+# about four seconds of CPU whatever the read path, which is the whole
+# reason the scan keeps a state at all (ADR 0007).
+ROUND_INTERVAL=300
+ROUND="/usr/local/bin/odoo-rewrite-apply"
+
+# ---------- 1. Wait for PostgreSQL (services.d/odoo/run:7-19) ----------
+bashio::log.info "Rewrite scan: waiting for PostgreSQL to become ready..."
+for i in $(seq 1 30); do
+    if pg_isready -h 127.0.0.1 -p 5432 -U odoo -q; then
+        bashio::log.info "Rewrite scan: PostgreSQL is ready"
+        break
+    fi
+    if [ "${i}" -eq 30 ]; then
+        # The Odoo service halts the container at this point. This one exits
+        # and is restarted, which waits another 30 seconds: whether Odoo ever
+        # starts is that service's answer to give, never this one's.
+        bashio::log.error "Rewrite scan: PostgreSQL did not become ready in 30 seconds"
+        exit 1
+    fi
+    sleep 1
+done
+
+# ---------- 2. A round now, and a round every interval ----------
+# The round's report goes straight to the add-on log rather than through
+# `bashio::log.info` line by line, the way the maintenance bootstrap
+# forwards its library's output (odoo-maintenance-bootstrap:79-89). Two
+# reasons: it streams, so a round waiting on a `psql` timeout is visible
+# while it waits rather than after it; and `bashio::log` passes its message
+# through `echo -e`, which would read the escape sequences inside a snippet
+# of minified bundle text as its own. Ingress tokens are already masked by
+# the module that printed them.
+while true; do
+    STATUS=0
+    "${ROUND}" || STATUS=$?
+    if [ "${STATUS}" -ne 0 ]; then
+        # The report above names the database that failed or what nginx
+        # refused, and says what the include file holds now: a step that
+        # failed after the new file was moved into place leaves the new
+        # rules on disk (issue #120). This line is what makes the round
+        # itself visible as a failure, so a host that has stopped updating
+        # its rules says so every round instead of reading like a host with
+        # nothing to do.
+        bashio::log.warning \
+            "Rewrite scan: the round above ended at exit ${STATUS}; it says what the include file holds, Odoo is untouched, and the next round runs in ${ROUND_INTERVAL} seconds"
+    fi
+    sleep "${ROUND_INTERVAL}"
+done

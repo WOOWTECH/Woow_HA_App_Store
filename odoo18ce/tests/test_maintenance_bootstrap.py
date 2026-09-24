@@ -4,7 +4,7 @@ The bootstrap runs once per add-on start, before Odoo serves requests, and
 pipes ``rootfs/usr/local/lib/odoo-maintenance.py`` into ``odoo shell`` once
 per database. The decision functions in that file are pure, so the whole
 matrix -- ``public_url`` set/unset x ``default_db`` set/unset x stored value
-clean/leaked/absent x LAN address available/unavailable -- runs here without
+clean/leaked/install default/absent x LAN address available/unavailable -- runs here without
 a live Odoo or Supervisor.
 """
 import importlib.util
@@ -24,6 +24,9 @@ LAN_IPV4 = "192.0.2.10/24"
 LAN_ORIGIN = "http://192.0.2.10:8069"
 LEAKED = "https://ha.example.test/api/hassio_ingress/token-value"
 CLEAN = "https://kept.example.test"
+# What Odoo writes into web.base.url when it creates a database: localhost on
+# the add-on's http_port. Nobody chose it and nothing outside can reach it.
+INSTALL_DEFAULT = "http://localhost:8070"
 
 
 def load_lib():
@@ -83,6 +86,28 @@ def test_ordinary_or_absent_values_are_not_leaked(lib, value) -> None:
     assert not lib.is_leaked(value)
 
 
+# --- Odoo's install default ---------------------------------------------------
+
+@pytest.mark.parametrize("value", [INSTALL_DEFAULT, INSTALL_DEFAULT + "/"])
+def test_odoo_install_default_is_recognised(lib, value) -> None:
+    assert lib.is_install_default(value)
+    # #57's rule is about Ingress tokens only and stays that way.
+    assert not lib.is_leaked(value)
+
+
+@pytest.mark.parametrize("value", [
+    PUBLIC, LAN_ORIGIN, CLEAN, LEAKED, "http://127.0.0.1:8070", "http://localhost:8069", "", None, False,
+])
+def test_other_values_are_not_the_install_default(lib, value) -> None:
+    assert not lib.is_install_default(value)
+
+
+def test_install_default_follows_the_configured_http_port(lib) -> None:
+    config = (ROOT / "rootfs/etc/cont-init.d/10-odoo-config.sh").read_text(encoding="utf-8")
+    port = lib.INSTALL_DEFAULT_URL.rsplit(":", 1)[1]
+    assert f"http_port = {port}\n" in config
+
+
 # --- Per-database decision ----------------------------------------------------
 
 @pytest.mark.parametrize("stored", [CLEAN, LEAKED, "", None, False])
@@ -99,15 +124,58 @@ def test_without_canonical_url_an_absent_value_is_left_unprotected(lib, stored) 
     assert lib.decide(None, stored) == lib.Decision("unprotected", None, False, None, False)
 
 
+def test_without_canonical_url_the_install_default_is_not_frozen(lib) -> None:
+    # Nobody chose it, so it is not kept as a Canonical URL: no freeze, and the
+    # next start that has one writes it.
+    assert lib.decide(None, INSTALL_DEFAULT) == lib.Decision("unprotected", None, False, None, False)
+
+
+def test_without_canonical_url_the_install_default_is_reported_as_a_warning(lib, capsys) -> None:
+    params = FakeParams({lib.BASE_URL_KEY: INSTALL_DEFAULT})
+    decision = lib.apply(FakeEnv(params), "dbleak", None)
+
+    assert decision.action == "unprotected"
+    # Left in place and not frozen.
+    assert params.values == {lib.BASE_URL_KEY: INSTALL_DEFAULT}
+    line = capsys.readouterr().out.strip()
+    assert line.startswith("maintenance db=dbleak: WARNING")
+    assert INSTALL_DEFAULT in line
+
+
 def test_without_canonical_url_a_leaked_value_is_removed_not_kept(lib) -> None:
     # "treated as absent": nothing replaces it, nothing freezes it, and the
     # token must not stay in the database.
     assert lib.decide(None, LEAKED) == lib.Decision("unprotected", None, False, None, True)
 
 
+class FakeParams:
+    """The slice of ir.config_parameter that apply() touches."""
+
+    def __init__(self, values):
+        self.values = dict(values)
+
+    def sudo(self):
+        return self
+
+    def get_param(self, key):
+        return self.values.get(key)
+
+    def set_param(self, key, value):
+        self.values[key] = value
+
+
+class FakeEnv:
+    def __init__(self, params):
+        self.params = params
+
+    def __getitem__(self, model):
+        assert model == "ir.config_parameter"
+        return self.params
+
+
 # --- The full matrix ----------------------------------------------------------
 
-STORED = {"clean": CLEAN, "leaked": LEAKED, "absent": False}
+STORED = {"clean": CLEAN, "leaked": LEAKED, "install_default": INSTALL_DEFAULT, "absent": False}
 
 
 @pytest.mark.parametrize(
@@ -147,8 +215,19 @@ def test_bootstrap_processes_every_database_and_never_requires_default_db() -> N
     assert "ir_config_parameter" in script
     assert "/usr/local/lib/odoo-maintenance.py" in script
     assert "/usr/local/lib/odoo-maintenance-account.py" in script
-    assert "bashio::network.ipv4_address" in script
-    assert "bashio::addon.port" in script
+    # Issue #108: the LAN address is the one cont-init settled on this start,
+    # handed over through the container environment. The bootstrap does not
+    # retry on its own (ADR 0006: one value per start), and only asks the
+    # Supervisor itself when it runs outside a start, with nothing published.
+    assert 'if [ "${WOOW_CANONICAL_SETTLED:-}" = 1 ]' in script
+    assert 'LAN_IPV4="${WOOW_LAN_IPV4:-}"' in script
+    assert 'PUBLISHED_PORT="${WOOW_LAN_PORT:-}"' in script
+    # Never a second derivation (ADR 0006): the bootstrap neither reads the
+    # Supervisor nor waits on it; without the marker it has no LAN address.
+    assert "bashio::network.ipv4_address" not in script
+    assert "bashio::addon.port" not in script
+    assert "woow::supervisor" not in script
+    assert "published no settled Canonical URL inputs" in script
     # public_url without default_db used to be a start-up failure.
     assert "default_db is required" not in script
     # A failed database listing is reported, not mistaken for "no database".

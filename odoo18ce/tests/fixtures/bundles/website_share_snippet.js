@@ -1,0 +1,2 @@
+_onShareLinkClick(ev){const urlParams=["u","url","body"];const titleParams=["title","text","subject","description"];const mediaParams=["media"];const aEl=ev.currentTarget;const modifiedUrl=new URL(aEl.href);if(![...urlParams,...titleParams,...mediaParams].some(param=>modifiedUrl.searchParams.has(param))){return;}
+ev.preventDefault();ev.stopPropagation();const currentUrl=window.location.href;const urlParamFound=urlParams.find(param=>modifiedUrl.searchParams.has(param));if(urlParamFound){modifiedUrl.searchParams.set(urlParamFound,currentUrl);}

@@ -66,11 +66,15 @@ def assert_prefix_guard(template: str) -> None:
     )
 
 
+def map_block(template: str, header: str) -> str:
+    """Return one top-level nginx `map` block, from its header line to its closing brace."""
+    start = template.index(header)
+    return template[start : template.index("\n    }", start)]
+
+
 def runtime_shim(template: str) -> str:
-    """Return the HTML-only runtime shim declared in nginx's response map."""
-    map_start = template.index("map $upstream_http_content_type $ingress_runtime_shim {")
-    map_end = template.index("\n    }", map_start)
-    html_map = template[map_start:map_end]
+    """Return the prefix script of the Runtime shim declared in nginx's response map."""
+    html_map = map_block(template, "map $upstream_http_content_type $ingress_runtime_shim {")
     assert '"~*^text/html(?:;|$)"' in html_map
     match = re.search(r"<script>(.*?)</script>';", html_map, re.S)
     assert match, "HTML runtime shim not found"
