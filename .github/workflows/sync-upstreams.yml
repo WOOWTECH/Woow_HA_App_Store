@@ -22,6 +22,13 @@ name: Sync upstream addons
 # it, but it is no longer offered here. The Woow_ha_vscode_add_on mirror repo
 # is untouched and simply stops feeding the store.
 #
+# 2026-09-24: `nextcloud` was replaced by `woow-nextcloud-office` on
+# 2026-09-22 (in the store and in Woow_ha_nextcloud), but its mapping still
+# named the deleted `nextcloud/` subdir. The missing subdir stopped the whole
+# sweep, so no add-on synced from 2026-09-22 to 2026-09-24 (odoo18ce 0.4.3
+# and 0.4.4 among them). The mapping now names `woow-nextcloud-office`, and a
+# missing subdir now fails only its own add-on, like a blocked downgrade.
+#
 # Still unmapped, deliberately:
 #   knxd           — no WOOWTECH mirror repo; pinned by hand against da-anda.
 #   woow-tailscale — the STORE is authoritative (0.1.1 vs the source repo's
@@ -91,9 +98,9 @@ jobs:
             music_assistant|Woow_ha_music_assistant_add_on|music_assistant
             n8n|Woow_ha_n8n|n8n
             omnigent|Woow_ha_omnigent_addon|omnigent
-            nextcloud|Woow_ha_nextcloud|nextcloud
             odoo18ce|Woow_ha_odoo|odoo18ce|release
             woow-immich|Woow_ha_immich|woow-immich
+            woow-nextcloud-office|Woow_ha_nextcloud|woow-nextcloud-office
             woow-lan-gateway|woow-lan-gateway|app
             woow_ha_core_1|woowtech_ha_multi_ha_core|woow_ha_core_1
             woow_ha_core_2|woowtech_ha_multi_ha_core|woow_ha_core_2
@@ -108,6 +115,7 @@ jobs:
           mkdir -p /tmp/upstream
           synced=()
           downgrades=()
+          missing=()
           declare -A synced_ref
 
           while IFS='|' read -r slug repo sub ref; do
@@ -131,8 +139,11 @@ jobs:
             src_dir="${src}"
             [ "${sub}" != "." ] && src_dir="${src}/${sub}"
             if [ ! -d "${src_dir}" ]; then
+              # Skip only this add-on: one repository's layout change must
+              # not hold back every other add-on's Release.
               echo "::error::${slug}: required upstream subdir ${sub} not found in ${repo} at ${ref}"
-              exit 1
+              missing+=("${slug}: ${sub} not found in ${repo} at ${ref}")
+              continue
             fi
             # Refuse to move an add-on backwards. rsync has no notion of
             # "newer" — it just overwrites — so a mapping pointed at a source
@@ -170,16 +181,24 @@ jobs:
             fi
           done <<< "${MAPPINGS}"
 
-          report_downgrades() {
-            [ ${#downgrades[@]} -eq 0 ] && return 0
-            echo "Blocked downgrades (nothing was overwritten for these):"
-            printf '  - %s\n' "${downgrades[@]}"
-            return 1
+          report_skipped() {
+            local failed=0
+            if [ ${#downgrades[@]} -gt 0 ]; then
+              echo "Blocked downgrades (nothing was overwritten for these):"
+              printf '  - %s\n' "${downgrades[@]}"
+              failed=1
+            fi
+            if [ ${#missing[@]} -gt 0 ]; then
+              echo "Missing upstream subdirs (these add-ons were not synced):"
+              printf '  - %s\n' "${missing[@]}"
+              failed=1
+            fi
+            return ${failed}
           }
 
           if [ ${#synced[@]} -eq 0 ]; then
             echo "All mapped subdirs already in sync with upstream — no commit needed."
-            report_downgrades
+            report_skipped
             exit $?
           fi
 
@@ -200,5 +219,5 @@ jobs:
           git commit -m "${title}${body}"
           git push
 
-          # Surface any blocked downgrade as a red run so the bad mapping is noticed.
-          report_downgrades
+          # Surface any skipped add-on as a red run so the bad mapping is noticed.
+          report_skipped
