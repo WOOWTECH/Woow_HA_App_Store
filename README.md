@@ -35,7 +35,7 @@ ha store add https://github.com/WOOWTECH/Woow_HA_App_Store
 | `woow-immich` | Woow Immich | 2.5.7 | 自架相簿（Google Photos 替代） |
 | `woow_lan_gateway` | Woow LAN Gateway | 0.1.4 | 工廠註冊 LAN 的 fail-closed 公網 IPv4 閘道 |
 | `woow-n8n` | Woow n8n | 2.12.17 | AI/自動化 workflow |
-| `woow-hermes` | Woow Hermes Agent | 0.1.5 | Hermes Agent（NousResearch）：HA 側邊欄 dashboard + 聊天終端機，OpenAI 相容 API 與 Webhook 可經 Cloudflare Tunnel 對外 |
+| `woow-hermes` | Woow Hermes Agent | 0.1.6 | Hermes Agent（NousResearch）：HA 側邊欄 dashboard + 聊天終端機，OpenAI 相容 API 與 Webhook 可經 Cloudflare Tunnel 對外 |
 | `woow-nextcloud` | Woow Nextcloud | 33.0.3 | 自架雲端硬碟 |
 | `woow-tailscale` | Woow Tailscale | 0.1.1 | Tailscale / Headscale VPN 用戶端 |
 | `woow_ha_code_server` | Woow Code Server | 0.1.5 | code-server + pi coding agent + ACP 側邊欄（取代原 `vscode` 鏡像） |
