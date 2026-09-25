@@ -1,0 +1,104 @@
+#!/command/with-contenv bash
+# shellcheck shell=bash
+# Add-on options -> environment. Runs before upstream's 01-hermes-setup, so the
+# API key is already in the environment when stage2 decides whether to generate one.
+set -euo pipefail
+
+OPTIONS=/data/options.json
+ENVDIR=/run/s6/container_environment
+SECRETS=/data/secrets
+
+umask 077
+mkdir -p "$SECRETS"
+chmod 0700 /data "$SECRETS"
+
+opt() { jq -r --arg k "$1" '.[$k] // empty' "$OPTIONS"; }
+setenv() { printf '%s' "$2" >"$ENVDIR/$1"; }
+gen() { head -c "$1" /dev/urandom | base64 -w0 | tr -d '/+='; }
+
+generated=()
+
+# Option value if set, else the value generated on an earlier start, else a new one.
+secret() {
+    local name=$1 option=$2 var=$3 bytes=$4 value=""
+    [[ -n $option ]] && value=$(opt "$option")
+    if [[ -z $value && -s $SECRETS/$name ]]; then
+        value=$(<"$SECRETS/$name")
+    fi
+    if [[ -z $value ]]; then
+        value=$(gen "$bytes")
+        echo "  generated ${var}"
+    fi
+    if [[ -n $option && -z $(opt "$option") ]]; then
+        generated+=("$option")
+    fi
+    printf '%s' "$value" >"$SECRETS/$name"
+    setenv "$var" "$value"
+}
+
+echo "[woow-options] loading add-on options"
+setenv HERMES_DASHBOARD_BASIC_AUTH_USERNAME "$(opt dashboard_username)"
+secret dashboard_password dashboard_password HERMES_DASHBOARD_BASIC_AUTH_PASSWORD 24
+secret api_server_key api_server_key API_SERVER_KEY 48
+secret webhook_secret webhook_secret WEBHOOK_SECRET 48
+# Signs dashboard sessions. Without it upstream uses a per-process key and every
+# restart logs everyone out.
+secret basic_auth_secret "" HERMES_DASHBOARD_BASIC_AUTH_SECRET 32
+
+# Empty outside Home Assistant (local tests): every Supervisor call then just fails.
+SUPERVISOR_TOKEN=${SUPERVISOR_TOKEN:-}
+supervisor() { [[ -n $SUPERVISOR_TOKEN ]] && curl -fsS -H "Authorization: Bearer ${SUPERVISOR_TOKEN}" "$@"; }
+
+# MCP OAuth redirects back to this URL. Never derived from the ingress path: HA's
+# ingress session cookie is SameSite=Strict, so a cross-site OAuth return would 401.
+public_url=$(opt public_url)
+if [[ -z $public_url ]]; then
+    ip=$(supervisor http://supervisor/network/info \
+        | jq -r '[.data.interfaces[] | select(.primary)][0].ipv4.address[0] // empty' | cut -d/ -f1) || ip=""
+    port=$(supervisor http://supervisor/addons/self/info | jq -r '.data.network["9119/tcp"] // empty') || port=""
+    [[ -n $ip && -n $port ]] && public_url="http://${ip}:${port}"
+fi
+if [[ -n $public_url ]]; then
+    setenv HERMES_DASHBOARD_PUBLIC_URL "${public_url%/}"
+    echo "  HERMES_DASHBOARD_PUBLIC_URL=${public_url%/}"
+fi
+
+reserved='^(HERMES_HOME|HERMES_DASHBOARD_HOST|HERMES_DASHBOARD_PORT|PATH|HOME|SUPERVISOR_TOKEN|HASSIO_TOKEN)$'
+count=$(jq -r '.env_vars | length' "$OPTIONS")
+for ((i = 0; i < count; i++)); do
+    key=$(jq -r ".env_vars[$i].key" "$OPTIONS")
+    value=$(jq -r ".env_vars[$i].value" "$OPTIONS")
+    if [[ $key =~ $reserved ]]; then
+        echo "  skipped env_vars ${key}: reserved by the add-on" >&2
+        continue
+    fi
+    setenv "$key" "$value"
+    case "$key" in
+        *PASS*|*SECRET*|*KEY*|*TOKEN*) echo "  ${key}=******" ;;
+        *) echo "  ${key}=${value}" ;;
+    esac
+done
+
+# Save generated secrets into the options, so they show in the Configuration tab
+# and survive a restore. A failure keeps the /data/secrets copy.
+if ((${#generated[@]})); then
+    new=$(jq -c '.' "$OPTIONS")
+    for option in "${generated[@]}"; do
+        new=$(jq -c --arg k "$option" --rawfile v "$SECRETS/$option" '.[$k] = $v' <<<"$new")
+    done
+    if jq -c '{options: .}' <<<"$new" | supervisor -X POST -H 'Content-Type: application/json' \
+        --data @- http://supervisor/addons/self/options >/dev/null; then
+        echo "  saved generated ${generated[*]} to the add-on options"
+    else
+        echo "  could not save generated secrets to the options; kept in /data/secrets" >&2
+    fi
+fi
+
+# The agent runs shell commands. Nothing below needs the Supervisor token, so keep
+# it out of every Hermes process.
+rm -f "$ENVDIR/SUPERVISOR_TOKEN" "$ENVDIR/HASSIO_TOKEN"
+
+avail_kb=$(awk '/^MemAvailable:/ {print $2}' /proc/meminfo)
+if ((avail_kb < 4 * 1024 * 1024)); then
+    echo "[woow-options] warning: only $((avail_kb / 1024)) MiB of memory available; Hermes with a browser can use 3-6 GiB" >&2
+fi

@@ -1,0 +1,32 @@
+configuration:
+  dashboard_username:
+    name: 儀表板帳號
+    description: Hermes 儀表板的登入帳號，區網 port 與 HA 側邊欄共用。
+  dashboard_password:
+    name: 儀表板密碼
+    description: 留空則於首次啟動時自動產生高強度密碼，並回存於此。
+  api_server_key:
+    name: Gateway API 金鑰
+    description: 8642 port OpenAI 相容 API 的 Bearer 金鑰。留空則首次啟動時自動產生。
+  webhook_secret:
+    name: Webhook 密鑰
+    description: 8644 port webhook 接收器的 HMAC 密鑰。留空則首次啟動時自動產生。
+  public_url:
+    name: 儀表板公開網址
+    description: 登入 MCP 伺服器時 OAuth 導回的網址。留空則為 http://<HA IP>:<儀表板 port>。請勿填 HA 側邊欄網址。
+  minimax_api_key:
+    name: MiniMax API 金鑰
+    description: 只有在這裡修改時才會寫入 Hermes，在儀表板裡改的金鑰不會被覆蓋。
+  openrouter_api_key:
+    name: OpenRouter API 金鑰
+    description: 規則同 MiniMax 金鑰。
+  github_token:
+    name: GitHub token
+    description: 規則同 MiniMax 金鑰。
+  env_vars:
+    name: 額外環境變數
+    description: 進階設定，會傳給所有 Hermes 程序。
+network:
+  8642/tcp: Gateway（OpenAI 相容 API），Cloudflare 主機名稱指向 http://homeassistant:8642
+  9119/tcp: 儀表板與聊天終端機（區網）
+  8644/tcp: Webhook 接收器，Cloudflare 主機名稱指向 http://homeassistant:8644

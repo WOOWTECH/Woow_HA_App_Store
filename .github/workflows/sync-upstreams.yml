@@ -101,6 +101,7 @@ jobs:
             odoo18ce|Woow_ha_odoo|odoo18ce|release
             woow-immich|Woow_ha_immich|woow-immich
             woow-nextcloud-office|Woow_ha_nextcloud|woow-nextcloud-office
+            woow-hermes|Woow_ha_hermes_add_on|hermes|release
             woow-lan-gateway|woow-lan-gateway|app
             woow_ha_core_1|woowtech_ha_multi_ha_core|woow_ha_core_1
             woow_ha_core_2|woowtech_ha_multi_ha_core|woow_ha_core_2

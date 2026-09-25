@@ -1,0 +1,32 @@
+configuration:
+  dashboard_username:
+    name: Dashboard username
+    description: Login name for the Hermes dashboard, on the LAN port and in the Home Assistant sidebar.
+  dashboard_password:
+    name: Dashboard password
+    description: Leave empty to generate a strong password on first start. It is then saved here.
+  api_server_key:
+    name: Gateway API key
+    description: Bearer key for the OpenAI-compatible API on port 8642. Generated on first start if empty.
+  webhook_secret:
+    name: Webhook secret
+    description: HMAC secret for the webhook receiver on port 8644. Generated on first start if empty.
+  public_url:
+    name: Dashboard public URL
+    description: Base URL that OAuth providers redirect back to when you sign in to an MCP server. Empty means http://<Home Assistant IP>:<dashboard port>. Never use the Home Assistant sidebar URL.
+  minimax_api_key:
+    name: MiniMax API key
+    description: Written to Hermes only when you change it here, so keys you edit in the dashboard are kept.
+  openrouter_api_key:
+    name: OpenRouter API key
+    description: Same rule as the MiniMax key.
+  github_token:
+    name: GitHub token
+    description: Same rule as the MiniMax key.
+  env_vars:
+    name: Extra environment variables
+    description: Advanced. Passed to every Hermes process.
+network:
+  8642/tcp: Gateway (OpenAI-compatible API). Point a Cloudflare hostname at http://homeassistant:8642
+  9119/tcp: Dashboard and chat terminal (LAN)
+  8644/tcp: Webhook receiver. Point a Cloudflare hostname at http://homeassistant:8644

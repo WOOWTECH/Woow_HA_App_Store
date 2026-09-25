@@ -1,0 +1,24 @@
+#!/command/with-contenv bash
+# shellcheck shell=bash
+# Post-start provisioning (the podman stack's hermes-provision.service). A longrun
+# without readiness, not a oneshot: s6 starts the CMD, and with it the gateway,
+# only after the user bundle is up, so a oneshot waiting for /health would deadlock.
+export HOME=/opt/data
+cd /opt/data || exit 1
+if /usr/local/bin/woow-provision --wait 600; then
+    echo "[woow-provision] done"
+else
+    echo "[woow-provision] failed; it runs again on the next start" >&2
+fi
+
+# The gateway turns the webhook receiver on from WEBHOOK_ENABLED, but the
+# dashboard's Webhooks page and `hermes webhook` read platforms.webhook in
+# config.yaml. Mirror it once; a value set later in the dashboard is kept.
+hermes_cli() { s6-setuidgid hermes /opt/hermes/.venv/bin/hermes "$@"; }
+# `config get` reports a missing key on stderr.
+if hermes_cli config get platforms.webhook.enabled 2>&1 | grep -q '^Config key not set'; then
+    hermes_cli config set platforms.webhook.enabled true >/dev/null \
+        && hermes_cli config set platforms.webhook.extra.port "${WEBHOOK_PORT:-8644}" >/dev/null \
+        && echo "[woow-provision] enabled platforms.webhook in config.yaml"
+fi
+exec sleep infinity
