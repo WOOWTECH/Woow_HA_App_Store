@@ -11,14 +11,27 @@ else
     echo "[woow-provision] failed; it runs again on the next start" >&2
 fi
 
-# The gateway turns the webhook receiver on from WEBHOOK_ENABLED, but the
-# dashboard's Webhooks page and `hermes webhook` read platforms.webhook in
-# config.yaml. Mirror it once; a value set later in the dashboard is kept.
+# Defaults the add-on needs, written only while a key has no value, so a value
+# set later in the dashboard is kept. `config get` prints "" for a key with an
+# empty default and "Config key not set: ..." on stderr for an unknown one.
 hermes_cli() { s6-setuidgid hermes /opt/hermes/.venv/bin/hermes "$@"; }
-# `config get` reports a missing key on stderr.
-if hermes_cli config get platforms.webhook.enabled 2>&1 | grep -q '^Config key not set'; then
-    hermes_cli config set platforms.webhook.enabled true >/dev/null \
-        && hermes_cli config set platforms.webhook.extra.port "${WEBHOOK_PORT:-8644}" >/dev/null \
-        && echo "[woow-provision] enabled platforms.webhook in config.yaml"
-fi
+set_default() {
+    local current
+    current=$(hermes_cli config get "$1" 2>&1)
+    if [[ -z $current || $current == "Config key not set"* ]]; then
+        hermes_cli config set "$1" "$2" >/dev/null && echo "[woow-provision] set $1 = $2"
+    fi
+}
+# The gateway turns the webhook receiver on from WEBHOOK_ENABLED, but the
+# dashboard's Webhooks page and `hermes webhook` read platforms.webhook.
+set_default platforms.webhook.enabled true
+set_default platforms.webhook.extra.port "${WEBHOOK_PORT:-8644}"
+# ddgs is installed, so upstream would pick it for extraction too, and it can
+# only search. Keyless parallel extracts; keyless firecrawl search is refused.
+set_default web.search_backend ddgs
+set_default web.extract_backend parallel
+# Unset means the browser-use CLI, which needs a running Chrome. "off" is the
+# built-in agent-browser, driving the image's Chromium through
+# AGENT_BROWSER_EXECUTABLE_PATH (set by upstream's stage2).
+set_default browser.backend off
 exec sleep infinity

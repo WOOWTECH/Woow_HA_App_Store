@@ -42,14 +42,22 @@ additional_hosts:
 
 Changing or disabling a host port in the Network tab breaks the matching tunnel rule.
 
-The dashboard is not meant to be published. To sign in to MCP servers with OAuth from anywhere,
-publish only the callback path of the dashboard on the API hostname
+The dashboard is not meant to be published. When you sign in to an MCP server with OAuth, the
+provider sends your browser back to **Dashboard public URL**. Left empty, that is
+`http://<Home Assistant IP>:9119`, which only works from the LAN. To sign in from anywhere, publish
+only the callback path of the dashboard on the API hostname
 (`^/api/mcp/oauth/callback/` → `http://homeassistant:9119`) and set **Dashboard public URL** to
 `https://<api hostname>`.
 
 Cloudflare limits apply to anything that goes through it, including the sidebar when Home
 Assistant itself is reached through a tunnel: 100 MB request bodies and 125 s until the first
 response byte (use `stream: true` for long completions).
+
+## Web and browser tools
+
+Web search uses DuckDuckGo (`ddgs`) and page extraction uses Parallel, both without an API key.
+The browser tool drives the Chromium bundled in the image. The add-on sets these on start only
+while they are empty, so a backend you pick in the dashboard stays.
 
 ## After installing
 
@@ -68,10 +76,14 @@ switch them on for you.
 
 The agent runs shell commands with Hermes' default approval settings: low-risk commands run
 directly, risky ones (deleting files, installing packages, `sudo`, piping downloads into a shell)
-wait for you to approve them in the chat, and scheduled jobs refuse them because nobody is there to
-approve. You can change this under Config in the dashboard. Anyone who can use the dashboard, the
-API key, or a webhook route that triggers the agent can still run the commands that need no
-approval. The add-on removes the Supervisor token from
+wait for you to approve them in the chat. Runs with nobody there to approve (scheduled jobs, the
+OpenAI-compatible API and webhooks) refuse them. You can change this under Config in the
+dashboard (`approvals.cron_mode`, `approvals.unattended_mode`). Anyone who can use the dashboard,
+the API key, or a webhook route that triggers the agent can still run the commands that need no
+approval.
+
+Upstream Hermes auto-approves those risky commands in unattended runs, because its gateway runs in
+ask mode; the add-on patches that so the deny settings apply. The add-on removes the Supervisor token from
 the agent's environment. Home Assistant backups of this add-on contain its secrets and
 conversation history.
 

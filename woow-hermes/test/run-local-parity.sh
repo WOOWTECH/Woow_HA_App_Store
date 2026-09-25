@@ -48,6 +48,30 @@ for _ in $(seq 1 60); do
 done
 echo "platforms.webhook.enabled: ${webhook}"
 [[ $webhook == true ]]
+# Swagger's spec names the ingress prefix as its server through the sidebar
+# only (P4k); the LAN port's spec is untouched.
+TOKEN_PATH="/api/hassio_ingress/$TOKEN"
+spec_login() {  # base cookie-jar
+    curl -fsS -c "$2" -o /dev/null -X POST "$1auth/password-login" -H 'Content-Type: application/json' \
+        -d "$(jq -nc --arg pw "$PW" '{provider: "basic", username: "admin", password: $pw, next: "/"}')"
+}
+spec_login http://127.0.0.1:19119/ "$OUT/jar-direct"
+spec_login "http://127.0.0.1:18080$TOKEN_PATH/" "$OUT/jar-ingress"
+servers_direct=$(curl -fsS -b "$OUT/jar-direct" http://127.0.0.1:19119/openapi.json | jq -c '.servers')
+servers_ingress=$(curl -fsS -b "$OUT/jar-ingress" "http://127.0.0.1:18080$TOKEN_PATH/openapi.json" | jq -c '.servers')
+echo "openapi servers: direct ${servers_direct}, ingress ${servers_ingress}"
+[[ $servers_direct == null && $servers_ingress == "[{\"url\":\"$TOKEN_PATH\"}]" ]]
+
+# The approval gate refuses dangerous commands in unattended runs.
+podman run --rm -v "$HERE:/t:ro,Z" --entrypoint /opt/hermes/.venv/bin/python "$IMAGE" /t/test-approval-gate.py
+
+# Web and browser backends the add-on defaults to.
+for pair in web.search_backend=ddgs web.extract_backend=parallel browser.backend=off; do
+    value=$(podman exec -u hermes woow-hermes-test-addon /opt/hermes/.venv/bin/hermes config get "${pair%%=*}" 2>&1 || true)
+    echo "${pair%%=*}: ${value}"
+    [[ $value == "${pair#*=}" ]]
+done
+
 # Upstream's approval defaults stay in place.
 hermes_get() { podman exec -u hermes woow-hermes-test-addon /opt/hermes/.venv/bin/hermes config get "$1" 2>&1 || true; }
 approvals=$(hermes_get approvals.mode)

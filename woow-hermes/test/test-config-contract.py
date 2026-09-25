@@ -42,7 +42,8 @@ for block in re.findall(r"location[^{]*\{(.*?)\n        \}", nginx, re.S):
 # Every rewritten anchor is proven in the image at build time.
 for anchor in re.findall(r"sub_filter\s+(['\"])(.*?)\1\s", nginx):
     text = anchor[1]
-    if text in ("</head>", "url: '/openapi.json'"):
+    # Generated at runtime by FastAPI; run-local-parity.sh checks them.
+    if text in ("</head>", "url: '/openapi.json'", '{"openapi":'):
         continue
     assert text in dockerfile.replace("\\", ""), f"no build proof for anchor {text!r}"
 
@@ -73,5 +74,18 @@ assert config["arch"] == ["amd64"] and "linux/amd64" in workflow
 from PIL import Image
 assert Image.open(ADDON / "icon.png").size == (128, 128)
 assert Image.open(ADDON / "logo.png").size == (400, 400)
+
+# Swagger's server comes from the ingress path (P4k).
+assert "location = /openapi.json" in nginx and "$openapi_head" in nginx
+
+# Unattended runs follow cron_mode / unattended_mode (own patch, proven at build).
+assert (ADDON / "patches/approval-unattended.py").exists()
+assert "woow: unattended runs ignore HERMES_EXEC_ASK" in dockerfile
+
+# Defaults the add-on writes while the keys are empty.
+provision_run = (ADDON / "rootfs/etc/s6-overlay/s6-rc.d/woow-provision/run").read_text()
+for default in ("set_default web.search_backend ddgs", "set_default web.extract_backend parallel",
+                "set_default browser.backend off", "set_default platforms.webhook.enabled true"):
+    assert default in provision_run, default
 
 print("config contract: ok")

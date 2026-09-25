@@ -44,6 +44,19 @@ RUN python3 /tmp/woow-patches/iss-callback.py \
  && find /opt/hermes/hermes_cli /opt/hermes/tools -type d -name __pycache__ -prune -exec rm -rf {} + \
  && rm -rf /tmp/woow-patches
 
+# The browser tool's CLI. Upstream fetches agent-browser@^0.26.0 with npx on first
+# use, into /opt/data/.npm (about 100 MB, and it ends up in every backup).
+ARG AGENT_BROWSER_VERSION=0.26.0
+RUN npm install -g "agent-browser@${AGENT_BROWSER_VERSION}" \
+ && npm cache clean --force \
+ && agent-browser --version
+
+# Own patches to upstream code. They exit 1 when an anchor is missing.
+COPY patches/ /tmp/woow-own-patches/
+RUN python3 /tmp/woow-own-patches/approval-unattended.py \
+ && find /opt/hermes/tools -type d -name __pycache__ -prune -exec rm -rf {} + \
+ && rm -rf /tmp/woow-own-patches
+
 RUN git clone --filter=blob:none https://github.com/obra/superpowers.git /tmp/sp \
  && git -C /tmp/sp checkout --quiet "${SUPERPOWERS_REF}" \
  && mkdir -p /opt/woow/seed \
@@ -92,6 +105,8 @@ RUN set -e; \
     grep -q 'iss mismatch tolerated' /opt/hermes/.venv/lib/python*/site-packages/mcp/client/auth/utils.py; \
     nginx -V 2>&1 | grep -q -- '--with-http_sub_module'; \
     test -f /usr/lib/nginx/modules/ngx_http_js_module.so; \
+    grep -q 'woow: unattended runs ignore HERMES_EXEC_ASK' /opt/hermes/tools/approval.py; \
+    command -v agent-browser; \
     /opt/hermes/.venv/bin/python -c 'import aiohttp' && /opt/hermes/.venv/bin/python -c 'import ast; ast.parse(open("/opt/woow/ws_relay.py").read())'; \
     nginx -t -c /etc/nginx/nginx.conf; \
     command -v tmux jq officecli; \
@@ -100,6 +115,8 @@ RUN set -e; \
 
 ARG BUILD_VERSION=dev
 ENV WOOW_IMAGE_VERSION=${BUILD_VERSION}
+# Declared before FROM, so it has to be declared again to be used here.
+ARG HERMES_BASE
 ARG BUILD_ARCH
 LABEL io.hass.name="Woow Hermes Agent" \
       io.hass.type="addon" \

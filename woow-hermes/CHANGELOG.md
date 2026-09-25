@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.1.6
+
+- Security: dangerous commands from scheduled jobs, the OpenAI-compatible API and webhooks are
+  refused, as `approvals.cron_mode` / `approvals.unattended_mode` (deny) say. Upstream Hermes
+  auto-approved them through smart approval, because its gateway runs in ask mode.
+- The agent's web page extraction works: search stays on DuckDuckGo, extraction uses Parallel
+  (both keyless). It used to fail with "ddgs is a search-only backend".
+- The browser tool works: it drives the image's Chromium through agent-browser, now preinstalled
+  instead of downloaded into `/opt/data/.npm` on first use.
+- Swagger (`/docs`) in the sidebar shows request URLs and curl commands with the ingress prefix.
+- DOCS: where MCP OAuth sign-in and webhook senders need the public URLs.
+- The image's `io.woowtech.hermes.base` label names the Hermes base image.
+
 ## 0.1.5
 
 - Prebuilt image on GHCR (`ghcr.io/woowtech/woow-ha-hermes-amd64`): installs and updates pull it
