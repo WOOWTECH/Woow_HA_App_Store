@@ -1,0 +1,5 @@
+#!/command/with-contenv sh
+# shellcheck shell=sh
+# Records how Hermes closes each ingress WebSocket (see /opt/woow/ws_relay.py).
+# Loopback only; runs as the hermes user.
+exec /command/s6-setuidgid hermes /opt/hermes/.venv/bin/python /opt/woow/ws_relay.py 9121

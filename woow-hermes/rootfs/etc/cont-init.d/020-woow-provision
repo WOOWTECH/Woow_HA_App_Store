@@ -1,0 +1,27 @@
+#!/command/with-contenv bash
+# shellcheck shell=bash
+# Boot-time provisioning of /opt/data, from Woow_podman_hermes 020-woow-provision
+# without its two podman-only steps: the ui-tui copy (the add-on keeps the image's
+# UID and HERMES_TUI_DIR) and the .env rewrite (03-woow-dotenv merges instead).
+set -euo pipefail
+DATA=/opt/data
+STAMP="$DATA/.woow-image-version"
+
+refuse_symlink() { if [[ -L $1 ]]; then echo "[woow-provision] refusing to write through symlink $1" >&2; exit 1; fi; }
+
+# Caches that embed the previous image's catalog.
+if [[ "$(cat "$STAMP" 2>/dev/null || true)" != "${WOOW_IMAGE_VERSION:-dev}" ]]; then
+    rm -f "$DATA/.skills_prompt_snapshot.json" "$DATA/skills/.bundled_manifest" \
+          "$DATA/provider_models_cache.json" "$DATA/models_dev_cache.json"
+    refuse_symlink "$STAMP"
+    printf '%s\n' "${WOOW_IMAGE_VERSION:-dev}" >"$STAMP"
+    chown hermes:hermes "$STAMP"
+fi
+
+# Seed the pinned superpowers skills only when the user has none of them yet.
+if [[ ! -f "$DATA/skills/brainstorming/SKILL.md" ]]; then
+    refuse_symlink "$DATA/skills"
+    mkdir -p "$DATA/skills"
+    cp -a /opt/woow/seed/skills/. "$DATA/skills/"
+    chown -R hermes:hermes "$DATA/skills"
+fi

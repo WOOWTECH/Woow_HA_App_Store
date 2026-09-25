@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# Post-start provisioning, run by hermes-provision.service as
+#   podman exec hermes-agent /usr/local/bin/woow-provision --wait 300
+# Replaces deploy.sh step 8 (config policy, tools, plugins) and step 9 (model routes). Needs the gateway
+# up because config.yaml is created on the gateway's first start.
+set -euo pipefail
+# `podman exec` runs as container root. deploy.sh edited config.yaml with `sed -i` as root, which
+# replaces the file and leaves it root-owned; run everything as the hermes user instead.
+if [[ $(id -u) -eq 0 ]]; then exec /command/s6-setuidgid hermes "$0" "$@"; fi
+DATA=/opt/data
+CFG="$DATA/config.yaml"
+POLICY_STAMP="$DATA/.woow-policy-v1"
+wait_s=0
+[[ ${1:-} == --wait ]] && wait_s=${2:-300}
+as_hermes() { "$@"; }
+
+for ((i = 0; i < wait_s; i += 5)); do
+  curl -fsS -o /dev/null http://127.0.0.1:8642/health && break
+  sleep 5
+done
+curl -fsS -o /dev/null http://127.0.0.1:8642/health || { echo "gateway not healthy after ${wait_s}s" >&2; exit 1; }
+[[ -f $CFG ]] || { echo "$CFG missing after gateway start" >&2; exit 1; }
+
+# One-time setup (deploy.sh step 8): enable the WOOWTECH tools and plugins. Guarded by a stamp so a
+# later change made in the dashboard is not reverted on every restart. Delete the stamp to re-apply.
+# Approval settings stay at upstream's defaults: the podman stack's sed policy never matched the
+# v2026.8.31 config, and keeping the defaults was chosen over making it work (2026-09-25).
+if [[ ! -f $POLICY_STAMP ]]; then
+  for t in video moa context_engine homeassistant; do as_hermes hermes tools enable "$t"; done
+  for p in disk-cleanup security-guidance; do as_hermes hermes plugins enable "$p"; done
+  as_hermes touch "$POLICY_STAMP"
+  echo "woow-provision: tools and plugins enabled"
+fi
+
+# deploy.sh step 9: idempotent, only adds missing @openai:/@openai-api: routes.
+as_hermes python3 /opt/woow/fix-model-routes.py "$CFG"

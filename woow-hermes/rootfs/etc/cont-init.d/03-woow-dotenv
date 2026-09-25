@@ -1,0 +1,54 @@
+#!/command/with-contenv bash
+# shellcheck shell=bash
+# Provider keys -> $HERMES_HOME/.env, which the TUI reads and which python-dotenv
+# loads with override=True. A key is written only when its option changed since the
+# last start, so keys edited in the dashboard are not wiped (the podman stack
+# rewrote the whole file on every boot).
+set -euo pipefail
+DATA=/opt/data
+ENVF="$DATA/.env"
+APPLIED=/data/applied
+OPTIONS=/data/options.json
+
+umask 077
+mkdir -p "$APPLIED"
+if [[ -L $ENVF ]]; then
+    echo "[woow-dotenv] refusing to write through symlink $ENVF" >&2
+    exit 1
+fi
+
+tmp=$(mktemp "$DATA/.env.woow.XXXXXX")
+trap 'rm -f "$tmp"' EXIT
+[[ -f $ENVF ]] && cat "$ENVF" >"$tmp"
+
+upsert() {
+    local key=$1 value=$2
+    grep -v "^${key}=" "$tmp" >"$tmp.n" || true
+    printf '%s=%s\n' "$key" "$value" >>"$tmp.n"
+    mv -f "$tmp.n" "$tmp"
+}
+
+for pair in minimax_api_key:MINIMAX_API_KEY openrouter_api_key:OPENROUTER_API_KEY github_token:GITHUB_TOKEN; do
+    option=${pair%%:*}
+    key=${pair##*:}
+    value=$(jq -r --arg k "$option" '.[$k] // empty' "$OPTIONS")
+    [[ -z $value ]] && continue
+    hash=$(printf '%s' "$value" | sha256sum | cut -d' ' -f1)
+    [[ "$(cat "$APPLIED/$option" 2>/dev/null || true)" == "$hash" ]] && continue
+    upsert "$key" "$value"
+    printf '%s\n' "$hash" >"$APPLIED/$option"
+    echo "[woow-dotenv] applied ${key} from the add-on options"
+done
+
+# .env wins over the environment, so a stale copy of an add-on-managed secret
+# there would silently override the option.
+grep -Ev '^(API_SERVER_KEY|WEBHOOK_SECRET|HERMES_DASHBOARD_BASIC_AUTH_[A-Z_]*)=' "$tmp" >"$tmp.n" || true
+mv -f "$tmp.n" "$tmp"
+
+if [[ -f $ENVF ]] && cmp -s "$tmp" "$ENVF"; then
+    exit 0
+fi
+chown hermes:hermes "$tmp"
+chmod 0600 "$tmp"
+mv -f "$tmp" "$ENVF"
+trap - EXIT

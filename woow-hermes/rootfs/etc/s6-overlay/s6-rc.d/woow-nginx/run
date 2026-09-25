@@ -1,0 +1,5 @@
+#!/command/with-contenv sh
+# shellcheck shell=sh
+# HA Ingress adapter for the dashboard (ingress_port 9120). Depends on base only,
+# so it is already listening while Hermes boots.
+exec nginx -c /etc/nginx/nginx.conf

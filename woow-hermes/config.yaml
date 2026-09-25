@@ -1,0 +1,62 @@
+name: Woow Hermes Agent
+version: 0.1.5
+slug: woow-hermes
+description: Hermes Agent (NousResearch) with the dashboard in the HA sidebar and on the LAN, plus the OpenAI-compatible API and webhooks for Cloudflare Tunnel
+url: https://github.com/WOOWTECH/Woow_ha_hermes_add_on
+# Prebuilt by .github/workflows/publish-hermes-addon-images.yml.
+image: ghcr.io/woowtech/woow-ha-hermes-{arch}
+arch:
+  - amd64
+# The base image runs s6-overlay only when its entrypoint is PID 1.
+init: false
+startup: application
+boot: auto
+# Covers S6_SERVICES_GRACETIME + S6_KILL_GRACETIME in the Dockerfile.
+timeout: 60
+# Only used to write generated secrets back into the options on first start.
+hassio_api: true
+ingress: true
+ingress_port: 9120
+ingress_stream: true
+panel_icon: mdi:robot-outline
+panel_title: Hermes
+panel_admin: true
+webui: "http://[HOST]:[PORT:9119]"
+# The gateway runs as its own s6 service and can be stopped from the dashboard,
+# so the watchdog checks the dashboard instead of the gateway's /health.
+watchdog: "tcp://[HOST]:[PORT:9119]"
+map:
+  - type: addon_config
+    path: /opt/data
+    read_only: false
+  - type: media
+    read_only: false
+backup: cold
+backup_exclude:
+  - "**/logs"
+  - "**/lazy-packages"
+  - "**/.cache"
+  - "**/.npm"
+ports:
+  8642/tcp: 8642
+  9119/tcp: 9119
+  8644/tcp: 8644
+ports_description:
+  8642/tcp: Gateway (OpenAI-compatible API)
+  9119/tcp: Dashboard and chat terminal
+  8644/tcp: Webhook receiver
+options:
+  dashboard_username: admin
+  env_vars: []
+schema:
+  dashboard_username: match(^[A-Za-z0-9_.@-]{1,64}$)
+  dashboard_password: password?
+  api_server_key: password?
+  webhook_secret: password?
+  public_url: url?
+  minimax_api_key: password?
+  openrouter_api_key: password?
+  github_token: password?
+  env_vars:
+    - key: match(^[A-Z][A-Z0-9_]*$)
+      value: str

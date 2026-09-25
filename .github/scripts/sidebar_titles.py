@@ -16,6 +16,7 @@ TITLES = {
     "woow-nextcloud-office": "Nextcloud Office",
     "woow-tailscale": "Tailscale",
     "woow-lan-gateway": "LAN Gateway",
+    "woow-hermes": "Hermes",
 }
 ROOT = Path(__file__).resolve().parents[2]
 

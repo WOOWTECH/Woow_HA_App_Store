@@ -1,0 +1,16 @@
+Vendored from https://github.com/WOOWTECH/Woow_podman_hermes @ ab51e037cc904b0345d16e7384c853f4af991306
+e369ab08241952bbd9fb7115c68a9388ce9da23f3020725506fa539e73154fcc  patches/iss-callback.py
+f20ff0319c03e9496154d1f5577c4e0c53118bb924183c61729d1cc4b77c6ff4  patches/iss-permissive.py
+4f294a4e861c834da79618cec6390e6c88cb7b1ea9076a53e1c2604209595ec0  fix-model-routes.py
+bc24459f59976249b4c1a21b56d4beefbf1e509967c7f6323c34d323ac999ad5  rootfs/usr/local/bin/woow-provision
+
+Local changes:
+- rootfs/usr/local/bin/woow-provision: the sed approval policy (approvals off, cron yolo,
+  hooks/subagent auto-accept, web backend, toolsets) is removed. It never matched the
+  v2026.8.31 config template, so it never took effect; upstream's defaults are kept.
+
+Artwork:
+- hermes/icon.png (128x128) and hermes/logo.png (400x400) are resized from the official Hermes
+  desktop app icon, NousResearch/hermes-agent @ v2026.8.31, apps/desktop/assets/icon.png
+  (last changed in c4811c382fd555d3f19b54c675a7fb346eb5c1f4). MIT License, Copyright (c) 2025
+  Nous Research.
