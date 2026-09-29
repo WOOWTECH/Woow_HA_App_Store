@@ -31,7 +31,11 @@ set -uo pipefail
 # about four seconds of CPU whatever the read path, which is the whole
 # reason the scan keeps a state at all (ADR 0007).
 ROUND_INTERVAL=300
-ROUND="/usr/local/bin/odoo-rewrite-apply"
+# The Static tier points both steps at scripts of its own to drive this
+# loop for one round (tests/test_canonical_catchup.py); the image never
+# sets either variable.
+ROUND="${WOOW_REWRITE_ROUND:-/usr/local/bin/odoo-rewrite-apply}"
+CATCHUP="${WOOW_CANONICAL_CATCHUP:-/usr/local/bin/odoo-canonical-catchup}"
 
 # ---------- 1. Wait for PostgreSQL (services.d/odoo/run:7-19) ----------
 bashio::log.info "Rewrite scan: waiting for PostgreSQL to become ready..."
@@ -72,6 +76,25 @@ while true; do
         # nothing to do.
         bashio::log.warning \
             "Rewrite scan: the round above ended at exit ${STATUS}; it says what the include file holds, Odoo is untouched, and the next round runs in ${ROUND_INTERVAL} seconds"
+    fi
+
+    # ---------- 3. The Canonical URL catch-up (issue #164) ----------
+    # A `website` module installed after the add-on started has no domain
+    # until the next restart: the maintenance bootstrap mirrors the
+    # Canonical URL into the default website's domain once, at start, and
+    # only when the module is already there. This step reads each
+    # database's domain through `psql` and writes, through the same
+    # maintenance library, only the databases that need it -- in the steady
+    # state, none, and no `odoo shell` runs. It runs after the round and
+    # its exit status is its own: the round's warning above has already
+    # been written, and a catch-up that fails is a warning here and a retry
+    # in the next round (ADR 0009). It never touches the include file, the
+    # state or the round's notification.
+    CATCHUP_STATUS=0
+    "${CATCHUP}" || CATCHUP_STATUS=$?
+    if [ "${CATCHUP_STATUS}" -ne 0 ]; then
+        bashio::log.warning \
+            "Rewrite scan: the Canonical URL catch-up ended at exit ${CATCHUP_STATUS}; the round above is unaffected, Odoo is untouched, and the next round retries it in ${ROUND_INTERVAL} seconds"
     fi
     sleep "${ROUND_INTERVAL}"
 done

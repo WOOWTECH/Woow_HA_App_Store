@@ -11,6 +11,7 @@ from pathlib import Path
 import yaml
 
 from conftest import require_tool
+from test_ingress_router_rewrite import resolve_splices
 
 ROOT = Path(__file__).resolve().parents[1]
 CONFIG = ROOT / "config.yaml"
@@ -151,8 +152,14 @@ def test_nginx_template_contract() -> None:
     assert '"lan"   "127.0.0.1:8070";' in n
     assert 'default "127.0.0.1:8071";' in n
     assert "proxy_pass http://$woow_jsonrpc_upstream;" in n
-    # A Secure cookie over plain LAN http is never returned by the browser.
-    assert "proxy_cookie_flags session_id $woow_origin_cookie_secure" in n
+    # A Secure cookie over plain LAN http is never returned by the browser, so
+    # the tunnel's pinned scheme -- and not the LAN's -- is what makes the
+    # cookie Secure. This map is the only source of that decision; which
+    # locations apply it is pinned by
+    # test_every_odoo_location_rewrites_the_session_cookie.
+    assert "map $woow_origin_proto $woow_origin_cookie_secure" in n
+    assert '"https" "secure";' in n
+    assert 'default "nosecure";' in n
     assert "proxy_set_header X-Forwarded-Proto $woow_origin_proto;" in n
     # The old unconditional guard must be gone, not merely bypassed.
     assert "%%PUBLIC_HOST_GUARD%%" not in n
@@ -192,11 +199,31 @@ def test_nginx_template_contract() -> None:
     assert 'if(u.charAt(0)==="#")return u' in n
     assert "href^='#'" not in n
     assert 'HTMLImageElement.prototype,"srcset"' in n
+    # Group A of the #169 decision: the injection ways the shim covers. Each is
+    # one wrapper in the shim's existing pattern, and the SVG <use> reference
+    # is covered through both APIs that set it.
+    assert "navigator.sendBeacon=function" in n
+    assert "window.EventSource=function" in n
+    assert "window.EventSource.prototype=ES.prototype" in n
+    assert "window.EventSource.CONNECTING=ES.CONNECTING" in n
+    assert "Element.prototype.setAttributeNS=function" in n
+    assert 'n==="xlink:href"' in n
+    # Media sources (#159): the `Audio` constructor and the `src` setters of the
+    # media and `<source>` prototypes, through the same path() and prop() helpers.
+    assert "window.Audio=function" in n
+    assert "window.Audio.prototype=AU.prototype" in n
+    assert 'prop(window.HTMLMediaElement&&HTMLMediaElement.prototype,"src")' in n
+    assert 'prop(window.HTMLSourceElement&&HTMLSourceElement.prototype,"src")' in n
+    # They are the tail of the prefix script's closure, spliced in by variable
+    # reference because that script nearly fills nginx's parameter buffer -- and
+    # so is the URL helper the shim publishes for the `location` writes a
+    # Literal rewrite has to prefix itself (#174), which closes the closure.
+    assert "$ingress_injection_hooks_shim$ingress_url_global_shim})()" in n
+    assert 'Object.defineProperty(window,"__WOOW_INGRESS_URL__"' in n
     assert "return 302 $safe_ingress_path/odoo" not in n
     assert n.count("proxy_set_header X-Forwarded-Proto $ingress_proto;") >= 3
     assert "proxy_set_header Origin $ingress_proto://$http_host;" in n
     assert "map $ingress_proto $ingress_cookie_secure" in n
-    assert "proxy_cookie_flags session_id $ingress_cookie_secure" in n
     assert "proxy_hide_header X-Frame-Options;" in n
     assert "location = /xmlrpc/2/db" in n
     assert "window.WebSocket.OPEN=W.OPEN" in n
@@ -222,6 +249,203 @@ def test_nginx_template_contract() -> None:
     listeners = n[n.index("# Origin listener.") : n.index("# HA Supervisor Ingress adapter.")]
     assert "listen 8072 default_server;" in listeners
     assert GENERATED_REWRITES not in listeners
+
+    # --- entity-quoted url(...) in page HTML (issue #166) ---
+    # QWeb escapes attribute values, so a website snippet's inline background
+    # arrives as style="background-image: url(&#39;/web/image/...&#39;)". The
+    # three raw-quote rules match none of those forms, so each form the
+    # escaper can produce carries a rule of its own in the generic HTML
+    # location -- and only there: bundles hold no HTML entities.
+    generic = ingress[ingress.index("\n        location / {") :]
+    raw_url_rules = [
+        "sub_filter 'url(/' 'url($safe_ingress_path/';",
+        "sub_filter \"url('/\" \"url('$safe_ingress_path/\";",
+        "sub_filter 'url(\"/' 'url(\"$safe_ingress_path/';",
+    ]
+    entity_url_rules = [
+        "sub_filter 'url(&#39;/' 'url(&#39;$safe_ingress_path/';",
+        "sub_filter 'url(&#34;/' 'url(&#34;$safe_ingress_path/';",
+        "sub_filter 'url(&quot;/' 'url(&quot;$safe_ingress_path/';",
+        "sub_filter 'url(&#x27;/' 'url(&#x27;$safe_ingress_path/';",
+    ]
+    for rule in raw_url_rules:
+        assert rule in generic, rule
+        assert rule in assets, rule
+    for rule in entity_url_rules:
+        assert rule in generic, rule
+        assert rule not in assets, rule
+        assert rule not in listeners, rule
+
+    # --- a website form's success page (issue #167) ---
+    # A website form carries its confirmation target as an attribute of the
+    # server-rendered page -- data-success-page="/contactus-thank-you" -- and
+    # the form script assigns that path to the page location once the submit
+    # RPC answers. The five attribute rules rewrite href/src/action/data-src/
+    # srcset and nothing else, so the value arrived bare and the thank-you page
+    # was asked of the Home Assistant root. The rule is one more member of that
+    # group, in the generic HTML location where page HTML is served, and on the
+    # Ingress listener only.
+    srcset_rule = "sub_filter 'srcset=\"/' 'srcset=\"$safe_ingress_path/';"
+    # Two spellings: the attribute Odoo 18 writes, and the one a form saved
+    # before Odoo 14 left in the arch, which the form script still falls back
+    # to when `data-success-mode` is absent.
+    success_rules = [
+        "sub_filter 'data-success-page=\"/' 'data-success-page=\"$safe_ingress_path/';",
+        "sub_filter 'data-success_page=\"/' 'data-success_page=\"$safe_ingress_path/';",
+    ]
+    masked = mask_strings_and_comments(ingress)
+    generic_start = ingress.index("\n        location / {")
+    opener = masked.index("location / {", generic_start)
+    generic_only = ingress[generic_start : block_end(masked, opener + len("location / {") - 1) + 1]
+    written = [
+        line.strip()
+        for line in generic_only.split("\n")
+        if line.strip() and not line.strip().startswith("#")
+    ]
+    # Beside the attribute group they belong to, and written after it so the
+    # group keeps reading as one thing.
+    at = written.index(srcset_rule) + 1
+    assert written[at : at + len(success_rules)] == success_rules, written
+    for rule in success_rules:
+        assert rule not in assets, "page HTML only: no bundle carries the attribute"
+        assert rule not in listeners, "ingress listener only"
+        # The action-load copy of the generic location carries them too, because
+        # that location is the generic one plus its escaped-quote rules; the
+        # equality in test_ingress_action_help.py is what pins that.
+        assert ingress.count(rule) == 2, rule
+
+
+# --- cookie flags per location (issue #165) ---
+# Odoo saves the session on its websocket route too and answers the handshake
+# with its own `Set-Cookie: session_id`. Cookie flag treatment is therefore a
+# property of the surface, not of one location: every location that proxies to
+# Odoo has to rewrite that cookie the way its surface's `location /` does, or
+# the first bus socket replaces the browser's good cookie with a bare one.
+ORIGIN_COOKIE_FLAGS = "proxy_cookie_flags session_id $woow_origin_cookie_secure httponly samesite=lax;"
+INGRESS_COOKIE_FLAGS = "proxy_cookie_flags session_id $ingress_cookie_secure httponly samesite=lax;"
+INGRESS_COOKIE_PATH = "proxy_cookie_path / $safe_ingress_path/;"
+# Every `proxy_pass` in this template goes to Odoo -- `odoo_http`,
+# `odoo_websocket`, or `$woow_jsonrpc_upstream`, which maps to the Odoo HTTP
+# worker or to the RPC policy filter in front of it. So the rule reads every
+# proxying location rather than an allow-list of upstream names: a location
+# added with a target this file has not seen has to be decided on, not
+# silently skipped.
+
+
+def mask_strings_and_comments(text: str) -> str:
+    """Blank out quoted parameters and comments, keeping every byte offset.
+
+    The Ingress locations carry sub_filter rules whose JavaScript holds braces,
+    so the block structure is only readable once quoted text is out of the way.
+    """
+    out = []
+    quote = None
+    comment = False
+    escaped = False
+    for ch in text:
+        if comment:
+            comment = ch != "\n"
+            out.append(ch if ch == "\n" else " ")
+        elif quote:
+            if escaped:
+                escaped = False
+            elif ch == "\\":
+                escaped = True
+            elif ch == quote:
+                quote = None
+            out.append(ch if ch == "\n" else " ")
+        elif ch in "'\"":
+            quote = ch
+            out.append(" ")
+        elif ch == "#":
+            comment = True
+            out.append(" ")
+        else:
+            out.append(ch)
+    assert quote is None, "unterminated quoted parameter in the template"
+    return "".join(out)
+
+
+def block_end(masked: str, brace: int) -> int:
+    depth = 0
+    for i in range(brace, len(masked)):
+        if masked[i] == "{":
+            depth += 1
+        elif masked[i] == "}":
+            depth -= 1
+            if depth == 0:
+                return i
+    raise AssertionError("unbalanced braces in the template")
+
+
+def proxying_locations(template: str) -> list:
+    """(listen port, location header, body) per location that proxies upstream."""
+    masked = mask_strings_and_comments(template)
+    found = []
+    for server in re.finditer(r"\bserver\s*\{", masked):
+        start, end = server.end() - 1, block_end(masked, server.end() - 1)
+        listen = re.search(r"\blisten\s+(\S+)", masked[start:end])
+        assert listen, "a server block with no listen directive"
+        port = listen.group(1).rstrip(";")
+        for loc in re.finditer(r"\blocation\s+([^{]+?)\s*\{", masked[start:end]):
+            loc_start = start + loc.end() - 1
+            body = template[loc_start : block_end(masked, loc_start) + 1]
+            if re.search(r"\bproxy_pass\s", body):
+                found.append((port, f"location {loc.group(1)}", body))
+    return found
+
+
+def cookie_flag_violations(template: str) -> list:
+    """Locations whose cookie rewriting does not match their surface's."""
+    violations = []
+    for port, header, body in proxying_locations(template):
+        required = [INGRESS_COOKIE_FLAGS, INGRESS_COOKIE_PATH] if port == "5691" else [ORIGIN_COOKIE_FLAGS]
+        for directive in required:
+            if directive not in body:
+                violations.append(f"{port} {header}: missing {directive}")
+    return violations
+
+
+def test_every_odoo_location_rewrites_the_session_cookie() -> None:
+    template = read(TEMPLATE)
+    # Pin the inventory as well as the rule: a parser that found nothing would
+    # satisfy the rule vacuously, and a new Odoo location has to be decided on.
+    assert sorted((port, header) for port, header, _ in proxying_locations(template)) == [
+        ("5691", "location /"),
+        # The one action-dict route it is safe to rewrite: a copy of the
+        # Ingress `location /` plus the action-help rules (issue #158).
+        ("5691", "location = /web/action/load"),
+        ("5691", "location = /websocket"),
+        ("5691", "location ^~ /web/assets/"),
+        ("8069", "location /"),
+        ("8069", "location = /jsonrpc"),
+        ("8069", "location = /websocket"),
+        ("8069", "location = /xmlrpc/2/db"),
+        ("8069", "location = /xmlrpc/db"),
+        ("8069", "location ^~ /web/database/"),
+        ("8072", "location /"),
+    ]
+    assert cookie_flag_violations(template) == []
+
+
+def test_a_location_that_drops_the_cookie_flags_is_caught() -> None:
+    # The gap this rule closes, reintroduced: the 8069 websocket handshake
+    # answers with Odoo's own `session_id`, without Secure and without
+    # SameSite, and the browser replaces the cookie `location /` had set.
+    template = read(TEMPLATE)
+    websocket = template.index("location = /websocket")
+    flagless = template[:websocket] + template[websocket:].replace(f"\n            {ORIGIN_COOKIE_FLAGS}", "", 1)
+    assert flagless != template
+    assert cookie_flag_violations(flagless) == [f"8069 location = /websocket: missing {ORIGIN_COOKIE_FLAGS}"]
+
+    # A location added with a target this file has not seen -- an address
+    # rather than one of the named upstreams -- is read by the same rule.
+    added = template.replace(
+        "        location = /jsonrpc {",
+        "        location = /web/login {\n            proxy_pass http://127.0.0.1:8070;\n        }\n        location = /jsonrpc {",
+        1,
+    )
+    assert cookie_flag_violations(added) == [f"8069 location = /web/login: missing {ORIGIN_COOKIE_FLAGS}"]
 
 
 def test_maintenance_bootstrap_contract() -> None:
@@ -252,7 +476,10 @@ def runtime_shim_source() -> str:
     assert '"~*^text/html(?:;|$)"' in runtime_shim, "runtime shim must be limited to HTML upstream responses"
     match = re.search(r"<script>(.*?)</script>';", runtime_shim, re.S)
     assert match, "HTML runtime shim not found"
-    return match.group(1).replace("$safe_ingress_path", "/P").replace("%%INGRESS_CACHE_VERSION%%", "V")
+    # The injection-way hooks (#169) are spliced in from a map of their own,
+    # so the script the page gets is longer than the one written here.
+    script = resolve_splices(source, match.group(1))
+    return script.replace("$safe_ingress_path", "/P").replace("%%INGRESS_CACHE_VERSION%%", "V")
 
 
 def test_runtime_shim_is_valid_javascript(tmp_path: Path) -> None:

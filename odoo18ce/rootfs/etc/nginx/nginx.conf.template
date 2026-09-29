@@ -44,8 +44,12 @@ http {
     # one exceeds it; the prefix script below is close to that limit, so every
     # other part of the Runtime shim lives in its own map and is spliced into
     # `$ingress_runtime_shim` by variable reference, as the clipboard script
-    # is. That keeps the text/html gate and the Ingress-only sub_filter as the
-    # single injection point.
+    # is. That keeps this map -- the text/html gate -- as the single place the
+    # shim is assembled, whatever injects it: the `<head>` rule is written once
+    # per Ingress location that can answer with a page, which since issue #158
+    # means the generic `location /` and the action-load location that copies
+    # it. Both carry the same rule and both read this map, so a JSON answer
+    # gets the empty replacement either way.
     #
     # Clipboard script (issue #60). Home Assistant opened over plain http on
     # the LAN is a supported usage, and that page is not a secure context, so
@@ -82,9 +86,80 @@ http {
         default '<script>(function(){var U="%%CANONICAL_URL%%";try{Object.defineProperty(window,"__WOOW_CANONICAL_URL__",{value:U,writable:false,configurable:false,enumerable:true})}catch(e){window.__WOOW_CANONICAL_URL__=U}})()</script>';
     }
 
+    # Injection-way and media-source hooks (issues #169, #159). Not a script of
+    # its own: this is the tail of the prefix script's IIFE below, spliced in by
+    # variable reference because that script is a few hundred bytes short of
+    # nginx's 4096-byte parameter buffer. It runs inside the same closure and so
+    # prefixes through the same path() helper, and reuses the same prop()
+    # property-setter wrapper; there is no second URL helper.
+    #
+    # Group A of the #169 decision -- the ways the shim can intercept without
+    # ever writing a URL back into record content: `navigator.sendBeacon`, the
+    # `EventSource` constructor, and the SVG `<use>` reference set through
+    # `setAttributeNS` (a namespace's local `href`/`src`/`action`).
+    # `setAttribute("xlink:href", ...)` is the same way through the other API
+    # and is handled by the setAttribute wrapper below, beside href/src/action.
+    #
+    # Group B stays uncovered by decision, and nothing here touches it: HTML
+    # inserted as markup (`innerHTML`, `insertAdjacentHTML`, `outerHTML`), the
+    # `style` attribute, and the text of a dynamic `<style>` element. The HTML
+    # editor and the website editor load and save record content through those
+    # paths, so a hook there would write the Ingress prefix -- which carries
+    # the Ingress token -- into the database: that breaks the Public origin and
+    # leaks the token. A screen that hits one of them gets a route-scoped
+    # Literal rewrite of its own instead (#158, #170). ADR 0004's postscript
+    # records both groups.
+    #
+    # Media sources (#159). Odoo's event barcode client action builds the
+    # Registration Desk sounds with
+    # `new Audio(url("/barcodes/static/src/audio/error.ogg"))` -- an absolute
+    # same-origin URL -- and the shim wrapped nothing for media, so under
+    # Ingress the request reached the Home Assistant root and answered 404: a
+    # scanner silent on a failed scan. The Rewrite scan lists `/barcodes/` as
+    # `INFO`, "the shim intercepts it", which was not true of this consumer.
+    # So the `Audio` constructor is wrapped -- keeping `prototype` the way the
+    # `Worker` wrapper does, and leaving `new Audio()` with no argument alone --
+    # and the `src` setter of `HTMLMediaElement.prototype` (`<audio>` and
+    # `<video>`) and of `HTMLSourceElement.prototype` goes through prop().
+    # That covers every media prefix at once, where a Generated rewrite would
+    # cover one prefix at a time. A string and a `URL` object are both prefixed,
+    # as `fetch` and `sendBeacon` take either; anything else is handed to the
+    # browser as it came, which is what path() does too. `<track>`,
+    # `<embed>`/`<object>`, `poster`, `srcObject`, `HTMLSourceElement.srcset`
+    # (the responsive `<picture>` candidate list, not a media source) and CSS
+    # `url(...)` media have not been reported escaping and stay uncovered.
+    map $upstream_http_content_type $ingress_injection_hooks_shim {
+        default 'var SB=navigator.sendBeacon;if(SB)navigator.sendBeacon=function(u,d){if(typeof u==="string")arguments[0]=path(u);else if(u instanceof URL)arguments[0]=path(u.href);return SB.apply(this,arguments)};var ES=window.EventSource;if(ES){window.EventSource=function(u,o){return new ES(path(String(u)),o)};window.EventSource.prototype=ES.prototype;window.EventSource.CONNECTING=ES.CONNECTING;window.EventSource.OPEN=ES.OPEN;window.EventSource.CLOSED=ES.CLOSED}var AN=Element.prototype.setAttributeNS;Element.prototype.setAttributeNS=function(s,n,v){var l=String(n).split(":").pop();if((l==="href"||l==="src"||l==="action")&&typeof v==="string")v=path(v);return AN.call(this,s,n,v)};var AU=window.Audio;if(AU){window.Audio=function(s){return arguments.length?new AU(typeof s==="string"?path(s):s instanceof URL?path(s.href):s):new AU()};window.Audio.prototype=AU.prototype}prop(window.HTMLMediaElement&&HTMLMediaElement.prototype,"src");prop(window.HTMLSourceElement&&HTMLSourceElement.prototype,"src");';
+    }
+
+    # The URL helper the shim publishes (issue #174). Not a script of its own
+    # either: this is the last statement of the prefix script's IIFE, spliced
+    # in by variable reference because that script is ~200 bytes short of
+    # nginx's 4096-byte parameter buffer. It runs inside the same closure, so
+    # `path` here is the one helper the fetch, XHR, `window.open` and
+    # attribute wrappers already use -- there is no second URL helper, and no
+    # value can be prefixed twice by going through both.
+    #
+    # ADR 0004 makes the Runtime shim the single Ingress URL authority for
+    # anything it can intercept. A write to `location` is not one of those:
+    # the shim cannot wrap it, and a Literal rewrite cannot prefix a URL that
+    # is not in the bundle because it arrived over RPC. So the two expressions
+    # that write `location` with a server-supplied URL are rewritten to call
+    # this global instead, which keeps the prefixing in one place rather than
+    # copying `path()` into a `sub_filter` replacement.
+    #
+    # Read-only and non-configurable, the way __WOOW_CANONICAL_URL__ is, so a
+    # bundle cannot replace the helper a rewritten expression will call. The
+    # IIFE returns before this line when the prefix is empty, so the global
+    # exists only under Ingress -- and every rewritten expression falls back
+    # to the raw value when it is absent.
+    map $upstream_http_content_type $ingress_url_global_shim {
+        default 'try{Object.defineProperty(window,"__WOOW_INGRESS_URL__",{value:path,writable:false,configurable:false,enumerable:true})}catch(e){window.__WOOW_INGRESS_URL__=path}';
+    }
+
     map $upstream_http_content_type $ingress_runtime_shim {
         default "";
-        "~*^text/html(?:;|$)" '$ingress_clipboard_shim$ingress_canonical_url_shim<script>window.__INGRESS_PATH__="$safe_ingress_path";(function(){var P=window.__INGRESS_PATH__||"";if(!P)return;var path=function(u){if(typeof u!=="string")return u;if(u.charAt(0)==="#")return u;try{var x=new URL(u,location.href);if(x.origin===location.origin){var q=x.pathname+x.search+x.hash;while(q.indexOf(P+P)===0)q=q.slice(P.length);if(q.indexOf(P)===0)return q;if(q.charAt(0)==="/")return P+q}}catch(e){}return u};var F=window.fetch;window.fetch=function(i,o){if(typeof i==="string")i=path(i);else if(i instanceof URL)i=path(i.href);else if(i&&i.url){var u=path(i.url);if(u!==i.url)i=new Request(u,i)}return F(i,o)};var X=XMLHttpRequest.prototype.open;XMLHttpRequest.prototype.open=function(m,u){arguments[1]=path(u);return X.apply(this,arguments)};var H=function(fn){return function(s,t,u){if(typeof u==="string")arguments[2]=path(u);else if(u instanceof URL)arguments[2]=path(u.href);return fn.apply(this,arguments)}};var HP=History.prototype.pushState,HR=History.prototype.replaceState;History.prototype.pushState=H(HP);History.prototype.replaceState=H(HR);var A=Element.prototype.setAttribute;Element.prototype.setAttribute=function(n,v){if((n==="href"||n==="src"||n==="action")&&typeof v==="string")v=path(v);return A.call(this,n,v)};var prop=function(proto,n){if(!proto)return;var d=Object.getOwnPropertyDescriptor(proto,n);if(!d||!d.set)return;Object.defineProperty(proto,n,{get:d.get,set:function(v){return d.set.call(this,path(v))},configurable:true})};prop(window.HTMLAnchorElement&&HTMLAnchorElement.prototype,"href");prop(window.HTMLLinkElement&&HTMLLinkElement.prototype,"href");prop(window.HTMLScriptElement&&HTMLScriptElement.prototype,"src");prop(window.HTMLImageElement&&HTMLImageElement.prototype,"src");prop(window.HTMLImageElement&&HTMLImageElement.prototype,"srcset");prop(window.HTMLFormElement&&HTMLFormElement.prototype,"action");var O=window.open;window.open=function(u){if(typeof u==="string")arguments[0]=path(u);return O.apply(this,arguments)};var WK=window.Worker;if(WK){window.Worker=function(u,o){return new WK(path(String(u)),o)};window.Worker.prototype=WK.prototype}var SW=window.SharedWorker;if(SW){window.SharedWorker=function(u,o){return new SW(path(String(u)),o)};window.SharedWorker.prototype=SW.prototype}var W=window.WebSocket;window.WebSocket=function(u,p){var s=String(u),h=location.host;if(s.indexOf("ws://"+h)===0||s.indexOf("wss://"+h)===0){var x=new URL(s);if(x.pathname.indexOf(P)!==0)x.pathname=P+x.pathname;s=x.toString()}return p===undefined?new W(s):new W(s,p)};window.WebSocket.prototype=W.prototype;window.WebSocket.CONNECTING=W.CONNECTING;window.WebSocket.OPEN=W.OPEN;window.WebSocket.CLOSING=W.CLOSING;window.WebSocket.CLOSED=W.CLOSED;try{if(navigator.serviceWorker){var C={addEventListener:function(){},removeEventListener:function(){},postMessage:function(){}};var K="woow-odoo-sw-clean-%%INGRESS_CACHE_VERSION%%";if(navigator.serviceWorker.getRegistrations)navigator.serviceWorker.getRegistrations().then(function(rs){var removed=false;return Promise.all(rs.map(function(r){var a=r.active||r.waiting||r.installing,s=a&&a.scriptURL||"";if(r.scope.indexOf("/odoo")!==-1||s.indexOf("/web/service-worker.js")!==-1)return r.unregister().then(function(ok){removed=removed||ok});return Promise.resolve()})).then(function(){if(removed&&!sessionStorage.getItem(K)){sessionStorage.setItem(K,"1");location.reload()}})});try{Object.defineProperty(navigator.serviceWorker,"controller",{get:function(){return C},configurable:true})}catch(e){};navigator.serviceWorker.register=function(){return Promise.resolve({scope:P+"/",installing:null,waiting:null,active:C,update:function(){return Promise.resolve()},unregister:function(){return Promise.resolve(true)},addEventListener:function(){},removeEventListener:function(){}})}}}catch(e){}})()</script>';
+        "~*^text/html(?:;|$)" '$ingress_clipboard_shim$ingress_canonical_url_shim<script>window.__INGRESS_PATH__="$safe_ingress_path";(function(){var P=window.__INGRESS_PATH__||"";if(!P)return;var path=function(u){if(typeof u!=="string")return u;if(u.charAt(0)==="#")return u;try{var x=new URL(u,location.href);if(x.origin===location.origin){var q=x.pathname+x.search+x.hash;while(q.indexOf(P+P)===0)q=q.slice(P.length);if(q.indexOf(P)===0)return q;if(q.charAt(0)==="/")return P+q}}catch(e){}return u};var F=window.fetch;window.fetch=function(i,o){if(typeof i==="string")i=path(i);else if(i instanceof URL)i=path(i.href);else if(i&&i.url){var u=path(i.url);if(u!==i.url)i=new Request(u,i)}return F(i,o)};var X=XMLHttpRequest.prototype.open;XMLHttpRequest.prototype.open=function(m,u){arguments[1]=path(u);return X.apply(this,arguments)};var H=function(fn){return function(s,t,u){if(typeof u==="string")arguments[2]=path(u);else if(u instanceof URL)arguments[2]=path(u.href);return fn.apply(this,arguments)}};var HP=History.prototype.pushState,HR=History.prototype.replaceState;History.prototype.pushState=H(HP);History.prototype.replaceState=H(HR);var A=Element.prototype.setAttribute;Element.prototype.setAttribute=function(n,v){if((n==="href"||n==="src"||n==="action"||n==="xlink:href")&&typeof v==="string")v=path(v);return A.call(this,n,v)};var prop=function(proto,n){if(!proto)return;var d=Object.getOwnPropertyDescriptor(proto,n);if(!d||!d.set)return;Object.defineProperty(proto,n,{get:d.get,set:function(v){return d.set.call(this,path(v))},configurable:true})};prop(window.HTMLAnchorElement&&HTMLAnchorElement.prototype,"href");prop(window.HTMLLinkElement&&HTMLLinkElement.prototype,"href");prop(window.HTMLScriptElement&&HTMLScriptElement.prototype,"src");prop(window.HTMLImageElement&&HTMLImageElement.prototype,"src");prop(window.HTMLImageElement&&HTMLImageElement.prototype,"srcset");prop(window.HTMLFormElement&&HTMLFormElement.prototype,"action");var O=window.open;window.open=function(u){if(typeof u==="string")arguments[0]=path(u);return O.apply(this,arguments)};var WK=window.Worker;if(WK){window.Worker=function(u,o){return new WK(path(String(u)),o)};window.Worker.prototype=WK.prototype}var SW=window.SharedWorker;if(SW){window.SharedWorker=function(u,o){return new SW(path(String(u)),o)};window.SharedWorker.prototype=SW.prototype}var W=window.WebSocket;window.WebSocket=function(u,p){var s=String(u),h=location.host;if(s.indexOf("ws://"+h)===0||s.indexOf("wss://"+h)===0){var x=new URL(s);if(x.pathname.indexOf(P)!==0)x.pathname=P+x.pathname;s=x.toString()}return p===undefined?new W(s):new W(s,p)};window.WebSocket.prototype=W.prototype;window.WebSocket.CONNECTING=W.CONNECTING;window.WebSocket.OPEN=W.OPEN;window.WebSocket.CLOSING=W.CLOSING;window.WebSocket.CLOSED=W.CLOSED;try{if(navigator.serviceWorker){var C={addEventListener:function(){},removeEventListener:function(){},postMessage:function(){}};var K="woow-odoo-sw-clean-%%INGRESS_CACHE_VERSION%%";if(navigator.serviceWorker.getRegistrations)navigator.serviceWorker.getRegistrations().then(function(rs){var removed=false;return Promise.all(rs.map(function(r){var a=r.active||r.waiting||r.installing,s=a&&a.scriptURL||"";if(r.scope.indexOf("/odoo")!==-1||s.indexOf("/web/service-worker.js")!==-1)return r.unregister().then(function(ok){removed=removed||ok});return Promise.resolve()})).then(function(){if(removed&&!sessionStorage.getItem(K)){sessionStorage.setItem(K,"1");location.reload()}})});try{Object.defineProperty(navigator.serviceWorker,"controller",{get:function(){return C},configurable:true})}catch(e){};navigator.serviceWorker.register=function(){return Promise.resolve({scope:P+"/",installing:null,waiting:null,active:C,update:function(){return Promise.resolve()},unregister:function(){return Promise.resolve(true)},addEventListener:function(){},removeEventListener:function(){}})}}}catch(e){}$ingress_injection_hooks_shim$ingress_url_global_shim})()</script>';
     }
 
     # ---- Origin listener (8069): who is calling? ----
@@ -170,23 +245,36 @@ http {
         proxy_read_timeout 720s;
         proxy_send_timeout 720s;
 
+        # Cookie flags are a property of the surface, not of one location.
+        # Odoo saves the session on its websocket route and on the database
+        # manager as well as on ordinary pages, and answers with a
+        # `Set-Cookie: session_id` of its own that carries neither Secure nor
+        # SameSite; a location that does not rewrite it lets that bare cookie
+        # replace the one `location /` set, and the browser then stops sending
+        # the session over the public origin's https. So every location below
+        # that proxies to Odoo repeats the rewriting (issue #165).
+
         # Database lifecycle stays off the public tunnel. The LAN is trusted,
         # so it reaches the same database manager the ingress panel exposes.
         location ^~ /web/database/ {
             if ($woow_origin_gate != "lan") { return 404; }
             proxy_pass http://odoo_http;
+            proxy_cookie_flags session_id $woow_origin_cookie_secure httponly samesite=lax;
         }
         location = /xmlrpc/db {
             if ($woow_origin_gate != "lan") { return 404; }
             proxy_pass http://odoo_http;
+            proxy_cookie_flags session_id $woow_origin_cookie_secure httponly samesite=lax;
         }
         location = /xmlrpc/2/db {
             if ($woow_origin_gate != "lan") { return 404; }
             proxy_pass http://odoo_http;
+            proxy_cookie_flags session_id $woow_origin_cookie_secure httponly samesite=lax;
         }
 
         location = /jsonrpc {
             proxy_pass http://$woow_jsonrpc_upstream;
+            proxy_cookie_flags session_id $woow_origin_cookie_secure httponly samesite=lax;
         }
 
         location = /websocket {
@@ -199,6 +287,7 @@ http {
             proxy_set_header X-Forwarded-Proto $woow_origin_proto;
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
             proxy_read_timeout 3600s;
+            proxy_cookie_flags session_id $woow_origin_cookie_secure httponly samesite=lax;
         }
 
         location / {
@@ -228,6 +317,7 @@ http {
             proxy_set_header X-Forwarded-Proto $woow_origin_proto;
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
             proxy_read_timeout 3600s;
+            proxy_cookie_flags session_id $woow_origin_cookie_secure httponly samesite=lax;
         }
     }
 
@@ -239,6 +329,9 @@ http {
         deny all;
         client_max_body_size 512M;
 
+        # The Ingress surface rewrites the cookie's Path as well as its
+        # flags, in every location that proxies to Odoo, for the reason the
+        # origin listener states above (issue #165).
         location = /websocket {
             proxy_pass http://odoo_websocket;
             proxy_http_version 1.1;
@@ -250,6 +343,8 @@ http {
             proxy_set_header X-Forwarded-Proto $ingress_proto;
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
             proxy_read_timeout 3600s;
+            proxy_cookie_path / $safe_ingress_path/;
+            proxy_cookie_flags session_id $ingress_cookie_secure httponly samesite=lax;
         }
 
         # Rewrite route literals only in Odoo asset bundles. Applying these
@@ -264,6 +359,8 @@ http {
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
             proxy_set_header Accept-Encoding "";
             proxy_buffering off;
+            proxy_cookie_path / $safe_ingress_path/;
+            proxy_cookie_flags session_id $ingress_cookie_secure httponly samesite=lax;
             proxy_hide_header Cache-Control;
             proxy_hide_header Expires;
             proxy_hide_header ETag;
@@ -371,13 +468,94 @@ http {
             # Canonical URL the link keeps the browser origin, so it is as
             # broken as it was, but it no longer carries the token.
             sub_filter 'const currentUrl=window.location.href;' 'const currentUrl=(function(){var L=window.location,B=window.__WOOW_CANONICAL_URL__||L.origin,P="$safe_ingress_path",p=L.pathname;if(P&&p.indexOf(P)===0)p=p.slice(P.length)||"/";return B+p+L.search+L.hash})();';
+            # The two places the web client navigates the whole frame to a
+            # server-supplied URL (issue #174, U-E4). Both write `location`,
+            # which the Runtime shim cannot wrap (ADR 0004), with a URL that
+            # arrives over RPC and so is nowhere in the bundle for a prefix
+            # rule to find. Under Ingress the frame leaves for the Home
+            # Assistant root and Home Assistant answers 404: a Prefix escape
+            # that loses the file and the screen with it.
+            #
+            # Each rewrite hands the value to __WOOW_INGRESS_URL__, the
+            # helper the Runtime shim publishes, so the prefixing stays the
+            # shim's own path() and not a copy of it. The identity fallback
+            # keeps the expression total: an Ingress page whose shim did not
+            # run, and the Public origin if this rule ever reached it, still
+            # navigate to the raw value instead of throwing.
+            #
+            # `browser.location=item.url` is ActionMenus.onItemSelected, which
+            # is how the cog menu runs a print item that carries a `url` and no
+            # `action` -- Download > PDF on an invoice, whose URL comes from
+            # account.move.get_extra_print_items.
+            #
+            # `browser.location.assign(url)` is two expressions, not one, and
+            # the rule rewrites both by design: the `target==="self"` branch of
+            # _executeActURLAction, which is the generic ir.actions.act_url
+            # with the same class of server-supplied URL, and the `home` client
+            # action, which builds `"/"+location.search` and today lands on the
+            # Home Assistant root the same way. Prefixing `home` is the fix for
+            # it, not a side effect to be avoided. Both counts are measured in
+            # the fixtures; `tests/test_ingress_location_writes.py` pins them.
+            #
+            # The other `location` writes in the bundle stay as they are:
+            # the router's redirect() (its callers pass literals the rules
+            # above already prefix) and the session-expiry
+            # `window.location.assign(response.url)`, whose URL is absolute.
+            sub_filter 'browser.location=item.url' 'browser.location=(window.__WOOW_INGRESS_URL__||function(u){return u})(item.url)';
+            sub_filter 'browser.location.assign(url)' 'browser.location.assign((window.__WOOW_INGRESS_URL__||function(u){return u})(url))';
+            # The website editor's Blocks panel (issue #170, U-D2). Odoo 18
+            # inlines OWL templates into the bundle as `registerTemplate(...)`
+            # template literals, appended unminified after the JavaScript, so
+            # each tile's own markup is served through this location:
+            #   <div class="oe_snippet_thumbnail_img"
+            #        t-attf-style="background-image: url({{snippet.thumbnailSrc}});"/>
+            # A `url(` inside a style attribute is one of the ways the Runtime
+            # shim does not wrap by decision (ADR 0004's 2026-09-28 postscript,
+            # #169), and the `url(/` rules at the top of this location cannot
+            # reach it either: the byte after `url(` here is `{`.
+            #
+            # The rewrite goes where the URL is *rendered* and not where it is
+            # delivered, because this value round-trips to the database. The
+            # editor's "Save block" hands `thumbnailSrc` -- the raw
+            # `data-oe-thumbnail` of the snippet catalogue response -- to
+            # `ir.ui.view.save_snippet` as `thumbnail_url`, which writes it into
+            # the new snippet view's arch as `t-thumbnail`. Prefixing the
+            # response would store the Ingress prefix, Supervisor token and all,
+            # every time somebody saves a custom block under Ingress. So nothing
+            # here touches `data-oe-thumbnail`, `render_public_asset` or
+            # `save_snippet`, and a Static-tier test asserts that absence.
+            #
+            # The replacement has to stay valid in both skins it wears at once:
+            # an XML attribute delimited by double quotes, inside a JavaScript
+            # template literal. It therefore carries no double quote, no
+            # backtick, no backslash and no `${`, and quotes with `'`, which is
+            # why this one rule is written with a double-quoted parameter.
+            # `+''` keeps the expression total: a value that is not a string
+            # renders exactly as it does today instead of throwing in the tile.
+            #
+            # The protocol-relative limit of every other prefix rule is
+            # inherited: `//host/path` starts with `/` and is prefixed like a
+            # path. #166 fixes that for all of them at once or not at all. No
+            # `t-thumbnail` Odoo ships is written that way.
+            #
+            # No double prefix. sub_filter never reads back what it wrote, so
+            # the `$safe_ingress_path` this emits is not rescanned; `url(/` and
+            # its quoted siblings match a different byte; and the shim's
+            # `path()` never sees this value, because a style attribute is not
+            # a way it wraps.
+            sub_filter 'url({{snippet.thumbnailSrc}})' "url({{(snippet.thumbnailSrc+'').indexOf('/')===0?'$safe_ingress_path'+snippet.thumbnailSrc:snippet.thumbnailSrc}})";
             # Generated rewrites (ADR 0005). The add-on writes this file from
             # its own Rewrite scan; the config-rendering init step creates it
             # empty so a fresh install starts. It holds prefix rules only, and
             # never a prefix the rules above already cover, so the two sets
-            # never compete for the same literal -- which matters because
-            # sub_filter resolves overlapping patterns by its own match table
-            # and not by the order the rules are written in.
+            # never compete for the same literal. That is a rule about what is
+            # generated and not a property of nginx: measured on 1.22.1, two
+            # sub_filter patterns that match at the same byte are settled by
+            # the order they are written, the earlier one winning even where a
+            # later one is longer (issue #158 depends on that, and pins it).
+            # The no-overlap rule stays, because the order between a hand-
+            # written rule here and a machine-written one inside the include is
+            # not something either side gets to reason about.
             include /data/nginx-generated-rewrites.conf;
         }
 
@@ -411,6 +589,37 @@ http {
             sub_filter 'action="/' 'action="$safe_ingress_path/';
             sub_filter 'data-src="/' 'data-src="$safe_ingress_path/';
             sub_filter 'srcset="/' 'srcset="$safe_ingress_path/';
+            # A website form keeps its confirmation target in the page HTML --
+            # data-success-mode="redirect" data-success-page="/contactus-thank-you"
+            # on Contact Us, "/job-thank-you" on a job application, whatever the
+            # user chose on a form built in the editor -- and the form script
+            # assigns that root-relative path to the page location once the
+            # submit RPC answers. The five rules above are the only attributes
+            # rewritten here, the Runtime shim wraps no location assignment (ADR
+            # 0004 records that as a decision, not an omission), and the Rewrite
+            # scan reads asset bundles and not page HTML, so the value reached
+            # the browser bare: the record was created and then the thank-you
+            # page was asked of the Home Assistant root, which answered 404
+            # (issue #167). The rule belongs to the attribute and not to any one
+            # form or path, so it covers every website form on every page. A
+            # value that is a same-page anchor (`#thanks`) or an absolute URL
+            # matches no byte of it and is left alone.
+            #
+            # `data-success_page` with an underscore is the same value in the
+            # arch a form saved before Odoo 14 left behind, and Odoo 18 still
+            # reads it: the script above falls back to it whenever
+            # `data-success-mode` is absent. An upgraded database keeps forms in
+            # that shape, so the compatibility spelling gets the same rule
+            # rather than the same 404.
+            #
+            # These two inherit the protocol-relative limit of the five rules
+            # above -- a plain-string pattern prefixes `//host/path` too, and
+            # breaks it -- and here that limit is not covered by "Odoo writes
+            # none": the value is what the person editing the form typed into
+            # the redirect field. It is still one shape among the file's, fixed
+            # for every such rule at once or not at all (issue #166).
+            sub_filter 'data-success-page="/' 'data-success-page="$safe_ingress_path/';
+            sub_filter 'data-success_page="/' 'data-success_page="$safe_ingress_path/';
             # Rewritten asset bytes change with ingress releases while Odoo's
             # content hash does not. Cache-bust HTML references so clients do
             # not keep an older transformed bundle after an add-on update.
@@ -439,8 +648,190 @@ http {
             sub_filter 'url(/' 'url($safe_ingress_path/';
             sub_filter "url('/" "url('$safe_ingress_path/";
             sub_filter 'url("/' 'url("$safe_ingress_path/';
+            # QWeb escapes attribute values with markupsafe, so a website
+            # snippet's inline background -- style="background-image:
+            # url(&#39;/web/image/...&#39;)" -- reaches the browser with its
+            # quote as an HTML entity and matches none of the three rules
+            # above: the path went unprefixed and resolved against the Home
+            # Assistant root. Each form the escaper can produce gets a rule
+            # of its own, keeping the entity exactly as it was. These belong
+            # to the generic HTML location only -- asset bundles hold no HTML
+            # entities -- and they are written by hand here, so the Rewrite
+            # scan, which reads bundles, never learns about page HTML.
+            #
+            # They inherit the limit of the three above: the pattern is a
+            # plain string, so a protocol-relative reference
+            # (url(&#39;//cdn/x.png&#39;)) is prefixed too and breaks. No
+            # sub_filter can express "root-relative but not //", and no
+            # later rule can undo it, because nginx never rescans what a
+            # rule replaced. Odoo writes none, and folding the rules into
+            # something broader is a change to all seven (issue #166).
+            sub_filter 'url(&#39;/' 'url(&#39;$safe_ingress_path/';
+            sub_filter 'url(&#34;/' 'url(&#34;$safe_ingress_path/';
+            sub_filter 'url(&quot;/' 'url(&quot;$safe_ingress_path/';
+            sub_filter 'url(&#x27;/' 'url(&#x27;$safe_ingress_path/';
 
             sub_filter '<head>' '<head>$ingress_runtime_shim';
+        }
+
+        # Action help HTML (issue #158, ADR 0004's 2026-09-28 postscript). A
+        # window action's `help` field is HTML held in the database, and Odoo's
+        # own help carries root-relative attributes -- the Surveys screen of an
+        # empty list shows four `<img src="/survey/static/src/img/...">` sample
+        # tiles. The web client reads that field out of this route's JSON-RPC
+        # response and hands it to `markup()`, so it reaches the DOM as markup
+        # (`innerHTML`) and never passes an API the Runtime shim wraps. Under
+        # Ingress the four pictures were asked of the Home Assistant root and
+        # answered 404: eight Prefix escapes per screen.
+        #
+        # The shim is not the fix. ADR 0004 records markup insertion as
+        # uncovered *by decision*: the HTML editor and the website editor load
+        # and save record content through that same path, so a shim hook would
+        # write the Ingress prefix -- which carries the Ingress token -- back
+        # into the database. Action help is only ever read through this
+        # response and never saved through it, so a Literal rewrite scoped to
+        # the route reaches it without reaching the editors.
+        #
+        # Inside JSON the attribute quote is escaped (`src=\"/survey/...`), so
+        # the generic location's raw-quote HTML rules never matched a byte of
+        # it; the only escaped-quote rules there cover `/web/assets/`, for the
+        # Document Layout preview. Widening those to all JSON is what ADR 0004
+        # calls unsafe -- 0.3.34 had to restrict the shim to `text/html` after
+        # rewriting JSON blanked that preview -- so the new rules live in an
+        # exact-match location of their own and no other JSON response sees
+        # them.
+        #
+        # **This route and no other, even though three deliver help.** The web
+        # client runs `markup(action.help)` over the answer of
+        # `/web/action/load`, of `/web/action/run` and of
+        # `/web/dataset/call_button/<model>/<method>` alike. Only the first is
+        # safe to rewrite, and the difference is not the help: it is the rest
+        # of the action dict.
+        #
+        # `/web/action/load` answers with a **stored** `ir.actions.act_window`
+        # record. Its `help` is database HTML the client only ever displays,
+        # and its `context` is the static string a developer wrote into the
+        # action definition. Nothing in that response is content the client
+        # will hand back.
+        #
+        # The other two answer with an action **computed at call time**, and a
+        # computed action carries record content in its `context` as wizard
+        # defaults. `marketing_card`'s `action_share()` button is the shipped
+        # example: it returns an `act_window` whose
+        # `context.default_body_arch` is a mail body holding
+        # `<img src="/web/image/card.campaign/<id>/image_preview">` and
+        # `<a href="/cards/<id>/preview">`. Prefix those and the mailing opens
+        # pre-filled with the Ingress prefix, and the first save writes the
+        # Supervisor token into `mailing.mailing.body_arch`. That is the
+        # database-poisoning this entire decision exists to avoid, reached by
+        # one more step. A server action's returned dict is user-authored
+        # Python and is at least as open.
+        #
+        # So the rule is: **rewrite a response only when everything in it is
+        # something the client displays and never returns.** Help delivered
+        # through the other two routes keeps escaping, and that is the smaller
+        # harm; it needs a fix that can tell a field from a field, which a
+        # byte-level `sub_filter` cannot. `/web/action/load_breadcrumbs`
+        # answers with display names only and needs nothing.
+        #
+        # Everything before `# Action help, escaped-quote rules` is every
+        # directive of `location /` above, in its order and with only its
+        # comments left behind: proxy headers, cookie path and flags,
+        # X-Frame-Options removal, buffering, timeouts, and every rule it
+        # carries. Ingress behaviour for this route differs from the generic
+        # location only by the added rules, and `test_ingress_action_help.py`
+        # compares the two directive lists, so later drift in either fails
+        # rather than quietly changing the route.
+        location = /web/action/load {
+            proxy_pass http://odoo_http;
+            proxy_http_version 1.1;
+            proxy_set_header Host $http_host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-Host $http_host;
+            proxy_set_header X-Forwarded-Proto $ingress_proto;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header Accept-Encoding "";
+            proxy_hide_header X-Frame-Options;
+            proxy_request_buffering off;
+            proxy_buffering off;
+            proxy_read_timeout 720s;
+            proxy_send_timeout 720s;
+
+            proxy_redirect ~^(?<odoo_redirect>/.*)$ $safe_ingress_path$odoo_redirect;
+            proxy_cookie_path / $safe_ingress_path/;
+            proxy_cookie_flags session_id $ingress_cookie_secure httponly samesite=lax;
+
+            sub_filter_once off;
+            sub_filter_types application/javascript text/javascript text/css application/json;
+            sub_filter 'href="/' 'href="$safe_ingress_path/';
+            sub_filter 'src="/' 'src="$safe_ingress_path/';
+            sub_filter 'action="/' 'action="$safe_ingress_path/';
+            sub_filter 'data-src="/' 'data-src="$safe_ingress_path/';
+            sub_filter 'srcset="/' 'srcset="$safe_ingress_path/';
+            sub_filter 'data-success-page="/' 'data-success-page="$safe_ingress_path/';
+            sub_filter 'data-success_page="/' 'data-success_page="$safe_ingress_path/';
+            sub_filter '.min.js"' '.min.js?woow_ingress=%%INGRESS_CACHE_VERSION%%"';
+            sub_filter '.min.css"' '.min.css?woow_ingress=%%INGRESS_CACHE_VERSION%%"';
+            sub_filter '&#39;/web/login&#39;' '&#39;$safe_ingress_path/web/login&#39;';
+            sub_filter '"translationURL": "/website/' '"translationURL": "$safe_ingress_path/website/';
+            sub_filter '"src": "/' '"src": "$safe_ingress_path/';
+            sub_filter 'href=\\"/web/assets/' 'href=\\"$safe_ingress_path/web/assets/';
+            sub_filter 'src=\\"/web/assets/' 'src=\\"$safe_ingress_path/web/assets/';
+            sub_filter '"icon":"/' '"icon":"$safe_ingress_path/';
+            sub_filter '"icon": "/' '"icon": "$safe_ingress_path/';
+            sub_filter '"imgurl":"/' '"imgurl":"$safe_ingress_path/';
+            sub_filter '"imgurl": "/' '"imgurl": "$safe_ingress_path/';
+            sub_filter '/base/static/description/settings.png' '$safe_ingress_path/base/static/description/settings.png';
+            sub_filter '`/web/webclient/' '`$safe_ingress_path/web/webclient/';
+            sub_filter 'url(/' 'url($safe_ingress_path/';
+            sub_filter "url('/" "url('$safe_ingress_path/";
+            sub_filter 'url("/' 'url("$safe_ingress_path/';
+            sub_filter 'url(&#39;/' 'url(&#39;$safe_ingress_path/';
+            sub_filter 'url(&#34;/' 'url(&#34;$safe_ingress_path/';
+            sub_filter 'url(&quot;/' 'url(&quot;$safe_ingress_path/';
+            sub_filter 'url(&#x27;/' 'url(&#x27;$safe_ingress_path/';
+
+            sub_filter '<head>' '<head>$ingress_runtime_shim';
+
+            # Action help, escaped-quote rules, over the five URL attributes
+            # the generic location's raw-quote rules cover. The two rules it
+            # also carries for a website form's confirmation target
+            # (`data-success-page`, and the pre-Odoo-14 `data-success_page`,
+            # issue #167) get no escaped-quote counterpart: that value belongs
+            # to page HTML, and a stored action's help never holds a form.
+            #
+            # The identity rules come first because they have to: sub_filter
+            # settles two patterns that match at the same byte by the order
+            # they are written, the earlier one winning even where a later one
+            # is longer. Written ahead of the general rule, each identity rule
+            # takes a URL that already carries the prefix and puts it back
+            # unchanged, so nothing is prefixed twice. The escaped
+            # `/web/assets/` rules above are ahead of both and keep answering
+            # for the Document Layout preview, with the result the general
+            # rules would have given anyway.
+            #
+            # Two limits are inherited from the raw-quote counterparts, because
+            # a sub_filter pattern is a plain string and not a parser:
+            #
+            #   * a protocol-relative reference (`src=\"//cdn/x.png`) is
+            #     prefixed too, and breaks;
+            #   * `srcset` is a *list*, so only its first candidate is behind
+            #     the attribute opener -- `srcset=\"/a 1x, /b 2x` prefixes
+            #     `/a` and leaves `/b` escaping.
+            #
+            # Odoo's shipped action help writes neither shape, and both are
+            # fixed for every such rule in this file at once or not at all
+            # (issue #166).
+            sub_filter 'href=\\"$safe_ingress_path/' 'href=\\"$safe_ingress_path/';
+            sub_filter 'src=\\"$safe_ingress_path/' 'src=\\"$safe_ingress_path/';
+            sub_filter 'action=\\"$safe_ingress_path/' 'action=\\"$safe_ingress_path/';
+            sub_filter 'data-src=\\"$safe_ingress_path/' 'data-src=\\"$safe_ingress_path/';
+            sub_filter 'srcset=\\"$safe_ingress_path/' 'srcset=\\"$safe_ingress_path/';
+            sub_filter 'href=\\"/' 'href=\\"$safe_ingress_path/';
+            sub_filter 'src=\\"/' 'src=\\"$safe_ingress_path/';
+            sub_filter 'action=\\"/' 'action=\\"$safe_ingress_path/';
+            sub_filter 'data-src=\\"/' 'data-src=\\"$safe_ingress_path/';
+            sub_filter 'srcset=\\"/' 'srcset=\\"$safe_ingress_path/';
         }
     }
 }

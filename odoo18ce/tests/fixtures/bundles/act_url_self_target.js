@@ -1,0 +1,3 @@
+function _executeActURLAction(action,options){let url=action.url;if(url&&!(url.startsWith("http")||url.startsWith("/"))){url="/"+url;}
+if(action.target==="self"){browser.location.assign(url);}else if(action.target==="download"){browser.open(url,"_blank");}else{const w=browser.open(url,"_blank");if(!w||w.closed||typeof w.closed==="undefined"){const msg=_t("A popup window has been blocked. You may need to change your "+"browser settings to allow popup windows for this page.");env.services.notification.add(msg,{sticky:true,type:"warning",});}
+if(action.close){return doAction({type:"ir.actions.act_window_close"},{onClose:options.onClose});}else if(options.onClose){options.onClose();}}}

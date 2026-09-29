@@ -26,7 +26,17 @@ def ingress_assets_block(template: str) -> tuple[int, int]:
 
 
 def ingress_rule(template: str, source: str, description: str) -> str:
-    rule = re.compile(r"sub_filter '" + re.escape(source) + r"' '([^']+)';")
+    """The replacement of the one ingress-only `sub_filter` for `source`.
+
+    nginx takes a parameter in either quote, and a replacement that has to
+    carry a `'` of its own -- the snippet-thumbnail rewrite of issue #170,
+    whose JavaScript quotes with single quotes because it sits inside an XML
+    attribute inside a template literal -- is written double-quoted. Both
+    spellings are accepted here; neither may hold its own delimiter.
+    """
+    rule = re.compile(
+        r"sub_filter '" + re.escape(source) + r"' (?:'([^']+)'|\"([^\"]+)\");"
+    )
     matches = list(rule.finditer(template))
     assets_start, assets_end = ingress_assets_block(template)
     outside = [match for match in matches if not assets_start <= match.start() < assets_end]
@@ -36,9 +46,8 @@ def ingress_rule(template: str, source: str, description: str) -> str:
         "(for example, the public listener), which would change public routing"
     )
     assert len(matches) == 1, f"missing ingress-only {description} sub_filter"
-    return matches[0].group(1).replace(
-        "$safe_ingress_path", "/api/hassio_ingress/token"
-    )
+    replacement = matches[0].group(1) or matches[0].group(2)
+    return replacement.replace("$safe_ingress_path", "/api/hassio_ingress/token")
 
 
 def assert_public_rule_is_rejected(template: str) -> None:
@@ -66,10 +75,33 @@ def assert_prefix_guard(template: str) -> None:
     )
 
 
+# A shim part nginx splices into another by variable reference, `$ingress_..._shim`.
+SPLICED = re.compile(r"\$(ingress_[a-z_]+_shim)\b")
+
+
 def map_block(template: str, header: str) -> str:
     """Return one top-level nginx `map` block, from its header line to its closing brace."""
     start = template.index(header)
     return template[start : template.index("\n    }", start)]
+
+
+def map_value(template: str, variable: str) -> str:
+    """The `default` value of the top-level map that declares `$variable`."""
+    block = map_block(template, "map $upstream_http_content_type $%s {" % variable)
+    match = re.search(r"default '(.*?)';", block, re.S)
+    assert match, f"map ${variable} has no single-quoted default value"
+    return match.group(1)
+
+
+def resolve_splices(template: str, script: str) -> str:
+    """Put back the shim parts nginx splices in by variable reference.
+
+    The prefix script is a few hundred bytes short of nginx's 4096-byte
+    parameter buffer, so parts of it live in maps of their own -- the
+    injection-way hooks of #169 do -- and nginx concatenates them into the
+    page. A contract that reads the script has to read what the page gets.
+    """
+    return SPLICED.sub(lambda match: map_value(template, match.group(1)), script)
 
 
 def runtime_shim(template: str) -> str:
@@ -78,7 +110,7 @@ def runtime_shim(template: str) -> str:
     assert '"~*^text/html(?:;|$)"' in html_map
     match = re.search(r"<script>(.*?)</script>';", html_map, re.S)
     assert match, "HTML runtime shim not found"
-    return match.group(1)
+    return resolve_splices(template, match.group(1))
 
 
 def assert_shim_fragments(template: str, node: str) -> None:

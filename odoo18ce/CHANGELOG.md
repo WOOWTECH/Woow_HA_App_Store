@@ -1,5 +1,313 @@
 # Changelog
 
+## 0.4.5 — 2026-09-29
+
+### Added
+- Documentation only: what to do when an update fails on a slow link, for
+  both audiences. DOCS.md "Updates and images" gains "When an update fails
+  on a slow connection": how to recognize it in the Supervisor log
+  (`Could not pull image`, `unexpected EOF`, under Settings → System →
+  Logs), that the add-on keeps running the old version and the data is
+  untouched, that "backup before update" should be switched off before a
+  retry because every failed attempt leaves another full backup behind, and
+  the two ways to reach WOOWTECH — GitHub Issues on `WOOWTECH/Woow_ha_odoo`
+  and `woowtech@designsmart.com.tw`. For staff, `docs/runbooks/` gains
+  `SLOW_LINK_DEPLOY.md` and `slow-link-pull.sh`: the script downloads the
+  Release image's blobs from ghcr with `curl -C -`, so a dropped connection
+  resumes from the last byte instead of restarting the 693 MiB layer that
+  makes the Supervisor's own pull never converge on a slow link. It takes a
+  fresh anonymous token on every attempt, never reuses the expiring signed
+  storage URL, requires a 206 for a resume, verifies the size and sha256 of
+  the manifest, the config and every blob, streams a docker-archive into
+  `docker load`, and only prints the `ha apps update` command once the
+  loaded image ID equals the manifest's config digest — it never runs the
+  update itself. The runbook is zh-TW and covers the prerequisites, the
+  backup that is the only way back, the disk space, running the script from
+  a pinned Release tag, verifying, updating, rolling back, and the versions
+  it was validated on (Docker 28.3.3, overlay2, Supervisor 2026.09.2).
+  DOCS.md does not link the runbook. CI's shellcheck step now covers the
+  script. No version bump. Issue #157, parent #153.
+
+### Changed
+- Documentation only: a tab Odoo opens in the browser from Ingress — a
+  survey's Test button, a link that opens a new tab, "open in new tab" — is
+  now recorded as a Structural gap instead of a defect. The tab is a
+  top-level page, and through Ingress every top-level page lives under the
+  add-on's own address, so the tab's address carries the session token and
+  opens only for the person who pressed the button. DOCS.md "What only the
+  Public origin can do" gains a row saying to open the same screen on the
+  Public origin and share that address; the parity plan's `U-C23` rule and
+  its new `G-07` row say the same, and the Live check now records
+  `STRUCTURAL` with the Public origin's path. Nothing about the tab itself
+  changes: it keeps its Ingress address and keeps working for the person who
+  opened it. Issue #168.
+
+### Fixed
+- Under Ingress, **Action menu > Download > PDF** on a posted invoice now
+  downloads the PDF instead of losing both the file and the screen. The web
+  client navigated the whole Ingress frame to
+  `<HA_BASE>/account/download_invoice_documents/<id>/pdf` -- the Home
+  Assistant root, no Ingress prefix -- Home Assistant answered 404, and the
+  invoice form was gone with it, while the same menu item downloaded the file
+  on the Public origin (`U-E4`, a Prefix escape, root cause `RC-1`). No
+  `window.open` was involved: the item is a plain `ir.actions.act_url` dict
+  from `account.move.get_extra_print_items`, and `ActionMenus.onItemSelected`
+  runs `browser.location=item.url` for an item that carries a `url` and no
+  `action`. The Runtime shim cannot intercept a write to `location`, and a
+  rewrite cannot prefix a URL that arrives over RPC and so is nowhere in the
+  bundle -- so the shim now publishes its own URL helper to the page as
+  `__WOOW_INGRESS_URL__` (read-only, Ingress-only, the same `path()` the
+  `fetch`, XHR and `window.open` wrappers already use), and two rewrites on
+  the Ingress listener's asset location hand it the URL before the
+  navigation: `browser.location=item.url`, and `browser.location.assign(url)`
+  -- which is both the `target: self` branch of the generic
+  `ir.actions.act_url` executor and, byte for byte, the `home` client action,
+  so all three sites stay under the prefix. Each rewritten expression falls
+  back to the raw value when the global is absent, so a page whose shim did
+  not run still navigates. The Public origin gets neither the shim nor the
+  rules and is unchanged; **Download > PDF without Payment**, which takes the
+  `/report/...` path, worked on both surfaces before and still does. No
+  version bump. Issue #174, parent #148.
+- Under Ingress, the website editor's Blocks panel now shows its snippet
+  thumbnails instead of 36 blank tiles. Website > Edit asked the Home
+  Assistant root for every one of them --
+  `<HA_BASE>/website/static/src/img/snippets_thumbs/<snippet>.svg` -- and got
+  404: 36 Prefix escapes and 36 console errors per editor open, with the same
+  panel loading its pictures on the Public origin (`U-D2`, root cause
+  `RC-1`/`RC-12`/`RC-14`). Editing itself worked and there was no
+  `AssetsLoadingError`. The editor draws each tile with an OWL template,
+  `t-attf-style="background-image: url({{snippet.thumbnailSrc}});"`, and a
+  `url(` inside a `style` attribute is one of the ways the Runtime shim does
+  not wrap by decision (ADR 0004's 2026-09-28 postscript, #169): the website
+  editor saves record content back through those same paths, so a hook there
+  would write the token-bearing Ingress prefix into the database. The fix is
+  one rewrite on the Ingress listener's asset location, over that exact
+  template text, which puts the Ingress prefix in front of a value beginning
+  `/` and leaves anything else -- a snippet with no thumbnail arrives as the
+  literal `oe-thumbnail` -- as it was. It rewrites the template and **not**
+  the snippet catalogue response, because the value comes back: "Save block"
+  hands `thumbnailSrc` to `ir.ui.view.save_snippet`, which writes it into the
+  new snippet view's arch, so prefixing the response would store a Supervisor
+  token in the database and break the block on the Public origin. A custom
+  block therefore still saves exactly what it saved before and shows its
+  thumbnail on both surfaces. Odoo 18 serves its OWL templates inside the
+  asset bundle, unminified, which is what makes the template text reachable
+  from there; the text occurs once, in `web_editor.assets_wysiwyg`, and the
+  bytes it was measured against are kept as a test fixture. The Public origin
+  listener, the catalogue response and `save_snippet` are untouched. The
+  protocol-relative limit every other prefix rule has is inherited and belongs
+  to #166. One picture on the same panel is not covered and is recorded rather
+  than fixed: the static `snippet_disabled.svg` shown for an undroppable
+  snippet, which no rule prefixes and which the measured run did not reach.
+  No version bump. Issue #170, parent #148.
+- Under Ingress, sending a website form now ends on its thank-you page
+  instead of a Home Assistant 404. Contact Us and a job application were sent
+  -- the lead and the applicant were created -- and then the page went to
+  `<HA_BASE>/contactus-thank-you` or `<HA_BASE>/job-thank-you` at the Home
+  Assistant root, which answered 404: the person saw an error where the
+  confirmation belonged, while the same form on the Public origin opened its
+  thank-you page (`U-D6` for `shared|generic` and
+  `hr_recruitment|job application`, root cause `RC-1`/`RC-10`). Every form
+  built on the website form snippet carries its confirmation target as an
+  attribute of the server-rendered page --
+  `data-success-mode="redirect" data-success-page="/contactus-thank-you"` --
+  and the form script assigns that root-relative path to the page location
+  once the submit RPC answers. The Ingress HTML rules rewrote `href`, `src`,
+  `action`, `data-src` and `srcset` and no other attribute, the Runtime shim
+  wraps no location assignment (ADR 0004 records that as a decision, not an
+  omission), and the Rewrite scan reads asset bundles and not page HTML, so
+  the value reached the browser bare. The Ingress listener's generic HTML
+  location now carries two more rules beside those five, for
+  `data-success-page="/` and for the pre-Odoo-14 spelling
+  `data-success_page="/` that the form script still falls back to when
+  `data-success-mode` is absent, so a form carried over by a database upgrade
+  is covered as well; the copy of that location for `/web/action/load` carries
+  them too, being that location plus its own escaped-quote rules. The rules
+  belong to the attribute and not to any one form or path, so they cover every
+  website form on every website page, including one a user builds in the
+  editor. A value that is a same-page anchor (`#thanks`) or an absolute URL is
+  left exactly as it was, no JSON or JavaScript response is affected, and the
+  Public origin serves the attribute byte for byte. A protocol-relative value
+  (`//host/path`) is prefixed and breaks, which is the limit every such rule in
+  the gateway shares and which #166 fixes for all of them at once or not at
+  all; unlike the others this one is typed by a person in the editor's redirect
+  field rather than written by Odoo, and the template says so. The survey's own
+  form was never affected: it redirects server-side, where `proxy_redirect`
+  already adds the prefix. The Static tier gains the template contract for both
+  rules -- on the Ingress listener, beside the attribute group they join, and
+  absent from the asset location and from the origin listener -- and the
+  live-nginx HTML test now serves a form page through both sockets and checks
+  every shape. The maintainer reruns `U-D6` for both forms on the test host
+  after deploy. No version bump. Issue #167, parent #148.
+- Under Ingress, an action's help pictures load instead of 404ing. A window
+  action's `help` field is HTML kept in the database, and Odoo's own help
+  carries root-relative addresses: the Surveys screen of an empty survey list
+  shows four `<img src="/survey/static/src/img/survey_sample_*.png">` tiles.
+  That HTML reaches the browser inside a JSON-RPC response and the web client
+  inserts it as markup, so the Runtime shim -- which adds the Ingress prefix
+  when a page asks for a URL through an API it wraps -- never sees it, and the
+  Rewrite scan, which reads asset bundles, never sees it either. The browser
+  asked the Home Assistant root for the four pictures and got 404: eight
+  Prefix escapes, eight 4xx and eight console errors on each of the two survey
+  menus, with the Public origin clean (`U-C12`, root cause `RC-1`/`RC-12`).
+  The Ingress listener now carries an exact-match location for
+  `/web/action/load`, holding every directive of the generic Ingress location
+  plus escaped-quote rules for `href`, `src`, `action`, `data-src` and
+  `srcset`, because inside JSON the attribute quote is escaped
+  (`src=\"/survey/...`) and the generic raw-quote rules never matched a byte
+  of it. Each attribute also gets an identity rule written ahead of its
+  general rule, so a URL that already carries the prefix is not prefixed
+  twice. Two other routes deliver the same help and are deliberately left
+  alone -- `/web/action/run` and `/web/dataset/call_button/<model>/<method>` --
+  because they answer with an action computed at call time, and a computed
+  action carries record content in its `context` as wizard defaults: prefixing
+  those would put the Supervisor token into the database the first time a user
+  saved the wizard. Help reached through those two keeps escaping, which is
+  the smaller harm. No other JSON response is affected and the Public origin
+  is unchanged. Verified on the test host against a local build of the branch:
+  with the location removed the two survey menus record 8/8/8, with it in
+  place every signal is 0 and the four pictures answer 200
+  (`docs/testing/evidence/2026-09-28-issue-158/`). ADR 0004 gains the
+  postscript that records why this is a route-scoped rewrite and not a shim
+  hook. No version bump. Issue #158, parent #148.
+- Public origin: the browser keeps its `Secure`, `SameSite=Lax` session
+  cookie when the web client opens its bus socket. Odoo saves the session on
+  its websocket route too and answers the `101` handshake with a
+  `Set-Cookie: session_id=...; HttpOnly; Path=/` of its own, without `Secure`
+  and without `SameSite`. The 8069 `location = /websocket` and the whole 8072
+  listener proxied that response through untouched, so the bare cookie
+  replaced the one `location /` had just rewritten: after login plus one
+  screen the Public cookie read `Secure=False` until the next ordinary page
+  response restored it, and again after the next socket (`U-B2`, root cause
+  RC-4). Cookie rewriting is a property of the surface, not of one location,
+  so every location that proxies to Odoo now carries its surface's rewriting:
+  on the origin listeners `proxy_cookie_flags session_id
+  $woow_origin_cookie_secure httponly samesite=lax` -- the websocket
+  locations, the LAN-only database lifecycle locations and `/jsonrpc` beside
+  the `location /` that already had it -- and on the Ingress listener
+  `proxy_cookie_path / $safe_ingress_path/` with
+  `proxy_cookie_flags session_id $ingress_cookie_secure httponly
+  samesite=lax`, on its websocket and asset locations as well. The
+  `$woow_origin_cookie_secure` and `$ingress_cookie_secure` maps are
+  unchanged and stay the only source of the `Secure` decision, so the LAN
+  tier over plain http still receives a cookie without `Secure` -- marking it
+  Secure there means the browser never sends it back, which reads as a login
+  that bounces straight to the login page -- and Ingress over plain http is
+  unaffected. The Ingress half was hardening: the parity run observed its
+  attributes as expected. Odoo's own cookie behaviour is untouched. The
+  Static-tier contract no longer asserts the directive as a bare substring of
+  the template: it parses the template into `server` and `location` blocks,
+  pins the ten locations that proxy upstream across the 8069, 8072 and 5691
+  listeners -- every `proxy_pass` in the file goes to Odoo -- and fails when
+  any of them lacks the rewriting of its surface. A second test checks the
+  rule against two mutated copies of the template: one with a directive
+  removed and one with a location added, each answered with exactly that
+  location, so neither a vacuous parse nor a route added with an unfamiliar
+  target passes silently. `nginx -t` over both rendered
+  `public_url` shapes still passes. The maintainer reruns `U-B2` generic on
+  the test host after deploy. No version bump. Issue #165, parent #148.
+- Ingress: a website page whose snippet stores its background in an inline
+  style -- the Contact Us parallax, a cover, any image background set in the
+  editor -- now loads the picture under the prefix instead of asking the
+  Home Assistant root for it. The generic HTML location already rewrote
+  `url(/`, `url('/` and `url("/`, but QWeb escapes attribute values with
+  markupsafe, so the page arrives as
+  `style="background-image: url(&#39;/web/image/website.s_parallax_default_image&#39;)"`
+  and no rule matched an entity-encoded quote: one prefix escape, one 404 and
+  one console error per visit, and a blank section. Four `sub_filter` rules
+  now sit beside the three, one per form the escaper can produce --
+  `&#39;`, `&#34;`, `&quot;`, `&#x27;` -- each keeping the entity exactly as
+  it was. The existing three are untouched, so the bare and raw-quote forms
+  rewrite as before, and a `url(` that is already absolute
+  (`url(https://...)`) or relative (`url(img.png)`) is still left alone.
+  The rules are hand-written in the generic HTML location only: asset
+  bundles carry no HTML entities, so the `/web/assets/` location is
+  unchanged, and the Rewrite scan, which reads bundles, learns nothing
+  about page HTML. They inherit the one limit of the three beside them --
+  a plain-string `sub_filter` cannot say "root-relative but not `//`", so
+  a protocol-relative `url(&#39;//cdn/x.png&#39;)` is prefixed and breaks;
+  Odoo writes none, and the template comment records it. The Runtime shim is unchanged -- it never
+  sees markup the server sent -- so a `style` attribute the browser builds
+  (#169, #170) stays where it is. The Static-tier template contract asserts
+  the four rules, and the live-nginx content-type test serves an HTML
+  upstream body in every form and asserts the prefix lands inside the entity
+  quotes with no double prefix. The Public origin has no such rules and is
+  unchanged. No version bump. Issue #166, parent #148.
+- Ingress: the Event Registration Desk's barcode error sound plays again on a
+  failed scan. The desk builds it with
+  `new Audio(url("/barcodes/static/src/audio/error.ogg"))`, which resolves
+  against the browser origin, and the Runtime shim wrapped nothing for media,
+  so under Ingress the request reached the Home Assistant root and answered
+  404 — one console error, one HTTP 4xx and one prefix escape, on a screen
+  whose scanner was then silent when a scan failed. The `/mail/` sound on the
+  next line was never affected, because `/mail/` is one of the template's
+  shipped prefix rewrites. The shim now wraps the `Audio` constructor and the
+  `src` setter of `HTMLMediaElement.prototype` (`<audio>` and `<video>`) and
+  of `HTMLSourceElement.prototype`, through the same `path()` helper and the
+  same property-setter helper it already uses for `href`/`src`/`srcset`: an
+  already prefixed, cross-origin, `blob:`, `data:` or fragment-only value is
+  untouched, a `URL` object is prefixed the way `fetch` and `sendBeacon` take
+  one, `new Audio()` with no argument is left alone, an absent constructor is
+  left absent, and the wrapper keeps `prototype` — as the `Worker` wrapper
+  does — so `new Audio(...) instanceof HTMLAudioElement` still holds. One shim change covers every media prefix at once (POS sounds,
+  `/barcodes/`, any future app), where a generated rewrite would cover one
+  prefix at a time, so the Rewrite scan is unchanged and `/barcodes/` stays
+  `INFO`. `<track>`, `<embed>`/`<object>`, `poster`, `srcObject`,
+  `HTMLSourceElement.srcset` (the responsive `<picture>` candidate list, not a
+  media source) and CSS `url(...)` media have not been reported escaping and
+  stay uncovered, and `U-A6`'s probe list is unchanged: the guard for the media
+  wrappers is the Static-tier contract plus the Registration Desk's own crawler
+  record. The wrappers live in the
+  same nginx map as the injection-way hooks, the tail of the prefix script's
+  closure, because that script is a few hundred bytes short of nginx's
+  4096-byte parameter buffer. ADR 0004 gains a 2026-09-28 media-sources
+  postscript, and a Static-tier test executes the rendered shim against a DOM
+  stand-in for each case above. The Public origin gets no shim and is
+  unchanged. No version bump. Issue #159, parent #148.
+- Ingress: a root-relative URL sent through `navigator.sendBeacon`, opened
+  as an `EventSource`, or used as an SVG `<use>` reference set through
+  `setAttribute("xlink:href", ...)`, `setAttribute("href", ...)` or
+  `setAttributeNS(...)` now keeps the Ingress prefix instead of reaching the
+  Home Assistant root. The Runtime shim wraps each of them the way it
+  already wraps `fetch`, `XMLHttpRequest.open`, `Worker` and `WebSocket`,
+  through the same `path()` helper: an already prefixed, cross-origin,
+  `blob:`, `data:` or fragment-only value is untouched, an absent
+  `sendBeacon` or `EventSource` is left absent, and `EventSource` keeps its
+  prototype and its `CONNECTING`/`OPEN`/`CLOSED` constants. The hooks live
+  in an nginx map of their own, spliced into the prefix script's closure,
+  because that script is a few hundred bytes short of nginx's 4096-byte
+  parameter buffer.
+  The shim deliberately still touches nothing that inserts HTML as markup
+  (`innerHTML`, `insertAdjacentHTML`, `outerHTML`), the `style` attribute or
+  the text of a dynamic `<style>` element: the HTML editor and the website
+  editor save record content through those paths, so a prefix written there
+  would reach the database and carry the Ingress token. A screen that hits
+  one of them gets a route-scoped Literal rewrite of its own instead (#158,
+  #170). ADR 0004 has a 2026-09-28 postscript with both groups, and a
+  Static-tier test asserts the shim has no hook for the second one.
+  The Live-tier `U-A6` audit now declares each way with its group, probes
+  the covered ways through the API the shim hooks rather than through
+  markup, adds a `style` attribute probe, and reports `GAP` only for a
+  covered way escaping under Ingress or any way escaping on the Public
+  origin; an accepted escape is recorded as `PARITY` with the ways and
+  their screen issues in the notes. No version bump. Issue #169, parent
+  #148.
+- A `website` module installed after the add-on started now gets the
+  Canonical URL as the default website's domain within five minutes,
+  without a restart. The maintenance bootstrap mirrors the value once, at
+  start, and only when the module is already installed; a `website` added
+  later through the Apps screen kept an empty domain, so under Ingress the
+  home page's canonical, `og:url`, `og:image` and `twitter:image` links
+  carried the Home Assistant address. The Rewrite scan service's round now
+  ends with a Canonical URL catch-up: a `psql` read per database, and the
+  maintenance library through `odoo shell` only for a database whose domain
+  is empty or differs. The add-on log shows the same
+  `maintenance db=<name>: … website.domain=<Canonical URL>` line the start
+  writes. The maintenance library now also signals the running workers
+  after its commit, the way an RPC request does; without that the home
+  page kept `og:url` and `og:image` on the old address until the next
+  restart. Issue #164.
+
 ## 0.4.4 — 2026-09-24
 
 ### Added

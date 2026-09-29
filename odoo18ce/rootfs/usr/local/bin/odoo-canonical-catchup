@@ -1,0 +1,70 @@
+#!/usr/bin/with-contenv bashio
+# ==============================================================================
+# odoo-canonical-catchup
+# The Canonical URL catch-up, one step of every Rewrite scan round (issue
+# #164). A `website` module installed after the add-on started has no
+# domain until the next restart, because the maintenance bootstrap mirrors
+# the Canonical URL into the default website's domain once, at start, and
+# only when the module is already there. This step finds such a database
+# with a cheap `psql` read and writes it through the same maintenance
+# library, through `odoo shell`, that the bootstrap uses.
+#
+# This script exists to give the Python the same three Canonical URL inputs
+# the bootstrap gives the library, from the same places: `public_url` from
+# the add-on options, and the LAN address and published port cont-init
+# settled and published this start (WOOW_CANONICAL_SETTLED, issue #108). It
+# never asks the Supervisor: one start has one Canonical URL (ADR 0006),
+# and the rule that chooses it stays in canonical_url() in the library.
+# Unlike the bootstrap it says nothing when nothing was published: the
+# bootstrap already warned once at start, and this runs every five minutes.
+#
+# `/usr/local/lib/canonical_catchup.py` holds the decision and the writer;
+# the Static tier drives that module directly. Its lines are forwarded here
+# the way the bootstrap forwards the library's (odoo-maintenance-bootstrap:
+# 85-95): a line carrying WARNING is a warning, the rest are info.
+#
+# `literal_rewrite_auto` is not read: it freezes Generated rewrites, not
+# the Canonical URL.
+#
+# Exit status: 0 when every database is up to date or was written, 1 when
+# the listing, a read or an `odoo shell` failed. `set -e` is kept, as in
+# every CLI under /usr/local/bin (ADR 0009): the one command that may fail
+# has its status captured, so the exit is the library's answer, never an
+# early one. The service loop treats a non-zero exit as a warning and runs
+# the next round five minutes later; nothing here can stop the container.
+# ==============================================================================
+set -euo pipefail
+
+CONF="${1:-/data/odoo.conf}"
+LIB="/usr/local/lib/canonical_catchup.py"
+
+PUBLIC_URL=""
+if bashio::config.has_value 'public_url'; then
+    PUBLIC_URL="$(bashio::config 'public_url')"
+fi
+
+LAN_IPV4=""
+PUBLISHED_PORT=""
+if [ -z "${PUBLIC_URL}" ]; then
+    if [ "${WOOW_CANONICAL_SETTLED:-}" = 1 ]; then
+        LAN_IPV4="${WOOW_LAN_IPV4:-}"
+        PUBLISHED_PORT="${WOOW_LAN_PORT:-}"
+    fi
+fi
+
+export ODOO_MAINT_PUBLIC_URL="${PUBLIC_URL}"
+export ODOO_MAINT_LAN_IPV4="${LAN_IPV4}"
+export ODOO_MAINT_PORT="${PUBLISHED_PORT}"
+
+STATUS=0
+OUTPUT="$(python3 "${LIB}" --conf "${CONF}")" || STATUS=$?
+
+while IFS= read -r line; do
+    [ -n "${line}" ] || continue
+    case "${line}" in
+        *WARNING*) bashio::log.warning "${line}" ;;
+        *) bashio::log.info "${line}" ;;
+    esac
+done <<< "${OUTPUT}"
+
+exit "${STATUS}"

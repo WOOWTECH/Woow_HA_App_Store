@@ -137,4 +137,12 @@ if __name__ == "__main__":
         ),
     )
     env.cr.commit()  # noqa: F821
+    # What an RPC request does after its commit (odoo/service/model.py) and
+    # `odoo shell` does not: tell the running workers that the caches they
+    # hold are stale. `website.write` marks every cache invalidated, but the
+    # mark is signalled to other processes only here; without it a worker
+    # keeps serving `og:url` and `og:image` from the request address until
+    # the next restart (issue #164, measured on the test host). The call is
+    # a no-op when nothing was invalidated.
+    env.registry.signal_changes()  # noqa: F821
     sys.stdout.flush()

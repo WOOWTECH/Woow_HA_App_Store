@@ -1,0 +1,2 @@
+async function home(){await new Promise((resolve)=>{const waitForServer=(delay)=>{browser.setTimeout(async()=>{rpc("/web/webclient/version_info",{}).then(resolve).catch(()=>waitForServer(250));},delay);};waitForServer(1000);});const url="/"+(browser.location.search||"");browser.location.assign(url);}
+registry.category("actions").add("home",home);
