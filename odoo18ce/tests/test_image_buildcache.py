@@ -61,13 +61,17 @@ def lines(value: str) -> list:
 # --- the Release build ----------------------------------------------------
 
 @pytest.mark.parametrize("arch", ARCHES)
-def test_the_release_build_reads_the_registry_cache_first(arch: str) -> None:
-    """The gha cache stays behind it, for the build that finds no :buildcache."""
+def test_the_release_build_reads_the_registry_cache_only(arch: str) -> None:
+    """One cache source, so a cached layer is the blob the last Release pushed.
+
+    With the gha cache behind it, aarch64 0.4.7 reported layer (a) as
+    cached and still re-sent it: CI had written its own blob for the same
+    step into the gha cache, and BuildKit took that one (issue #219).
+    """
     cache_from = lines(publish_step("docker/build-push-action")["cache-from"])
     assert cache_from == [
         "type=registry,ref=${{ inputs.image_base }}-${{ inputs.arch }}:buildcache",
-        "type=gha,scope=${{ inputs.arch }}",
-    ], "the registry cache is the Release build's own; gha is only the fallback"
+    ], "a second cache can hold a different blob for the same step"
     # The first line resolves to the package the version images live on.
     resolved = (cache_from[0].replace("${{ inputs.image_base }}", IMAGE_BASE)
                 .replace("${{ inputs.arch }}", arch))
@@ -99,7 +103,7 @@ def test_buildkit_is_pinned_to_a_version() -> None:
 
 @pytest.mark.parametrize("arch", ARCHES)
 def test_ci_pins_the_same_buildkit(arch: str) -> None:
-    """CI writes the gha cache the Release build reads as its fallback."""
+    """CI builds what the Release builds, with the BuildKit the Release uses."""
     job = document(CI)["jobs"][f"build-{arch}"]
     pins = [step.get("with", {}).get("driver-opts") for step in job["steps"]
             if str(step.get("uses", "")).startswith("docker/setup-buildx-action")]
