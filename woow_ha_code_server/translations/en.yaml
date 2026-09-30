@@ -48,6 +48,13 @@ configuration:
       for it to be reachable. Never enable without also setting a strong
       password here — the underlying code-server runs with authentication
       disabled (HA ingress is normally the only gate).
+  anthropic_api_key:
+    name: Anthropic API key (Claude Code, optional)
+    description: >-
+      Optional. Leave empty to sign in with `claude` in the add-on terminal
+      (a Claude subscription). When set, it is exported as ANTHROPIC_API_KEY
+      for the terminal `claude`, the Claude Code chat-sidebar agent and the
+      Claude Code extension.
   reset_pi_state:
     name: Reset pi state (one-shot)
     description: >-

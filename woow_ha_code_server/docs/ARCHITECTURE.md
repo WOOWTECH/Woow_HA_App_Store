@@ -2,7 +2,7 @@
 
 ## Process model
 
-This add-on layers on `ghcr.io/hassio-addons/vscode/{amd64,aarch64}:7.0.0` and adds exactly one node to its s6-rc service graph. Everything else — `init-user`, `init-mysql`, `init-mosquitto`, `init-code-server`, `code-server` — is upstream, unmodified.
+This add-on layers on `ghcr.io/hassio-addons/vscode/{amd64,aarch64}:7.2.0` and adds exactly one node to its s6-rc service graph. Everything else — `init-user`, `init-mysql`, `init-mosquitto`, `init-code-server`, `code-server` — is upstream, unmodified.
 
 ```
                     ┌──────────────┐
@@ -17,7 +17,7 @@ This add-on layers on `ghcr.io/hassio-addons/vscode/{amd64,aarch64}:7.0.0` and a
 
 `init-woow` is wired as a dependency of `init-code-server` via a marker file at `rootfs/etc/s6-overlay/s6-rc.d/init-code-server/dependencies.d/init-woow` — s6-rc runs it to completion before `init-code-server` starts. This ordering is load-bearing: `init-code-server` calls `bashio::exit.nok` if the configured `config_path` directory does not already exist, and `init-woow` is what creates it.
 
-**s6 bundle membership.** This base image (`hassio-addons/vscode:7.0.0`) does **not** ship a `/etc/s6-overlay/s6-rc.d/user/contents.d/` directory — verified empirically by inspecting the built image. Its s6-overlay version (3.2.3.2) instead uses the `/etc/s6-overlay/user-bundles.d/user/contents.d/` overlay mechanism, which is what actually holds the markers for `code-server`, `init-code-server`, `init-user`, `init-mysql`, `init-mosquitto`. `init-woow` and `nginx-direct` are added there, not under `s6-rc.d/user/contents.d/` (a different base image's convention — do not copy that path blindly onto a different base without checking first, the way this add-on's own recon initially assumed).
+**s6 bundle membership.** This base image (`hassio-addons/vscode:7.2.0`) does **not** ship a `/etc/s6-overlay/s6-rc.d/user/contents.d/` directory — verified empirically by inspecting the built image. Its s6-overlay version (3.2.3.2) instead uses the `/etc/s6-overlay/user-bundles.d/user/contents.d/` overlay mechanism, which is what actually holds the markers for `code-server`, `init-code-server`, `init-user`, `init-mysql`, `init-mosquitto`. `init-woow` and `nginx-direct` are added there, not under `s6-rc.d/user/contents.d/` (a different base image's convention — do not copy that path blindly onto a different base without checking first, the way this add-on's own recon initially assumed).
 
 ## What `init-woow` does, in order
 

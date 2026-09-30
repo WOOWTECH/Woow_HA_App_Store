@@ -1,8 +1,8 @@
 # Woow Code Server (Home Assistant Add-on)
 
 [![HA add-on](https://img.shields.io/badge/Home%20Assistant-Add--on-41BDF5)](https://www.home-assistant.io/)
-[![code-server](https://img.shields.io/badge/code--server-4.135.0-blueviolet)](https://github.com/coder/code-server)
-[![pi-coding-agent](https://img.shields.io/badge/pi--coding--agent-0.83.0-blue)](https://www.npmjs.com/package/@earendil-works/pi-coding-agent)
+[![code-server](https://img.shields.io/badge/code--server-4.139.1-blueviolet)](https://github.com/coder/code-server)
+[![pi-coding-agent](https://img.shields.io/badge/pi--coding--agent-0.99.1-blue)](https://www.npmjs.com/package/@earendil-works/pi-coding-agent)
 [![ACP](https://img.shields.io/badge/ACP%20client-formulahendry.acp--client%400.2.0-green)](https://open-vsx.org/extension/formulahendry/acp-client)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
@@ -21,8 +21,9 @@ pi's state here is **private to this add-on** — not shared with the separate `
 | | |
 |---|---|
 | **UI** | Home Assistant sidebar (ingress), auto-enabled on first boot |
-| **IDE** | code-server 4.135.0 layered on `hassio-addons/vscode:7.0.0` — HA/YAML/MDI extensions, `ha` CLI, oh-my-zsh all still present |
-| **Agent** | pi 0.83.0 in the ACP right-side chat panel, and as `pi` on every terminal PATH |
+| **IDE** | code-server 4.139.1 layered on `hassio-addons/vscode:7.2.0` — HA/YAML/MDI extensions, `ha` CLI, oh-my-zsh all still present |
+| **Agent** | pi 0.99.1 in the ACP right-side chat panel, and as `pi` on every terminal PATH |
+| **Claude Code** | Claude Code 2.1.285: `claude` on every terminal PATH, a second **Claude Code** agent in the ACP chat panel (`claude-agent-acp` 0.84.0), and the official extension. Sign in once with `claude` in the terminal, or set the optional `anthropic_api_key` option; state lives in `/data/pi-agent/claude` |
 | **Workspace** | Configurable `config_path` (default `/share/projects`) |
 | **Persistence** | pi state in this add-on's own `/data/pi-agent`; IDE settings in `/data/vscode` (both Supervisor-managed, both backed up) |
 | **Fallback** | If the chat webview ever doesn't render for you: a seeded terminal `pi` task (always available) and an optional direct HTTP-Basic-gated port (opt-in) |
@@ -91,7 +92,7 @@ translations/{en,zh-tw}.yaml     HA UI strings for every option
 SSHHA=/path/to/sshha.sh HA_ADDON_CONTAINER=app_woow_ha_code_server \
   PARITY_TARGET=ha bash tests/smoke-container.sh
 PARITY_TARGET=ha bash tests/smoke-acp.sh
-PARITY_TARGET=ha EXPECTED_PI_VERSION=0.83.0 bash tests/smoke-pi-integration.sh
+PARITY_TARGET=ha EXPECTED_PI_VERSION=0.99.1 bash tests/smoke-pi-integration.sh
 
 # Against the Supervisor's own view of the add-on:
 HA_URL=https://your-ha-host HA_TOKEN=... bash tests/smoke-addon.sh

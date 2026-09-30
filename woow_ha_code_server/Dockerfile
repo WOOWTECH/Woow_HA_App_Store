@@ -1,4 +1,4 @@
-ARG BUILD_FROM=ghcr.io/hassio-addons/vscode/amd64:7.0.0
+ARG BUILD_FROM=ghcr.io/hassio-addons/vscode/amd64:7.2.0
 FROM ${BUILD_FROM}
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
@@ -7,7 +7,9 @@ ENV LANG=C.UTF-8 \
     PI_AGENT_DATA_DIR=/data/pi-agent \
     PI_CODING_AGENT_DIR=/data/pi-agent \
     PI_TELEMETRY=0 \
-    PI_SKIP_VERSION_CHECK=1
+    PI_SKIP_VERSION_CHECK=1 \
+    CLAUDE_CONFIG_DIR=/data/pi-agent/claude \
+    DISABLE_AUTOUPDATER=1
 
 # --- nginx (F2 fallback only) + xz-utils (Node tarball below) --------------
 # nginx: the upstream vscode image ships no nginx at all — code-server is
@@ -52,8 +54,8 @@ RUN set -euo pipefail; \
 # add-on must agree so pi's session/skill/model schema never drifts between
 # them (there is no shared state any more, but the SCHEMA must still match
 # in case of a future migration tool).
-ARG PI_CODING_AGENT_VERSION=0.83.0
-ARG PI_ACP_VERSION=0.0.33
+ARG PI_CODING_AGENT_VERSION=0.99.1
+ARG PI_ACP_VERSION=0.0.34
 RUN set -euo pipefail; \
     /opt/node22/bin/npm install -g --omit=dev --no-fund --no-audit --prefix /opt/node22 \
       "@earendil-works/pi-coding-agent@${PI_CODING_AGENT_VERSION}" \
@@ -63,11 +65,31 @@ RUN set -euo pipefail; \
 RUN test "$(pi --version)" = "${PI_CODING_AGENT_VERSION}"
 RUN command -v pi-acp >/dev/null
 
+# --- Claude Code CLI + its ACP adapter (PARITY_CONTRACT.md 1.1) ------------
+# Same packages and pins as the podman/k3s image: `claude` on PATH and
+# `claude-agent-acp` as the sidebar's second agent. Installed into the same
+# /opt/node22 prefix as pi and symlinked into /usr/local/bin. State lives in
+# CLAUDE_CONFIG_DIR=/data/pi-agent/claude (image ENV above, plus
+# /run/s6/container_environment from init-woow and /etc/profile.d/claude.sh).
+ARG CLAUDE_CODE_VERSION=2.1.285
+ARG CLAUDE_AGENT_ACP_VERSION=0.84.0
+RUN set -euo pipefail; \
+    /opt/node22/bin/npm install -g --omit=dev --no-fund --no-audit --prefix /opt/node22 \
+      "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" \
+      "@agentclientprotocol/claude-agent-acp@${CLAUDE_AGENT_ACP_VERSION}"; \
+    ln -sf /opt/node22/bin/claude           /usr/local/bin/claude; \
+    ln -sf /opt/node22/bin/claude-agent-acp /usr/local/bin/claude-agent-acp; \
+    v="$(claude --version | awk '{print $1}')"; \
+    test "$v" = "${CLAUDE_CODE_VERSION}"; \
+    test -x "$(command -v claude-agent-acp)"; \
+    /opt/node22/bin/npm ls -g --prefix /opt/node22 --depth 0 "@agentclientprotocol/claude-agent-acp" \
+      | grep -q "@${CLAUDE_AGENT_ACP_VERSION}"
+
 # --- Stop silent Unicode-space path corruption -------------------------------
 # pi folds U+00A0, U+2000-200A, U+202F, U+205F and U+3000 to an ASCII space on
 # every read/write/edit, and builds its read fallback chain from the
 # ALREADY-FOLDED path, so the exact path the caller asked for is never tried.
-# Reproduced end to end on pi 0.83.0:
+# Reproduced end to end on pi 0.83.0 (both call sites still patched on 0.99.1):
 #
 #   - read of `Q1<U+3000>報告.txt` returned the contents of the sibling
 #     `Q1<SPACE>報告.txt`, with isError:false — a confidential/public pair
@@ -141,6 +163,28 @@ RUN set -euo pipefail; \
     test -f "${EXT_DIR}/package.json"; \
     echo "formulahendry.acp-client#${ACP_CLIENT_VERSION}" >> /root/vscode.extensions
 
+# The official Claude Code extension, same pin as podman/k3s. Open VSX ships
+# it per target platform; the VSIX carries its own native claude binary
+# (mode 0755 in the archive — re-asserted below in case an unzip drops it).
+ARG CLAUDE_CODE_EXTENSION_VERSION=2.1.285
+RUN set -euo pipefail; \
+    case "${BUILD_ARCH}" in \
+      amd64)   TP=linux-x64 ;; \
+      aarch64) TP=linux-arm64 ;; \
+      *) echo "unsupported arch ${BUILD_ARCH}" >&2; exit 1 ;; \
+    esac; \
+    V="${CLAUDE_CODE_EXTENSION_VERSION}"; \
+    EXT_DIR="/usr/local/lib/code-server/lib/vscode/extensions/anthropic.claude-code-${V}"; \
+    mkdir -p "${EXT_DIR}" /tmp/claude-vsix; \
+    curl -fJL -o /tmp/claude.vsix \
+      "https://open-vsx.org/api/Anthropic/claude-code/${TP}/${V}/file/Anthropic.claude-code-${V}@${TP}.vsix"; \
+    unzip -q /tmp/claude.vsix -d /tmp/claude-vsix; \
+    cp -a /tmp/claude-vsix/extension/. "${EXT_DIR}/"; \
+    rm -rf /tmp/claude.vsix /tmp/claude-vsix; \
+    test "$(jq -r .version "${EXT_DIR}/package.json")" = "${V}"; \
+    chmod 0755 "${EXT_DIR}/resources/native-binary/claude"; \
+    echo "anthropic.claude-code#${V}" >> /root/vscode.extensions
+
 # --- pi state skeleton -------------------------------------------------------
 # NOT baked into /data here (unlike the podman image) — HA's /data is a
 # per-addon Supervisor mount that does not exist at build time. init-woow's
@@ -150,6 +194,7 @@ RUN mkdir -p /opt/pi-agent-skel/home/.pi/agent \
              /opt/pi-agent-skel/sessions \
              /opt/pi-agent-skel/skills \
              /opt/pi-agent-skel/npm-global/bin \
+             /opt/pi-agent-skel/claude \
  && touch /opt/pi-agent-skel/.woow-pi-store
 
 COPY rootfs/ /

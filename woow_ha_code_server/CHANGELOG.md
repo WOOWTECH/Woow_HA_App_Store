@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.6
+
+- **PARITY_CONTRACT 1.1 — same-day bump with the podman package and the k3s chart.** code-server **4.139.1** (base `hassio-addons/vscode` 7.0.0 → **7.2.0**; its rootfs and s6 layout are unchanged), pi **0.99.1**, pi-acp **0.0.34**. The Unicode-space patch still applies to both `path-utils.js` copies and `f1-verify.mjs` runs in the build.
+- **Claude Code is built in.** `claude` 2.1.285 on every terminal PATH; a second **Claude Code** agent in the ACP chat sidebar (`claude-agent-acp` 0.84.0), merged into existing `settings.json` on the next start like the pi agent; and the official Claude Code extension. One state dir for all three: `/data/pi-agent/claude` (0700), so one `claude` login survives restarts and updates. Self-update is off (`DISABLE_AUTOUPDATER=1`) — versions move with this add-on.
+- **New option `anthropic_api_key`** (optional, password field). Leave it empty to sign in with `claude` in the terminal; set it to use an API key instead.
+- New shared file `/etc/profile.d/claude.sh`, hash-pinned with the other shared files.
+
 ## 0.1.5
 
 - **Documents the upstream signal-reporting bug, and ships a one-command check for it.** A bash command killed by a signal from outside pi's control — the OOM killer, an external `kill`, SIGSEGV, a `timeout` in the user's own command string — is returned to the model as a *successful* tool call with whatever partial output it produced (`isError: false`), so the agent cannot tell "the build finished" from "the build was OOM-killed halfway". This is an upstream bug in pi and is **not** patched out of the image: unlike the Unicode-path fix, the correct behaviour is a change to pi's tool contract, not a local rewrite. `KNOWN_UPSTREAM_ISSUES.md` records the root cause (`waitForChildProcess` registers `(code) => …` for Node's `(code, signal)` events and drops the signal), and `patches/f4-signal-repro.mjs` proves it with no model call and no auth — exit 3 means a future pi bump fixed it.

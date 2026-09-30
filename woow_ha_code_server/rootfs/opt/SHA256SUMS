@@ -1,3 +1,4 @@
 3c39a8ad4934210fb34fffdf5a6fb9640994c843845f4ed5c48cce508ec64e73  /usr/local/bin/pi-code
 8be97cdabbf7998db582b64382e5e4c5bc01ef494b967d6131c35772c60d4116  /etc/profile.d/pi.sh
 bbba98a7a123b76950c9f9f6ebd1250e01dcfa098b8353574722d4867ea5b18a  /usr/local/bin/pi-seed
+40cb570db992ef5bc64c8712cbf325d260268643ae2860ce51c104b6b4deb6b8  /etc/profile.d/claude.sh

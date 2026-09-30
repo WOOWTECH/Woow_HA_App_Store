@@ -120,6 +120,10 @@ PI_DEFAULT_MODEL="$(bashio::config 'pi_default_model' '')" \
 PI_AGENT_DATA_DIR="${DATA}" \
     /usr/local/bin/pi-seed
 chmod 700 "${DATA}"
+# Claude Code state (PARITY_CONTRACT.md 1.1): pi-seed copies the skeleton dir;
+# lock it down like the pi store itself — it holds the claude login.
+mkdir -p "${DATA}/claude"
+chmod 700 "${DATA}/claude"
 bashio::log.info "init-woow: pi state store seeded at ${DATA}"
 
 # --- 6. ~/.pi link -----------------------------------------------------------
@@ -162,5 +166,15 @@ printf '%s' "${DATA}"        > /run/s6/container_environment/PI_AGENT_DATA_DIR
 printf '%s' "${DATA}"        > /run/s6/container_environment/PI_CODING_AGENT_DIR
 printf '%s' "0"              > /run/s6/container_environment/PI_TELEMETRY
 printf '%s' "1"              > /run/s6/container_environment/PI_SKIP_VERSION_CHECK
+printf '%s' "${DATA}/claude" > /run/s6/container_environment/CLAUDE_CONFIG_DIR
+printf '%s' "1"              > /run/s6/container_environment/DISABLE_AUTOUPDATER
+# Optional API key for Claude Code (contract §7 item 7). Unset = log in with
+# `claude` in the terminal instead; nothing is required to start.
+if bashio::config.has_value 'anthropic_api_key'; then
+    printf '%s' "$(bashio::config 'anthropic_api_key')" > /run/s6/container_environment/ANTHROPIC_API_KEY
+    bashio::log.info "init-woow: ANTHROPIC_API_KEY exported for Claude Code"
+else
+    rm -f /run/s6/container_environment/ANTHROPIC_API_KEY
+fi
 
 bashio::log.info "init-woow: done"

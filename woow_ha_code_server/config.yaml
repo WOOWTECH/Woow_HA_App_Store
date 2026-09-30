@@ -1,7 +1,7 @@
 name: Woow Code Server
-version: "0.1.5"
+version: "0.1.6"
 slug: woow_ha_code_server
-description: code-server 4.135.0 with the pi coding agent (0.83.0), pi-acp and the ACP Client chat sidebar baked in — WOOWTECH build layered on the Home Assistant Community vscode add-on
+description: code-server 4.139.1 with the pi coding agent (0.99.1) and Claude Code (2.1.285), pi-acp and the ACP Client chat sidebar baked in — WOOWTECH build layered on the Home Assistant Community vscode add-on
 url: https://github.com/WOOWTECH/Woow_ha_code_server_add_on
 arch:
   - amd64
@@ -62,6 +62,7 @@ options:
   pi_default_provider: ""
   pi_default_model: ""
   direct_password: ""
+  anthropic_api_key: ""
   reset_pi_state: false
   env_vars: []
 schema:
@@ -75,6 +76,7 @@ schema:
   pi_default_provider: str?
   pi_default_model: str?
   direct_password: password?
+  anthropic_api_key: password?
   reset_pi_state: bool
   env_vars:
     - name: str

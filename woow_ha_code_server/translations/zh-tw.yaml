@@ -44,6 +44,12 @@ configuration:
       會另外開一個不經過 ingress、用 HTTP Basic 驗證保護的 1338 埠。還要
       在「網路」區塊把 1338 對外開放才連得到。務必同時設一組夠強的密碼——
       底層的 code-server 本身是關掉驗證的（平常只靠 HA ingress 那一關）。
+  anthropic_api_key:
+    name: Anthropic API key（Claude Code，選填）
+    description: >-
+      選填。留空時請在 add-on 的終端機執行 `claude` 登入（Claude 訂閱）。
+      填寫後會以 ANTHROPIC_API_KEY 提供給終端機的 `claude`、聊天側欄的
+      Claude Code 代理，以及 Claude Code 擴充。
   reset_pi_state:
     name: 重置 pi 狀態（一次性）
     description: >-

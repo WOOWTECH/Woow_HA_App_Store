@@ -7,7 +7,7 @@ set -uo pipefail
 
 . "$(dirname "$0")/lib/parity.sh"
 
-EXPECTED_PI_VERSION="${EXPECTED_PI_VERSION:-0.83.0}"
+EXPECTED_PI_VERSION="${EXPECTED_PI_VERSION:-0.99.1}"
 PASS_N=0; FAIL_N=0
 
 ok()   { printf '  \033[32mPASS\033[0m  %s\n' "$*"; PASS_N=$((PASS_N+1)); }

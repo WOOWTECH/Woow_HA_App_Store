@@ -1,8 +1,8 @@
 # Woow Code Server（Home Assistant Add-on）
 
 [![HA add-on](https://img.shields.io/badge/Home%20Assistant-Add--on-41BDF5)](https://www.home-assistant.io/)
-[![code-server](https://img.shields.io/badge/code--server-4.135.0-blueviolet)](https://github.com/coder/code-server)
-[![pi-coding-agent](https://img.shields.io/badge/pi--coding--agent-0.83.0-blue)](https://www.npmjs.com/package/@earendil-works/pi-coding-agent)
+[![code-server](https://img.shields.io/badge/code--server-4.139.1-blueviolet)](https://github.com/coder/code-server)
+[![pi-coding-agent](https://img.shields.io/badge/pi--coding--agent-0.99.1-blue)](https://www.npmjs.com/package/@earendil-works/pi-coding-agent)
 [![ACP](https://img.shields.io/badge/ACP%20client-formulahendry.acp--client%400.2.0-green)](https://open-vsx.org/extension/formulahendry/acp-client)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
@@ -21,8 +21,9 @@
 | | |
 |---|---|
 | **UI** | Home Assistant 側邊欄（ingress），第一次開機自動啟用 |
-| **IDE** | code-server 4.135.0，疊在 `hassio-addons/vscode:7.0.0` 上——HA/YAML/MDI extension、`ha` CLI、oh-my-zsh 全部保留 |
-| **Agent** | pi 0.83.0，右側 ACP chat panel 直接可用；每個 terminal 的 PATH 上都有 `pi` |
+| **IDE** | code-server 4.139.1，疊在 `hassio-addons/vscode:7.2.0` 上——HA/YAML/MDI extension、`ha` CLI、oh-my-zsh 全部保留 |
+| **Agent** | pi 0.99.1，右側 ACP chat panel 直接可用；每個 terminal 的 PATH 上都有 `pi` |
+| **Claude Code** | Claude Code 2.1.285：每個 terminal 都能直接 `claude`；ACP chat panel 多一個 **Claude Code** 代理（`claude-agent-acp` 0.84.0）；另有官方擴充。在終端機執行 `claude` 登入一次，或填選填的 `anthropic_api_key` 選項；狀態放在 `/data/pi-agent/claude` |
 | **Workspace** | 可設定的 `config_path`（預設 `/share/projects`） |
 | **持久化** | pi 狀態在本 add-on 自己的 `/data/pi-agent`；IDE 設定在 `/data/vscode`（兩者都由 Supervisor 管理，都會被備份） |
 | **備援** | 萬一聊天 webview 打不開：一個永遠可用的 terminal `pi` 任務、以及一個選用的 HTTP Basic 驗證直連埠 |
@@ -93,7 +94,7 @@ translations/{en,zh-tw}.yaml     每個選項的 HA UI 文字
 SSHHA=/path/to/sshha.sh HA_ADDON_CONTAINER=app_woow_ha_code_server \
   PARITY_TARGET=ha bash tests/smoke-container.sh
 PARITY_TARGET=ha bash tests/smoke-acp.sh
-PARITY_TARGET=ha EXPECTED_PI_VERSION=0.83.0 bash tests/smoke-pi-integration.sh
+PARITY_TARGET=ha EXPECTED_PI_VERSION=0.99.1 bash tests/smoke-pi-integration.sh
 
 # 對著 Supervisor 自己看到的 add-on 狀態：
 HA_URL=https://your-ha-host HA_TOKEN=... bash tests/smoke-addon.sh

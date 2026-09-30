@@ -1,4 +1,4 @@
-# Known upstream issues (pi 0.83.0)
+# Known upstream issues (pi 0.83.0; carried forward to 0.99.1)
 
 Bugs that live in pi itself, not in our packaging. Recorded here so nobody
 re-investigates them from scratch, and so a pi version bump has a checklist.
@@ -11,7 +11,7 @@ Everything below is either unpatchable locally or not worth the risk.
 
 ## F4 — a signal-killed bash command is reported as success
 
-**Status: still present in 0.83.0. Already reported upstream twice. Do not file a third.**
+**Status: present in 0.83.0; not re-verified on 0.99.1 yet (the 2026-09-30 bump) — re-run `patches/f4-signal-repro.mjs` before relying on it. Already reported upstream twice. Do not file a third.**
 
 ### Symptom
 

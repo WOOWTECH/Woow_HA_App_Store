@@ -21,7 +21,7 @@ Run these after the add-on reports `started`:
 
 ```bash
 # P01-P05: pi/pi-acp present and pinned
-docker exec <container> pi --version           # expect 0.83.0
+docker exec <container> pi --version           # expect 0.99.1
 docker exec <container> which pi-acp
 
 # P09-P12: settings.json required keys
