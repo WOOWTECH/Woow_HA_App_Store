@@ -132,8 +132,8 @@ RUN echo "layer (a) refreshed ${LAYER_A_REFRESH}" \
 #    `odoo-deb-depends.txt` missed is installed into this layer, where it
 #    makes (b) bigger and never breaks the build.
 # ──────────────────────────────────────────────
-ARG ODOO_DEB_VERSION="18.0.20260914"
-ARG ODOO_DEB_SHA256="378a53702f9971722260d1182bfb7dd650e9c3b859f92b1c0d520a222e1bc3dd"
+ARG ODOO_DEB_VERSION="18.0.20260930"
+ARG ODOO_DEB_SHA256="f145bc847ac70db61e0c8327cbf0611844e698952b65518b4133332073d224c2"
 RUN apt-get update \
     && curl -fsSL \
         "https://nightly.odoo.com/18.0/nightly/deb/odoo_${ODOO_DEB_VERSION}_all.deb" \

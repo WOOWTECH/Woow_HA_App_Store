@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.4.7 — 2026-09-30
+
+### Changed
+- Odoo nightly package 18.0.20260914 -> 18.0.20260930. The first Odoo
+  bump on the three-layer image (0.4.6): updating downloads the Odoo
+  package layer and the layers under it, about 380 MiB, and reuses the
+  stable-packages layer. The `Depends` of the new package is unchanged,
+  so `odoo-deb-depends.txt` stays as it is. Issue #153.
+
 ## 0.4.6 — 2026-09-30
 
 ### Changed
