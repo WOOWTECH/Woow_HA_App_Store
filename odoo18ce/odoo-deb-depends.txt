@@ -1,0 +1,130 @@
+# The `Depends` field of the pinned Odoo nightly `.deb`, normalized.
+#
+# Layer (a) of the Dockerfile installs these packages *before* the `.deb`
+# itself is installed in layer (b), so that an Odoo bump re-sends only the
+# package and not the ~480 MiB of dependencies underneath it (issue #153,
+# ADR 0013). The guard test `tests/test_dockerfile_layers.py` fails when
+# this file and layer (a)'s package list stop agreeing.
+#
+# Format -- this is a contract with the odoo-bump workflow, which
+# regenerates the file when it pins a new `.deb` (tracked separately under
+# #153). Read it as:
+#
+#   * One `Depends` entry per line, one package name per line, sorted with
+#     `LC_ALL=C`.
+#   * A line whose first non-blank character is `#` is a comment, and a
+#     blank line is ignored.
+#   * Everything after `  # ` on a package line is notes, separated by
+#     `; `. A note is `<kind>: <value>`. A value is prose and may contain a
+#     semicolon, as long as what follows the semicolon does not itself
+#     start with `word:` -- that opens a new note, so that a misspelled
+#     kind is reported rather than swallowed as prose. A note is one of:
+#       - `alternatives: a | b | c` -- the entry was an alternatives group,
+#         written here exactly as the `.deb` wrote it. The name on the left
+#         is the alternative apt resolves on the pinned base image, which is
+#         not always the first one: bookworm has no `python3-lxml-html-clean`.
+#       - `version: (>= 1.2)` -- a version constraint the name dropped. It is
+#         recorded, not enforced: the base image's Debian release decides the
+#         version, and a constraint it cannot satisfy fails the build in (b).
+#       - `qualifier: :any` -- an architecture qualifier the name dropped.
+#         The image is single-arch per build, so the plain name installs.
+#       - `deferred: <why, and until when>` -- layer (a) does not install
+#         this name at all. A nightly that gains a dependency would
+#         otherwise rebuild the ~480 MiB layer (a) on a routine bump; the
+#         entry is recorded here, apt installs it into (b), and it is folded
+#         into (a) at the next event that rebuilds (a) anyway (ADR 0013).
+#       - `dropped: <why, and until when>` -- the mirror of `deferred`: the
+#         `.deb` no longer depends on this name, and layer (a) still
+#         installs it. Removing it would rebuild (a) on a routine bump, so
+#         the line stays until the next event that rebuilds (a) anyway.
+#       - `satisfied-by: <package>` -- layer (a) installs `<package>` instead
+#         of this name, because `<package>` provides it. Used for
+#         `postgresql-client`, which is a real metapackage tracking the
+#         newest PostgreSQL in the pgdg repository: installing it by name
+#         would add a second client beside the pinned `postgresql-client-16`.
+#
+#   * The `# source:` line below names the `.deb` this file was generated
+#     from. It is provenance, not a pin, and the static tier does not fail
+#     when it falls behind `ARG ODOO_DEB_VERSION`: the build jobs need the
+#     static tier, so a red one would cost the weekly bump the image build
+#     that proves the new package. A list behind the pin costs layer (b)
+#     size and nothing else. Regenerating it is part of a bump, and the
+#     bump workflow will do it itself once #153's sibling issue lands.
+#
+#   * To regenerate it after a bump, read the new package's field and apply
+#     the rules above:
+#
+#         curl -fsSL "https://nightly.odoo.com/18.0/nightly/deb/\
+#         odoo_${ODOO_DEB_VERSION}_all.deb" -o /tmp/odoo.deb
+#         dpkg-deb -f /tmp/odoo.deb Depends \
+#           | tr ',' '\n' | sed 's/^ *//; s/ *$//' | LC_ALL=C sort
+#
+#     A package the new `.deb` adds gets a `deferred` note rather than a
+#     place in layer (a), and one it no longer names gets a `dropped` note
+#     rather than leaving (a): a weekly bump must not rebuild the big layer.
+#
+#     Two of the rules need a decision rather than a rewrite: which
+#     alternative of a group the base image's apt actually resolves
+#     (`apt-cache policy <name>` inside the base image answers it), and
+#     whether a name is a real package or one that layer (a) already
+#     provides. Then update layer (a)'s list in the Dockerfile and
+#     EXPECTED_SEQUENCE in the guard test to match.
+#
+#   * A dependency this file misses is not a broken build. Layer (b)
+#     installs the `.deb` with apt, which pulls whatever is still absent --
+#     into (b), where it makes the Odoo layer bigger and nothing else.
+#
+# source: odoo_18.0.20260914_all.deb
+adduser
+fonts-dejavu-core  # alternatives: fonts-dejavu-core | fonts-freefont-ttf | fonts-freefont-otf | fonts-noto-core
+fonts-font-awesome
+fonts-inconsolata
+fonts-roboto-unhinted
+gsfonts
+libjs-underscore
+lsb-base
+postgresql-client  # satisfied-by: postgresql-client-16
+python3  # qualifier: :any
+python3-asn1crypto
+python3-babel
+python3-cbor2
+python3-chardet
+python3-cryptography
+python3-dateutil
+python3-decorator
+python3-docutils
+python3-freezegun
+python3-geoip2
+python3-gevent
+python3-greenlet
+python3-idna
+python3-jinja2
+python3-libsass
+python3-lxml  # alternatives: python3-lxml-html-clean | python3-lxml
+python3-markupsafe
+python3-num2words
+python3-ofxparse
+python3-openpyxl
+python3-openssl
+python3-passlib
+python3-pil
+python3-polib
+python3-psutil
+python3-psycopg2
+python3-pypdf2
+python3-qrcode
+python3-renderpm
+python3-reportlab
+python3-requests
+python3-rjsmin
+python3-serial
+python3-stdnum
+python3-tz
+python3-urllib3
+python3-usb
+python3-vobject
+python3-werkzeug
+python3-xlrd
+python3-xlsxwriter
+python3-xlwt
+python3-zeep

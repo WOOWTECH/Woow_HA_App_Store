@@ -24,6 +24,9 @@ BOOTSTRAP = ROOT / "rootfs/usr/local/bin/odoo-maintenance-bootstrap"
 # is installed in no database. See tests/test_base_url_guard.py.
 SERVER_ADDONS_DIR = "/opt/woow-server-addons"
 GUARD_MODULE = "woow_base_url_guard"
+# And this one rebuilds the URL website visitor tracking stores on the
+# Canonical URL, so an Ingress page view does not record the HA host (#160).
+VISITOR_URL_MODULE = "woow_visitor_url"
 # The file nginx includes the Generated rewrites from (ADR 0005). It lives on
 # /data because the running add-on rewrites it between starts.
 GENERATED_REWRITES = "/data/nginx-generated-rewrites.conf"
@@ -86,16 +89,19 @@ def test_config_script_contract() -> None:
     assert "DENY_STATUS='503'" in s
     assert "DENY_STATUS='444'" in s
     # Odoo's own web.base.url guess is disabled by a server-wide module, so
-    # the maintenance bootstrap stays the only writer of the Canonical URL.
-    assert f"server_wide_modules = base,web,{GUARD_MODULE}" in s
+    # the maintenance bootstrap stays the only writer of the Canonical URL,
+    # and a second one puts the Canonical URL into the page views visitor
+    # tracking stores.
+    assert f"server_wide_modules = base,web,{GUARD_MODULE},{VISITOR_URL_MODULE}" in s
     # The module is imported by name, so the directory holding it has to be
     # on the rendered addons_path and has to ship in the image.
     base_addons = re.search(r'^BASE_ADDONS="([^"]+)"', s, re.M)
     assert base_addons, "BASE_ADDONS is not one double-quoted, comma-separated list"
     assert SERVER_ADDONS_DIR in base_addons.group(1).split(",")
-    shipped = ROOT / "rootfs" / SERVER_ADDONS_DIR.lstrip("/") / GUARD_MODULE
-    assert (shipped / "__manifest__.py").is_file()
-    assert (shipped / "__init__.py").is_file()
+    for module in (GUARD_MODULE, VISITOR_URL_MODULE):
+        shipped = ROOT / "rootfs" / SERVER_ADDONS_DIR.lstrip("/") / module
+        assert (shipped / "__manifest__.py").is_file()
+        assert (shipped / "__init__.py").is_file()
     # nginx refuses to start while the included file is missing, so a fresh
     # install needs an empty one. An existing file is the last good generation
     # the running add-on wrote and is never truncated here.

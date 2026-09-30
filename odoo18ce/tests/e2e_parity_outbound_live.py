@@ -130,8 +130,11 @@ def create_fixtures(side: Side, marker: str) -> dict[str, Any]:
     # The U-E3 note: an invitation opens anonymously only without an Authorized Group.
     side.rpc("discuss.channel", "write", [[ids["channel"]], {"group_public_id": False}])
     ids["livechat_channel"] = side.rpc("im_livechat.channel", "search", [[]], {"limit": 1})[0]
+    # link.tracker's uniqueness key is (url, campaign, medium, source, label), not the title, so a
+    # prior run's tracker on the same URL collides on create however the title differs. Match on the
+    # URL and reuse whatever tracker already points at /contactus (U-E3 only needs one that resolves).
     ids["link_tracker"] = create("link.tracker", {"url": side.env.public + "/contactus",
-                                                  "title": marker + " E link"}, name_field="title")
+                                                  "title": marker + " E link"}, name_field="url")
     start = dt.datetime.now(dt.timezone.utc) + dt.timedelta(days=7)
     event = create("event.event", {"name": marker + " E event",
                                    "date_begin": start.strftime("%Y-%m-%d %H:%M:%S"),
@@ -168,9 +171,12 @@ def create_fixtures(side: Side, marker: str) -> dict[str, Any]:
             user = create("res.users", {"name": "%s E2 %s %s" % (marker, what, name), "login": recipient(what, name),
                                         "email": recipient(what, name)}, name_field="login", no_reset_password=True)
             side.rpc("res.users", "write", [[user], {"notification_type": "email"}])
+            # A user has at most one employee per company (Odoo constraint), and recipient() is
+            # marker-independent so `user` is reused across runs; match the employee on user_id, not
+            # its marker-bearing name, or a second run creates a second employee for the same user.
             per[what + "_employee"] = create("hr.employee", {
                 "name": "%s E2 %s %s" % (marker, what, name), "user_id": user, "work_email": recipient(what, name),
-                "leave_manager_id": admin, "expense_manager_id": admin})
+                "leave_manager_id": admin, "expense_manager_id": admin}, name_field="user_id")
         if leave_type:
             day = next_weekday(dt.date.today() + dt.timedelta(days=30 + 3 * (name == "ingress"))).isoformat()
             per["leave"] = create("hr.leave", {

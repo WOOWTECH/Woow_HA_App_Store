@@ -8,7 +8,11 @@ import unittest
 
 from e2e_menu_action_adapter import (
     EVIDENCE_SCHEMA,
+    WRITE_DATABASE,
+    is_configuration_error,
+    session_database,
     Masker,
+    OpenTarget,
     RunInfo,
     SurfaceObservation,
     addon_info_command,
@@ -20,9 +24,11 @@ from e2e_menu_action_adapter import (
     ingress_session_command,
     is_prefix_escape,
     parse_env_file,
+    parse_targets,
     parse_viewport,
     plan_visits,
     read_records,
+    require_write_database,
     scope_from_web_menus,
     skipped_record,
     url_literal_violation,
@@ -359,6 +365,218 @@ class EvidenceAndDiffTests(unittest.TestCase):
         self.assertEqual(len(read_records([good, ""])), 1)
         with self.assertRaisesRegex(ValueError, "schema"):
             read_records([json.dumps({"schema": "other/v1"})])
+
+
+class OpenTargetTests(unittest.TestCase):
+    """`open` judges screens the menu crawler cannot reach (#163)."""
+
+    def test_a_target_is_an_action_xmlid_or_a_route(self) -> None:
+        action = OpenTarget(module="project_todo", target="project_todo.project_task_action_todo")
+        self.assertTrue(action.is_action)
+        self.assertEqual(action.route, "/odoo/action-project_todo.project_task_action_todo")
+        self.assertTrue(action.backend)
+        route = OpenTarget(module="ecpay_invoice_website", target="/shop/checkout")
+        self.assertFalse(route.is_action)
+        self.assertEqual(route.route, "/shop/checkout")
+        self.assertFalse(route.backend)
+        self.assertTrue(OpenTarget(module="m", target="/odoo/action-1?view_type=list").backend)
+
+    def test_identity_is_the_target_itself_so_both_surfaces_join(self) -> None:
+        # The identity must not carry the Ingress prefix, an origin or a record
+        # of which surface opened it, or `diff` could not join the two runs.
+        self.assertEqual(
+            OpenTarget(module="project_todo", target="project_todo.project_task_action_todo").identity,
+            "open:action:project_todo.project_task_action_todo",
+        )
+        # A query survives into the identity, but not as a query: masking
+        # redacts everything after a `?`, and two targets that differ only
+        # there would collapse into one ambiguous identity.
+        self.assertEqual(
+            OpenTarget(module="sale_management", target="/odoo/action-x?view_type=list").identity,
+            "open:route:/odoo/action-x;view_type=list",
+        )
+
+    def test_parse_targets_reads_one_object_per_line(self) -> None:
+        targets = parse_targets([
+            "# the To-do views, opened without running the server action",
+            "",
+            '{"module": "project_todo", "target": "project_todo.project_task_action_todo",'
+            ' "label": "To-do kanban", "expect_model": "project.task"}',
+            '{"module": "ecpay_invoice_website", "target": "/shop/checkout",'
+            ' "expect_selector": ".o_ecpay_einvoice", "cart": "/shop/product/desk-1"}',
+        ])
+        self.assertEqual([(item.module, item.target) for item in targets], [
+            ("project_todo", "project_todo.project_task_action_todo"),
+            ("ecpay_invoice_website", "/shop/checkout"),
+        ])
+        self.assertEqual(
+            [item.target for item in parse_targets([
+                '{"module": "m", "target": "/odoo/action-1?view_type=list", "expect_model": "m.m"}'])],
+            ["/odoo/action-1?view_type=list"], "the view chooser is the one query a target may carry")
+        self.assertEqual(targets[0].label, "To-do kanban")
+        self.assertEqual(targets[0].expect_model, "project.task")
+        self.assertIsNone(targets[0].cart)
+        self.assertEqual(targets[1].cart, "/shop/product/desk-1")
+
+    def test_a_malformed_target_is_a_configuration_error(self) -> None:
+        cases = {
+            "not json": ["nope"],
+            "not an object": ['["project_todo"]'],
+            "unknown field": ['{"module": "m", "target": "/shop", "expect_selector": "#x", "surface": "public"}'],
+            "no target": ['{"module": "m", "expect_selector": "#x"}'],
+            "no module": ['{"target": "/shop", "expect_selector": "#x"}'],
+            "empty module": ['{"module": "", "target": "/shop", "expect_selector": "#x"}'],
+            "not a string": ['{"module": "m", "target": 5, "expect_selector": "#x"}'],
+            "nothing to check the screen by": ['{"module": "m", "target": "/shop"}'],
+            "not an xmlid": ['{"module": "m", "target": "project_todo", "expect_model": "m.m"}'],
+            "an origin": ['{"module": "m", "target": "https://odoo.example/shop", "expect_selector": "#x"}'],
+            "traversal": ['{"module": "m", "target": "/shop/../../etc", "expect_selector": "#x"}'],
+            "an ingress prefix": ['{"module": "m", "target": "%s/shop", "expect_selector": "#x"}' % PREFIX],
+            "a semicolon, which the identity uses for a query":
+                ['{"module": "m", "target": "/shop;a=1", "expect_selector": "#x"}'],
+            "an expectation that says nothing":
+                ['{"module": "m", "target": "/shop", "expect_selector": ""}'],
+            "an empty second expectation":
+                ['{"module": "m", "target": "/shop", "expect_selector": "#x", "expect_model": ""}'],
+            "an expect_model on a website route":
+                ['{"module": "m", "target": "/shop/payment", "expect_model": "sale.order"}'],
+            "a fragment":
+                ['{"module": "m", "target": "/my/orders/7#access_token=x", "expect_selector": "#x"}'],
+            "a query that does not choose a view":
+                ['{"module": "m", "target": "/odoo/action-1?db=other", "expect_model": "m.m"}'],
+            "a cart with a query":
+                ['{"module": "m", "target": "/shop", "expect_selector": "#x",'
+                 ' "cart": "/shop/desk-1?add_qty=99"}'],
+            "a cart that is not a route":
+                ['{"module": "m", "target": "/shop", "expect_selector": "#x", "cart": "sale.order"}'],
+            "duplicate": ['{"module": "m", "target": "/shop", "expect_selector": "#x"}',
+                          '{"module": "other", "target": "/shop", "expect_selector": "#y"}'],
+        }
+        for name, lines in cases.items():
+            with self.subTest(name):
+                with self.assertRaisesRegex(ValueError, "crawler configuration"):
+                    parse_targets(lines)
+
+    def test_a_configuration_error_is_told_apart_from_evidence(self) -> None:
+        # The run stops on a mistake of its own; a failure of the screen is
+        # recorded instead, and the two must never be confused.
+        self.assertTrue(is_configuration_error(ValueError("crawler configuration: target line 1 is empty")))
+        self.assertTrue(is_configuration_error(RuntimeError("crawler configuration: a target fills a cart")))
+        self.assertFalse(is_configuration_error(RuntimeError("the cart is still empty after adding /shop/x")))
+
+    def test_a_cart_route_is_told_its_own_rule(self) -> None:
+        with self.assertRaisesRegex(ValueError, "no query at all"):
+            parse_targets(['{"module": "m", "target": "/shop", "expect_selector": "#x",'
+                           ' "cart": "/shop/desk?add_qty=2"}'])
+        with self.assertRaisesRegex(ValueError, "view_type"):
+            parse_targets(['{"module": "m", "target": "/shop?add_qty=2", "expect_selector": "#x"}'])
+
+    def test_a_run_that_cannot_name_its_database_does_not_run(self) -> None:
+        # ODOO_DB is what the login asked for; only the session's answer is
+        # what the run was really on, and there is no third answer.
+        self.assertEqual(session_database("odoo_parity"), "odoo_parity")
+        for missing in (None, ""):
+            with self.assertRaisesRegex(RuntimeError, "did not report its database"):
+                session_database(missing)
+
+    def test_the_cart_write_is_refused_outside_the_parity_database(self) -> None:
+        # The cart write is not an Operation on purpose: NON_MUTATING_OPERATIONS
+        # is every member of that enum, so a WRITE member would be permitted by
+        # the read-only policy instead of refused. ADR 0012 bounds it instead.
+        self.assertEqual(WRITE_DATABASE, "odoo_parity")
+        reading = parse_targets(['{"module": "m", "target": "/shop/checkout", "expect_selector": "#x"}'])
+        writing = parse_targets(['{"module": "m", "target": "/shop/checkout", "expect_selector": "#x",'
+                                 ' "cart": "/shop/product/desk-1"}'])
+        require_write_database(reading, "odoo_test")
+        require_write_database(reading, None)
+        require_write_database(writing, WRITE_DATABASE)
+        for unknown in ("odoo_test", None):
+            # None is a session that did not say which database it is on; a run
+            # that cannot say where it would write may not write.
+            with self.assertRaisesRegex(RuntimeError, "odoo_parity"):
+                require_write_database(writing, unknown)
+
+
+TODO_TARGET = OpenTarget(module="project_todo", target="project_todo.project_task_action_todo",
+                         label="To-do kanban", expect_model="project.task")
+
+
+def open_record(surface: Surface, target: OpenTarget = TODO_TARGET, **overrides) -> dict:
+    values = dict(route=target.route, model="project.task", view="kanban")
+    values.update(overrides)
+    return evidence_record(RUN, surface, module=target.module, identity=target.identity,
+                           observation=observation(**values), label=target.label)
+
+
+class OpenEvidenceTests(unittest.TestCase):
+    def test_an_open_record_is_the_same_v1_record_with_its_label(self) -> None:
+        item = open_record(Surface.PUBLIC)
+        self.assertEqual(item["schema"], EVIDENCE_SCHEMA)
+        self.assertEqual(item["module"], "project_todo")
+        self.assertEqual(item["control_identity"], "open:action:project_todo.project_task_action_todo")
+        self.assertEqual(item["label"], "To-do kanban")
+        self.assertNotIn("writes", item["public"])
+        json.dumps(item)
+
+    def test_diff_judges_two_open_runs_with_no_change(self) -> None:
+        merged = diff_runs([open_record(Surface.PUBLIC)], [open_record(Surface.HA_INGRESS)])
+        self.assertEqual([(item["control_identity"], item["verdict"], item["severity"]) for item in merged],
+                         [("open:action:project_todo.project_task_action_todo", "PARITY", "none")])
+        self.assertEqual(verdict_lines(merged), ["PARITY open:action:project_todo.project_task_action_todo"])
+
+    def test_an_open_target_that_differs_on_one_surface_is_a_gap(self) -> None:
+        merged = diff_runs(
+            [open_record(Surface.PUBLIC)],
+            [open_record(Surface.HA_INGRESS, available=False, result="the screen has no .o_kanban_view")],
+        )
+        self.assertEqual(merged[0]["verdict"], "GAP")
+        self.assertEqual(merged[0]["severity"], "blocker")
+        self.assertIn("ingress unavailable: the screen has no .o_kanban_view", merged[0]["notes"])
+
+    def test_masking_a_record_leaves_an_identity_diff_can_join_on(self) -> None:
+        masker = Masker(bases={"<PUBLIC_BASE>": "https://odoo.example", "<HA_BASE>": HA},
+                        ingress_prefix=PREFIX, secrets=("hunter2",))
+        target = OpenTarget(module="project_todo", target="/odoo/action-454?view_type=list")
+        item = masker.value(evidence_record(RUN, Surface.HA_INGRESS, module=target.module,
+                                            identity=target.identity, observation=observation()))
+        self.assertEqual(item["control_identity"], "open:route:/odoo/action-454;view_type=list")
+
+    def test_an_open_record_names_the_records_the_run_created(self) -> None:
+        write = {"model": "sale.order", "id": "42", "how": "added the product on /shop/product/desk-1 to the cart"}
+        item = evidence_record(RUN, Surface.PUBLIC, module="ecpay_invoice_website", identity="open:route:/shop/checkout",
+                               observation=observation(writes=(write,)))
+        self.assertEqual(item["public"]["writes"], [write])
+        json.dumps(item)
+
+    def test_two_surfaces_that_wrote_different_records_judged_different_screens(self) -> None:
+        cart = lambda order_id, how, items=1: {"model": "sale.order", "id": order_id, "items": items, "how": how}
+        judge = lambda right: diff_runs(
+            [evidence_record(RUN, Surface.PUBLIC, module="m", identity="open:route:/shop/payment",
+                             observation=observation(writes=(cart("2", "added one"),)))],
+            [evidence_record(RUN, Surface.HA_INGRESS, module="m", identity="open:route:/shop/payment",
+                             observation=observation(writes=right))],
+        )[0]
+        # The same cart, however each run came by it, is the case that judges.
+        self.assertEqual(judge((cart("2", "the cart already held 1 item(s)"),))["verdict"], "PARITY")
+        different = judge((cart("3", "added one"),))
+        self.assertEqual((different["verdict"], different["severity"]), ("GAP", "blocker"))
+        self.assertIn("records written: public=sale.order:2 holding 1 ingress=sale.order:3 holding 1",
+                      different["notes"])
+        self.assertIn("records written: public=sale.order:2 holding 1 ingress=none", judge(())["notes"])
+        # The same cart is not the same screen once something else adds to it.
+        grew = judge((cart("2", "the cart already held 2 item(s)", items=2),))
+        self.assertEqual((grew["verdict"], grew["severity"]), ("GAP", "blocker"))
+        self.assertIn("ingress=sale.order:2 holding 2", grew["notes"])
+
+    def test_two_runs_of_different_databases_are_not_comparable(self) -> None:
+        other = RunInfo(run_id=RUN.run_id, target=RUN.target, database="odoo_test")
+        with self.assertRaisesRegex(ValueError, "crawler configuration: the two runs are not on one database"):
+            diff_runs(
+                [record(Surface.PUBLIC)],
+                [evidence_record(other, Surface.HA_INGRESS, module="contacts",
+                                 identity="menu:contacts.menu_contacts|ir.actions.act_window:100",
+                                 observation=observation())],
+            )
 
 
 class ViewportTests(unittest.TestCase):

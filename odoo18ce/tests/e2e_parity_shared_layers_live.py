@@ -924,6 +924,16 @@ _INJECTION_JS = """async () => {
   });
   use('svg-use-href', (node, url) => node.setAttribute('href', url));
   use('svg-use-ns', (node, url) => node.setAttributeNS(XLINK, 'xlink:href', url));
+  // Covered (media sources, #159): new Audio, HTMLMediaElement.src and HTMLSourceElement.src all
+  // point at the same probe path, so a regression in any one wrapper makes the 'media' way escape.
+  try { const audio = new Audio(probe('media')); audio.load(); } catch (e) {}
+  try {
+    const el = document.createElement('audio'); el.src = probe('media'); box.appendChild(el); el.load();
+  } catch (e) {}
+  try {
+    const el = document.createElement('audio'), src = document.createElement('source');
+    src.src = probe('media'); el.appendChild(src); box.appendChild(el); el.load();
+  } catch (e) {}
   // Accepted: markup and style, which the shim leaves alone by decision.
   const markup = document.createElement('div'); markup.style.display = 'none'; document.body.appendChild(markup);
   markup.innerHTML = '<img src="' + probe('innerHTML-img') + '">';

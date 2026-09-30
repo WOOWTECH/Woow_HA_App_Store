@@ -1,5 +1,90 @@
 # Changelog
 
+## 0.4.6 — 2026-09-30
+
+### Changed
+- Release builds keep their layer cache on **ghcr**, and the Release
+  notes report the download size. The build cache used to be the GitHub
+  Actions one, which is evicted after 7 days unused and LRU-evicted past
+  10 GB, and which every pull request writes to; a Release that missed it
+  rebuilt layers nobody had asked to change, and because a rebuild runs
+  `apt-get update` and gets new bytes, every rebuilt layer arrived with a
+  new digest and every host downloaded it again -- 0.4.1 to 0.4.2 re-sent
+  718 MiB on aarch64 and 0 MiB on amd64, from the same Dockerfile. The
+  Release build now reads and writes
+  `ghcr.io/woowtech/woow-ha-odoo-<arch>:buildcache`, on the same package
+  as the version images, and writes it only from `main`, so a manual
+  images-only run on another ref cannot become the cache the next Release
+  starts from. CI reads the same cache -- the package is public, so with
+  no ghcr login and no new permission -- and still writes only to the
+  Actions cache, which both sides keep reading behind the registry one so
+  that the first build after this change does not start cold. The image's compression (`gzip`) and the BuildKit
+  version are pinned as well, because both decide what a layer's bytes
+  are: changing either is a deliberate change that rebuilds every layer,
+  and the workflow says so where the pins are. Every Release also carries
+  a table of what updating costs a host, per architecture, against each
+  of the last three Releases, computed from the published manifests and
+  so correct even when a build was skipped because the image already
+  existed; over 100 MiB from the previous Release the run gets a warning.
+  The table can never block a Release: if it cannot be computed the notes
+  say `Download size: not computed` and the tag, the GitHub Release and
+  the store sync happen as before. No version bump. Issue #155, parent
+  #153.
+- The image is built as three layers instead of one, so that a small
+  package or an Odoo bump no longer re-sends the whole thing. One `RUN`
+  used to install PostgreSQL 16, the pinned Odoo nightly `.deb`, the
+  fonts and every tool together, in one ~690 MiB compressed layer;
+  adding `python3-yaml` in 0.4.3 and `python3-pycryptodome` in 0.4.4
+  changed that layer, so both updates downloaded all of it again, and on
+  a slow link the Supervisor's pull failed twice with `unexpected EOF`.
+  The Dockerfile now installs **(a)** the stable packages — PostgreSQL
+  16, the fonts, the tools, and the pinned `.deb`'s own dependencies,
+  listed in the new `odoo18ce/odoo-deb-depends.txt` — then **(b)** the
+  Odoo `.deb` alone, with `ARG ODOO_DEB_VERSION` and `ARG
+  ODOO_DEB_SHA256` declared between the two, then **(c)** the small apt
+  additions. A weekly Odoo bump now re-sends about 270 MiB instead of
+  about 690 MiB -- the 235 MiB package and the layers below it -- and a
+  small package re-sends only those, about 33 MiB: (c) itself, the
+  add-ons clone at 30.8 MiB, the rootfs overlay and the permissions
+  step. Those savings hold while CI's build cache still holds layer (a):
+  a build that finds it gone rebuilds the layer and the update is a full
+  download again, which is why a cache that does not expire is being
+  chosen separately (#153). `ARG LAYER_A_REFRESH` above (a) is the one
+  deliberate way to rebuild the big layer, for a security notice about
+  something it installs; a fix that lives below it, in the base image or
+  beside `curl`, still arrives with a base-image bump. The rule is
+  written down in
+  `docs/adr/0013-small-apt-additions-go-in-the-last-apt-layer.md`, and a
+  new Static-tier test freezes the Dockerfile's instruction order and
+  keeps layer (a)'s package list equal to the dependency file. **The
+  next update downloads the full image once**, because every layer below
+  the split is built anew; the one after it is small again. The set of
+  packages in the image is unchanged; what changes is which layer each
+  one lands in. No version bump. Issue #154, parent #153.
+
+### Fixed
+- A website page view opened through **Ingress** now records the page's
+  **Canonical URL** instead of the Home Assistant host. Odoo's visitor
+  tracking stored `request.httprequest.url`, whose host under Ingress is the
+  Home Assistant one -- the add-on runs Odoo with `proxy_mode` and the
+  Ingress listener forwards that host as `X-Forwarded-Host`. The Supervisor
+  had already removed the Ingress prefix, so the path was right and only the
+  scheme and host were wrong, and no Ingress token was ever stored; but
+  Website > Visitors listed addresses that cannot open the page (`U-C5`,
+  root cause `RC-9`), while the same screen's Public origin rows were
+  correct. The image now ships a second server-wide module,
+  `woow_visitor_url`, beside `woow_base_url_guard`: Odoo loads it in every
+  process, installs it in no database, and it rebuilds the stored URL on
+  what `website.get_base_url()` returns -- the website's `domain` when set,
+  otherwise the frozen `web.base.url` -- keeping the request's own path and
+  query. A visit that already arrives on the Canonical URL stores exactly
+  what it stored before, and a database with no Canonical URL yet stores the
+  path and query with no host at all. **Page views stored before this
+  version keep the Home Assistant host**: they are not rewritten and not
+  deleted. Every pull request now also starts Odoo in the image it builds
+  and fails when the patch is not applied, the in-image contract ADR 0010
+  established for the Canonical URL guard. Issue #160, parent #148.
+
 ## 0.4.5 — 2026-09-29
 
 ### Added

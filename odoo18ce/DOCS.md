@@ -179,6 +179,15 @@ module` and serves without the guard. That is caught before release instead:
 every pull request, including the weekly Odoo nightly bump, starts Odoo in
 the image it builds and fails when the guard is not applied.
 
+Website visitor tracking is corrected the same way. Odoo stores each tracked
+page view under the address the request arrived on, which through Ingress is
+the Home Assistant host, so Website → Visitors listed addresses that could
+not open the page. A second server-wide module, `woow_visitor_url`, rebuilds
+that address on the Canonical URL and keeps the page's own path, and the
+same pull request check starts Odoo in the built image and fails when it is
+not applied. Page views stored by an earlier version keep the address they
+were stored with; nothing rewrites them.
+
 On every start, before Odoo serves requests, the add-on therefore visits
 each Odoo database in its PostgreSQL and writes a Canonical URL:
 

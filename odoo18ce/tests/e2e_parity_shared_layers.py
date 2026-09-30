@@ -357,6 +357,9 @@ INJECTION_WAYS: tuple[InjectionWay, ...] = (
                  'setAttribute("xlink:href", url)'),
     InjectionWay("svg-use-href", COVERED, 'createElementNS <use>, setAttribute("href", url)'),
     InjectionWay("svg-use-ns", COVERED, 'createElementNS <use>, setAttributeNS(xlink, "xlink:href", url)'),
+    # #159 wrapped the media-source setters (the Registration Desk's barcode error sound escaped
+    # through new Audio); one covered way fires all three so a regression in any surfaces here.
+    InjectionWay("media", COVERED, "new Audio(url), HTMLMediaElement.src, HTMLSourceElement.src"),
     InjectionWay("innerHTML-img", ACCEPTED, 'innerHTML with <img src="url">', ("#158",)),
     InjectionWay("insertAdjacentHTML-use", ACCEPTED, 'insertAdjacentHTML with <svg><use xlink:href="url">'),
     InjectionWay("style-attr", ACCEPTED, "style attribute with url(url)", ("#170",)),

@@ -27,9 +27,134 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 # ──────────────────────────────────────────────
-# 2. Install PostgreSQL 16 and pin the exact Odoo build already deployed.
-#    Ingress changes must not silently upgrade a nightly Odoo package and
-#    trigger an unrelated database migration.
+# 2. Layer (a): the stable packages.
+#
+#    PostgreSQL 16, the fonts and tools the add-on needs, and the packages
+#    the pinned Odoo `.deb` depends on. That dependency list lives in
+#    `odoo-deb-depends.txt` beside this file, and the guard test
+#    (tests/test_dockerfile_layers.py) keeps it equal to the list below.
+#    Installing Odoo's dependencies here and the `.deb` alone in (b) is what
+#    stops an Odoo bump from re-sending this layer to every host: it is the
+#    big one, about 480 MiB of packages, and Docker cannot resume a partial
+#    layer (issue #153, ADR 0013).
+#
+#    Nothing that changes often belongs here, and nothing small: a small apt
+#    addition goes in layer (c) below. LAYER_A_REFRESH is the one deliberate
+#    way to rebuild this layer -- after a security notice for PostgreSQL or
+#    for anything else named below, change the date in a pull request and
+#    say in the CHANGELOG that the next update is a full download. It
+#    reaches only what this RUN installs: a fix for the base image, or for
+#    curl, gnupg2 and the libraries they bring in above (libssl3 among
+#    them), arrives with a base-image bump instead. BuildKit puts every declared ARG
+#    into the environment of the RUN steps below it, so the declaration
+#    alone would do it; the echo spends one line to make that true of any
+#    builder, and puts the date in the build log.
+# ──────────────────────────────────────────────
+ARG LAYER_A_REFRESH="2026-09-29"
+RUN echo "layer (a) refreshed ${LAYER_A_REFRESH}" \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends \
+        adduser \
+        fonts-dejavu-core \
+        fonts-font-awesome \
+        fonts-inconsolata \
+        fonts-noto-cjk \
+        fonts-roboto-unhinted \
+        git \
+        gsfonts \
+        jq \
+        libjs-underscore \
+        lsb-base \
+        nginx \
+        postgresql-16 \
+        postgresql-client-16 \
+        python3 \
+        python3-asn1crypto \
+        python3-babel \
+        python3-cbor2 \
+        python3-chardet \
+        python3-cryptography \
+        python3-dateutil \
+        python3-decorator \
+        python3-docutils \
+        python3-freezegun \
+        python3-geoip2 \
+        python3-gevent \
+        python3-greenlet \
+        python3-idna \
+        python3-jinja2 \
+        python3-libsass \
+        python3-lxml \
+        python3-markupsafe \
+        python3-num2words \
+        python3-ofxparse \
+        python3-openpyxl \
+        python3-openssl \
+        python3-passlib \
+        python3-pil \
+        python3-polib \
+        python3-psutil \
+        python3-psycopg2 \
+        python3-pypdf2 \
+        python3-qrcode \
+        python3-renderpm \
+        python3-reportlab \
+        python3-requests \
+        python3-rjsmin \
+        python3-serial \
+        python3-stdnum \
+        python3-tz \
+        python3-urllib3 \
+        python3-usb \
+        python3-vobject \
+        python3-werkzeug \
+        python3-xlrd \
+        python3-xlsxwriter \
+        python3-xlwt \
+        python3-zeep \
+        wkhtmltopdf \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# ──────────────────────────────────────────────
+# 3. Layer (b): the Odoo package, alone.
+#
+#    Pinned to the exact build already deployed: Ingress changes must not
+#    silently upgrade a nightly Odoo package and trigger an unrelated
+#    database migration.
+#
+#    Both ARGs are declared here, below (a). BuildKit hands every in-scope
+#    ARG to the RUN steps under it, so a bumped version would miss (a)'s
+#    cache as well if these lines sat any higher. The weekly odoo-bump
+#    rewrites both of them; keep them in this shape.
+#
+#    apt resolves the package's dependencies here as before. One that
+#    `odoo-deb-depends.txt` missed is installed into this layer, where it
+#    makes (b) bigger and never breaks the build.
+# ──────────────────────────────────────────────
+ARG ODOO_DEB_VERSION="18.0.20260914"
+ARG ODOO_DEB_SHA256="378a53702f9971722260d1182bfb7dd650e9c3b859f92b1c0d520a222e1bc3dd"
+RUN apt-get update \
+    && curl -fsSL \
+        "https://nightly.odoo.com/18.0/nightly/deb/odoo_${ODOO_DEB_VERSION}_all.deb" \
+        -o /tmp/odoo.deb \
+    && echo "${ODOO_DEB_SHA256}  /tmp/odoo.deb" | sha256sum -c - \
+    && apt-get install -y --no-install-recommends \
+        /tmp/odoo.deb \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/* /tmp/odoo.deb
+
+# ──────────────────────────────────────────────
+# 4. Layer (c): small apt additions.
+#
+#    Everything added after this layout was settled goes here, so that one
+#    small package does not re-send (a) or (b) to every host (ADR 0013).
+#    It is the last apt layer, not the last layer: the add-ons clone, the
+#    rootfs overlay and the chmod step sit below it and are rebuilt with
+#    it, about 33 MiB, almost all of it the clone. They belong below
+#    because the rootfs changes on nearly every Release, and such a Release
+#    must not re-run apt. The clone is down here with them by the layout
+#    #154 settled, not because its ref moves.
 #
 #    python3-yaml is here for the Rewrite scan: the exception list shipped
 #    in the image is YAML and still applies to Generated rewrites (ADR
@@ -43,30 +168,15 @@ RUN apt-get update \
 #    provides the Cryptodome namespace, so Odoo's dependency check passes
 #    (issue #141).
 # ──────────────────────────────────────────────
-ARG ODOO_DEB_VERSION="18.0.20260914"
-ARG ODOO_DEB_SHA256="378a53702f9971722260d1182bfb7dd650e9c3b859f92b1c0d520a222e1bc3dd"
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
-        postgresql-16 \
-        postgresql-client-16 \
-    && curl -fsSL \
-        "https://nightly.odoo.com/18.0/nightly/deb/odoo_${ODOO_DEB_VERSION}_all.deb" \
-        -o /tmp/odoo.deb \
-    && echo "${ODOO_DEB_SHA256}  /tmp/odoo.deb" | sha256sum -c - \
-    && apt-get install -y --no-install-recommends \
-        /tmp/odoo.deb \
-        fonts-noto-cjk \
-        wkhtmltopdf \
-        jq \
-        git \
-        nginx \
         python3-yaml \
         python3-pycryptodome \
     && apt-get clean \
-    && rm -rf /var/lib/apt/lists/* /tmp/odoo.deb
+    && rm -rf /var/lib/apt/lists/*
 
 # ──────────────────────────────────────────────
-# 4. Clone WOOWTECH odoo-addons (main, shallow)
+# 5. Clone WOOWTECH odoo-addons (main, shallow)
 # ──────────────────────────────────────────────
 ARG WOOW_ADDONS_REF="51856b0abbce68848b2b024a00191cac5eeead3f"
 RUN mkdir -p /opt/woow-addons \
@@ -78,12 +188,12 @@ RUN mkdir -p /opt/woow-addons \
     && rm -rf /opt/woow-addons/.git
 
 # ──────────────────────────────────────────────
-# 5. Copy rootfs overlay
+# 6. Copy rootfs overlay
 # ──────────────────────────────────────────────
 COPY rootfs/ /
 
 # ──────────────────────────────────────────────
-# 6. Set script permissions
+# 7. Set script permissions
 # ──────────────────────────────────────────────
 RUN chmod a+rx /etc/cont-init.d/*.sh \
     && chmod a+rx /etc/services.d/*/run \
@@ -112,7 +222,7 @@ HEALTHCHECK --interval=60s --timeout=10s --start-period=600s --retries=3 \
     CMD ["curl", "-fsS", "--max-time", "8", "-o", "/dev/null", "http://127.0.0.1:8069/web/login"]
 
 # ──────────────────────────────────────────────
-# 7. Image labels. The publish workflow fills these in; a local or CI
+# 8. Image labels. The publish workflow fills these in; a local or CI
 #    build leaves all but io.hass.arch empty, which is harmless. BUILD_ARCH
 #    is the one every build passes, because the FROM above needs it.
 # ──────────────────────────────────────────────

@@ -90,3 +90,28 @@ def test_the_bump_regex_matches_the_pin_as_written() -> None:
     assert match.group(1) == TAG.search(text(DOCKERFILE)).group(1)
     # And the write step checks its own work.
     assert 'grep -qE "^ARG BASE_IMAGE_TAG=\\"${NEWEST}\\"$"' in bump
+
+
+def test_the_bump_regexes_match_the_odoo_pins_as_written() -> None:
+    # The sibling of the check above, for the two ODOO_DEB_* lines. Since
+    # issue #154 they sit between layer (a) and layer (b) instead of above
+    # both, and a hand edit that the bump could no longer read or rewrite
+    # would leave the image pinned to an old nightly in silence.
+    bump = text(BUMP)
+    dockerfile = text(DOCKERFILE)
+    read = re.search(r"sed -nE 's/(\^ARG ODOO_DEB_VERSION=[^']*?)/\\1/p'", bump)
+    assert read, "the current Odoo version is read from the Dockerfile ARG"
+    found = re.search(read.group(1), dockerfile, re.M)
+    assert found, read.group(1)
+    assert found.group(1) == re.search(
+        r'^ARG ODOO_DEB_VERSION="([^"]*)"$', dockerfile, re.M).group(1)
+    for name in ("ODOO_DEB_VERSION", "ODOO_DEB_SHA256"):
+        write = [line for line in bump.splitlines()
+                 if 'sed -i -E "s/^ARG %s=' % name in line
+                 and '"${ADDON_DIR}/Dockerfile"' in line]
+        assert len(write) == 1, "one sed rewrites ARG %s" % name
+        pattern = re.search(r'sed -i -E "s/(\^ARG %s=[^/]*)/' % name,
+                            write[0]).group(1).replace('\\"', '"')
+        assert re.search(pattern, dockerfile, re.M), pattern
+    assert "grep -E '^ARG ODOO_DEB_(VERSION|SHA256)=' " in bump, \
+        "the PR log shows the two lines it changed"

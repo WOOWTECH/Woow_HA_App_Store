@@ -107,9 +107,12 @@ addons_path = ${ADDONS_PATH}
 ; from whenever web.base.url.freeze is unset, which is the state of every
 ; database created between two starts. woow_base_url_guard removes that
 ; guess in every process, so the maintenance bootstrap stays the only
-; writer of the Canonical URL. base and web are Odoo's own defaults and
-; have to be repeated because naming this option replaces them.
-server_wide_modules = base,web,woow_base_url_guard
+; writer of the Canonical URL. woow_visitor_url rebuilds the URL website
+; visitor tracking stores on the Canonical URL, so a page view opened
+; through Ingress does not record the Home Assistant host. base and web
+; are Odoo's own defaults and have to be repeated because naming this
+; option replaces them.
+server_wide_modules = base,web,woow_base_url_guard,woow_visitor_url
 
 ; --- Logging ---
 logfile = ${LOG_DIR}/odoo-server.log

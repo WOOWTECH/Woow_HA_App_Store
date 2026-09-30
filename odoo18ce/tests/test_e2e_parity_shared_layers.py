@@ -210,14 +210,16 @@ class InjectionWayTests(unittest.TestCase):
     def test_every_way_the_check_tries_is_in_one_group(self) -> None:
         self.assertEqual(sorted(INJECTION_KINDS), sorted(injection_ways(COVERED) + injection_ways(ACCEPTED)))
         self.assertEqual(injection_ways(COVERED),
-                         ["sendBeacon", "EventSource", "svg-use", "svg-use-href", "svg-use-ns"])
+                         ["sendBeacon", "EventSource", "svg-use", "svg-use-href", "svg-use-ns", "media"])
         # An accepted way is a decision, so the screens it is known to hit are named with it.
         issues = {way.kind: way.issues for way in INJECTION_WAYS}
         self.assertEqual(issues["innerHTML-img"], ("#158",))
         self.assertEqual(issues["style-attr"], ("#170",))
         # A way with no screen filed against it names none; the group is the decision.
         self.assertEqual(issues["insertAdjacentHTML-use"], ())
-        self.assertEqual([way.issues for way in INJECTION_WAYS if way.group == COVERED], [()] * 5)
+        # A covered way is the shim's job, not a per-screen escape, so it names no issue -- media
+        # included, though #159 is what made it covered.
+        self.assertEqual([way.issues for way in INJECTION_WAYS if way.group == COVERED], [()] * 6)
 
     def test_no_escape_on_either_surface_is_parity(self) -> None:
         self.assertEqual(injection_verdict(self.ways(), self.ways()), ("PARITY", "none", []))
