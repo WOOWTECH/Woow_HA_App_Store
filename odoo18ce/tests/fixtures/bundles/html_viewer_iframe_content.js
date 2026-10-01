@@ -1,0 +1,1 @@
+updateIframeContent(content){const contentWindow=this.iframeRef.el.contentWindow;const iframeTarget=this.props.config.hasFullHtml?contentWindow.document.documentElement:contentWindow.document.querySelector("#iframe_target");iframeTarget.innerHTML=content;this.processReadonlyContent(iframeTarget);}

@@ -67,15 +67,23 @@ ha)
     EXT_INSTALLED() { CX_ROOT sh -c 'ls /usr/local/lib/code-server/lib/vscode/extensions/ 2>/dev/null' | grep -qi '^formulahendry\.acp-client-'; }
     ;;
 k3s)
-    : "${KUBECTL_CONTEXT:=woow-k3s}"
-    : "${K3S_NAMESPACE:=code-server}"
+    # The k3s leg is the WOOW PaaS code-server cloud service (PARITY_CONTRACT
+    # 1.2): one Helm release per tenant, so there is no fixed namespace,
+    # release or hostname to default to. Take them from the service page
+    # (Namespace / Helm Release / Public URL). KUBECTL_CONTEXT is optional.
+    : "${K3S_NAMESPACE:?set K3S_NAMESPACE to the tenant namespace, e.g. paas-ws-<workspace>}"
+    : "${K3S_RELEASE:?set K3S_RELEASE to the Helm release, e.g. svc-<id>}"
+    K3S_DEPLOY="deploy/${K3S_RELEASE}-code-server"
+    KX()       { kubectl ${KUBECTL_CONTEXT:+--context "${KUBECTL_CONTEXT}"} -n "${K3S_NAMESPACE}" "$@"; }
     PORT="8080"
-    BASE="${CODE_SERVER_BASE:-https://code-server-woow-k3s.woowtech.io}"
+    BASE="${CODE_SERVER_BASE:-}"
     SETTINGS="/home/coder/.local/share/code-server/User/settings.json"
-    CX()       { kubectl --context "${KUBECTL_CONTEXT}" -n "${K3S_NAMESPACE}" exec deploy/code-server -c code-server -- "$@"; }
+    CX()       { KX exec "${K3S_DEPLOY}" -c code-server -- "$@"; }
     CX_ROOT()  { CX "$@"; }
-    LIVENESS() { kubectl --context "${KUBECTL_CONTEXT}" -n "${K3S_NAMESPACE}" get deploy/code-server -o jsonpath='{.status.readyReplicas}' 2>/dev/null; }
-    EXT_INSTALLED() { CX code-server --list-extensions 2>/dev/null | grep -qi '^formulahendry\.acp-client$'; }
+    LIVENESS() { KX get "${K3S_DEPLOY}" -o jsonpath='{.status.readyReplicas}' 2>/dev/null; }
+    # The PaaS image keeps the pinned extensions in the built-in dir (the user
+    # extensions dir is on the tenant volume), which --list-extensions skips.
+    EXT_INSTALLED() { CX sh -c 'ls /usr/lib/code-server/lib/vscode/extensions/ 2>/dev/null' | grep -qi '^formulahendry\.acp-client-'; }
     ;;
 *)
     echo "Unknown PARITY_TARGET=${PARITY_TARGET} (want podman|ha|k3s)" >&2

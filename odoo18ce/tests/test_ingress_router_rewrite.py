@@ -28,14 +28,20 @@ def ingress_assets_block(template: str) -> tuple[int, int]:
 def ingress_rule(template: str, source: str, description: str) -> str:
     """The replacement of the one ingress-only `sub_filter` for `source`.
 
-    nginx takes a parameter in either quote, and a replacement that has to
-    carry a `'` of its own -- the snippet-thumbnail rewrite of issue #170,
-    whose JavaScript quotes with single quotes because it sits inside an XML
-    attribute inside a template literal -- is written double-quoted. Both
-    spellings are accepted here; neither may hold its own delimiter.
+    nginx takes a parameter in either quote, and one that has to carry a `'`
+    of its own -- the snippet-thumbnail rewrite of issue #170, whose
+    JavaScript quotes with single quotes because it sits inside an XML
+    attribute inside a template literal, and the `/@` popover guard of issue
+    #211, whose own expression does -- is written double-quoted. Both
+    spellings are accepted on either side; neither may hold its own delimiter.
     """
+    assert "'" not in source or '"' not in source, (
+        f"{description}: nginx has no escape for a parameter's own quote, so a pattern "
+        "carrying both is unwritable; pick a shorter anchor"
+    )
+    quoted = "'%s'" % source if "'" not in source else '"%s"' % source
     rule = re.compile(
-        r"sub_filter '" + re.escape(source) + r"' (?:'([^']+)'|\"([^\"]+)\");"
+        r"sub_filter " + re.escape(quoted) + r" (?:'([^']+)'|\"([^\"]+)\");"
     )
     matches = list(rule.finditer(template))
     assets_start, assets_end = ingress_assets_block(template)

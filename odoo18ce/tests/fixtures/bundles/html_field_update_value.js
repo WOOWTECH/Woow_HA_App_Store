@@ -1,0 +1,1 @@
+async updateValue(value,{changeId}={changeId:this.lastChangeId}){this.lastValue=normalizeHTML(value,this.clearElementToCompare.bind(this));await this.props.record.update({[this.props.name]:value}).then(()=>{if(this.lastChangeId===changeId){this.isDirty=false;}},()=>{});this.props.record.model.bus.trigger("FIELD_IS_DIRTY",this.isDirty);}

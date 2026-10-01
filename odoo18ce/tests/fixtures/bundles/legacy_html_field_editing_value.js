@@ -1,0 +1,2 @@
+getEditingValue(){const codeViewEl=this._getCodeViewEl();if(codeViewEl){return codeViewEl.value;}else{if(this.wysiwyg){return this.wysiwyg.getValue();}else{return null;}}}
+async updateValue(){const value=this.getEditingValue();const lastValue=(this.props.record.data[this.props.name]||"").toString();if(value!==null&&!(!lastValue&&stripHistoryIds(value)==="<p><br></p>")&&stripHistoryIds(value)!==stripHistoryIds(lastValue)){this.props.record.model.bus.trigger("FIELD_IS_DIRTY",false);this.currentEditingValue=value;await this.props.record.update({[this.props.name]:value});}}

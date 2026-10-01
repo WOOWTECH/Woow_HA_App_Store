@@ -10,6 +10,7 @@ from pathlib import Path
 
 import yaml
 
+import gateway_render
 from conftest import require_tool
 from test_ingress_router_rewrite import resolve_splices
 
@@ -29,7 +30,7 @@ GUARD_MODULE = "woow_base_url_guard"
 VISITOR_URL_MODULE = "woow_visitor_url"
 # The file nginx includes the Generated rewrites from (ADR 0005). It lives on
 # /data because the running add-on rewrites it between starts.
-GENERATED_REWRITES = "/data/nginx-generated-rewrites.conf"
+GENERATED_REWRITES = gateway_render.GENERATED_REWRITES
 
 
 def read(path: Path) -> str:
@@ -222,10 +223,20 @@ def test_nginx_template_contract() -> None:
     assert 'prop(window.HTMLSourceElement&&HTMLSourceElement.prototype,"src")' in n
     # They are the tail of the prefix script's closure, spliced in by variable
     # reference because that script nearly fills nginx's parameter buffer -- and
-    # so is the URL helper the shim publishes for the `location` writes a
-    # Literal rewrite has to prefix itself (#174), which closes the closure.
-    assert "$ingress_injection_hooks_shim$ingress_url_global_shim})()" in n
+    # so are the URL helper the shim publishes for the `location` writes a
+    # Literal rewrite has to prefix itself (#174) and the markup helpers the
+    # HTML editor's content goes through (#210), which close the closure.
+    assert (
+        "$ingress_injection_hooks_shim$ingress_url_global_shim"
+        "$ingress_markup_global_shim})()"
+    ) in n
     assert 'Object.defineProperty(window,"__WOOW_INGRESS_URL__"' in n
+    assert 'mP("__WOOW_INGRESS_MARKUP_IN__",mIn)' in n
+    assert 'mP("__WOOW_INGRESS_MARKUP_OUT__",mOut)' in n
+    # And `IN` for a value the readonly HtmlViewer holds as an OWL `Markup`
+    # object rather than a string, which `IN` alone would return as it came
+    # (#237).
+    assert 'mP("__WOOW_INGRESS_MARKUP_IN_VALUE__",mIV)' in n
     assert "return 302 $safe_ingress_path/odoo" not in n
     assert n.count("proxy_set_header X-Forwarded-Proto $ingress_proto;") >= 3
     assert "proxy_set_header Origin $ingress_proto://$http_host;" in n
@@ -496,93 +507,16 @@ def test_runtime_shim_is_valid_javascript(tmp_path: Path) -> None:
     assert result.returncode == 0, result.stderr
 
 
-# What the Rewrite scan writes for two uncovered navigation prefixes, in the
-# byte-for-byte shape generate_include emits (tests/test_literal_rewrite_gate.py).
-TWO_PREFIX_INCLUDE = (
-    'sub_filter \'"/forum/\' \'"$safe_ingress_path/forum/\';\n'
-    'sub_filter "\'/forum/" "\'$safe_ingress_path/forum/";\n'
-    'sub_filter \'`/forum/\' \'`$safe_ingress_path/forum/\';\n'
-    'sub_filter \'"/livechat/\' \'"$safe_ingress_path/livechat/\';\n'
-    'sub_filter "\'/livechat/" "\'$safe_ingress_path/livechat/";\n'
-    'sub_filter \'`/livechat/\' \'`$safe_ingress_path/livechat/\';\n'
-)
-
-
-def render_scenarios(test_dir: Path, include_text: str = "") -> dict:
-    """Render the template for both real-world shapes: public_url set and unset.
-
-    The Generated rewrite file is redirected into `test_dir` and written with
-    `include_text`, so a rendering run never depends on a container's /data.
-    """
-    template = read(TEMPLATE)
-    generated = test_dir / "generated-rewrites.conf"
-    generated.write_text(include_text, encoding="utf-8")
-    common = {
-        "%%WS_PORT%%": "8070",
-        "%%PUBLIC_PROTO%%": "https",
-        "%%LAN_NETWORKS%%": "192.168.0.0/16 1; 10.0.0.0/8 1; 172.16.0.0/12 1;",
-        "%%INGRESS_CACHE_VERSION%%": "test",
-    }
-    scenarios = {
-        "public": dict(common, **{
-            "%%PUBLIC_HOST_MAP%%": '"odoo-test.invalid" 1; "odoo-test.invalid:443" 1;',
-            "%%DENY_STATUS%%": "444",
-            "%%CANONICAL_URL%%": "https://odoo-test.invalid",
-        }),
-        # public_url unset: the host map is empty, so no Host reaches the
-        # public tier and every off-LAN caller falls through to the deny status.
-        # The Canonical URL is then the host's LAN address with the published
-        # Odoo port (RFC 5737 documentation address).
-        "lanonly": dict(common, **{
-            "%%PUBLIC_HOST_MAP%%": "",
-            "%%DENY_STATUS%%": "503",
-            "%%CANONICAL_URL%%": "http://192.0.2.10:8069",
-        }),
-        # public_url unset and the Supervisor reported no LAN address: there
-        # is no Canonical URL at all, and the Runtime shim renders an empty
-        # global. nginx has to accept that value too (issue #70).
-        "lanonly-noaddr": dict(common, **{
-            "%%PUBLIC_HOST_MAP%%": "",
-            "%%DENY_STATUS%%": "503",
-            "%%CANONICAL_URL%%": "",
-        }),
-    }
-    rendered = {}
-    for name, replacements in scenarios.items():
-        config = template
-        for placeholder, value in replacements.items():
-            assert placeholder in template, f"missing template placeholder: {placeholder}"
-            config = config.replace(placeholder, value)
-        assert "%%" not in config, f"unrendered placeholder remains in {name}"
-        assert config.count(f"include {GENERATED_REWRITES};") == 1
-        config = config.replace(f"include {GENERATED_REWRITES};", f"include {generated};")
-        config = config.replace("pid /var/run/nginx.pid;", f"pid {test_dir}/{name}.pid;")
-        config = config.replace("error_log /dev/stderr info;", f"error_log {test_dir}/{name}-error.log info;")
-        config = config.replace("access_log /dev/stdout safe;", f"access_log {test_dir}/{name}-access.log safe;")
-        # nginx -t opens listener sockets. Use paths inside the unique temporary
-        # directory rather than probing and releasing TCP ports, which has a
-        # TOCTOU race with other processes.
-        for original, replacement in [
-            ("listen 8069 default_server;", f"listen unix:{test_dir}/{name}-public.sock default_server;"),
-            ("listen 8072 default_server;", f"listen unix:{test_dir}/{name}-ws.sock default_server;"),
-            ("listen 5691;", f"listen unix:{test_dir}/{name}-ingress.sock;"),
-        ]:
-            assert config.count(original) == 1, f"expected one listener to replace: {original}"
-            config = config.replace(original, replacement)
-        path = test_dir / f"nginx-{name}.conf"
-        path.write_text(config, encoding="utf-8")
-        rendered[name] = path
-    return rendered
-
-
 def test_rendered_gateway_configs_are_valid_nginx(tmp_path: Path) -> None:
     nginx = require_tool("nginx")
     # A fresh install has an empty Generated rewrite file; a running one has
     # whatever the Rewrite scan last wrote. Both have to load.
-    for variant, include_text in (("empty", ""), ("two-prefix", TWO_PREFIX_INCLUDE)):
+    for variant, include_text in (("empty", ""), ("two-prefix", gateway_render.TWO_PREFIX_INCLUDE)):
         variant_dir = tmp_path / variant
         variant_dir.mkdir()
-        for name, config in render_scenarios(variant_dir, include_text).items():
+        for name, config in gateway_render.render(
+            read(TEMPLATE), variant_dir, include_text
+        ).items():
             result = subprocess.run(
                 [nginx, "-t", "-p", str(variant_dir), "-c", str(config)],
                 capture_output=True, text=True, check=False,

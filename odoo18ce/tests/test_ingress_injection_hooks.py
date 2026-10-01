@@ -15,7 +15,12 @@ triage split them in two:
   dynamic `<style>` element. The HTML editor and the website editor load and
   save record content through those paths, so a hook would write the Ingress
   prefix -- which carries the Ingress token -- into the database. A screen
-  that hits one gets a route-scoped Literal rewrite of its own (#158, #170).
+  that hits one gets a route-scoped Literal rewrite of its own (#158, #170),
+  or -- where the value round-trips through the editor, as a to-do description
+  does (#210) -- a pair of rewrites that put the prefix on at the render site
+  and take it off again at the save site. Both shapes call helpers the shim
+  *publishes*; neither intercepts a property, which is why the assertion below
+  still holds after them.
 
 Group A is executed here, in a node ``vm`` context against a minimal DOM
 stand-in, the same way the clipboard fallback is; Group B is asserted absent

@@ -1,5 +1,301 @@
 # Changelog
 
+## 0.4.9 — 2026-10-01
+
+### Added
+- `open`'s write bound now covers the **portal** controllers of every module the
+  add-on installs, not just `website_sale` plus the one `sale` route #212 read on
+  the way. `GET_WRITING_ROUTES` went from 11 prefixes to 22, each new one citing
+  the write it was read from in the pinned Odoo: `/my/invoices/`,
+  `/my/purchase/`, `/my/projects/` and `/my/tasks/` (the portal pager stores an
+  `access_token` on the records either side of the one being viewed --
+  `portal/controllers/portal.py:93`, `:100`, `portal/models/portal_mixin.py:33`
+  -- and the project and task pages also token every attachment they are about to
+  render, `project/controllers/portal.py:209` and `:556`),
+  `/my/invoices/overdue` (which bumps the company's batch payment sequence,
+  `account/models/company.py:272`), `/my/project/` and `/my/task/` (the outdated
+  spellings, which redirect into the two writing pages, and `page.goto` follows a
+  30x), `/mail/unfollow` (`mail/controllers/mail.py:225` unlinks a follower) and
+  `/digest/` (which unsubscribes a user and sets a digest's periodicity on a
+  plain GET).
+- `/chat/` and `/meet/` are bounded too, and they are the first entries on that
+  list that **no query rule bounds**: `mail`'s Discuss public pages create a
+  `mail.guest` and a `discuss.channel.member` from a channel uuid in the path
+  alone (`mail/controllers/discuss/public_page.py:96`), and create the
+  `discuss.channel` itself from an unknown token (`:69`) -- with a
+  `request.env.cr.commit()` on the concurrent-insert path (`:81`) that a rollback
+  cannot take back. The Runtime shim already rewrites the invitation link that
+  leads there (`nginx.conf.template:591`), so it is a route this product
+  navigates. Every other GET write the audit deferred needs a query that
+  `parse_targets` refuses; these two need nothing.
+- The list's comment now records which controllers were read and **found clean**
+  -- every portal list page, `/my/account` and `/my/security` (whose writes are
+  POST-only), the payment result pages, the downloads, the chatter avatar and
+  both rating pages -- which two are clean only on a bare GET (`/payment/pay` and
+  `/my/payment_method` store an invoice token when the query names an
+  `invoice_id`, `account_payment/controllers/payment.py:149`), and where the
+  audit stopped, so the next one does not re-read the same routes and knows to
+  start on `mail`. That stop-line first put `mail`'s unread controllers at eight
+  and they are **16** -- `controllers/discuss/` is a directory of eight of its
+  own, and a listing of the top level alone misses it, which is the same
+  directory `/chat/` was found in. Corrected, and sized: those 16 carry 51
+  `@route` declarations of which 5 are GET-reachable, all 5 carrying a
+  `readonly=True` that is not a write bound. #247 holds that sweep. Guard-only;
+  no behaviour change and no version bump.
+- The static tier measures how much of nginx's 4096-byte configuration token
+  buffer the Runtime shim's prefix script has left, and fails while there is
+  still room to act. That script is one single-quoted parameter, and every
+  Issue that adds a wrapper to it makes it longer: #174 recorded "~200 bytes
+  short of" the buffer in a comment, later softened to "a few hundred bytes",
+  and by #210 the real figure was **148**. Nothing measured it -- the next
+  addition over the line would have been found by `nginx -t` failing with
+  `too long parameter`, which names no budget, and an addition under the line
+  would have been found by nothing at all. `tests/test_nginx_parameter_budget.py`
+  now measures every quoted parameter in the template with cont-init's
+  substitutions applied, holds a 64-byte reserve on the shim, says in the
+  failure that the way back is to move a part of the script into a `map` of
+  its own (nginx concatenates variables after parsing, so a reference costs
+  only its own length), pins the limit against a real nginx, and refuses any
+  comment that states the headroom in prose -- which is the shape the stale
+  claims took. The two comments that carried a figure now point at the
+  measurement.
+- A review round found two overstatements in that measurement, both now
+  corrected. The nginx it drives is the one on the **Static tier**'s PATH,
+  installed from the runner's base and not from the image's, so it pins the
+  constant against a real nginx without proving it is the nginx the image
+  ships; a differing buffer in the image surfaces on a **Deploy**, as an
+  add-on that does not start. And the budget's worst case for
+  `%%CANONICAL_URL%%` was an assumption, not a bound: `public_url` is an
+  add-on option, and cont-init's check reads the value's shape and never its
+  length, so an origin of a legal shape but 4000 bytes long would have been
+  rendered into a parameter nginx refuses -- the exact failure the budget
+  exists to catch early, reported as headroom. `10-odoo-config.sh` now caps
+  the **Canonical URL** at the budgeted 2048 bytes and drops an over-long
+  value the way it already drops a misshapen one (a warning, and a **Runtime
+  shim** that publishes nothing), and a test reads the cap out of the script
+  so the two numbers cannot drift apart. That cap is the one behaviour change
+  here; it needs no version bump of its own.
+- The **Build tier** now reads the gateway config with the nginx the add-on
+  ships. Correcting the docstring above said where the measurement stops; this
+  moves the stopping point. `tests/in_image/gateway_config_loads.py` runs
+  inside the image this build produced and checks three things against
+  `/usr/sbin/nginx` there: that the token buffer is the size the budget assumes
+  (a token at the limit parses, one byte more does not), that the shipped
+  template loads for every start shape -- `public_url` set, unset, and unset
+  with no LAN address -- for an empty **Generated rewrite** file and a
+  populated one, and that a **Canonical URL** at the new cap still loads while
+  one far over the cliff does not. Every number comes from the file that states
+  it: `TOKEN_LIMIT` from the budget test, `CANONICAL_URL_MAX` from the shipped
+  cont-init. So the budget's worst case for the Canonical URL is now verified
+  against a real nginx rather than assumed, and a differing buffer in the
+  image's nginx fails a pull request instead of a **Deploy**.
+- The renderer behind both tiers exists once, in `tests/gateway_render.py`
+  (stdlib only, because the probe imports it inside the image where pytest and
+  PyYAML are not). `test_dual_gateway.py` renders through it, so the **Static
+  tier** and the Build tier cannot measure different files.
+  `tests/test_gateway_config_in_image.py` proves the probe's own logic against
+  the runner's nginx -- including both ways it goes red, each injected from the
+  real defect it stands for -- and pins the Build-tier step to the
+  unconditional amd64 build, this build's image, and a timeout. A probe that
+  silently broke would otherwise pass in the one tier nothing watches.
+
+### Changed
+- The weekly bump bot keeps `odoo18ce/odoo-deb-depends.txt` current. It reads
+  `Depends` out of the same Odoo package it hashes and **merges** it into the
+  committed list instead of regenerating it: the `deferred`, `dropped`,
+  `alternatives` and `satisfied-by` notes are state the `.deb` cannot supply
+  -- which member of an alternatives group bookworm's apt resolves is a fact
+  about the base image, `python3-lxml-html-clean | python3-lxml` resolving to
+  the *second* name -- and a regenerate loses them and turns the layer guard
+  red three ways. A dependency the nightly **gains** is appended with a
+  `deferred` note naming the bump, so layer (a) is untouched and the static
+  tier stays **green**: the build jobs need it, and a red one would cost the
+  bump pull request the image build ADR 0002's human merge rests on. One the
+  nightly **loses** keeps its line with a `dropped` note while layer (a) still
+  installs it, and goes only when (a) does not. The pull request body gains a
+  section naming what was added, removed, deferred or dropped, and says so in
+  one line when nothing moved. The one question the bot refuses is which
+  member of an alternatives group apt resolves: a group whose recorded member
+  the new spelling no longer names, or one the list records nothing of, is left
+  untouched and asked about in the body, because the answer is in `apt-cache
+  policy` inside the base image and not in the `.deb`. Nothing in the step can
+  fail the bump either -- a failed step stops the ones after it, so an
+  unreadable `Depends` or a list the merge cannot parse would cost the weekly
+  bump its pull request and its image build; instead the list is left as it is
+  and the body says a human is needed. The merge is a script with unit tests,
+  down to a no-op against the real `Depends` of the currently pinned package,
+  and tests that hold its readers equal to the guard test's. Issue #156,
+  parent #153, ADR 0013 (new postscript). CI only: no change to the image and
+  no version bump.
+- The weekly bump bot proposes the Debian **base-image** bump in a pull
+  request of its own, labelled `base-image`, instead of folding it into the
+  weekly Odoo pin. The base sits below every layer of the image, so moving its
+  tag rebuilds all of them -- layer (a) included, which an Odoo bump leaves
+  alone -- and the Release that carries it is a full download of the whole
+  image, about 700 MiB, for every host on both architectures. That is the
+  download that failed twice in #153, and bundling it with the routine weekly
+  bump made the routine bump cost the same. `odoo-bump.yml` now runs two
+  independent paths: the Odoo path rewrites only the two `ODOO_DEB_*` lines on
+  `chore/odoo-nightly-bump` as before, and the base-image path starts from a
+  clean tree, rewrites only `BASE_IMAGE_TAG` on `chore/base-image-bump`, and
+  says in its body what merging it costs and that it is merged quarterly or on
+  a security need. Neither is auto-merged (ADR 0002, new postscript), the
+  base-image pull request is rewritten in place rather than reopened, and both
+  bullets go through one CHANGELOG writer that merges into whatever
+  `## Unreleased` already holds. CI only: no change to the image and no
+  version bump.
+
+### Fixed
+- Under Ingress, the **legacy `web_editor` editor** -- the one Email
+  Marketing's mail designer runs -- now loads a record's markup under the
+  Ingress prefix and stores it root-relative again. Odoo 18 ships two HTML
+  editors: #210 and #237 rewrote `html_editor`, and ADR 0004's postscript had
+  already noted that this editor "carries none of these expressions". That was
+  literally true -- its load and save sites are different expressions, so not
+  one of those eight rules fired on it -- so a mailing body's pictures and
+  linked documents were fetched from the Home Assistant root and answered 404,
+  and, worse, **saving a mailing under Ingress stored the Supervisor token** in
+  `body_arch` and in the inlined `body_html` that goes out with the mail. Ten
+  rewrites close it: six putting the prefix on where markup becomes DOM
+  (`Wysiwyg.startEdition`, `OdooEditor.resetContent`, the three branches of the
+  readonly iframe a *sent* mailing renders through, and the `t-out` of the
+  field's own readonly template) and four taking it off where a value becomes a
+  record (`getEditingValue`, mass_mailing's inlined second field, and the code
+  view's two writes). All six insertions go through
+  `__WOOW_INGRESS_MARKUP_IN_VALUE__`, the helper #237 added, because every value
+  here is an OWL `Markup` object; no new global is published. The strip sits on
+  `getEditingValue` rather than on the `record.update` beside it, because
+  `updateValue` compares the editing value with the record's before writing:
+  strip later and every commit looks dirty and writes the field. Three widgets
+  reach this editor, and checking which found one the issue had not named --
+  `account_payment_register_html`, Register Payment's installments note, whose
+  own value holds no URL but whose render path is now covered; `html_legacy`,
+  by contrast, has no shipped view behind it at all. The mail designer's own
+  iframe is built by `document.write`, so no Runtime shim runs in it, and it
+  turns out to carry none of these files -- every rewritten expression runs in
+  the page's realm, which is a measurement in the fixtures' README rather than
+  an assumption. Two of the ten patterns start mid-identifier because nginx
+  reads a `$` in a parameter as a variable and this is jQuery-era code; a test
+  proves each is really the tail of the expression it names. The Public origin
+  is unchanged and `html_editor` keeps behaving exactly as #237 left it. No
+  version bump. Issue #238, ADR 0004 (second 2026-10-01 postscript), parent
+  #148; the Live rerun is #243's.
+- Under Ingress, a **readonly html field** now renders its record's pictures
+  and linked documents under the Ingress prefix, down both of the paths it has.
+  #210 fixed the editable path; this is the readonly `HtmlViewer`, which ADR
+  0004's postscript named as the markup site that "reaches markup twice over"
+  -- `t-out="state.value"` on the plain path and `iframeTarget.innerHTML` on
+  the `hasFullHtml`/`cssAssetId` one -- and it is the more common of the two: a
+  field is readonly on every form the user cannot edit, on every record a
+  portal shows (the project-sharing client serves the same bytes) and in the
+  html field's history dialog, which mounts the same component. Every
+  root-relative URL in the stored markup was resolved against the Home
+  Assistant root and answered 404. Nothing was ever stored wrong and nothing is
+  now: a viewer has no save, so there is no strip half here, and the value the
+  component holds still carries the record's own bytes -- the prefix goes on as
+  the markup is inserted. Both rewrites call one new Runtime shim helper,
+  `__WOOW_INGRESS_MARKUP_IN_VALUE__`, because the value a readonly html field
+  renders is an OWL `Markup` object and #210's `__WOOW_INGRESS_MARKUP_IN__`
+  returns a non-string as it came -- calling it here would have been a silent
+  no-op. The new helper prefixes through that one and puts the wrapper back
+  through the value's own constructor, since OWL inserts a `Markup` as HTML and
+  escapes anything else. One of the two rewrites is the gateway template's
+  first rewrite of an **OWL template**: its pattern comes from the bytes the xml
+  bundle serves rather than from the source file, because lxml re-serialises
+  the template on the way (the file's double space and its space before `/>`
+  are not there), it anchors on the whole `<div>` because `t-out="state.value"`
+  alone also occurs in the monetary field, and its fallback is an arrow
+  function because OWL rewrites a `function`'s parameter into a `ctx` lookup
+  and would take the component out at compile time. The `hasFullHtml` iframe's
+  `sandbox` is untouched and unaffected: the helper runs in the page's realm on
+  a string. The Public origin is unchanged. No version bump. Issue #237,
+  ADR 0004, parent #148.
+- Under Ingress, a website page view again records the page's **Canonical
+  URL**. The fix that first shipped in 0.4.6 was applied on the test host and
+  changed nothing there: every Ingress page view still stored the Home
+  Assistant host (`U-C5`, root cause `RC-9`), and the add-on's own Odoo log
+  carried both the module's "patched" line at startup *and* its "the request's
+  url could not be replaced" warning on every one of those page views. The
+  replacement was the no-op, not the patch. `request.httprequest` is not the
+  werkzeug request: it is `odoo.http.HTTPRequest`, which wraps one and installs
+  a plain `property` for each attribute it forwards, `url` included. A plain
+  `property` is a data descriptor and never reads an instance's `__dict__`, so
+  the value the module wrote there was read back by nobody. It now **assigns**
+  to the attribute, which the wrapper forwards to the werkzeug request behind
+  it, and puts the address the browser really used back after the page view is
+  recorded -- by writing it again, because a forwarded attribute has no
+  deleter. A request that refuses the assignment, or accepts it and goes on
+  reporting the old address, is recorded as it arrived and said so in the log,
+  as before. Every pull request's in-image check now also builds the request
+  Odoo itself builds in that image, has this module replace that request's URL
+  and put the arrived address back, and reads the URL itself after each,
+  instead of only reading the flag the patch sets: reading the flag is what
+  called this green while the host was unfixed. Nothing else changes -- the stored URL is still
+  built on `website.get_base_url()`, a visit that already arrives on the
+  Canonical URL still stores exactly what it stored before, and **page views
+  stored before this version keep the Home Assistant host**: they are not
+  rewritten and not deleted. No version bump. Issue #160, parent #148.
+- Under Ingress, the **"Edit this content"** link on a website page now
+  carries the Ingress prefix once instead of twice. `/@/<website path>` is
+  Odoo 18's route from a website page into the web client, and it is the one
+  route whose tail is itself a website path rather than a URL to fetch. Odoo
+  builds the link by splicing `location.pathname` -- already prefixed under
+  Ingress -- into that tail, so the tail read `/@<INGRESS_PREFIX>/shop/payment`
+  and the prefix went on a second time, giving
+  `<INGRESS_PREFIX>/@<INGRESS_PREFIX>/shop/payment`: the web client was asked
+  to open `/api/hassio_ingress/<token>/shop/payment` as a website path (the
+  doubled prefix of `U-A2`, a `GAP` the #163 run recorded on `/shop/payment`).
+  It was never specific to the checkout -- the button is on every website page
+  whose viewer may edit it. Two rewrites on the Ingress listener's asset
+  location fix it: the link is now built from the canonical path with the
+  prefix put on once, at the front, which is the value every consumer of it
+  needs -- the anchor, the two `window.location.replace` redirects behind
+  `?enable_editor` and alt+A, and the website editor's link popover, which
+  hands `window.open` a `URL` object the Runtime shim does not prefix. The
+  popover's own "this link is already in backend form" check now recognises a
+  prefixed `/@/` path as well, so a link that is already there is followed
+  rather than reopened, exactly as on the Public origin. The Public origin
+  gets neither rule. No version bump. Issue #211, parent #148.
+- Under Ingress, the **To-do** form's description now shows its two
+  pictures instead of two broken images. The onboarding to-do Odoo creates
+  for every user carries
+  `<img src="/project_todo/static/img/todo_access.png">` and one more like
+  it inside `project.task.description`, the browser resolved both against
+  the Home Assistant root, and Home Assistant answered 404 --
+  `route_escape=2`, `http_4xx_5xx=2` and `console_error=2` on a screen that
+  is clean on the Public origin (a Prefix escape, root cause `RC-1`). Those
+  URLs are record content in the database, not a bundle asset, and the HTML
+  editor inserts them as markup -- the one path the Runtime shim leaves
+  alone on purpose, because the editor saves the same value back and a hook
+  there would write the token-bearing Ingress prefix into the record. So
+  the shim now publishes two markup helpers,
+  `__WOOW_INGRESS_MARKUP_IN__` and `__WOOW_INGRESS_MARKUP_OUT__` (string
+  functions, read-only, Ingress-only, prefixing through the same `path()`
+  the `fetch`, XHR and attribute wrappers already use), and five rewrites
+  on the Ingress listener's asset location call them: the prefix goes on at
+  both places the editor renders a stored value -- when the field opens, and
+  when the collaboration plugin resets a stale document from the server --
+  comes off again on every value the field writes to the record and on the
+  clone the urgent save compares against it, and comes off the `src` the
+  image tools send to `/html_editor/get_image_info`, which only recognises
+  an attachment from a path beginning `/web/image`. The prefix goes only on URL
+  attributes inside a start tag, so prose and escaped code samples keep
+  their bytes, and it comes off every occurrence in the stored string, so
+  neither the editor nor a pasted image can put an Ingress URL -- token and
+  all -- into a record. The value that reaches the database is the value
+  the Public origin would have saved, so a to-do edited under Ingress still
+  shows its pictures on both surfaces. Two consequences worth knowing: a
+  URL in record HTML that was not already in normal form comes back
+  percent-encoded or with a `..` segment collapsed the first time it is
+  edited under Ingress (the same address, different bytes), and text that
+  looks like an Ingress prefix is removed when the field is saved, because
+  that prefix carries the Supervisor token. The same round trip covers
+  every field the Odoo 18 HTML editor drives in the backend web client; the
+  legacy `web_editor` editor behind `html_legacy` and `mass_mailing_html`
+  carries none of these expressions and is unchanged, as is the readonly
+  preview of an html field. The Public origin gets neither the shim nor the
+  rules. No version bump. Issue #210, parent #148.
+
 ## 0.4.8 — 2026-09-30
 
 ### Fixed

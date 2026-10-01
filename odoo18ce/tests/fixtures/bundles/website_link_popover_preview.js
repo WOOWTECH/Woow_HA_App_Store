@@ -1,0 +1,1 @@
+async _onPreviewLinkClick(ev){if(this.target.href){const currentUrl=new URL(this.target.href);if(window.location.hostname===currentUrl.hostname&&!currentUrl.pathname.startsWith('/@/')){ev.preventDefault();currentUrl.pathname=`/@${currentUrl.pathname}`;browser.open(currentUrl);}}}

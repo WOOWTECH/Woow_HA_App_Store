@@ -6,9 +6,9 @@
 # ADR 0013). The guard test `tests/test_dockerfile_layers.py` fails when
 # this file and layer (a)'s package list stop agreeing.
 #
-# Format -- this is a contract with the odoo-bump workflow, which
-# regenerates the file when it pins a new `.deb` (tracked separately under
-# #153). Read it as:
+# Format -- this is a contract with the odoo-bump workflow, which merges the
+# new `.deb`'s `Depends` into this file when it pins one (issue #156, script
+# `.github/scripts/odoo_deb_depends.py`). Read it as:
 #
 #   * One `Depends` entry per line, one package name per line, sorted with
 #     `LC_ALL=C`.
@@ -48,33 +48,38 @@
 #     when it falls behind `ARG ODOO_DEB_VERSION`: the build jobs need the
 #     static tier, so a red one would cost the weekly bump the image build
 #     that proves the new package. A list behind the pin costs layer (b)
-#     size and nothing else. Regenerating it is part of a bump, and the
-#     bump workflow will do it itself once #153's sibling issue lands.
+#     size and nothing else. The bump workflow rewrites the line itself, but
+#     only on a bump that moved a dependency: one whose `Depends` normalizes
+#     to this same list leaves the file, and its pull request's diff, alone.
 #
-#   * To regenerate it after a bump, read the new package's field and apply
-#     the rules above:
+#   * The merge is `.github/scripts/odoo_deb_depends.py`, run by the weekly
+#     odoo-bump on the same package it hashes. To do it by hand, read the
+#     new package's field and hand it to the script:
 #
 #         curl -fsSL "https://nightly.odoo.com/18.0/nightly/deb/\
 #         odoo_${ODOO_DEB_VERSION}_all.deb" -o /tmp/odoo.deb
 #         dpkg-deb -f /tmp/odoo.deb Depends \
-#           | tr ',' '\n' | sed 's/^ *//; s/ *$//' | LC_ALL=C sort
+#           | python3 .github/scripts/odoo_deb_depends.py \
+#               --list odoo18ce/odoo-deb-depends.txt \
+#               --dockerfile odoo18ce/Dockerfile --depends-field - \
+#               --deb-version "${ODOO_DEB_VERSION}"
 #
 #     A package the new `.deb` adds gets a `deferred` note rather than a
 #     place in layer (a), and one it no longer names gets a `dropped` note
 #     rather than leaving (a): a weekly bump must not rebuild the big layer.
 #
-#     Two of the rules need a decision rather than a rewrite: which
-#     alternative of a group the base image's apt actually resolves
-#     (`apt-cache policy <name>` inside the base image answers it), and
-#     whether a name is a real package or one that layer (a) already
-#     provides. Then update layer (a)'s list in the Dockerfile and
-#     EXPECTED_SEQUENCE in the guard test to match.
+#     One rule needs a decision rather than a rewrite, so the script makes
+#     none and says so in the pull request body instead: which alternative
+#     of a group the base image's apt actually resolves (`apt-cache policy
+#     <name>` inside the base image answers it). Folding a `deferred` entry
+#     into layer (a) is the other -- that one updates layer (a)'s list in
+#     the Dockerfile and EXPECTED_SEQUENCE in the guard test to match.
 #
 #   * A dependency this file misses is not a broken build. Layer (b)
 #     installs the `.deb` with apt, which pulls whatever is still absent --
 #     into (b), where it makes the Odoo layer bigger and nothing else.
 #
-# source: odoo_18.0.20260914_all.deb
+# source: odoo_18.0.20260930_all.deb
 adduser
 fonts-dejavu-core  # alternatives: fonts-dejavu-core | fonts-freefont-ttf | fonts-freefont-otf | fonts-noto-core
 fonts-font-awesome

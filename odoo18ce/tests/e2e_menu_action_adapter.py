@@ -21,6 +21,12 @@ outside the crawler's `OperationPolicy` on purpose -- see `ensure_cart` -- and
 `require_write_database`
 keeps it on the one database ADR 0012 allows it on.
 
+Navigating writes too where Odoo writes on a plain GET: the checkout routes
+edit the draft order while rendering it. `GET_WRITING_ROUTES` names those
+routes and `require_write_database` holds them to the same database, so a
+target reaches one only on a run allowed to write -- whether or not it declared
+a cart.
+
 Credentials come from the environment only:
 
   ODOO_TEST_LOGIN, ODOO_TEST_PASSWORD   both surfaces
@@ -46,12 +52,13 @@ import datetime as dt
 import ipaddress
 import json
 import os
+import posixpath
 import re
 import sys
 import time
 from dataclasses import dataclass, field, replace
 from typing import Any, Iterable, Mapping, NamedTuple, Sequence
-from urllib.parse import urlsplit
+from urllib.parse import unquote, urlsplit
 
 from e2e_menu_action_crawler import (
     MAX_TRAVERSAL_DEPTH,
@@ -218,7 +225,9 @@ class OpenTarget:
     are the `open` form of the crawler's U-C12 check: without them a fallback
     screen that loads cleanly on both surfaces would read as `PARITY`.
     `cart` names a product page to add to the cart before opening the target;
-    it is the only field that writes.
+    it is the only field that writes. The `target` itself can write as well,
+    when it names a route Odoo writes on while rendering a GET -- see
+    `GET_WRITING_ROUTES`.
     """
 
     module: str
@@ -342,16 +351,390 @@ def session_database(reported: str | None) -> str:
     return reported
 
 
+# Routes that write while rendering a plain GET, and where that write was read.
+#
+# `open` navigates a target with `page.goto`, which is a GET and nothing more,
+# so a route that writes on GET mutates the run's database whether or not the
+# target declared a `cart:`. Both older guards key on that declaration --
+# `ensure_cart` refuses the explicit write, `require_write_database` refuses a
+# target file that asks for one -- so a target naming such a route sailed past
+# both. The target list is the seam: the route is known before the first page
+# is opened, and the enum cannot help (`NON_MUTATING_OPERATIONS` is every
+# member of `Operation`, so nothing named there is ever refused).
+#
+# A key is a route prefix: it bounds the route itself and everything under it,
+# so `/shop/change_pricelist` covers the `/shop/change_pricelist/<id>` the route
+# is actually spelled as, and a route under a prefix needs its own key only when
+# its write is not the one the prefix cites -- `/shop/payment/validate` has one
+# for that reason, and the longest key is the one a refusal names. A key that
+# ends in a slash bounds only what is *under* it and not the path itself, which
+# is how `/my/orders/<id>` is bounded while the `/my/orders` list page, which
+# writes nothing and is a parity path of its own, stays open. The value
+# cites the write in upstream Odoo at the version odoo18ce/Dockerfile pins --
+# 18.0.20260930, `ODOO_DEB_VERSION` -- read from that `.deb` under
+# `usr/lib/python3/dist-packages/odoo/addons/`; a path with no module in front
+# of it is under `website_sale/`, the module #212 audited route by route.
+#
+# That audit covers every `type='http'` route of `website_sale` the navigation
+# itself can reach -- every `@route` of `controllers/`, including the bare
+# `@route()` overrides of `website`'s own routes, whose route is the parent's:
+# one not listed here is either unreachable by that navigation
+# (`methods=['POST']`, `type='json'`) or its body was read and writes nothing --
+# nothing but `request.session` (`/shop`), or nothing at all (`/shop/<product>`,
+# `/shop/<product>/document/<id>`, `/shop/confirmation`, `/shop/print`,
+# `/shop/product/<id>`). The body is what
+# was read, not the `readonly=True` flag two of them carry: that flag is not a
+# bound, because `odoo/http.py:2157-2168` rolls a read-only transaction back and
+# re-runs the handler on a read/write cursor, so a `readonly` route that writes
+# writes anyway.
+#
+# Three limits on what that buys, none of them something a list keyed on the
+# target's route can see. The controller is not the whole request:
+# `views/templates.xml:13` calls `website.sale_get_order()` from the cart link of
+# every page header, which writes the same way `/shop/checkout` does
+# (models/website.py:457), so a page whose controller writes nothing can still
+# write. The target's GET is not the whole navigation: the page's own JavaScript
+# posts on its own account, and `/shop/products/recently_viewed_update`
+# (controllers/main.py:2288) writes a `website.visitor` from a product page
+# nobody asked to write. And the route navigated is not always the route
+# answered: `page.goto` follows a 30x, so a route that redirects into a listed
+# one writes behind the guard -- no `website_sale` route does (the set is closed
+# under its own redirects), which is a property of today's Odoo and not of this
+# list. `project`'s two outdated portal prefixes are redirects of exactly that
+# shape and are listed below for it; they are the ones that were found, not the
+# ones that exist.
+#
+# One write outside the list was read and left outside it:
+# `website/models/ir_http.py:188-205` creates or touches a `website.visitor` on
+# a GET whose response is a tracked page, whichever module serves it. It is out
+# because it is not a property of the route: the gate is `view.track` on the
+# template the response happened to render (`response_template` in its
+# `qcontext`), so the same route can write on one website and not on another, and
+# no list keyed on a route can say which. Bounding it would mean bounding every
+# website page an `open` target can name -- `/`, `/contactus`, `/shop` -- which
+# is a decision about whether `open` may judge a website page off
+# `WRITE_DATABASE` at all, and that is the read-only guarantee as a whole and not
+# this seam. (`crawl` is not affected either way: it navigates only
+# `/odoo/action-<id>`, whose response is the web client bootstrap and not a
+# tracked page, so it never makes this write.)
+#
+# Most of the `/my/...` keys below are one write seen from several routes.
+# `_get_page_view_values` (portal/controllers/portal.py:437) calls
+# `get_records_pager`, which at :93 and :100 calls `_portal_ensure_token()` on
+# the record either side of this one in the session's browsing history, and
+# portal/models/portal_mixin.py:33 writes a fresh `access_token` on each. Every
+# portal document page calls it, on a GET with no query and no form. Each of
+# those keys ends in a slash for that reason: the write is on the document page,
+# while the list page above it writes nothing and is a parity path of its own.
+# `get_records_pager` writes only when the record is in the session's history
+# (portal/controllers/portal.py:85), which the list page fills -- so whether a
+# given navigation writes depends on what the run opened before it. A list keyed
+# on a route cannot see the session, and a guard that asked would be guessing, so
+# the prefix bounds the page either way.
+#
+# A known write belongs on the list whatever module holds it -- an entry bounds
+# it, and leaving it off to keep the list tidy would leave the hole #212 was
+# about. Two kinds of entry below are deliberately wider than what a target can
+# ask for. A write reachable only through a query (`?confirm=reminder`,
+# `?report_type=pdf`) is bounded anyway, because `get_writing_route` keys on the
+# path and `parse_targets` already refuses every query but `view_type=`. And a
+# route whose only write is the one it redirects into is bounded at the route
+# navigated, because `page.goto` follows the 30x.
+#
+# The portal audit #226 asked for read, `@route` by `@route`, every portal
+# controller of the installed modules and their dependency closure at the pinned
+# Odoo: portal (portal.py, mail.py, attachment.py, message_reaction.py,
+# thread.py, web.py), sale, sale_management, account (portal.py,
+# download_docs.py, terms.py), account_payment, project, hr_timesheet, purchase,
+# payment (portal.py, post_processing.py), website_payment, digest, portal_rating
+# and rating. What it read and found clean, so the next audit need not read it
+# again: the portal home and its counters (`/my`, `/my/home`, `/my/counters` --
+# `request.session` only), `/my/account` (portal/controllers/portal.py:208) and
+# `/my/security` (:262), which write on their POST branch only; every list page
+# (`/my/orders`, `/my/quotes`, `/my/invoices`, `/my/purchase`, `/my/rfq`,
+# `/my/projects`, `/my/tasks`, `/my/timesheets`); the project-sharing page
+# (project/controllers/portal.py:186, which renders the web client); `/terms`;
+# the payment result pages (`/payment/confirmation`, `/payment/status`) and
+# `/donation/pay`, whose `payment_utils.generate_access_token` is an hmac and not
+# a record and whose only other write is `request.session`; the downloads
+# (`/account/download_invoice_attachments`, `/account/download_invoice_documents`,
+# `/my/orders/<id>/document/<id>`), whose PDF path renders without storing
+# because the report records read carry no `attachment`
+# (base/models/ir_actions_report.py:1037 is what the flag gates); the chatter's
+# author avatar (portal/controllers/mail.py:25, which streams an image through
+# `ir.binary` and writes nothing); and both rating pages --
+# rating/controllers/main.py:27 records that `/rate/<token>/<rate>` stopped
+# writing on GET, and `/rate/<token>/submit_feedback` writes on its POST branch
+# only (:60). A `type='json'` route and a `methods=['POST']` one are
+# outside this audit the way they are outside `website_sale`'s: a GET does not
+# reach them.
+#
+# Two routes that sweep read are clean on a bare GET and not clean in general,
+# which is a weaker thing than the clean list above claims of its entries.
+# `/payment/pay`
+# (payment/controllers/portal.py:37) and `/my/payment_method` (:193) end in
+# `_get_extra_payment_form_values`, which `account_payment` overrides
+# (account_payment/controllers/payment.py:114) to store an `access_token` on the
+# invoice at :149 whenever the request names an `invoice_id` -- a `?invoice_id=`
+# in the query and nothing else. They are off the list because `parse_targets`
+# refuses every query but `view_type=`, which is a narrower bound than the path:
+# loosen that rule and these two become entries.
+#
+# Where this audit stopped, for the next one. Of `mail` it read only the two
+# controllers the entries above cite -- controllers/mail.py and
+# controllers/discuss/public_page.py -- and not the other 16. Sixteen and not
+# eight, which this comment said first: `controllers/discuss/` is a directory of
+# eight files of its own, and a listing of the top level alone misses it -- the
+# same directory `/chat/` turned out to live in. Walk the tree.
+#
+# Those 16 carry 51 `@route` declarations, of which 5 are the shape this list
+# cares about -- `type='http'` and not `methods=['POST']`, so a plain GET reaches
+# them: discuss/binary.py:12, :35 and :65, discuss/rtc.py:111 and
+# discuss/voice.py:10. All five carry `readonly=True`, which is not a write
+# bound, so all five still need their bodies read. #247 holds that sweep.
+#
+# Untouched: the non-portal controllers of every other module (website's
+# `main.py` and `form.py`, and the controllers of web, web_editor, html_editor,
+# survey, event, im_livechat, point_of_sale, mass_mailing, product, stock,
+# delivery, crm, calendar, bus, auth_signup and the hr_* modules), and the four
+# add-on modules that are not in the pinned `.deb` at all -- `ecpay_invoice_tw`,
+# `ecpay_invoice_website`, `payment_ecpay` and
+# `payment_ecpay_ecpg`. `/chat/` and `/meet/` below are a warning about what that
+# leaves: they were found only because a review round went looking outside the
+# portal, and they are the first writes on this list that no query rule bounds.
+GET_WRITING_ROUTES = {
+    # controllers/main.py:796 unlinks the cart lines of archived products, and
+    # :785-786 rewrites an abandoned cart's lines onto the session cart and
+    # cancels it when `?access_token=` revives one.
+    "/shop/cart": "unlinks the cart lines of archived products",
+    # controllers/main.py:1056 persists a delivery method and its price on the
+    # draft order (`_set_delivery_method`); :1039 runs `_check_cart_and_addresses`,
+    # which reaches `_check_cart` at :2038, which at :2073-2076 stores a
+    # `shop_warning` on the order and its zero-priced lines. `sale_get_order`
+    # itself writes too: models/website.py:457 moves the order onto the
+    # logged-in partner when the two disagree.
+    "/shop/checkout": "persists a delivery method on the draft sale.order",
+    # controllers/main.py:1133 runs the same `_check_cart` before rendering the
+    # address form, so the `shop_warning` writes at :2073-2076 apply here too.
+    "/shop/address": "stores a shop_warning on the cart through _check_cart",
+    # controllers/main.py:1797-1802 recomputes the order's taxes and prices and
+    # re-applies its delivery method, all on the draft order.
+    "/shop/confirm_order": "recomputes the draft order's taxes, prices and delivery method",
+    # controllers/main.py:1820 runs `_check_cart` before rendering the extra
+    # step, so the `shop_warning` writes at :2073-2076 apply.
+    "/shop/extra_info": "stores a shop_warning on the cart through _check_cart",
+    # controllers/main.py:1931 runs `_check_cart_and_addresses`, so the
+    # `shop_warning` writes at :2073-2076 apply.
+    "/shop/payment": "stores a shop_warning on the cart",
+    # Under the same prefix, and its own entry because the longest match is what
+    # a refusal reports and this write is not the one above: controllers/
+    # main.py:1978-1979 confirms the draft order (`_check_cart_is_ready_to_be_paid`
+    # then `_validate_order`), which is a sale and not a draft edit, and
+    # `request.website.sale_reset()` then drops the cart the run was judging.
+    "/shop/payment/validate": "confirms the draft order into a sale and resets the cart",
+    # controllers/main.py:737 and :747 set the cart's pricelist and recompute
+    # its prices (`_cart_update_pricelist`, `_recompute_prices`).
+    "/shop/pricelist": "sets the cart's pricelist and recomputes its prices",
+    # controllers/main.py:721 sets the cart's pricelist for the pricelist the
+    # route names (`_cart_update_pricelist`).
+    "/shop/change_pricelist": "sets the cart's pricelist and recomputes its prices",
+    # `website`'s route, and `website_sale` overrides it to write: controllers/
+    # website.py:72-79 is a bare `@route()` over `/website/lang/<lang>`
+    # (website/controllers/main.py:210, `type='http'` and not `readonly`), and
+    # its body marks the cart's order lines for a recompute of their `name` in
+    # the new language, which the request flushes onto `sale.order.line`.
+    "/website/lang": "recomputes the cart's order line names in the chosen language",
+    # `sale`'s route, not `website_sale`'s, and on the list because the write was
+    # read: sale/controllers/portal.py:270 `_portal_ensure_token()` stores a
+    # fresh `access_token` on any order `_has_to_be_paid()`, and :168 posts a
+    # "Quotation viewed by customer" note on a draft or sent order a portal user
+    # opens with a token. It also writes with neither of those: :199 reaches the
+    # portal pager, which stores an `access_token` on the orders either side of
+    # this one. The key ends in a slash because the write is on
+    # `/my/orders/<int:order_id>` (:123) and not on `/my/orders` itself (:110),
+    # which only fills `request.session`. It over-refuses two siblings that write
+    # nothing -- `/my/orders/page/<n>` (:110) and `/my/orders/<id>/document/<n>`
+    # (:361) -- because no static prefix separates an order id from them, and
+    # over-refusing is the direction a guard errs in.
+    "/my/orders/": "stores an access_token on an unpaid order and posts a viewed-by-customer note",
+    # `account`'s invoice page: account/controllers/portal.py:153 renders
+    # `/my/invoices/<int:invoice_id>` through `_invoice_get_page_view_values`
+    # (:47), which reaches the portal pager and stores an `access_token` on the
+    # invoices either side of this one. Slash-terminated for the same reason as
+    # the orders key: `/my/invoices` (:81) only fills `request.session`. It
+    # over-refuses `/my/invoices/page/<n>` (:81), which writes nothing.
+    "/my/invoices/": "stores an access_token on the neighbouring invoices through the portal pager",
+    # Under that prefix, and its own entry because the longest match is what a
+    # refusal reports and this write is not the one above: the overdue-invoices
+    # page (account_payment/controllers/portal.py:53) asks the company for a
+    # batch payment reference at :85 whenever a partner has more than one overdue
+    # invoice, and account/models/company.py:272 takes it from an `ir.sequence`
+    # with `next_by_id()`, which bumps the sequence -- a write on the company's
+    # numbering and not on any invoice.
+    "/my/invoices/overdue": "bumps the company's batch payment sequence",
+    # `purchase`'s order page: purchase/controllers/portal.py:145 renders
+    # `/my/purchase/<int:order_id>` through :110, which reaches the portal pager.
+    # With a query it writes more: :158, :160 and :162 take `?confirm=` as the
+    # vendor's answer and flip `mail_reminder_confirmed` /
+    # `mail_reception_confirmed` / `mail_reception_declined` with a chatter note
+    # (purchase/models/purchase_order.py:1125, :1143 and :1152), and the last one
+    # also schedules an activity (:1153). `/my/purchase` (:126) and `/my/rfq`
+    # (:112) write nothing; `/my/purchase/page/<n>` is over-refused.
+    "/my/purchase/": "stores an access_token on the neighbouring purchase orders and answers ?confirm= on the order",
+    # `project`'s project page and the task pages under it:
+    # project/controllers/portal.py:209 calls `generate_access_token()` on every
+    # attachment of the task it is about to render, and
+    # base/models/ir_attachment.py:691 writes an `access_token` on each; :125 and
+    # :197 both reach the portal pager through :58 and :304. `/my/projects` (:69)
+    # writes nothing. Over-refuses `/my/projects/<id>/page/<n>` (:125),
+    # `/my/projects/<id>/project_sharing` (:186) and the subtask and recurrent
+    # task lists (:214, :247), none of which write.
+    "/my/projects/": "stores access_tokens on a task's attachments and on the neighbouring records",
+    # `project`'s standalone task page: project/controllers/portal.py:556 is the
+    # same `generate_access_token()` write (ir_attachment.py:691), and :561
+    # reaches the portal pager through :304. `/my/tasks` (:514) writes nothing.
+    "/my/tasks/": "stores access_tokens on a task's attachments and on the neighbouring tasks",
+    # The outdated spellings of the two above, and on the list because of what
+    # they redirect into: project/controllers/portal.py:110 and :118 answer
+    # `/my/project/...` and `/my/task/...` with a 30x onto `/my/projects/...` and
+    # `/my/tasks/...`, and `page.goto` follows a 30x, so the landing page's write
+    # is this route's write. Both keys end in a slash: `/my/task` redirects onto
+    # the task list page, which writes nothing, and `/my/project` is not a route.
+    "/my/project/": "redirects onto /my/projects/<id>, which writes",
+    "/my/task/": "redirects onto /my/tasks/<id>, which writes",
+    # `mail`'s route, which `portal` overrides to add the portal layout
+    # (portal/controllers/mail.py:172, a bare `@route()` over
+    # mail/controllers/mail.py:217 -- `type='http'`, no `methods`, so a GET
+    # reaches it): mail/controllers/mail.py:225 unsubscribes the partner the
+    # query names from the record's followers, which unlinks a `mail.followers`
+    # row. The token check in front of it (:219) is not a write bound; a wrong
+    # token raises instead, and a guard errs towards refusing.
+    "/mail/unfollow": "unsubscribes a follower from the record",
+    # `digest`'s two GET-reachable routes, one key because the prefix is static
+    # and the digest id is not: digest/controllers/portal.py:25 takes
+    # `methods=['GET', 'POST']` and unsubscribes a user at :51 or :54
+    # (digest/models/digest.py:119 writes `user_ids`), and :62 carries no
+    # `methods` at all and sets the digest's periodicity at :70
+    # (digest/models/digest.py:128). The POST-only one-click route (:14) is under
+    # the same prefix and is refused with them, which costs nothing: a GET never
+    # reaches it.
+    "/digest/": "unsubscribes a user from a digest and sets the digest's periodicity",
+    # `mail`'s Discuss public pages, and the only writes found outside a portal
+    # controller that a *path* alone reaches -- no query, so the rule that bounds
+    # `?confirm=` and `?report_type=` does not reach them, and the Runtime shim
+    # rewrites the invitation link that leads here
+    # (rootfs/etc/nginx/nginx.conf.template:591), so it is a route this product
+    # navigates. mail/controllers/discuss/public_page.py:42 takes the channel's
+    # uuid in the path and reaches :96 `_find_or_create_persona_for_channel`,
+    # which creates a `mail.guest` and its `discuss.channel.member` for whoever
+    # opened the link; :14 and :27 take a token that names no channel yet and
+    # create the `discuss.channel` itself at :69 -- and on a concurrent insert
+    # the handler calls `request.env.cr.commit()` at :81, which a rollback cannot
+    # take back. The `/chat/...` creation is gated on the `mail.chat_from_token`
+    # config parameter (:63) and the guest creation on nothing but the uuid. Both
+    # keys end in a slash because neither `/chat` nor `/meet` is a route.
+    # `/discuss/channel/<id>` (:52) renders the same page without the persona
+    # step and writes nothing, which is why the key is not `/discuss/`.
+    "/chat/": "creates a mail.guest and a discuss.channel.member, and a discuss.channel from an unknown token",
+    "/meet/": "creates a discuss.channel from an unknown token, and a mail.guest in it",
+}
+
+
+def get_writing_route(route: str) -> str | None:
+    """The `GET_WRITING_ROUTES` prefix `route` falls under, or None.
+
+    A prefix matches the route itself and anything below it, on a path segment
+    boundary: `/shop/payment/validate` is under `/shop/payment`, and a route
+    that merely starts with the same characters (`/shop/cartons`) is not. A
+    prefix that ends in a slash matches only what is below it, so `/my/orders/`
+    bounds `/my/orders/7` and leaves `/my/orders` alone. The longest match wins,
+    so adding a narrower entry under a wider one reports the narrower one rather
+    than whichever the dict happens to hold first. The query is ignored -- it
+    cannot make a writing route a reading one.
+
+    A route that is not an absolute path is refused rather than answered.
+    `parse_targets` refuses one too, so reaching this is a caller that skipped
+    it, and a guard that cannot read the route must not say it is safe.
+
+    The path is compared as Odoo routes it, not as it was typed, three ways.
+    Percent-escapes and repeated slashes: `normalize_route` keeps both on purpose
+    because they can route differently, and werkzeug unquotes before matching, so
+    `/shop/%63heckout` reaches `/shop/checkout`. Dot segments and backslashes: the
+    browser resolves the first and folds the second to `/` before it asks, so
+    `/shop/x/../checkout` and `/shop\\checkout` both ask for `/shop/checkout` --
+    `normalize_route` refuses both outright (`_safe_path`), so only a target
+    nobody parsed brings one here, which is the caller this helper cannot rely
+    on. And the language segment: Odoo's frontend
+    takes the first segment of a path it cannot route as a language code and
+    routes what is left (`http_routing/models/ir_http.py:390-392` at the pinned
+    Odoo), which makes `/zh_TW/shop/checkout` the ordinary spelling of the
+    checkout on a multilingual site. Every one of them can only refuse more than
+    the literal spelling would, which is the safe direction for a guard.
+    """
+    parts = urlsplit(route)
+    if parts.scheme or parts.netloc or not parts.path.startswith("/"):
+        raise ValueError("crawler configuration: %r is not an absolute path, so whether it writes "
+                         "on a plain GET cannot be judged" % route)
+    # A backslash is a separator to the browser, which folds it to `/` before it
+    # asks. `normpath` then resolves the dot segments the browser would resolve
+    # for itself; it runs after the unquote so a `%2e` or a `%5c` counts, and
+    # after the collapse so a leading `//` it would keep is already gone.
+    path = unquote(parts.path).replace("\\", "/")
+    path = posixpath.normpath(re.sub(r"/{2,}", "/", path))
+    head, _, rest = path.lstrip("/").partition("/")
+    candidates = [path] + (["/" + rest] if head and rest else [])
+    found: str | None = None
+    for candidate in candidates:
+        trimmed = candidate.rstrip("/") or "/"
+        for prefix in GET_WRITING_ROUTES:
+            if prefix.endswith("/"):
+                # Below the prefix only: `trimmed` carries no trailing slash, so
+                # the prefix's own path cannot match it.
+                if not trimmed.startswith(prefix):
+                    continue
+            elif trimmed != prefix and not trimmed.startswith(prefix + "/"):
+                continue
+            if found is None or len(prefix) > len(found):
+                found = prefix
+    return found
+
+
 def require_write_database(targets: Iterable[OpenTarget], database: str | None) -> None:
-    """A cart target writes, so ADR 0012 allows it on one database only.
+    """A target that writes the two ways a target can say so is bounded.
+
+    ADR 0012 allows the write on one database only, and a target says it writes
+    two ways: it declares a `cart:`, or it names a route on `GET_WRITING_ROUTES`.
+    Both are refused here, before the first screen is opened, so a misaimed run
+    is a configuration error and not a mutated database.
+
+    Not every write a run can make is one of those two -- the audits behind the
+    list are `website_sale`'s controllers and the portal controllers of the
+    installed modules, and a page writes through its own templates and
+    JavaScript as well. `GET_WRITING_ROUTES` says what is outside it and why.
+    This guard is as good as that list, not better.
 
     `database` is what the session reported it is on. `None` -- it reported
     nothing -- refuses the write like any other wrong answer: a run that cannot
     say where it would write may not write.
     """
-    if any(target.cart for target in targets) and database != WRITE_DATABASE:
-        raise RuntimeError("crawler configuration: a target fills a cart, which writes; "
-                           "the session's database is %r, not %s" % (database, WRITE_DATABASE))
+    if database == WRITE_DATABASE:
+        return
+    # Read once: this walks the targets twice, and an `Iterable` may be a
+    # generator, which the first walk would leave empty for the second.
+    targets = tuple(targets)
+    # Every reason at once. A file can hold both kinds, and reporting one of
+    # them sends the operator back for another browser launch and login to be
+    # refused for the other.
+    reasons = ["a target fills a cart, which writes"] if any(target.cart for target in targets) else []
+    for target in targets:
+        prefix = get_writing_route(target.route)
+        if prefix is not None:
+            reasons.append("target %s writes on a plain GET -- %s %s"
+                           % (target.target, prefix, GET_WRITING_ROUTES[prefix]))
+    if reasons:
+        raise RuntimeError("crawler configuration: %s; that write is allowed on %s only, and the "
+                           "session's database is %r"
+                           % ("; also ".join(reasons), WRITE_DATABASE, database))
 
 
 # --- Home Assistant websocket messages -----------------------------------
@@ -569,7 +952,13 @@ class SurfaceObservation:
     url_literals: Sequence[str] = ()
     url_violations: Sequence[Mapping[str, str]] = ()
     http_5xx: int = 0
-    # The records an `open` target created to reach its screen; empty for a read.
+    # The records an `open` target created to reach its screen -- the cart
+    # `ensure_cart` filled, or the one a failed cart step left empty, and
+    # nothing else. Empty does not mean the run wrote nothing: a target on
+    # `GET_WRITING_ROUTES` writes while its screen renders,
+    # bounded to `WRITE_DATABASE` but not reported here, and so do the page's own
+    # templates and JavaScript. Read it as "what the run set up", not as "what
+    # the database got".
     writes: Sequence[Mapping[str, Any]] = ()
 
 
@@ -918,21 +1307,77 @@ _SCREEN_JS = r"""() => {
 
 
 # The website's navbar cart badge: the number of items in the session's cart,
-# and the sale order it belongs to (`data-order-id`).
+# and the sale order it belongs to (`data-order-id`), in one round-trip -- the
+# two must come from the same DOM state, or a count and an id read either side
+# of an update would pair a size with an order it never had.
 # null, not 0: an unreadable badge is not an empty cart, and a write this run
-# made must never be denied by a reading that failed.
-_CART_QUANTITY_JS = """() => {
+# made must never be denied by a reading that failed. `''` is unreadable too:
+# Number('') is 0, which is an answer the badge did not give.
+_CART_STATE_JS = """() => {
   const node = document.querySelector('.my_cart_quantity');
-  if (!node) return null;
+  if (!node) return {count: null, order: null};
   const text = (node.textContent || '').trim();
-  if (!text) return null;          // Number('') is 0, which is an answer this is not
   const value = Number(text);
-  return Number.isFinite(value) ? value : null;
+  return {count: text && Number.isFinite(value) ? value : null,
+          order: node.getAttribute('data-order-id')};
 }"""
 _CART_GREW_JS = """(before) => {
   const node = document.querySelector('.my_cart_quantity');
   return !!node && Number((node.textContent || '').trim()) > before;
 }"""
+
+
+# What answers an add: the product page's own form posts to `/shop/cart/update`
+# (as does the cart page's quantity editor, at `/shop/cart/update_json`), and a
+# product with optional or combo products adds through the configurator instead.
+_CART_UPDATE_ROUTES = ("/shop/cart/update", "/website_sale/product_configurator/update_cart")
+
+
+def _is_cart_update(response) -> bool:
+    """Whether a response is the cart answering an add.
+
+    By path, not substring: `/shop/cart/update` must not match the quantity
+    editor's `/shop/cart/update_json`, which answers without adding anything --
+    a wait it satisfied would read the cart before the add committed, and the
+    retry would then double the line. An error answer is no add either: a 500
+    did not commit, so the wait keeps waiting and the cart reading says what
+    really happened.
+    """
+    if not response.ok:
+        return False
+    path = urlsplit(response.url).path
+    return any(path == route or path.endswith(route) for route in _CART_UPDATE_ROUTES)
+
+
+def _reached(url: str | None, route: str) -> bool:
+    """Whether a navigation's final URL is the route it was aimed at.
+
+    The path alone, unquoted, query dropped and an ingress prefix in front
+    tolerated: `/web/login?redirect=<route>` names the route in its query and
+    is the login page, not the product -- a substring test over the whole URL
+    called that arrival.
+    """
+    path = unquote(urlsplit(url or "").path).rstrip("/")
+    aimed = unquote(urlsplit(route).path).rstrip("/")
+    return bool(aimed) and (path == aimed or path.endswith(aimed))
+
+
+# Every theme the parity plan covers renders one of these.
+_ADD_TO_CART = "#add_to_cart, a[data-action='add_to_cart'], button:has-text('Add to cart')"
+# How long a click that may still be in flight has to show up before the retry
+# clicks again: an add that lands after the reading that called the cart empty
+# would otherwise be doubled by the second click.
+_CART_SETTLE_MS = 2000
+# How long the badge has to rise after a click whose POST never answered: the
+# response wait has already given the add 30s, so this covers only a theme
+# that adds by a route `_is_cart_update` does not name -- its XHR had those
+# 30s too -- without paying the full bound twice for a dead element.
+_CART_BADGE_GRACE_MS = 5000
+# How many times the add-to-cart button is clicked before the step gives up.
+# Two: one click, and one more for the handler race no wait can see. A third
+# would start guessing at a shop that is simply broken, and a broken shop is
+# evidence the run should record rather than keep clicking at.
+_CART_CLICK_ATTEMPTS = 2
 
 
 def is_configuration_error(error: BaseException) -> bool:
@@ -985,6 +1430,13 @@ def _shows(page, selector: str, *, timeout: int = 15000) -> bool:
 
 class SurfaceDriver:
     """Logs in on one surface and opens planned visits, reading only."""
+
+    # What `ensure_cart` read before it touched anything, for
+    # `_cart_after_failure` to tell a cart this run created from one it found:
+    # the order the cart page named, and whether there was a reading at all.
+    # Class attributes, so a driver that has opened no cart still answers.
+    cart_before: str | None = None
+    cart_before_read: bool = False
 
     def __init__(
         self, surface: Surface, browser, *, ignore_https_errors: bool, viewport: tuple[int, int] = (1920, 1080),
@@ -1067,32 +1519,60 @@ class SurfaceDriver:
         return self._open(visit.route, backend=True, expect_action=visit.action_id)
 
     def open_screen(self, target: OpenTarget) -> SurfaceObservation:
-        """Open one named screen, the way `observe` opens a planned menu action."""
+        """Open one named screen, the way `observe` opens a planned menu action.
+
+        A target whose route writes on a plain GET is refused off
+        `WRITE_DATABASE`, the way `ensure_cart` refuses the declared cart write:
+        `open_screens` checks the whole target list before the first screen so a
+        misaimed run stops at once, and this is the check for every other caller
+        of this driver.
+        """
         READ_ONLY_POLICY.require(Operation.NAVIGATE)
+        require_write_database((target,), self.database)
         writes: tuple[Mapping[str, Any], ...] = ()
         if target.cart:
             try:
                 writes = (self.ensure_cart(target.cart),)
             except Exception as error:  # noqa: BLE001 -- a failed cart is evidence too, not a crash
                 if is_configuration_error(error):
-                    raise
+                    # Masked at this boundary too, not only where each message
+                    # is raised: one callsite forgetting `masker.text` must
+                    # not be what puts the host in the run log.
+                    raise RuntimeError(self.masker.text(str(error))) from None
                 # Judging the screen now would judge whatever the cart happened
                 # to hold, so the target is unavailable on this surface and the
                 # record says why. The click may have landed before whatever
                 # failed, so the cart is read once more: a line this run created
-                # is named even then, and the other surface will reuse it.
-                cart = self._cart_after_failure()
+                # is named even then, and the other surface will reuse it. An
+                # order the run created and never filled counts as one too, and
+                # when there is no record the `unread` half says why not.
+                cart, unread = self._cart_after_failure()
                 return SurfaceObservation(
                     available=False,
-                    result=self.masker.text("cart not filled (%s): %s"
-                                            % (classify_failure(error).value, (str(error).splitlines() or [""])[0])),
+                    result=self.masker.text("cart not filled (%s): %s%s"
+                                            % (classify_failure(error).value, (str(error).splitlines() or [""])[0],
+                                               "; " + unread if unread else "")),
                     signals={name: 0 for name in SIGNALS}, route=None, model=None, view=None,
                     writes=(cart,) if cart else (),
                 )
-        observation = self._open(
-            target.route, backend=target.backend,
-            expect_model=target.expect_model, expect_selector=target.expect_selector,
-        )
+        try:
+            observation = self._open(
+                target.route, backend=target.backend,
+                expect_model=target.expect_model, expect_selector=target.expect_selector,
+            )
+        except Exception as error:  # noqa: BLE001 -- only a configuration error escapes `_open`
+            if not is_configuration_error(error):
+                raise
+            detail = ""
+            if writes:
+                # This stops the run before `open_screens` writes a record, so
+                # the cart line `ensure_cart` just committed would go
+                # unaccounted -- the message carries it, the way the in-loop
+                # handler in `ensure_cart` carries its own.
+                write = writes[0]
+                detail = ("; no record will name the cart: %s:%s holding %s item(s), %s"
+                          % (write["model"], write["id"], write["items"], write["how"]))
+            raise RuntimeError(self.masker.text(str(error) + detail)) from None
         return replace(observation, writes=writes)
 
     def ensure_cart(self, product_route: str) -> dict[str, Any]:
@@ -1113,6 +1593,14 @@ class SurfaceDriver:
         would edit the very screen under judgement. The record names the
         order and its size instead, and it carries the run id.
 
+        The click is bounded but not quick: with every wait in it timing out,
+        one cart target costs about twelve minutes -- two passes of a `load`
+        navigation, the button waits, the badge wait and the cart readings,
+        including the ones that confirm a two-click cart settled -- against
+        about four before the retry existed. A run that sizes a timeout around
+        this step should size it for that, and the loop refreshes the ingress
+        session as it goes so the window does not lapse inside it.
+
         This writes, and is deliberately not an `Operation`:
         `NON_MUTATING_OPERATIONS` is every member of that enum, so a WRITE
         member added there would be *permitted* by `READ_ONLY_POLICY` rather
@@ -1127,6 +1615,9 @@ class SurfaceDriver:
             # which is the only answer this driver has.
             raise RuntimeError("crawler configuration: the cart write is allowed on %s only; "
                                "the session's database is %r" % (WRITE_DATABASE, self.database))
+        # Reset before the page, so a `new_page` that fails cannot leave the
+        # previous target's reading for `_cart_after_failure` to compare with.
+        self.cart_before, self.cart_before_read = None, False
         page = self.context.new_page()
         try:
             # Both readings are taken on the cart page: the badge on another
@@ -1135,36 +1626,301 @@ class SurfaceDriver:
             before, order = self._cart(page)
             if before is None:
                 raise RuntimeError("the cart page did not show how many items the cart holds")
+            # An order named here is one the run found, not one it made, and
+            # that is what tells a created cart from a reused one if this step
+            # fails further down.
+            self.cart_before, self.cart_before_read = order, True
             if before:
                 return {"model": "sale.order", "id": order, "items": before,
                         "how": "the cart already held %d item(s); nothing was added" % before}
-            page.goto(self.base + product_route, wait_until="domcontentloaded", timeout=60000)
-            page.locator("#add_to_cart, a[data-action='add_to_cart'], button:has-text('Add to cart')").first.click()
-            try:
-                # The button posts to /shop/cart/update and the navbar badge
-                # rises when that answers. Some themes navigate to the cart
-                # first; the badge is on that page too. Leaving before it
-                # answers would cancel the write and leave the cart empty.
-                page.wait_for_function(_CART_GREW_JS, arg=0, timeout=30000)
-            except Exception:  # noqa: BLE001 -- the cart page below is the real check
-                pass
-            after, order = self._cart(page)
-            if after is None:
-                raise RuntimeError("the cart page did not show its item count after adding %s"
-                                   % self.masker.text(product_route))
-            if not after:
-                # Without this the run would judge a checkout the cart never
-                # made reachable, or record a write that never happened.
-                raise RuntimeError("the cart is still empty after adding %s" % self.masker.text(product_route))
-            return {
-                "model": "sale.order",
-                "id": order,
-                "items": after,
-                "how": "added the product on %s to the cart (0 -> %d items)"
-                       % (self.masker.text(product_route), after),
-            }
+            clicks, filled_first = 0, False
+            # Bound where a two-click cart is read until it settles, further
+            # down; the `elif clicks > 1` branch of `how` is the only reader
+            # and cannot run before that. Initialised here so the names exist
+            # on every path, not because any path reads these values.
+            moved, unread, confirmed = False, False, False
+            for attempt in range(1, _CART_CLICK_ATTEMPTS + 1):
+                if self.ingress:
+                    # Minutes of waits live in this loop, against the
+                    # Supervisor's fifteen-minute ingress window (U-B6): a
+                    # session that lapses here makes every request after it read
+                    # as a product GAP. A refresh that fails is the harness
+                    # losing its session, so it is raised as one -- `open_screen`
+                    # swallows anything else into `cart not filled`, which would
+                    # file a dead websocket as a blocker GAP on a screen nobody
+                    # judged, and `_open` stops the run on the same fault.
+                    try:
+                        self.ingress.keep_alive()
+                    except Exception as error:  # noqa: BLE001 -- turned into the harness error it is
+                        # This stops the run, so there will be no record to put
+                        # a cart in: a line the first click already committed
+                        # would go unaccounted for. The message carries it, on
+                        # the one database ADR 0012 allows the write on.
+                        left, why = self._cart_after_failure() if clicks else (None, None)
+                        if left:
+                            # Its own `how` says whether the run made this cart
+                            # or found it; claiming either here would be the
+                            # guess the rest of the step refuses to make.
+                            detail = ("; no record will name the cart: %s:%s holding %s item(s), %s"
+                                      % (left["model"], left["id"], left["items"], left["how"]))
+                        elif clicks:
+                            detail = ("; %d click(s) had been sent and the cart could not be read afterwards"
+                                      " (%s), so what it holds is unaccounted for" % (clicks, why))
+                        else:
+                            detail = ""
+                        # This one masks itself -- a raw websocket message
+                        # carries the host and the ingress token every other
+                        # message in this driver hides -- and `open_screen`
+                        # masks configuration errors once more at its
+                        # boundary, for any callsite this discipline misses.
+                        raise RuntimeError("crawler configuration: the ingress session could not be refreshed "
+                                           "during the cart step (%s)"
+                                           % self.masker.text((str(error).splitlines() or [""])[0] + detail)
+                                           ) from None
+                if attempt > 1:
+                    # The add may still have been in flight when the reading
+                    # above called the cart empty, and clicking again would add
+                    # its quantity twice -- `/shop/cart/update` increments the
+                    # line it finds, so the one line ends at qty 2: a cart
+                    # bigger than the plan meant on the judged screen, and a
+                    # size the other surface will not match. So a cart that
+                    # filled late gets its moment and one more reading, and
+                    # ends the step here instead of growing again.
+                    page.wait_for_timeout(_CART_SETTLE_MS)
+                    after, read_order = self._cart(page)
+                    # A reading that lost the badge's order id for a moment
+                    # must not erase the one an earlier reading named: a
+                    # success row with `id: None` against the other surface's
+                    # real id is a blocker GAP on two identical screens.
+                    order = read_order or order
+                    if after is None:
+                        # Not empty -- unreadable, the same answer the reading
+                        # after a click gives, and no reason to click again.
+                        raise RuntimeError("the cart page did not show its item count at %s after %d click(s), "
+                                           "so the step did not click again"
+                                           % (self.masker.text(product_route), clicks))
+                    if after:
+                        filled_first = True
+                        break
+                clicked = self._click_add_to_cart(page, product_route)
+                if clicked:
+                    clicks += 1
+                    if clicked == "unanswered":
+                        try:
+                            # No POST `_is_cart_update` names answered this
+                            # click: a theme that adds by another route, or the
+                            # dead element the retry exists for. The navbar
+                            # badge is the signal left -- some themes navigate
+                            # to the cart first, and it is on that page too --
+                            # and it gets a short grace, not the full bound the
+                            # response wait already spent on the same click.
+                            # An answered click needs neither: its own POST
+                            # answering is what says the add committed.
+                            page.wait_for_function(_CART_GREW_JS, arg=0, timeout=_CART_BADGE_GRACE_MS)
+                        except Exception:  # noqa: BLE001 -- the cart page below is the real check
+                            pass
+                    if clicks > 1:
+                        # A badge that rose cannot say which of the two clicks
+                        # raised it, so the second click gets the same grace the
+                        # reading before it got and the cart is read after that.
+                        # What that reading says is what the record says: a cart
+                        # that took both clicks is reported at the quantity both
+                        # left it, not the one the wait happened to see.
+                        page.wait_for_timeout(_CART_SETTLE_MS)
+                else:
+                    # The product page came up with a cart already holding
+                    # something, so there was nothing to click: the add landed
+                    # while that navigation was loading, which is the same late
+                    # add the grace above catches and the same doubling.
+                    filled_first = True
+                after, read_order = self._cart(page)
+                order = read_order or order
+                if after is None:
+                    # The page could not say, which is not the same as empty and
+                    # is not something another click would answer. The count is
+                    # in the message: what the run clicked is what it has to
+                    # account for, whatever the page would not say.
+                    raise RuntimeError("the cart page did not show its item count at %s after %d click(s)"
+                                       % (self.masker.text(product_route), clicks))
+                if after and clicks > 1:
+                    moved, unread, confirmed = False, False, False
+                    # More than one click means the record has to name the
+                    # quantity the cart settled at. A reading taken while the
+                    # second update was still committing names the smaller one;
+                    # the other surface then records the larger and `_judge`
+                    # calls two identical screens a blocker GAP. So the cart is
+                    # read until two readings in a row agree, three at most.
+                    for _ in range(2):
+                        page.wait_for_timeout(_CART_SETTLE_MS)
+                        again, again_order = self._cart(page)
+                        if again is None:
+                            # Not a cart that moved -- a page that stopped
+                            # saying, which is the distinction the whole step
+                            # turns on. Another reading may still settle it, and
+                            # a cart already seen moving stays the bigger news.
+                            unread = True
+                            continue
+                        if again == after:
+                            confirmed = True
+                            break
+                        # `or order`: a confirming reading that momentarily
+                        # lost the order id must not overwrite the one already
+                        # named -- see the readings above.
+                        after, order, moved = again, again_order or order, True
+                if after:
+                    break
+                # The badge that said otherwise was wrong, or what it saw is
+                # gone; either way this is the empty cart the retry is for.
+                filled_first = False
+                if attempt == _CART_CLICK_ATTEMPTS:
+                    # Without this the run would judge a checkout the cart never
+                    # made reachable, or record a write that never happened.
+                    if not clicks:
+                        # Every pass found the product page's badge holding
+                        # something the cart page then said was not there. The
+                        # step cannot add to a cart it cannot read the size of,
+                        # and it never clicked, so it does not say it added.
+                        raise RuntimeError("the cart page reads empty and the product page for %s says otherwise, "
+                                           "so nothing was clicked" % self.masker.text(product_route))
+                    raise RuntimeError("the cart is still empty after adding %s in %d click(s)"
+                                       % (self.masker.text(product_route), clicks))
+                # An empty cart after a click Playwright delivered to an enabled
+                # button is the handler race `_click_add_to_cart` cannot see:
+                # the element was there, its listener was not. The next pass
+                # re-opens the product page and clicks again, and that is the
+                # whole retry -- the bound above is what keeps it one.
+            if not clicks:
+                # Nothing was clicked, so nothing here added anything: the cart
+                # filled between the reading that called it empty and the page
+                # that would have been clicked.
+                how = ("the cart held %d item(s) by the time the product page for %s was up; nothing was added"
+                       % (after, self.masker.text(product_route)))
+            else:
+                how = "added the product on %s to the cart (0 -> %d items)" % (self.masker.text(product_route), after)
+                if filled_first:
+                    how += ("; the click landed after the reading that called the cart empty,"
+                            " so it was not clicked again")
+                elif clicks > 1:
+                    how += "; the first %d click(s) read as lost, so it was clicked %d times" % (clicks - 1, clicks)
+                    if after > 1:
+                        how += (", and the cart holds more than the one item the step meant to add"
+                                " -- a product that adds several, or a click that was not lost after all")
+                    if not confirmed and moved:
+                        # Read as "this size is the last reading, not a settled
+                        # one": an update still committing lands after it, and
+                        # the other surface reading the larger cart is then a
+                        # difference in the evidence and not in the screens.
+                        how += "; the cart was still changing when the run left it"
+                    elif not confirmed and unread:
+                        how += ("; the cart page stopped saying how many items it holds,"
+                                " so this size is the last reading that did")
+            return {"model": "sale.order", "id": order, "items": after, "how": how}
         finally:
             page.close()
+
+    def _click_add_to_cart(self, page, product_route: str) -> str | bool:
+        """Open the product page and click add-to-cart once it can be clicked.
+
+        False when it found nothing to click for: the badge on the page this
+        navigation just rendered already shows a cart with something in it, so
+        an add landed while it was loading and clicking would add the quantity
+        twice. A badge on a page other than the cart can be a step behind, so a
+        low reading proves nothing and is not trusted -- a reading above zero is
+        the cart saying it is not empty, and that is all this asks of it.
+
+        A click comes back as `"answered"` -- its POST to a cart route drew an
+        answer, which is what says the add committed -- or `"unanswered"`: no
+        such answer inside the wait's bound, so the caller still has the badge
+        and the cart reading to consult. Both are true, the way the old bool
+        was; only False means nothing was clicked.
+
+        `domcontentloaded` is when the button exists, not when it works: the
+        handler is attached by the website bundle, which is still loading then,
+        so a click at that moment can land on a dead element and the cart never
+        grows. This navigation waits for `load` instead -- every bundle script
+        fetched and run, which is the closest thing to "the handlers are on"
+        Playwright can wait for. `networkidle` would wait for more than that and
+        for things that never settle; the button's own state is the rest.
+
+        Being visible is attached and laid out where a click reaches it. Being
+        enabled is worth asking of the `button` some themes render; on the
+        `<a class="a-submit">` Odoo's own template renders there is nothing to
+        disable and Playwright always answers yes. Neither says the listener is
+        attached, which nothing can, and that is why the caller clicks again on
+        a cart that stayed empty rather than failing the run on the first miss.
+        """
+        try:
+            page.goto(self.base + product_route, wait_until="load", timeout=60000)
+        except Exception:  # noqa: BLE001 -- re-raised below unless the page arrived
+            # One sub-resource that never finishes would otherwise cost the whole
+            # target a blocker GAP, and the page is up: its bundle has very
+            # likely run, and the click's own retry is the guard behind it. So
+            # the step goes on with the page it has -- navigating again would
+            # throw that away and land exactly where `load` was waiting to get
+            # past. A navigation that never arrived is a real failure, and so
+            # is one that arrived somewhere else: a login page naming the
+            # product in its `redirect=` is the session lapsing, not the
+            # product page, and polling its DOM for an add-to-cart button
+            # would report the wrong fault. `_reached` reads the path only.
+            if not _reached(page.url, product_route):
+                raise
+        if ((page.evaluate(_CART_STATE_JS) or {}).get("count") or 0) > 0:
+            return False
+        button = page.locator(_ADD_TO_CART).first
+        # A button that is not there 30s after `load` is a shop the run should
+        # report on, not wait for -- 30s is what a bare `click()` would have
+        # given it to appear, and nothing retries a step this aborts: only an
+        # empty cart is clicked at again. The enabled poll below keeps the
+        # same bound, for a themed `button[disabled]` waiting on its own
+        # combination XHR -- that takes seconds, not the whole of it.
+        button.wait_for(state="visible", timeout=30000)
+        deadline = time.monotonic() + 30
+        last_error: Exception | None = None
+        while True:
+            # Checked first, and each reading is bounded by what is left of
+            # the deadline: a reading that kept raising for its full 5s would
+            # otherwise overshoot the bound by up to one reading.
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                detail = ""
+                if last_error is not None:
+                    detail = (" (the last reading said: %s)"
+                              % self.masker.text((str(last_error).splitlines() or [""])[0]))
+                raise RuntimeError("the add-to-cart button on %s never became enabled%s"
+                                   % (self.masker.text(product_route), detail))
+            try:
+                # The reading carries its own timeout: Playwright's default is
+                # 30s, and a button that stopped resolving would report a raw
+                # Playwright timeout instead of what happened here.
+                if button.is_enabled(timeout=min(5000, max(100, int(remaining * 1000)))):
+                    break
+            except Exception as error:  # noqa: BLE001 -- a button detached mid-hydration; bounded above
+                # Not the button answering "disabled", so the poll goes on --
+                # unless the page itself is gone, which no amount of polling
+                # answers and which the run should name as what it is.
+                if page.is_closed():
+                    raise
+                last_error = error
+            page.wait_for_timeout(250)
+        clicked = False
+        answered = False
+        try:
+            # The badge rising says some add landed, not that this click's did:
+            # on a retry the first click's late add satisfies that wait at once
+            # and the second add then has no wait of its own. This click's own
+            # POST answering is what says its add committed before the cart is
+            # read. A click that draws no such answer -- a theme that adds by
+            # another route, or the dead element this retry exists for -- is
+            # reported as such, and the caller falls back to the badge and the
+            # cart reading in `ensure_cart`.
+            with page.expect_response(_is_cart_update, timeout=30000):
+                button.click()
+                clicked = True
+            answered = True
+        except Exception:  # noqa: BLE001 -- see above; a click that failed is re-raised
+            if not clicked:
+                raise
+        return "answered" if answered else "unanswered"
 
     def check_selectors(self, targets: Iterable[OpenTarget]) -> None:
         """Refuse an `expect_selector` Playwright cannot read, before judging.
@@ -1187,29 +1943,58 @@ class SurfaceDriver:
         finally:
             page.close()
 
-    def _cart_after_failure(self) -> dict[str, Any] | None:
-        """What the cart holds after a cart step that failed part-way.
+    def _cart_after_failure(self) -> tuple[dict[str, Any] | None, str | None]:
+        """What the cart holds after a cart step that failed part-way, and why not.
 
-        None when the cart could not be read: `writes` names the records a run
-        created or reused, and a cart nobody could read is neither. The reason
-        the step failed is on the observation itself.
+        An empty cart and an unreadable cart are not the same thing. A cart
+        that reads empty and still names its order is a row the checkout will
+        use, and ADR 0012 has it accounted for on this database like any other:
+        it goes into `writes` with `items: 0`. Whether this run *created* it is
+        a separate question, and the reading `ensure_cart` took before it
+        clicked is the only thing that answers it -- an earlier run can leave
+        an empty draft order behind, and the logged-in user's is revived rather
+        than created on the way in, so `how` says which of the two this is
+        rather than claiming a write that never happened.
+
+        Only a cart nobody could read is no record at all -- then the record is
+        None and the second half of the answer is the reason, which the caller
+        puts on the observation beside the failure that brought us here.
         """
         page = None
         try:
+            if self.ingress:
+                # Best effort, and suppressed: this reading is the one thing
+                # standing between a cart the run filled and a `writes` that
+                # never names it, so a session that will not refresh must not
+                # cost it. A page that then fails is what the reason is for.
+                with contextlib.suppress(Exception):
+                    self.ingress.keep_alive()
             page = self.context.new_page()
             items, order = self._cart(page)
-            if not items:
-                # Unreadable, or empty: either way there is no record this run
-                # created or reused. Why the step failed is on the observation.
-                return None
-            return {"model": "sale.order", "id": order, "items": items,
-                    "how": "the cart holds %d item(s) after the cart step failed" % items}
-        except Exception:  # noqa: BLE001 -- the failure that brought us here is the story
-            return None
+        except Exception as error:  # noqa: BLE001 -- the failure that brought us here is the story
+            return None, ("the cart could not be read afterwards (%s)"
+                          % (str(error).splitlines() or [""])[0])
         finally:
             if page is not None:
                 with contextlib.suppress(Exception):
                     page.close()
+        if items is None:
+            return None, "the cart page did not show afterwards how many items the cart holds"
+        if not items:
+            if not order:
+                # Read, and empty, and naming no order: there is no row to
+                # report, and nothing failed to be read either.
+                return None, "the cart read empty and named no order, so this run created none"
+            if order == self.cart_before:
+                how = "the empty order the cart already held before the step; nothing was added"
+            elif self.cart_before_read:
+                how = "created empty by the failed cart step"
+            else:
+                how = ("empty after the failed cart step; the step got no reading from before it, "
+                       "so whether this run created it is unknown")
+            return {"model": "sale.order", "id": order, "items": 0, "how": how}, None
+        return ({"model": "sale.order", "id": order, "items": items,
+                 "how": "the cart holds %d item(s) after the cart step failed" % items}, None)
 
     def _cart(self, page) -> tuple[int | None, str | None]:
         """The number of items in the session's cart, and the order it is.
@@ -1217,19 +2002,31 @@ class SurfaceDriver:
         The count is None when the cart page did not show one.
         """
         page.goto(self.base + "/shop/cart", wait_until="domcontentloaded", timeout=60000)
-        # website_sale puts both on every page's navbar badge.
-        order = page.evaluate(
-            "() => { const n = document.querySelector('.my_cart_quantity');"
-            " return (n && n.getAttribute('data-order-id')) || null; }"
-        )
-        return page.evaluate(_CART_QUANTITY_JS), (str(order) if order else None)
+        # website_sale puts both on every page's navbar badge; one reading, so
+        # the count and the order id come from the same DOM state.
+        state = page.evaluate(_CART_STATE_JS) or {}
+        order = state.get("order")
+        # An absent attribute, and the "0" the templates render before the
+        # session has an order, are both "no order": a write row naming
+        # `sale.order:0` would claim a record nobody created, and the empty-cart
+        # reading in `_cart_after_failure` turns on telling those apart.
+        return state.get("count"), (str(order) if order and str(order) != "0" else None)
 
     def _open(
         self, route: str, *, backend: bool, expect_action: str | None = None,
         expect_model: str | None = None, expect_selector: str | None = None,
     ) -> SurfaceObservation:
         if self.ingress:
-            self.ingress.keep_alive()
+            try:
+                self.ingress.keep_alive()
+            except Exception as error:  # noqa: BLE001 -- the harness losing its session, not the screen
+                # The same fault `ensure_cart` names inside its loop: a dead
+                # websocket here is not evidence about the screen, and a raw
+                # Playwright message would carry the host and the ingress
+                # token every other message in this driver hides.
+                raise RuntimeError("crawler configuration: the ingress session could not be refreshed "
+                                   "before opening the screen (%s)"
+                                   % self.masker.text((str(error).splitlines() or [""])[0])) from None
         page = self.context.new_page()
         page_errors: list[str] = []
         console: list[tuple[str, str]] = []

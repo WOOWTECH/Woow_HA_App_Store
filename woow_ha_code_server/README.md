@@ -10,7 +10,7 @@
 
 [`code-server`](https://github.com/coder/code-server) (the browser IDE) as a Home Assistant Supervisor add-on, layered on the Community App Store's [Studio Code Server](https://github.com/hassio-addons/addon-vscode) — everything upstream provides (HA ingress, the `ha` CLI, the Home Assistant/YAML/MDI extensions) stays intact. On top: the [pi coding agent](https://github.com/earendil-works/pi), [pi-acp](https://www.npmjs.com/package/pi-acp), and the [ACP Client](https://open-vsx.org/extension/formulahendry/acp-client) chat sidebar, pre-wired.
 
-This is one of three aligned WOOWTECH code-server deployments — this add-on, a [podman package](https://github.com/WOOWTECH/Woow_podman_code_server_package), and a [k3s Helm chart](https://github.com/WOOWTECH/Woow_k3s_code_server_package) — sharing the same pi version and pi state layout. See [`PARITY_CONTRACT.md`](PARITY_CONTRACT.md).
+This is one of three aligned WOOWTECH code-server deployments — this add-on, a [podman package](https://github.com/WOOWTECH/Woow_podman_code_server_package), and the [WOOW PaaS cloud service](https://github.com/WOOWTECH/Woow_k3s_code_server_package) (the k3s leg) — sharing the same pi version and pi state layout. See [`PARITY_CONTRACT.md`](PARITY_CONTRACT.md).
 
 pi's state here is **private to this add-on** — not shared with the separate `Woow HA Pi Agent` add-on or with the podman/k3s deployments.
 
@@ -112,7 +112,7 @@ Full detail: [`DOCS.md`](DOCS.md#security).
 ## Related
 
 - [`Woow_podman_code_server_package`](https://github.com/WOOWTECH/Woow_podman_code_server_package) — the same pi/ACP wiring, packaged for rootless Podman
-- [`Woow_k3s_code_server_package`](https://github.com/WOOWTECH/Woow_k3s_code_server_package) — the same image, deployed on k3s via Helm + Cloudflare Tunnel
+- [`Woow_k3s_code_server_package`](https://github.com/WOOWTECH/Woow_k3s_code_server_package) — the k3s leg: the WOOW PaaS code-server cloud service (read-only mirror of its chart and image layer, built on the same podman image)
 - [ACP Client (formulahendry)](https://open-vsx.org/extension/formulahendry/acp-client) — the VS Code extension that renders the chat panel
 - [pi-acp](https://www.npmjs.com/package/pi-acp) — community bridge from ACP JSON-RPC to pi's `--mode rpc`
 - [Woow_ha_pi_agent_add_on](https://github.com/WOOWTECH/Woow_ha_pi_agent_add_on) — a separate, unrelated HA add-on bundling pi-web; no state is shared with this add-on

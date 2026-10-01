@@ -1,0 +1,2 @@
+toggleCodeView(){this.state.showCodeView=!this.state.showCodeView;if(this.wysiwyg){this.wysiwyg.odooEditor.observerUnactive('toggleCodeView');if(this.state.showCodeView){this.wysiwyg.$editable.remove();this.wysiwyg.odooEditor.toolbarHide();const value=this.wysiwyg.getValue();this.props.record.update({[this.props.name]:value});}else{this.wysiwyg.odooEditor.observerActive('toggleCodeView');}}
+if(!this.state.showCodeView){const $codeview=$(this.codeViewRef.el);const value=$codeview.val();this.props.record.update({[this.props.name]:value});}}

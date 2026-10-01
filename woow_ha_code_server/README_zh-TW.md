@@ -10,7 +10,7 @@
 
 把 [`code-server`](https://github.com/coder/code-server)（瀏覽器版 VS Code）包成 Home Assistant Supervisor add-on，疊在 HA Community App Store 的 [Studio Code Server](https://github.com/hassio-addons/addon-vscode) 上——上游提供的一切（HA ingress、`ha` CLI、Home Assistant/YAML/MDI extension）完全保留。在上面加的是：[pi coding agent](https://github.com/earendil-works/pi)、[pi-acp](https://www.npmjs.com/package/pi-acp)、以及預先接好線的 [ACP Client](https://open-vsx.org/extension/formulahendry/acp-client) 聊天側欄。
 
-這是 WOOWTECH 三個對齊的 code-server 部署之一——本 add-on、一份 [podman package](https://github.com/WOOWTECH/Woow_podman_code_server_package)、以及一份 [k3s Helm chart](https://github.com/WOOWTECH/Woow_k3s_code_server_package)——三者共用同一個 pi 版本與 pi 狀態目錄結構。詳見 [`PARITY_CONTRACT.md`](PARITY_CONTRACT.md)。
+這是 WOOWTECH 三個對齊的 code-server 部署之一——本 add-on、一份 [podman package](https://github.com/WOOWTECH/Woow_podman_code_server_package)、以及 [WOOW PaaS 雲端服務](https://github.com/WOOWTECH/Woow_k3s_code_server_package)（k3s 這一邊）——三者共用同一個 pi 版本與 pi 狀態目錄結構。詳見 [`PARITY_CONTRACT.md`](PARITY_CONTRACT.md)。
 
 這裡的 pi 狀態**只屬於本 add-on**——不跟另一個獨立的 `Woow HA Pi Agent` add-on 共用，也不跟 podman/k3s 部署共用。
 
@@ -114,7 +114,7 @@ HA_URL=https://your-ha-host HA_TOKEN=... bash tests/smoke-addon.sh
 ## 相關
 
 - [`Woow_podman_code_server_package`](https://github.com/WOOWTECH/Woow_podman_code_server_package) — 同一套 pi/ACP 接線，包給 rootless Podman 用
-- [`Woow_k3s_code_server_package`](https://github.com/WOOWTECH/Woow_k3s_code_server_package) — 同一顆 image，用 Helm + Cloudflare Tunnel 部署到 k3s
+- [`Woow_k3s_code_server_package`](https://github.com/WOOWTECH/Woow_k3s_code_server_package) — k3s 這一邊：WOOW PaaS 的 code-server 雲端服務（chart 與 image 層的唯讀鏡像，以同一顆 podman image 為底）
 - [ACP Client (formulahendry)](https://open-vsx.org/extension/formulahendry/acp-client) — 渲染聊天面板的 VS Code extension
 - [pi-acp](https://www.npmjs.com/package/pi-acp) — 社群做的 ACP JSON-RPC → pi `--mode rpc` bridge
 - [Woow_ha_pi_agent_add_on](https://github.com/WOOWTECH/Woow_ha_pi_agent_add_on) — 另一個獨立的 HA add-on，包 pi-web；跟本 add-on 不共用任何狀態

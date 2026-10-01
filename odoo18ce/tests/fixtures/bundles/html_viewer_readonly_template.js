@@ -1,0 +1,9 @@
+registerTemplate("html_editor.HtmlViewer", `/html_editor/static/src/fields/html_viewer.xml`, `<t t-name="html_editor.HtmlViewer" xml:space="preserve">
+        <t t-if="this.showIframe">
+            <iframe t-ref="iframe" t-att-class="{'d-none': !this.state.iframeVisible, 'o_readonly': true}" t-att-sandbox="props.config.hasFullHtml ? 'allow-same-origin allow-popups allow-popups-to-escape-sandbox' : false"/>
+        </t>
+        <t t-else="">
+            <div t-ref="readonlyContent" class="o_readonly" t-out="state.value"/>
+        </t>
+    </t>
+`);

@@ -253,6 +253,20 @@ if [ -n "${CANONICAL_URL}" ] \
     bashio::log.warning "Canonical URL is not a bare origin; the Runtime shim will not publish it"
     CANONICAL_URL=''
 fi
+# The shape check above says nothing about length, and nothing else bounds this
+# value: `public_url` is an add-on option, and a long origin of a legal shape
+# would pass. nginx reads a configuration token into a fixed 4096-byte buffer,
+# so that value would be rendered into a parameter nginx refuses with `too long
+# parameter`, and the add-on would not start. The Static tier budgets the
+# parameter against this same number -- PLACEHOLDER_WORST_CASE in
+# tests/test_nginx_parameter_budget.py, held to this line by a test there -- so
+# the ceiling has to be real here. An over-long value is dropped the way a
+# misshapen one is: a warning, and a shim that publishes nothing.
+CANONICAL_URL_MAX=2048
+if [ -n "${CANONICAL_URL}" ] && [ "${#CANONICAL_URL}" -gt "${CANONICAL_URL_MAX}" ]; then
+    bashio::log.warning "Canonical URL is longer than ${CANONICAL_URL_MAX} bytes; the Runtime shim will not publish it"
+    CANONICAL_URL=''
+fi
 if [ -n "${CANONICAL_URL}" ]; then
     bashio::log.info "Runtime shim Canonical URL = ${CANONICAL_URL}"
 else
