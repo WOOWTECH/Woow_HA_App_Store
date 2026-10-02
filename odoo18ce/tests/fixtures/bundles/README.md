@@ -313,6 +313,168 @@ instead and the comparison is prefixed-against-unprefixed, so every commit looks
 dirty and writes the field. The seven JavaScript excerpts are whole methods or
 self-contained regions because the tests execute them.
 
+Derived 2026-10-01 from the pinned `.deb` (`ODOO_DEB_VERSION` 18.0.20260930)
+through Odoo's own serve path, for the media dialog's preselection comparisons
+of issue #239 -- the two ADR 0004's postscript named as "the mirror problem:
+two comparisons that expect an *unprefixed* URL and are handed a prefixed one".
+Four excerpts, because each comparison exists in **both** media dialogs Odoo 18
+ships: `html_editor`'s, which a backend form opens, and the legacy
+`web_editor`'s, which `wysiwyg.js` and the website editor's snippet options
+open (`website/static/src/snippets/s_image/options.js` and seven more: nine
+files outside its own directory and outside `static/tests/` import
+`@web_editor/components/media_dialog/media_dialog`). The two files are the same
+code with different quote characters.
+
+| File | Bundle | What it holds |
+|---|---|---|
+| `media_dialog_image_preselect.js` | `web.assets_backend` | `ImageSelector.isInitialMedia` **and** the `fetchAttachments` that calls it -- the loop that highlights a tile -- out of `html_editor`'s dialog |
+| `legacy_media_dialog_image_preselect.js` | `web.assets_backend` | the same two methods out of the legacy `web_editor` dialog |
+| `media_dialog_document_preselect.js` | `web.assets_backend` | `DocumentSelector.fetchAttachments`, whose comparison is the whole method, out of `html_editor`'s dialog |
+| `legacy_media_dialog_document_preselect.js` | `web.assets_backend` | the same method out of the legacy `web_editor` dialog |
+
+Each excerpt is both methods (or the whole method) because the test executes
+them: it drives `fetchAttachments` over a two-attachment list and a media
+element, and reads back which attachment the dialog selected -- the question the
+issue asks, rather than a narrower one about an expression.
+
+Measured 2026-10-01 across the nineteen bundles the control group serves on that
+route: #238's eighteen plus `html_editor.assets_media_dialog`, which this family
+added because it is the bundle `html_editor`'s manifest `('include', ...)`s into
+both `web.assets_backend` and `web.assets_frontend`. Four of the five patterns
+occur **once** in the whole package, in exactly one file; the first occurs once
+in each of the two dialogs, because it is the one line the two spell the same
+way -- so one rule serves both, and `sub_filter_once off` is what lets it match
+twice in a bundle that carries both:
+
+| Pattern | Rewritten | Bundles that carry it, once each |
+|---|---|---|
+| `if(this.props.media.dataset.originalSrc){return this.props.media.dataset.originalSrc===attachment.image_src;}` | yes | the five below **twice each** -- it is byte-identical in both dialogs -- plus `html_editor.assets_media_dialog`, `web_editor.assets_media_dialog` and `project.webclient` once each |
+| `return this.props.media.getAttribute("src")===attachment.image_src;` | yes | `web.assets_backend`, `web.assets_web`, `web.assets_web_print`, `web.assets_frontend`, `web.assets_frontend_lazy`, `html_editor.assets_media_dialog`, `project.webclient` |
+| `return this.props.media.getAttribute('src')===attachment.image_src;` | yes | the first five of those, plus `web_editor.assets_media_dialog` |
+| `===this.props.media.getAttribute("href").replace(/[?].*/,"")` | **no** | the same seven as the second row |
+| `===this.props.media.getAttribute('href').replace(/[?].*/,'')` | **no** | the same six as the third row |
+
+Every bundle not named in a row carries that row's pattern **zero** times:
+`web.assets_backend_lazy`, `web.assets_frontend_minimal`,
+`web.report_assets_common`, `web_editor.assets_wysiwyg`,
+`web_editor.backend_assets_wysiwyg`, `web_editor.wysiwyg_iframe_editor_assets`,
+`website.assets_wysiwyg`, `website.assets_editor`, `mass_mailing.assets_wysiwyg`,
+`im_livechat.assets_embed_external` and `html_builder.assets`. The two media
+dialog bundles are each other's complement rather than a pair: neither dialog's
+files are in the other's bundle, and `project.webclient` carries only
+`html_editor`'s, which is the project-sharing client again.
+
+**Two of the five patterns are measured and deliberately not rewritten, and
+which two is this capture's finding.** The three comparisons of
+`ImageSelector.isInitialMedia` and `DocumentSelector.fetchAttachments` do not
+all have the same direction, and each one's direction had to be measured on
+both operands before any rule was written.
+
+- The **document comparison** was already correct under Ingress, and the strip
+  the issue asked for would have **broken** it. Its left operand is the template
+  literal `` `/web/content/${attachment.id}` ``, which begins `` `/web/ `` -- one
+  of the generic literal rules the Ingress asset location has shipped since
+  #166. So that operand arrives at the browser already prefixed and the
+  comparison is prefixed-against-prefixed. The two image excerpts, by contrast,
+  come back from that location changed only by this family's own three rules,
+  because `attachment.image_src` is an ORM value and the element's reads are DOM
+  reads, so no generic rule can reach either operand.
+  `test_a_real_nginx_agrees_about_what_each_excerpt_becomes` is that
+  measurement, executed: it serves all four excerpts through a real nginx
+  carrying this location's own literal rule set and requires the answer to equal
+  what the tests' own `str.replace` produced, byte for byte.
+  `test_ingress_media_dialog_preselect.py` also refuses a `sub_filter` that
+  names the `href` read at all, so the rule the issue asked for cannot arrive
+  later from a reader following ADR 0004's old open list.
+- The **dataset branch** is rewritten, and the reason is **not** the shim.
+  `data-original-src` is not a `data-src`: the markup helper's attribute test is
+  an exact name and the `setAttribute` wrapper's list is
+  `href`/`src`/`action`/`xlink:href`, so a value the shim handled keeps that
+  attribute root-relative, and `loadImageInfo` assigns the server's own
+  `image_src` into it. What prefixes it is the **generic HTML location**, whose
+  rule is written for `src="/` and, `sub_filter` being a plain substring search,
+  matches inside the longer attribute name `data-original-src="/...` -- no
+  neighbouring rule claims that position first, and `data-src="/` claims only
+  its own. Odoo ships that attribute inside stored arch (every themed image in
+  `mass_mailing_themes/views/mass_mailing_themes_templates.xml` carries one), so
+  markup delivered as an HTML response reaches the browser with a prefixed
+  `data-original-src` while the same attribute on a field value is
+  root-relative. The branch `return`s *before* the `src` one, so the `src` rules
+  alone would not have reached the website editor's dialog.
+  `test_a_real_nginx_shows_what_prefixes_data_original_src` serves a page-HTML
+  sample through that location's rules and is where this paragraph is executed.
+
+**How each was counted.** Reproducing `addons/base/models/assetsbundle.py` over
+every `*/static/src/**/*.js` file in the pinned package --
+`rjsmin(transpile_javascript(url, source))` -- with bundle membership from
+`ast.literal_eval` on each addon's `__manifest__.py`, walking `d["assets"]` with
+`**/` matching zero or more directories and honouring `remove`, `replace` and
+`('include', ...)`. The same derivation reproduces #237's and #238's fixtures
+byte for byte, which is how it was checked before any count here was trusted.
+
+**A newline inside a method is why `isInitialMedia` is three patterns and not
+one.** `rjsmin` keeps the line break Odoo's source has before the second
+`return`, so the method as served spans two lines; an nginx `sub_filter`
+parameter that carried that newline would be a two-line directive, which the
+tests that read this template line by line do not expect. Each pattern is
+therefore one served line: the first branch (one pattern, both dialogs) and the
+second (one per quote style).
+
+Derived 2026-10-01 from the pinned `.deb` (`ODOO_DEB_VERSION` 18.0.20260930)
+through Odoo's own serve path, for the code view round trip of issue #240 — the
+last item on ADR 0004's open list, and the sixth markup insertion of
+`html_editor`'s own html field:
+
+| File | Bundle | What it holds |
+|---|---|---|
+| `html_field_toggle_code_view.js` | `web.assets_backend` | `HtmlField.toggleCodeView`, the whole method — which re-inserts the record's value into the editable when the code view goes back off |
+| `html_field_value_getter.js` | `web.assets_backend` | `HtmlField`'s `get value()`, the whole getter — captured because it is what decides which helper the rewrite calls: it returns `markup(newVal)` whenever the record's value is a `Markup`, and #210's `IN` returns a non-string as it came |
+
+| Pattern | Bundles that carry it, once each | Bundles that carry it zero times |
+|---|---|---|
+| `this.editor.editable.innerHTML=this.value;` | `web.assets_backend`, `web.assets_web`, `web.assets_web_print`, `project.webclient` | the fifteen others of #239's table, listed below |
+
+Those fifteen, so the claim is a list and not a count: `web.assets_frontend`,
+`web.assets_frontend_lazy`, `web.assets_frontend_minimal`,
+`web.assets_backend_lazy`, `web.report_assets_common`,
+`web_editor.assets_wysiwyg`, `web_editor.backend_assets_wysiwyg`,
+`web_editor.wysiwyg_iframe_editor_assets`, `web_editor.assets_media_dialog`,
+`html_editor.assets_media_dialog`, `website.assets_wysiwyg`,
+`website.assets_editor`, `mass_mailing.assets_wysiwyg`,
+`im_livechat.assets_embed_external` and `html_builder.assets`. The four that do
+are the same four as #237's two patterns and for the same reason: both files are
+`html_editor/static/src/fields/*`, which exactly two manifests name —
+`html_editor`'s own, in `web.assets_backend` (so `web.assets_web` and
+`web.assets_web_print` carry it by inclusion), and `project`'s, in
+`project.webclient`, the project-sharing client. The media-dialog bundles do
+*not* carry it, which is the difference from #239: `html_editor`'s manifest
+includes only its media dialog into the frontend.
+
+**The getter is a fixture rather than a stub because the issue's own claim
+depends on it.** The whole question at this site is whether the value is a
+string or an OWL `Markup`: on a string the plain `IN` works and on a `Markup`
+it is a silent no-op, which is the trap #237 found and this rule inherits. So
+`test_ingress_code_view_toggle.py` splices Odoo's own getter into the class it
+drives and runs the toggle through it, and a separate test drives the rule
+written with `IN` instead and shows the picture still fetched from the Home
+Assistant root.
+
+**How each was counted.** The same derivation as #239's: reproducing
+`addons/base/models/assetsbundle.py` over every `*/static/src/**/*.js` file in
+the pinned package — `rjsmin(transpile_javascript(url, source))` — with bundle
+membership from `ast.literal_eval` on each addon's `__manifest__.py`, walking
+`d["assets"]` with `**/` matching zero or more directories, honouring `remove`,
+`replace` and `('include', ...)`, and skipping a file the bundle already holds
+the way `AssetPaths.append` does. Checked by reproducing #237's and #239's
+counts, which it does row for row.
+
+**A newline inside the getter, and why the pattern is still one line.** `rjsmin`
+keeps the line break Odoo's source has before the getter's second `return`, so
+`html_field_value_getter.js` is two served lines. The rewritten expression is on
+neither of them — `toggleCodeView` is one line as served — so no `sub_filter`
+parameter here would have to carry a newline. The test pins both line counts, so
+a re-capture that changed either says so.
+
 ## Re-capturing
 
 The bundles are public, so no login is needed; the asset route redirects a

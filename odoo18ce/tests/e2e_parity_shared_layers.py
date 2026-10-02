@@ -525,8 +525,8 @@ def sitemap_divergence(public: Outcome, ingress: Outcome) -> tuple[str, str, lis
 
 HA_BASE = "<HA_BASE>"
 INGRESS_PREFIX = "<INGRESS_PREFIX>"
-# RC-15: every top-level page under Ingress lives below the Supervisor path,
-# so a tab opened from there starts here and carries the session token.
+# RC-15: every top-level page under Ingress lives below the Supervisor path, so
+# a tab opened from there starts here and carries the add-on's Ingress token.
 INGRESS_TAB_BASE = HA_BASE + INGRESS_PREFIX
 # The masked prefix is this session's own; a prefix the mask did not recognise
 # (a stale one, #160) still reads as what it is.

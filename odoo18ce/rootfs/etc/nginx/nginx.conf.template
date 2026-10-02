@@ -29,6 +29,22 @@ http {
         https secure;
         default nosecure;
     }
+    # What an Ingress prefix is. Home Assistant's path is
+    # `/api/hassio_ingress/<token>`, and the token is the *add-on's*
+    # `ingress_token` -- one persisted secret per installed add-on, not one per
+    # user and not one per session (the session is a separate secret, and it
+    # travels in the `ingress_session` cookie). A request whose
+    # `X-Ingress-Path` does not match this is served with no prefix at all, so
+    # this map decides which prefixes exist.
+    #
+    # It has a second reader: the markup strip of issue #234
+    # (`$ingress_markup_global_shim`) removes any prefix of **this** shape from
+    # a value on its way to a record, and not only the one the gateway handed
+    # the page -- a collaborative peer's snapshot, or a record the Public
+    # origin stored, can carry another token. The two patterns are held
+    # together by `tests/test_ingress_peer_snapshot_prefix.py`, which derives
+    # both from this file; change the shape here and that test says where else
+    # it is read.
     map $http_x_ingress_path $safe_ingress_path {
         default "";
         "~^/api/hassio_ingress/[A-Za-z0-9_-]{16,128}$" $http_x_ingress_path;
@@ -274,6 +290,37 @@ http {
     # occurrence of it in a record is the harm and not content worth keeping
     # -- including one a user typed, which the test says out loud.
     #
+    # **Every occurrence of a prefix, not of the prefix** (issue #234). `P` is
+    # the one the gateway handed this page, and a value on its way to a record
+    # can carry another: the To-do description is `'collaborative': true`, and
+    # the collaboration transport ships serialised attributes byte for byte,
+    # which the receiving peer applies through `setAttribute` -- so the sending
+    # page's prefix arrives in the receiver's editable and the receiver's save
+    # is what would store it. The token in it is the add-on's rather than the
+    # user's, so two sessions of one add-on share it and `P` already covered
+    # that pair; a prefix `P` does not match arrives when the add-on's token is
+    # not the one in the value -- a reinstall or a restored backup mints a new
+    # one, a second add-on or a second Home Assistant can reach the same
+    # database, and a peer on the Public origin stores what it was sent and has
+    # no shim to strip anything. So `mS` is the shape `$safe_ingress_path`
+    # validates (the map at the top of this file is the authority; a test holds
+    # the two together) and the strip removes every match of it as well as
+    # every occurrence of `P`.
+    #
+    # Both strips are needed, and in that order. `P` is removed whatever its
+    # shape, because the gateway is what decided it was a prefix and the value
+    # is in the page; the shape strip is for prefixes this page never saw. A
+    # token longer than the map accepts is left **alone** rather than cut to
+    # the bound -- the trailing lookahead is what refuses it -- because a
+    # URL with bytes taken out of its middle is worse than the escape, which
+    # is measured and reversible. And the strip stays the only place that
+    # knows the shape: `IN` does not heal a foreign prefix, it stacks this
+    # page's on top as it always did, so a picture a peer sent is fetched from
+    # a path that 404s until the value is saved and reloaded. Rewriting
+    # somebody else's address into ours on the way *in* would be changing a
+    # value that is still the record's; the record is made clean on the way
+    # out, where the token is the harm.
+    #
     # `__WOOW_INGRESS_MARKUP_IN_VALUE__(value)` is `IN` for a value that may be
     # an OWL `Markup` object rather than a string (added by issue #237 for the
     # readonly `HtmlViewer`; issue #238 made it the helper **every** markup
@@ -309,7 +356,7 @@ http {
     # before this line otherwise, and every rewritten expression falls back to
     # the untouched value when the globals are absent.
     map $upstream_http_content_type $ingress_markup_global_shim {
-        default 'var mT=/<[A-Za-z][^<>]*>/g,mA=/(^|\s|[\x22\x27])([^\s=\/<>\x22\x27]+)(\s*=\s*)(?:([\x22\x27])((?:(?!\4)[^<>])*)(?=\4)|[^\s<>\x22\x27]+)/g,mU=function(n){return ",src,href,action,data-src,".indexOf(","+n.toLowerCase()+",")>=0},mF=function(m,s,n,e,q,v){return q&&mU(n)&&v.charAt(0)==="/"&&v.charCodeAt(1)!==47&&v.charCodeAt(1)!==92?s+n+e+q+path(v):m},mIn=function(h){return typeof h==="string"?h.replace(mT,function(g){return g.replace(mA,mF)}):h},mIV=function(v){return v instanceof String?new v.constructor(mIn(v.toString())):mIn(v)},mOut=function(s){return typeof s==="string"&&s.indexOf(P)>=0?s.split(P).join(""):s},mP=function(k,f){try{Object.defineProperty(window,k,{value:f,writable:false,configurable:false,enumerable:true})}catch(e){window[k]=f}};mP("__WOOW_INGRESS_MARKUP_IN__",mIn);mP("__WOOW_INGRESS_MARKUP_IN_VALUE__",mIV);mP("__WOOW_INGRESS_MARKUP_OUT__",mOut)';
+        default 'var mT=/<[A-Za-z][^<>]*>/g,mA=/(^|\s|[\x22\x27])([^\s=\/<>\x22\x27]+)(\s*=\s*)(?:([\x22\x27])((?:(?!\4)[^<>])*)(?=\4)|[^\s<>\x22\x27]+)/g,mU=function(n){return ",src,href,action,data-src,".indexOf(","+n.toLowerCase()+",")>=0},mF=function(m,s,n,e,q,v){return q&&mU(n)&&v.charAt(0)==="/"&&v.charCodeAt(1)!==47&&v.charCodeAt(1)!==92?s+n+e+q+path(v):m},mIn=function(h){return typeof h==="string"?h.replace(mT,function(g){return g.replace(mA,mF)}):h},mIV=function(v){return v instanceof String?new v.constructor(mIn(v.toString())):mIn(v)},mS=/\/api\/hassio_ingress\/[A-Za-z0-9_-]{16,128}(?![A-Za-z0-9_-])/g,mOut=function(s){if(typeof s!=="string")return s;if(s.indexOf(P)>=0)s=s.split(P).join("");return s.replace(mS,"")},mP=function(k,f){try{Object.defineProperty(window,k,{value:f,writable:false,configurable:false,enumerable:true})}catch(e){window[k]=f}};mP("__WOOW_INGRESS_MARKUP_IN__",mIn);mP("__WOOW_INGRESS_MARKUP_IN_VALUE__",mIV);mP("__WOOW_INGRESS_MARKUP_OUT__",mOut)';
     }
 
     map $upstream_http_content_type $ingress_runtime_shim {
@@ -788,7 +835,17 @@ http {
             # and the legacy `web_editor` editor behind `html_legacy` and
             # `mass_mailing_html`, which carries none of these expressions.
             # The readonly `HtmlViewer` was on that list and is the pair of
-            # rules below.
+            # rules below. The media dialog's two were on it as well and are
+            # the block further down (#239) -- where the measurement found
+            # that only the image one was ever broken: the document one's
+            # left operand is a `` `/web/ `` literal this location already
+            # prefixes, so it has been comparing prefix against prefix all
+            # along. The code view was on it too and is the last block of this
+            # family (#240). The parenthesis above stands -- the To-do field
+            # really does not set the option -- but what bounds that site is
+            # debug mode and not the option: five shipped views set it, which
+            # #240's own body and ADR 0004's legacy-editor postscript both
+            # denied.
             # Each escapes rather than corrupts, and each is its own issue.
             sub_filter 'editable.innerHTML=fixInvalidHTML(this.config.content)' 'editable.innerHTML=(window.__WOOW_INGRESS_MARKUP_IN__||function(h){return h})(fixInvalidHTML(this.config.content))';
             sub_filter 'async updateValue(value,{changeId}={changeId:this.lastChangeId}){this.lastValue=normalizeHTML(value,this.clearElementToCompare.bind(this));' 'async updateValue(value,{changeId}={changeId:this.lastChangeId}){value=(window.__WOOW_INGRESS_MARKUP_OUT__||function(v){return v})(value);this.lastValue=normalizeHTML(value,this.clearElementToCompare.bind(this));';
@@ -1018,6 +1075,150 @@ http {
             sub_filter 'const inlineHtml=editableClone.innerHTML;' 'const inlineHtml=(window.__WOOW_INGRESS_MARKUP_OUT__||function(v){return v})(editableClone.innerHTML);';
             sub_filter 'this.wysiwyg.odooEditor.toolbarHide();const value=this.wysiwyg.getValue();' 'this.wysiwyg.odooEditor.toolbarHide();const value=(window.__WOOW_INGRESS_MARKUP_OUT__||function(v){return v})(this.wysiwyg.getValue());';
             sub_filter 'codeview.val();this.props.record.update({[this.props.name]:value});' 'codeview.val();this.props.record.update({[this.props.name]:(window.__WOOW_INGRESS_MARKUP_OUT__||function(v){return v})(value)});';
+            # The media dialog's preselection comparison (issue #239; ADR
+            # 0004's fourth 2026-10-01 postscript has the measurement, this
+            # comment has what an editor of the three lines below needs).
+            # Every rule above this one puts a prefix on or takes one off.
+            # These are the mirror case: a comparison that expects an
+            # *unprefixed* URL and is handed a prefixed one.
+            #
+            # `ImageSelector.isInitialMedia` is what highlights the attachment
+            # an image came from when the dialog is reopened on it. Both of its
+            # branches read the element and compare the result with
+            # `attachment.image_src`, which is an ORM value and carries no
+            # prefix; both element reads can carry one. So it never matched,
+            # the grid opened with nothing selected, and the user had to find
+            # the file again. Stripping the element side is the same move #210
+            # made for `get_image_info`'s argument: one URL authority, and a
+            # no-op on a value that has no prefix.
+            #
+            # Odoo 18 ships the media dialog twice -- `html_editor`'s, which
+            # the backend forms open, and the legacy `web_editor`'s, which the
+            # mail designer and the website editor's snippet options open.
+            # Nine files import
+            # `@web_editor/components/media_dialog/media_dialog` from outside
+            # that component's own directory, tests aside, two of them
+            # elsewhere in `web_editor` itself
+            # (`web_editor/static/src/js/wysiwyg/wysiwyg.js` and
+            # `.../js/editor/snippets.options.js`) and seven in other addons
+            # (`website/static/src/snippets/s_image/options.js` among them).
+            # The two files are the same code with different quotes, so the
+            # `src` comparison is rewritten once per quote style and the bug
+            # is fixed on both dialogs rather than on the one the issue named.
+            #
+            # **Three comparisons are here and two of them are rewritten.**
+            # All three were measured first, and the measurement is what
+            # decided which:
+            #
+            # 1. `isInitialMedia`'s *other* branch, which uses
+            #    `dataset.originalSrc` when the image has one, is rewritten
+            #    too -- and the reason is **not** the shim. Neither the
+            #    `setAttribute` wrapper nor `IN` touches
+            #    `data-original-src`: the markup map above says in as many
+            #    words that its attribute test is an exact name, so
+            #    `data-original-src` is not a `data-src`. What prefixes it is
+            #    the generic HTML location further down, whose
+            #    `sub_filter 'src="/'` is a bare substring and matches inside
+            #    `data-original-src="/...` -- no rule beside it claims that
+            #    position first. So markup that reached the page as an **HTML
+            #    response** carries a prefixed `data-original-src`, and Odoo
+            #    ships that attribute inside stored arch (every themed image
+            #    in `mass_mailing_themes/views/mass_mailing_themes_templates.xml`
+            #    has one). On a field value, which arrives over `call_kw` and
+            #    is not rewritten, the same attribute is root-relative. The
+            #    branch therefore has to be prefix-agnostic rather than
+            #    assumed clean, and it `return`s *before* the `src` line
+            #    below, so rule 3 alone would not have reached the website
+            #    editor's dialog. One pattern covers both dialogs here: this
+            #    is the one line the two spell identically.
+            # 2. `DocumentSelector.fetchAttachments`, which compares the
+            #    element's `href` with `` `/web/content/${attachment.id}` ``,
+            #    is already correct under Ingress -- and a strip on the `href`
+            #    alone, which is what the issue asked for, would have *broken*
+            #    it. That template literal begins `` `/web/ ``, which is one of
+            #    the generic literal rules at the top of this location, so the
+            #    left operand arrives at the browser already prefixed and the
+            #    comparison is prefixed-against-prefixed. The coupling is not
+            #    obvious from either side, so it is held by a test rather than
+            #    by this comment: `test_ingress_media_dialog_preselect.py`
+            #    serves the captured bundle bytes through a real nginx
+            #    carrying this location's own literal rules, runs the
+            #    comparison on what comes back, and refuses a `sub_filter`
+            #    that names the `href` comparison at all. The same test
+            #    serves a page-HTML sample through the generic location's
+            #    rules, which is where rule 1's reason is executed.
+            # 3. The `src` branch, the one the issue described, below.
+            #
+            # The three patterns below were derived on 2026-10-01 from the
+            # pinned `.deb` through Odoo's own serve path. The first occurs
+            # once in each dialog and so twice in a bundle that carries both,
+            # which `sub_filter_once off` at the top of this location handles;
+            # the other two occur once each in the whole package. Two more
+            # were measured and left alone -- the document comparison in each
+            # dialog; `tests/fixtures/bundles/README.md` carries all five with
+            # their per-bundle counts.
+            sub_filter 'if(this.props.media.dataset.originalSrc){return this.props.media.dataset.originalSrc===attachment.image_src;}' 'if(this.props.media.dataset.originalSrc){return (window.__WOOW_INGRESS_MARKUP_OUT__||function(v){return v})(this.props.media.dataset.originalSrc)===attachment.image_src;}';
+            sub_filter 'return this.props.media.getAttribute("src")===attachment.image_src;' 'return (window.__WOOW_INGRESS_MARKUP_OUT__||function(v){return v})(this.props.media.getAttribute("src"))===attachment.image_src;';
+            sub_filter "return this.props.media.getAttribute('src')===attachment.image_src;" "return (window.__WOOW_INGRESS_MARKUP_OUT__||function(v){return v})(this.props.media.getAttribute('src'))===attachment.image_src;";
+            # The code view's way back off (issue #240; ADR 0004's fifth
+            # 2026-10-01 postscript has the decision, this comment has what an
+            # editor of the one line below needs). It is the **sixth** markup
+            # insertion of `html_editor`'s own field and the last item on the
+            # first postscript's open list: `toggleCodeView` assigns the
+            # record's value straight into the editable when the code view goes
+            # back off, so under Ingress every root-relative URL in the record
+            # was fetched from the Home Assistant root again -- the same 404 as
+            # #210's two onboarding pictures, on the same field, reached a
+            # different way.
+            #
+            # **`IN_VALUE` and not `IN`, for #237's reason.** `get value()`
+            # returns `markup(newVal)` whenever the record's value is a
+            # `Markup`, which it is for every html field, and the plain `IN`
+            # returns a non-string as it came -- so a rule written with `IN`
+            # here would have been a silent no-op at the one site it names.
+            # `innerHTML` coerces the wrapper, so what the helper preserves is
+            # not needed by the assignment; it is needed because the helper
+            # that *prefixes* a `Markup` is this one.
+            #
+            # **No `OUT` half, because the field already has one.** Nothing is
+            # stored by this site, and every write that follows it goes through
+            # rules 2 and 5 at the top of this block -- `updateValue` and
+            # `_commitChanges`'s `comparisonValue` -- whose strip removes a
+            # prefix and otherwise does nothing, so it is a no-op over content
+            # that was never prefixed and takes this rule's prefix off again
+            # over content that was. The code view's own textarea is where the
+            # value goes when the toggle goes the other way, and it reaches
+            # `updateValue` too.
+            #
+            # **What bounds it, and it is wider than #240 and #238 both said.**
+            # The button exists only where
+            # `codeview: Boolean(odoo.debug && options.codeview)` is true, so
+            # debug mode *and* a view that sets the option. Five shipped views
+            # in the pinned package set it, on four fields:
+            # `res.users.signature` in both of `base`'s user forms
+            # (`view_users_form` and Preferences' `view_users_form_simple_modif`),
+            # `ir.actions.act_window`'s `help` (#158's field),
+            # `mail.template`'s `body_html` and `hr_recruitment`'s send-mail
+            # wizard body. The claim in #240 and
+            # in the previous postscript that no shipped view sets it was
+            # false; the bound that survives is debug mode.
+            #
+            # The last two are `html_mail`, a subclass of this field, and they
+            # are also where a reader can get a false pass: a value whose parse
+            # yields a non-empty `<head>` turns `sandboxedPreview` on, the
+            # field renders through the readonly `HtmlViewer` (#237's two rules
+            # above) and `this.editor` is undefined -- so the toggle runs and
+            # this site is never reached. The screen that reaches it with one
+            # click is the user signature.
+            #
+            # The pattern was derived on 2026-10-01 from the pinned `.deb`
+            # through Odoo's own serve path. It occurs once each in
+            # `web.assets_backend`, `web.assets_web`, `web.assets_web_print`
+            # and `project.webclient`, and zero times in the other fifteen
+            # bundles the control group serves on this route;
+            # `tests/fixtures/bundles/README.md` carries those counts and
+            # `tests/test_ingress_code_view_toggle.py` pins them.
+            sub_filter 'this.editor.editable.innerHTML=this.value;' 'this.editor.editable.innerHTML=(window.__WOOW_INGRESS_MARKUP_IN_VALUE__||function(h){return h})(this.value);';
             # The `/@` links into the web client (issue #211, U-A2). `/@/<website
             # path>` is Odoo 18's route from a website page into the backend, and
             # it is the one route whose *tail* is itself a website path rather

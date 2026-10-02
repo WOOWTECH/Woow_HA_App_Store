@@ -2233,8 +2233,9 @@ def check_c23(run: Run) -> None:
                notes="; ".join(filter(None, [
                    "The survey's Test button, which opens a new tab. U-C23 records the address shape: a tab "
                    "opened from Ingress is a top-level page under the Supervisor path, so its address carries "
-                   "the session token by construction (RC-15, a Structural gap) and opens only for the person "
-                   "who pressed the button -- which is why such a link is shared from the Public origin "
+                   "the add-on's Ingress token by construction (RC-15, a Structural gap) and opens only for "
+                   "the person who pressed the button -- whose browser holds the Ingress session cookie that "
+                   "address needs -- which is why such a link is shared from the Public origin "
                    "instead. The signals are those of the page that opened the tab: the tab is a page of its "
                    "own, and its console, requests and HTTP statuses are not measured (the same as U-B3's "
                    "second tab).", *reasons])))

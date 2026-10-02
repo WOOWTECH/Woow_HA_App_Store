@@ -1,5 +1,390 @@
 # Changelog
 
+## 0.4.10 — 2026-10-01
+
+### Added
+- A targets file may now aim at a GET-writing route only when that route's write
+  **converges** — a second visit re-derives the same state and renders the same
+  screen, a recompute or a re-store, never an accumulation and never a
+  consumption. #225 decided the rule (being *bounded* to `odoo_parity` never made
+  a write *cross-surface deterministic*: the first surface's visit can edit the
+  very screen the second surface then judges), and this is it in the tree. Every
+  `GET_WRITING_ROUTES` entry now carries a class beside its citation, and the
+  guard reads nothing else: `CONVERGENT` keeps today's `odoo_parity` bound,
+  `FIXTURE_CONSUMING` and `UNCLASSIFIED` are refused **on every database**,
+  `odoo_parity` included. Because convergence makes each surface's render include
+  the effect of its own write, the rule is order-independent — no ordering of the
+  two surfaces is fixed, and none may become load-bearing — and `ensure_cart`,
+  which leaves a non-empty cart exactly as it is, is the precedent it was read
+  off.
+- `/shop/payment/validate` is the one fixture-consuming route and is now refused
+  everywhere rather than bounded: `website_sale/controllers/main.py:1978-1979`
+  confirms the draft order into a sale and `request.website.sale_reset()` drops
+  the cart, so the surface that opens it second has no cart to judge and
+  `ensure_cart` would silently build a *different* order. The refusal happens
+  before a browser launches — it reads the target list and no database, so there
+  is nothing to wait for the login to report.
+- The two routes #225 left pending were read against the criterion at the pinned
+  Odoo (18.0.20260930) and **both are promoted to `CONVERGENT`**. `/shop/cart`:
+  `main.py:796` has nothing left to unlink on a second visit and the first
+  surface already rendered the cart without those lines, `:767`
+  `sale_get_order()` moves the order onto the logged-in partner only while the
+  two disagree (`website_sale/models/website.py:455-457`), and `:798` reaches
+  `sale/controllers/portal.py:270`, whose `_portal_ensure_token()` stores an
+  `access_token` only when the order has none
+  (`portal/models/portal_mixin.py:31-33`). `/my/orders/`: the same guarded
+  re-store, from `:270` and from the pager at `:199`
+  (`portal/controllers/portal.py:93` and `:100`). Each route has exactly one
+  branch that does **not** converge — the cart's abandoned-cart revival
+  (`main.py:785-786`, which moves an abandoned order's lines and cancels it) and
+  the order page's "Quotation viewed by customer" note
+  (`sale/controllers/portal.py:168`, one per session) — and a query is the only
+  way to reach either (`access_token`, `revive`), which `_TARGET_QUERY` refuses: a
+  target may carry a view chooser and nothing else. That dependency is the
+  promotion's footing, so a static test ties the two together; if the query rule
+  ever widens, both entries have to be read again. A key is a prefix, so the
+  promotions reach the siblings too, and what bounds those is that `open` makes a
+  GET and nothing else: `/shop/cart/update` (`:803`), `/shop/cart/update_json`
+  (`:838`), `/shop/cart/quantity` (`:948`), `/shop/cart/clear` (`:954`),
+  `/my/orders/<id>/accept` (`sale/controllers/portal.py:279`), `/decline`
+  (`:329`), `/transaction` (`:382`) and `/my/orders/reorder_modal_content`
+  (`website_sale/controllers/reorder.py:38`) are each `type='json'` or
+  `methods=['POST']`, and the two siblings a GET does reach — `/my/orders/page/<n>`
+  and `/my/orders/<id>/document/<n>` — are the ones already recorded as writing
+  nothing.
+- `/shop/cart`'s promotion is load-bearing, which #225 did not know when it wrote
+  that no targets file aims at either route:
+  `docs/testing/evidence/2026-09-30-issue-213/targets.jsonl` aims at `/shop/cart`,
+  and it is the Live check PR #229 owes. Refusing the route would have made that
+  check unrunnable, so the audit is what the check now rests on.
+- The 15 portal and `mail` prefixes #226 and #247 added carry no classification
+  and are therefore `UNCLASSIFIED` — refused on `odoo_parity` too, where they used
+  to be allowed. Nothing aims at any of them (the two targets files in the
+  evidence tree name `/shop/payment` and `/shop/cart`, both convergent), reading
+  them against the criterion is out of #228's scope, and over-refusing is the
+  direction this guard errs in. Classifying one is a one-line promotion plus its
+  citation.
+- The rule is recorded where it is used: the convergence criterion, the three
+  classes route-by-route with the reason for each, `ensure_cart` as the precedent
+  and order-independence are stated beside `GET_WRITING_ROUTES` and in the
+  adapter's module docstring; the operator's command sheet
+  (`docs/testing/INGRESS_VS_PUBLIC_PARITY.md`, appendix A) says it in two lines;
+  and `docs/adr/0012-sweeps-verify-on-the-test-host.md` gains a dated
+  postscript recording the constraint on its write accounting, its original text
+  unchanged. Guard-only; no behaviour change in the add-on and no version bump.
+  Issue #228, decided on #225, parent #148.
+- `open`'s write bound now covers `mail`'s remaining **16 controllers** — the
+  sweep #226 stopped in front of. Of the five GET-reachable routes in them, three
+  write and two are clean, and the three write the same way: in a decorator they
+  share, not in their bodies. `@add_guest_to_context`
+  (`mail/models/discuss/mail_guest.py:18`) updates the guest's timezone at
+  `:30-33` through a raw `UPDATE mail_guest` (`:105-114`) on **every route it
+  decorates**, from two cookies and no query: the `dgid` a Discuss public page
+  left behind (`:136`) and a `tz` naming a zone `pytz` knows (`:90`). Nothing in
+  the pinned Odoo sets `tz` itself, so the write is dormant on a browser that has
+  only ever been here — but under Ingress the page is served from the Home
+  Assistant origin, where another application's cookie reaches Odoo, and a cookie
+  is not a bound this list can see. The list gains four prefixes, three of them
+  for that decorator: `/discuss/channel/` (the attachment and image streams,
+  `mail/controllers/discuss/binary.py:12` and `:35`), `/web/image` (`web`'s image
+  route in all 17 of its spellings, `web/controllers/binary.py:164-182`, which
+  `mail` re-exposes with a bare `@route()` at `discuss/binary.py:65` whose body is
+  a plain `super()` call — the decorator is the only thing the override adds),
+  `/mail/message/` (`mail/controllers/mail.py:237`) and `/mail/view` (`:182`,
+  which carries no decorator and writes anyway: `_redirect_to_record` asks the
+  record for its access action at `:129`/`:131`, and
+  `portal/models/portal_mixin.py:68` answers a share user — which an
+  `auth='public'` visitor is — with `_get_share_url()` at `:99`, whose
+  `_portal_ensure_token()` stores a fresh `access_token` at `:33`). The list goes
+  from 22 prefixes to 26.
+- `/discuss/channel/<id>` was recorded clean by #226 and is not clean: it carries
+  the same decorator (`mail/controllers/discuss/public_page.py:53`). The claim is
+  corrected where it was made, and the new `/discuss/channel/` key bounds that
+  page along with the two streams under it. The bodies of all three are clean, and
+  that is why the decorator is the entry: they search a channel and stream an
+  attachment through `ir.binary`, which has no create, write or unlink at the
+  pinned Odoo, resizes in memory (`base/models/ir_binary.py:160`) and reaches an
+  `ir.attachment` whose `validate_access` (`:723`) and `_to_http_stream` (`:805`)
+  write nothing either.
+- Read clean, so the next sweep need not read them again: the two worklet routes
+  (`mail/controllers/discuss/rtc.py:111` and `discuss/voice.py:10`), which answer
+  with a file read off the disk through `file_open`, reach no model at all and
+  carry no decorator.
+- A second reason `readonly=True` is not a write bound, and this one belongs to
+  the add-on rather than to Odoo. The decorator's guard is
+  `not req.env.cr.readonly`, and on this product that cursor is **not** readonly:
+  `Registry.cursor(readonly=True)` returns a read-only cursor only when
+  `_db_readonly` is set (`odoo/modules/registry.py:1015` and `:1028`), which needs
+  a `db_replica_host` (`:166`) that cont-init never writes
+  (`rootfs/etc/cont-init.d/10-odoo-config.sh:97-100`). So the guard that reads as
+  a write bound on a replica holds nothing here, and nothing raises
+  `ReadOnlySqlTransaction` to say so. A `readonly=True` route is not merely rolled
+  back and re-run after a write (`odoo/http.py:2157-2168`) — here it was never on
+  a read-only cursor at all.
+- The sweep also read the two routes in `mail/controllers/mail.py` that #226
+  counted as read while recording only `/mail/unfollow` out of it; both are the
+  new entries above. And the stop-line now points where the decorator goes next:
+  `im_livechat` applies it to 13 routes, `cloud_storage` and `website_livechat` to
+  one each, and `im_livechat` is an installed module — so the next sweep reads a
+  `type=`/`methods=` line per route rather than 13 bodies, because the write is
+  already read. Guard-only; no behaviour change and no version bump.
+- `odoo18ce/tests/e2e_collab_peer_snapshot_live.py`, the two-session Live-tier
+  run #243 needs for that row and the first script here that opens two sessions
+  on one record: session A types an unsaved marker, session B joins and the run
+  waits for that marker to arrive (the transport's own evidence, since nothing
+  stored it), B saves, and `project.task.description` is read back with every
+  prefix in it classified as the saving session's, the other session's, or one
+  nobody claims. `--pair ingress-public` is the pair that can produce a foreign
+  prefix on this host. **It has not been run** -- this Iteration was told not to
+  deploy and not to take the measurement -- and no token can reach its output:
+  every value passes through a redaction that puts a session's label where its
+  prefix was. Its pure parts are tested at the Static tier
+  (`tests/test_e2e_collab_peer_snapshot.py`), including that the prefix shape it
+  looks for is the gateway's own.
+- The **Live tier** gained a driver for the Ingress checks that are an action
+  rather than a screen: `tests/e2e_ingress_hand_checks.py`, with `visit`,
+  `editbtn` and `todosave`. The menu/action adapter judges one screen against
+  the same screen on the other surface, and three things #235 had to see are
+  not that shape -- a page view whose result is a `website.track` row, a click
+  that has to land in the web client, and a save whose result is in
+  `project.task.description`. The driver borrows the adapter's own
+  `SurfaceDriver`, so the Ingress session, the database reading and the
+  `Masker` that hides credentials and origins are the ones every other record
+  is written with, and it judges a **Prefix escape** with the adapter's
+  `is_prefix_escape` rather than a second opinion -- a review of the first
+  version caught exactly that: asking whether a request reached the Home
+  Assistant origin *outside* the prefix answers "no" for the doubled prefix of
+  `U-A2`, which is the shape #211 is about. `tests/test_e2e_ingress_hand_checks.py`
+  pins that case and the rest of the pure parts. Live tier only: no change to
+  the image and no version bump.
+- **What a "read-only" Live run actually bounds is now written down**, as a dated
+  postscript on `docs/adr/0012-sweeps-verify-on-the-test-host.md` (2026-10-01,
+  #227), with the operational pointer in `docs/agents/live-tier.md`. A read-only
+  run makes **no business writes**; it does not leave **zero rows**, and never
+  has on a database with `website` installed. The target-seam guard #212 built
+  bounds *navigations to routes that write by design*, and two writes sit outside
+  that seam which no list keyed on a route can bound. Visitor tracking upserts a
+  `website.visitor` and inserts a `website.track` row on any tracked page's GET
+  (`website/models/ir_http.py:203`), gated on the template the response rendered
+  rather than on the route — so every run that opens a website page makes it,
+  `open` with a website target and the hand-check driver's `visit` alike, and
+  only `crawl` never does. And a page writes through its own markup and
+  JavaScript: the header cart link (`website_sale/views/templates.xml:13`) and
+  `/shop/products/recently_viewed_update`
+  (`website_sale/static/src/js/website_sale_recently_viewed.js:44`). Both carry
+  page-view telemetry and no business state, which is why the guarantee is
+  restated rather than withdrawn, and the 2026-10-01 #235 run had already counted
+  them: 19 new `website.track` rows, one of which its `U-C5` check reads back as
+  its measurement. The `GET_WRITING_ROUTES` comment now points at that postscript
+  instead of carrying the only copy, and is nine lines shorter for it. Making a
+  run *name* those ambient writes in its own evidence — a count delta per run —
+  is the entry below (#256). Documentation and one static test: no behaviour
+  change, no image change, no version bump.
+- A run now **names the ambient rows it left**, in counts. The postscript above
+  records two writes no targets file can bound — serving a tracked page upserts a
+  `website.visitor` and inserts a `website.track` row, and a page's own markup and
+  JavaScript write too — and how many rows a run left was a figure reconstructed
+  on the host afterwards, which is how #235 got its 19. `crawl` and `open` now
+  count both models after the login and again after the last navigation and write
+  the delta beside their evidence, under the records' own name with
+  `.ambient.json` for its extension (`ingress-open.jsonl` →
+  `ingress-open.ambient.json`), with the run id, the surface, the subcommand and
+  how many navigations the delta is over — the driver's own count of them, since
+  one target can be several page views and each of those is what writes. The reading
+  is a count and nothing else: no URL, no visitor identity, nothing to mask. A
+  `crawl`'s figure is the interesting zero — it navigates `/odoo/action-<id>`,
+  which renders no tracked page, so the postscript's claim that a crawl leaves
+  nothing is measured per run instead of asserted.
+- The counts are read over the session's own `search_count`, the read-only RPC the
+  shared layers' Live harness already uses — the adapter acquires no database
+  connection and takes nothing over `ssh`. It passes through the same policy every
+  other thing this driver does passes through (`Operation.COUNT_ROWS`, still a
+  member of `NON_MUTATING_OPERATIONS`), and a `call_kw` POST renders no template,
+  so the reading cannot add to the rows it is counting. A model this database does
+  not hold, or one this user may not count, leaves its reason in the record
+  instead of a zero — per model, so a reading that got one count keeps it — and
+  the summary is written on the way out, so a run that failed still accounts for
+  what it left.
+- The figure is **accounting and not a verdict**, and three things hold it there:
+  its own schema (`odoo-parity-ambient/v1`) in its own file, a `diff` that never
+  reads that file and a `read_records` that refuses the schema, and the parity
+  plan's §12 declaring it outside `conservation` the way `woow.peer-snapshot.v1`
+  already is. Both surfaces visit the same pages, so an unequal delta is an
+  ordering artefact — the visitor row the first run upserted is already there for
+  the second — and judging it would raise a Blocker on the order two runs happened
+  to run in. The record carries that sentence itself, beside the one saying the
+  delta is net: another session writing during the run is inside it, and the
+  `website.visitor` GC cron can take rows out of it, so a delta below zero is a
+  vacuum and not a deletion the run made. No image change and no version bump.
+
+### Fixed
+- The markup strip that keeps the Ingress prefix out of a saved html field now
+  removes **any** prefix the gateway would accept, not only the one this page
+  was handed. The To-do description is a collaborative field: the collaboration
+  transport ships serialised nodes -- each attribute's value byte for byte --
+  and the peer that joins second is handed the first peer's whole document, so
+  the sending page's prefix arrives in the receiving editable (through
+  `setAttribute`, which the shim wraps and which prefixes it *again*, so the
+  value carries two) and the receiving session's save is what would store it.
+  `__WOOW_INGRESS_MARKUP_OUT__` now strips every occurrence of
+  `__INGRESS_PATH__` **and** every match of the shape nginx's
+  `$safe_ingress_path` map validates, so a prefix a value arrived with is
+  removed whoever put it there. One authority for that shape: the map is where
+  it is written, and a test derives both patterns from the template and refuses
+  a difference. A token longer than the map accepts is left alone rather than
+  cut to the bound, because a URL with bytes taken out of its middle is worse
+  than the escape. No new global and no new rewrite: every save site of #210
+  and #238 calls this helper, the mailing's inlined `body_html` included.
+- The issue's premise was corrected on the way: the token in an Ingress path is
+  the **add-on's** `ingress_token`, one persisted secret per installed add-on,
+  not the user's and not the session's (the per-user session is a separate
+  secret carried in the `ingress_session` cookie). So two Ingress sessions on
+  one add-on edit under the same prefix and #210's strip already covered that
+  pair. A prefix this page never saw comes from a reinstall or a restored
+  backup minting a new token, a second add-on or a second Home Assistant on the
+  same database, or **a peer on the Public origin**, which serves no shim and
+  no rewrite and therefore stores what it is sent. The Ingress side cannot
+  prevent that write; what this change does for it is heal the record on the
+  next Ingress save. The Public origin is untouched, and `U-A6`'s probe list is
+  not extended. The same reading corrects two rows of the parity plan that
+  called that token a *session* token (`RC-15`, `G-07`); both keep their
+  severity and their advice, because the path still carries a credential and a
+  link pasted to a colleague still does not open -- what refuses it is the
+  `ingress_session` cookie their browser does not have. No version bump. Issue
+  #234, ADR 0004 (third 2026-10-01 postscript), parent #148.
+- The `open` subcommand now **reports** the write it has been bounding. A target
+  on a `GET_WRITING_ROUTES` route writes while its screen renders — Odoo edits
+  the draft order on a plain GET — and since #212 that write has been held to
+  `odoo_parity` and named in no record: ADR 0012's "every mutation is
+  accounted" lived in the bound alone, and `_judge`'s "records written"
+  comparison, the one that raises a Blocker on a cross-surface difference,
+  compared "none" with "none" on both surfaces, so a real divergence in what
+  the GET wrote could never fire. After such a navigation the driver now reads
+  the session's draft order — the same cart reading a failed cart step takes,
+  factored out so both readers share it — and puts it in the record's `writes`
+  as an ordinary `{"model": "sale.order", "id", "items", "how"}` row, on both
+  surfaces, so `diff` judges it exactly as it judges a cart-write difference.
+  No new evidence format. The row is a *state* reading and says so: its `how`
+  names the prefix and quotes `GET_WRITING_ROUTES` for the write that was read,
+  because two aimable prefixes write elsewhere (`/my/orders/` stores an
+  `access_token`, `/website/lang` writes the order's lines) and `writes` still
+  covers `sale.order` and nothing else. A target under no listed prefix takes
+  no reading at all and records exactly what it did before — the reading is
+  itself a `/shop/cart` navigation, which writes, so it is bounded to
+  `odoo_parity` like every other write in this driver and costs one more
+  navigation per GET-writing target. A cart page that would not answer leaves
+  no row and the reason on the record's `result`, rather than the silence this
+  change exists to end; a reading that failed on one surface only is then a
+  write difference at Blocker severity, which is the verdict a comparison that
+  could not be made deserves, and the `result` beside it in the joined record
+  says it was the reading and not the database that differed. A visit that left
+  no draft order at all leaves no row either, for #213's reason: a row naming
+  `sale.order:0` would claim a record nobody created, and "none" on both
+  surfaces is what the visit actually left. Future runs only: the #163 evidence
+  is not rewritten. Issue #224, parent #148.
+- Reopening the **media dialog** on an existing image highlights the attachment
+  it came from again, under Ingress as on the Public origin.
+  `ImageSelector.isInitialMedia` compares the element's `src` — which carries the
+  Ingress prefix, put there by the shim's `setAttribute` wrapper on an image the
+  dialog just inserted and by `__WOOW_INGRESS_MARKUP_IN__` on one that came out
+  of the record — with `attachment.image_src`, which is
+  `ir.attachment._compute_image_src`'s root-relative
+  `/web/image/<id>-<checksum>/<name>` delivered over `call_kw`. So it never
+  matched: the grid opened with nothing selected and the file had to be found
+  again. The element side now goes through `__WOOW_INGRESS_MARKUP_OUT__`, the
+  same move #210 made for `/html_editor/get_image_info`'s argument — one URL
+  authority, no new global, a no-op on a value with no prefix, and #234's shape
+  strip for free, so an image a collaborative peer sent matches too. Two
+  `sub_filter` rules for that line, because Odoo 18 ships the media dialog
+  **twice** (`html_editor`'s, which a backend form opens, and the legacy
+  `web_editor`'s, which `wysiwyg.js` and the website editor's snippet options
+  open) and the two files are the same code with different quote characters.
+  Display state only: nothing is stored either way. Issue #239, ADR 0004 (fourth
+  2026-10-01 postscript), parent #148.
+- The same method's **other** branch, which is the one reached for any image the
+  image tools have touched, had the same defect from a different direction — and
+  the `src` fix alone would not have reached it, because that branch `return`s
+  first. `isInitialMedia` compares `dataset.originalSrc` with
+  `attachment.image_src`, and nothing in the Runtime shim prefixes
+  `data-original-src` (the markup helper's attribute test is an exact name, so it
+  is not a `data-src`). What prefixes it is the **generic HTML location**: its
+  rule is written for `src="/`, and `sub_filter` being a plain substring search it
+  matches inside the longer attribute name `data-original-src="/…` — no
+  neighbouring rule claims that position first. Odoo ships that attribute inside
+  stored arch (every themed image in
+  `mass_mailing_themes/views/mass_mailing_themes_templates.xml` has one), so
+  markup delivered as an HTML response carries a prefixed `data-original-src`
+  while the same attribute on a field value does not. One more `sub_filter`,
+  which serves both dialogs because it is the single line they spell identically.
+  Found by a review round, not by the issue.
+- Toggling the HTML editor's **code view back off** no longer re-inserts the
+  record's markup with no Ingress prefix. `HtmlField.toggleCodeView` assigns
+  `this.value` straight into the editable, which is a sixth markup insertion with
+  none of #210's five rules on it, so every root-relative URL in the record was
+  fetched from the Home Assistant root and answered 404 — the same escape as the
+  To-do form's two onboarding pictures, on the same field, reached a different
+  way. One `sub_filter` on the Ingress asset location, through
+  `__WOOW_INGRESS_MARKUP_IN_VALUE__`: #237's helper and not #210's plain `IN`,
+  because `get value()` returns `markup(newVal)` whenever the record's value is a
+  `Markup` — which it is for every html field — and `IN` returns a non-string as
+  it came, so the obvious rule would have matched its pattern, changed the bytes
+  and fixed nothing. A test drives that rule and shows the picture still fetched
+  from the Home Assistant root. Nothing is stored by the site: what stores is
+  `_commitChanges` on the next blur, where #210's rule 2 strips the prefix again,
+  and the round trip is executed on those shipped bytes rather than asserted —
+  including the same round trip through Odoo's *unrewritten* `updateValue`, which
+  is what #210 stands between this rule and the database for. Issue #240, ADR
+  0004 (fifth 2026-10-01 postscript), parent #148.
+- The bound on that site is **debug mode**, not "no shipped view sets the
+  option": `codeview: Boolean(odoo.debug && options.codeview)` needs both, and
+  five shipped views set the option, on four fields — `res.users.signature` in
+  both of `base`'s user forms, `ir.actions.act_window`'s `help` (#158's field),
+  `mail.template`'s `body_html` and `hr_recruitment`'s send-mail wizard body, the
+  last two through `html_mail`, a subclass of the same field. #240 and #238's postscript both said otherwise.
+  The label stays `severity: minor` on what survives: a developer in debug mode
+  and nobody else. One shape of that screen would also produce a false pass and is
+  driven in the Static tier for it — a value whose parse yields a non-empty
+  `<head>` turns `sandboxedPreview` on, the field renders through the readonly
+  `HtmlViewer` (#237) and `this.editor` is undefined, so the toggle runs and this
+  site is never reached.
+
+### Changed
+- ADR 0004's open list named **two** media dialog comparisons; the method behind
+  the first makes three, and doing to the third what the list said would have
+  broken it. `DocumentSelector.fetchAttachments` compares the element's `href` with
+  `` `/web/content/${attachment.id}` ``, and that template literal begins
+  `` `/web/ `` — one of the generic literal rules the Ingress asset location has
+  shipped since #166. So the bundle reaches the browser with the prefix already
+  spliced into the literal, the comparison is prefixed-against-prefixed, and it
+  has been highlighting the right document all along; an `OUT` on the `href`
+  alone would have stripped one side and left the other. Measured by serving all
+  four captured excerpts through a real nginx carrying every rule of that
+  location: the two document ones come back with the prefix inside the literal,
+  the two image ones changed by nothing but this family's own three rules,
+  because `attachment.image_src` is an ORM value and the element's reads are DOM
+  reads, so no generic rule can reach either operand.
+  `tests/test_ingress_media_dialog_preselect.py` (40 tests) runs that nginx
+  measurement and requires its answer to equal, byte for byte, what the drivers'
+  own `str.replace` produced; derives the `` `/web/ `` rule from the template
+  rather than quoting it; asserts it is the **only** generic rule reaching the
+  excerpt; runs the comparison in node and reads back which attachment was
+  selected; executes the one-sided strip and shows it selecting nothing; and
+  refuses any `sub_filter` that names the `href` read, so the rule the open list
+  asked for cannot arrive later by a reader following the list. Five patterns
+  measured, three rewritten; `tests/fixtures/bundles/README.md` carries the
+  per-bundle counts, including `html_editor.assets_media_dialog`, the nineteenth
+  bundle this family added. No version bump: the Release and the Live rerun
+  belong to #243.
+- The general rule this one earned, recorded in ADR 0004: a comparison is not a
+  URL site with a known direction, so measure **both** operands as the browser
+  receives them before teaching one about the prefix. A literal in a bundle is
+  subject to every generic rule in the asset location; a DOM read to every
+  generic rule in the HTML location *as well as* to the shim's wrappers; an ORM
+  value to none. Both of this Iteration's surprises were that mistake in
+  opposite directions — one operand assumed clean that was not, one assumed
+  dirty that was not — and "nothing in the shim touches it" is not "nothing
+  touches it".
+
 ## 0.4.9 — 2026-10-01
 
 ### Added

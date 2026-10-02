@@ -6,15 +6,31 @@ Nothing here opens a browser, a websocket or reads credentials.
 import contextlib
 import itertools
 import json
+import os
+import tempfile
 import unittest
+from pathlib import Path
 from unittest import mock
 from urllib.parse import urlsplit
 
 from e2e_menu_action_adapter import (
+    AMBIENT_MODELS,
+    AMBIENT_SCHEMA,
+    AmbientReading,
+    CONVERGENT,
     EVIDENCE_SCHEMA,
+    FIXTURE_CONSUMING,
+    GET_WRITE_CLASSES,
     GET_WRITING_ROUTES,
+    GetWrite,
     _is_cart_update,
     _reached,
+    ambient_accounting,
+    ambient_deltas,
+    ambient_line,
+    ambient_summary,
+    ambient_summary_path,
+    write_ambient_summary,
     WRITE_DATABASE,
     get_writing_route,
     is_configuration_error,
@@ -24,6 +40,7 @@ from e2e_menu_action_adapter import (
     RunInfo,
     SurfaceDriver,
     SurfaceObservation,
+    UNCLASSIFIED,
     addon_info_command,
     auth_message,
     count_signals,
@@ -32,11 +49,13 @@ from e2e_menu_action_adapter import (
     ingress_prefix_from_info,
     ingress_session_command,
     is_prefix_escape,
+    open_screens,
     parse_env_file,
     parse_targets,
     parse_viewport,
     plan_visits,
     read_records,
+    require_convergent_writes,
     require_write_database,
     scope_from_web_menus,
     skipped_record,
@@ -52,6 +71,7 @@ from e2e_menu_action_crawler import (
     MenuRecord,
     NON_MUTATING_OPERATIONS,
     Operation,
+    OperationPolicy,
     Surface,
 )
 
@@ -525,10 +545,145 @@ class OpenTargetTests(unittest.TestCase):
                                    ' "cart": "/shop/product/desk-1"}'])
         require_write_database(with_cart, WRITE_DATABASE)
 
+    def test_a_fixture_consuming_target_is_refused_on_every_database(self) -> None:
+        # #225's rule, and the half a database bound cannot express: this write
+        # confirms the draft order into a sale and resets the cart, so whichever
+        # surface opens it first leaves the second surface no cart to judge. The
+        # bound is upgraded to a ban -- `WRITE_DATABASE` is refused too.
+        validate = parse_targets(['{"module": "m", "target": "/shop/payment/validate",'
+                                  ' "expect_selector": "#x"}'])
+        for database in (WRITE_DATABASE, "odoo_test", None):
+            with self.subTest(database):
+                with self.assertRaises(RuntimeError) as caught:
+                    require_write_database(validate, database)
+                message = str(caught.exception)
+                self.assertIn("/shop/payment/validate", message)
+                self.assertIn("confirms the draft order", message)
+                self.assertIn(FIXTURE_CONSUMING, message)
+                self.assertIn("every database", message)
+                self.assertTrue(is_configuration_error(caught.exception))
+        # The ban reads nothing but the target list, which is why `open_screens`
+        # runs it before a browser launches rather than after the login.
+        with self.assertRaisesRegex(RuntimeError, "/shop/payment/validate"):
+            require_convergent_writes(validate)
+        require_convergent_writes(parse_targets(
+            ['{"module": "m", "target": "/shop/checkout", "expect_selector": "#x"}']))
+
+    def test_an_unclassified_route_is_refused_on_every_database(self) -> None:
+        # The default for an entry nobody has read against the convergence rule,
+        # which is every prefix added after #225's decision: refused like the
+        # fixture-consuming class until an audit promotes it. Over-refusing is
+        # the direction this guard errs in.
+        for route in ("/my/invoices/7", "/my/invoices/overdue", "/my/purchase/7",
+                      "/my/projects/7", "/my/tasks/9", "/my/project/7/task/9", "/my/task/9",
+                      "/mail/unfollow", "/digest/3/unsubscribe", "/chat/tok_1", "/meet/tok_1",
+                      "/discuss/channel/7", "/web/image/123", "/mail/message/7", "/mail/view"):
+            with self.subTest(route):
+                targets = parse_targets([
+                    json.dumps({"module": "m", "target": route, "expect_selector": "#x"}),
+                ])
+                for database in (WRITE_DATABASE, "odoo_test"):
+                    with self.assertRaises(RuntimeError) as caught:
+                        require_write_database(targets, database)
+                    message = str(caught.exception)
+                    self.assertIn(route, message)
+                    self.assertIn(get_writing_route(route), message)
+                    self.assertIn(UNCLASSIFIED, message)
+                    self.assertTrue(is_configuration_error(caught.exception))
+
+    def test_a_future_entry_with_no_classification_is_refused_rather_than_bounded(self) -> None:
+        # The rule is the default and not a list: an entry added tomorrow with
+        # `UNCLASSIFIED` is refused everywhere without anybody touching the
+        # guard, which is what makes forgetting to classify safe.
+        with mock.patch.dict(
+            "e2e_menu_action_adapter.GET_WRITING_ROUTES",
+            {"/shop/tomorrow": GetWrite("does something nobody has read", UNCLASSIFIED)},
+        ):
+            targets = parse_targets(['{"module": "m", "target": "/shop/tomorrow",'
+                                     ' "expect_selector": "#x"}'])
+            for database in (WRITE_DATABASE, "odoo_test", None):
+                with self.subTest(database):
+                    with self.assertRaisesRegex(RuntimeError, "/shop/tomorrow"):
+                        require_write_database(targets, database)
+
+    def test_the_convergent_routes_stay_bounded_rather_than_banned(self) -> None:
+        # The eight #225 read as convergent -- each one recomputes or re-stores
+        # the same values on a cart it leaves in place, so each surface's render
+        # includes the effect of its own write and both surfaces judge one
+        # screen. Today's behaviour, unchanged: allowed on the write database,
+        # refused off it.
+        for route in ("/shop/checkout", "/shop/address", "/shop/confirm_order",
+                      "/shop/extra_info", "/shop/payment", "/shop/pricelist",
+                      "/shop/change_pricelist/3", "/website/lang/fr_BE"):
+            with self.subTest(route):
+                targets = parse_targets([
+                    json.dumps({"module": "m", "target": route, "expect_selector": "#x"}),
+                ])
+                require_write_database(targets, WRITE_DATABASE)
+                require_convergent_writes(targets)
+                for unknown in ("odoo_test", None):
+                    with self.assertRaises(RuntimeError) as caught:
+                        require_write_database(targets, unknown)
+                    self.assertIn(get_writing_route(route), str(caught.exception))
+                    self.assertIn(WRITE_DATABASE, str(caught.exception))
+
+    def test_the_two_routes_the_audit_promoted_are_the_two_it_read(self) -> None:
+        # #228's audit against the pinned Odoo: both routes write only idempotent
+        # re-stores on the way to rendering, and the one branch of each that does
+        # not converge needs a query a target may not carry. Promoted, and pinned
+        # here so a later disagreement is one constant and this test.
+        for route in ("/shop/cart", "/my/orders/"):
+            with self.subTest(route):
+                self.assertEqual(GET_WRITING_ROUTES[route].classification, CONVERGENT)
+        for route in ("/shop/cart", "/my/orders/7"):
+            with self.subTest(route):
+                targets = parse_targets([
+                    json.dumps({"module": "m", "target": route, "expect_selector": "#x"}),
+                ])
+                require_write_database(targets, WRITE_DATABASE)
+                with self.assertRaisesRegex(RuntimeError, WRITE_DATABASE):
+                    require_write_database(targets, "odoo_test")
+
+    def test_the_promoted_routes_rest_on_the_query_a_target_may_not_carry(self) -> None:
+        # What the promotion above rests on. `/shop/cart?access_token=...&revive=merge`
+        # moves an abandoned cart's lines onto the session cart and cancels it (a
+        # consumption), and `/my/orders/<id>?access_token=...` posts a
+        # viewed-by-customer note once per session (an accumulation).
+        # `_TARGET_QUERY` admits a view chooser and nothing else, so no target
+        # reaches either -- and if that ever widens, this test is what says these
+        # two entries have to be read again.
+        for route in ("/shop/cart?access_token=tok_1&revive=merge",
+                      "/shop/cart?access_token=tok_1",
+                      "/my/orders/7?access_token=tok_1"):
+            with self.subTest(route):
+                with self.assertRaisesRegex(ValueError, "may not carry the query"):
+                    parse_targets([
+                        json.dumps({"module": "m", "target": route, "expect_selector": "#x"}),
+                    ])
+
+    def test_a_banned_route_and_a_bounded_write_are_both_reported(self) -> None:
+        # The same reason the bound reports every refusal at once: an operator who
+        # edits the banned route out of the file must not then be sent back for
+        # the cart, or for a convergent route the session cannot write on.
+        both = parse_targets([
+            '{"module": "m", "target": "/shop/payment/validate", "expect_selector": "#x"}',
+            '{"module": "m", "target": "/shop/confirm_order", "expect_selector": "#y",'
+            ' "cart": "/shop/product/desk-1"}',
+        ])
+        with self.assertRaises(RuntimeError) as caught:
+            require_write_database(both, "odoo_test")
+        message = str(caught.exception)
+        self.assertIn("/shop/payment/validate", message)
+        self.assertIn("every database", message)
+        self.assertIn("fills a cart", message)
+        self.assertIn("/shop/confirm_order", message)
+        self.assertIn(WRITE_DATABASE, message)
+
     def test_the_guard_reads_a_target_list_it_can_only_walk_once(self) -> None:
-        # The guard walks the targets twice -- once for a declared cart, once
-        # for a writing route -- and it takes an `Iterable`, so a generator
-        # would arrive empty at the second walk and permit the write.
+        # The guard walks the targets more than once -- for a declared cart, for
+        # a route whose write does not converge, for one that does -- and it
+        # takes an `Iterable`, so a generator would arrive empty at the second
+        # walk and permit the write.
         checkout = parse_targets(['{"module": "m", "target": "/shop/checkout", "expect_selector": "#x"}'])
         with self.assertRaisesRegex(RuntimeError, "/shop/checkout"):
             require_write_database((target for target in checkout), "odoo_test")
@@ -554,7 +709,7 @@ class OpenTargetTests(unittest.TestCase):
         # The list is not `website_sale`-only: a known GET write belongs on it
         # whichever module holds the route.
         self.assertIn("/my/orders/", GET_WRITING_ROUTES)
-        for prefix, where in GET_WRITING_ROUTES.items():
+        for prefix, entry in GET_WRITING_ROUTES.items():
             with self.subTest(prefix):
                 # A prefix is matched against a target's path, so it has to be
                 # one: no origin and no query. A trailing slash is allowed and
@@ -563,7 +718,11 @@ class OpenTargetTests(unittest.TestCase):
                 self.assertEqual(prefix, urlsplit(prefix).path)
                 self.assertTrue(prefix.startswith("/"))
                 self.assertFalse(prefix.endswith("//"))
-                self.assertTrue(where)
+                self.assertTrue(entry.write)
+                # And a classification from the documented set: the guard reads
+                # it, and an entry nobody classified is refused rather than
+                # bounded, so a typo must not read as `CONVERGENT`.
+                self.assertIn(entry.classification, GET_WRITE_CLASSES)
 
     def test_a_get_writing_route_is_matched_by_prefix_on_a_segment_boundary(self) -> None:
         # `/shop/payment/validate` is under `/shop/payment` and writes more than
@@ -629,7 +788,7 @@ class OpenTargetTests(unittest.TestCase):
             with self.subTest(order):
                 with mock.patch.dict(
                     "e2e_menu_action_adapter.GET_WRITING_ROUTES",
-                    {name: "cited" for name in order}, clear=True,
+                    {name: GetWrite("cited", CONVERGENT) for name in order}, clear=True,
                 ):
                     self.assertEqual(get_writing_route("/shop/payment/validate"), narrow)
                     self.assertEqual(get_writing_route("/shop/payment"), wide)
@@ -674,10 +833,7 @@ class OpenTargetTests(unittest.TestCase):
                       # must not reach `/my/tasks`, which writes nothing.
                       "/my/task", "/my/project",
                       "/terms", "/payment/pay", "/payment/confirmation", "/payment/status",
-                      "/my/payment_method", "/donation/pay", "/rate/tok_1/5",
-                      # The Discuss page that renders without the persona step,
-                      # which is why `/discuss/` is not a key.
-                      "/discuss/channel/7"):
+                      "/my/payment_method", "/donation/pay", "/rate/tok_1/5"):
             with self.subTest(clean):
                 self.assertIsNone(get_writing_route(clean))
 
@@ -690,10 +846,11 @@ class OpenTargetTests(unittest.TestCase):
         self.assertEqual(get_writing_route("/my/invoices/7"), "/my/invoices/")
         self.assertIsNone(get_writing_route("/my/invoices"))
 
-    def test_a_portal_target_is_refused_off_the_write_database(self) -> None:
+    def test_a_portal_target_is_refused_whatever_the_database(self) -> None:
         # Each prefix the portal audit added, at the seam that uses it: a target
-        # naming one is refused before a browser opens, on the database the
-        # write is not allowed on.
+        # naming one is refused before a browser opens. #225's rule made that
+        # refusal database-independent -- none of these was read against the
+        # convergence criterion, and an unread write is refused.
         for route in ("/my/invoices/7", "/my/invoices/overdue", "/my/purchase/7",
                       "/my/projects/7", "/my/projects/7/task/9", "/my/tasks/9",
                       "/my/project/7/task/9", "/my/task/9",
@@ -703,12 +860,86 @@ class OpenTargetTests(unittest.TestCase):
                 targets = parse_targets([
                     json.dumps({"module": "m", "target": route, "expect_selector": "#x"}),
                 ])
-                with self.assertRaises(RuntimeError) as caught:
-                    require_write_database(targets, "odoo_test")
-                self.assertIn(route, str(caught.exception))
-                self.assertIn(get_writing_route(route), str(caught.exception))
-                # And permitted on the one database ADR 0012 allows it on.
-                require_write_database(targets, WRITE_DATABASE)
+                for database in ("odoo_test", WRITE_DATABASE):
+                    with self.assertRaises(RuntimeError) as caught:
+                        require_write_database(targets, database)
+                    self.assertIn(route, str(caught.exception))
+                    self.assertIn(get_writing_route(route), str(caught.exception))
+
+    def test_the_mail_routes_the_sweep_read_a_write_on_are_bounded(self) -> None:
+        # #247's sweep of `mail`'s 16 unread controllers, and it ends in one
+        # write rather than five verdicts: `@add_guest_to_context`
+        # (mail/models/discuss/mail_guest.py:30-33) updates the guest's timezone
+        # on any route it decorates, so the thing to read is the decorator and
+        # not the body. It is on both `discuss/binary.py` routes, on the bare
+        # `@route()` that re-exposes `/web/image` (:65), on the Discuss page the
+        # portal audit recorded clean, and on `/mail/message/<id>`.
+        for route, prefix in (
+            ("/discuss/channel/7/attachment/9", "/discuss/channel/"),
+            ("/discuss/channel/7/image/9", "/discuss/channel/"),
+            ("/discuss/channel/7/image/9/64x64", "/discuss/channel/"),
+            # Recorded clean by #226 and not clean: it carries the decorator too.
+            ("/discuss/channel/7", "/discuss/channel/"),
+            # `/web/image` is a route itself, so its key carries no trailing
+            # slash and has to match the bare path as well as all 17 spellings
+            # of it in web/controllers/binary.py:164-182.
+            ("/web/image", "/web/image"),
+            ("/web/image/123", "/web/image"),
+            ("/web/image/123-1699/64x64/logo.png", "/web/image"),
+            ("/web/image/res.partner/3/image_128/64x64/avatar.png", "/web/image"),
+            # The two routes in the file #226 read but recorded nothing about.
+            ("/mail/view", "/mail/view"),
+            ("/mail/message/7", "/mail/message/"),
+        ):
+            with self.subTest(route):
+                self.assertEqual(get_writing_route(route), prefix)
+        # Read and found clean: the two worklet routes, which answer from a file
+        # on disk and reach no model at all. And the near misses of the new keys
+        # -- neither `/discuss/channel` nor `/mail/message` is a route, and
+        # `/web/images` only shares characters with `/web/image`.
+        for clean in ("/mail/rtc/audio_worklet_processor", "/discuss/voice/worklet_processor",
+                      "/discuss/channel", "/mail/message", "/web/images", "/web/imagery"):
+            with self.subTest(clean):
+                self.assertIsNone(get_writing_route(clean))
+
+    def test_a_mail_sweep_target_is_refused_whatever_the_database(self) -> None:
+        # Each prefix #247 added, at the seam that uses it. `/web/image` is the
+        # one whose spelling is new to the list: a route `web` owns, on the list
+        # only because `mail` re-exposes it, whose own bare path is a route with
+        # 17 spellings under it -- so it is exercised both bare and nested. None
+        # of them is classified either, so the refusal does not read the
+        # database.
+        for route in ("/discuss/channel/7", "/discuss/channel/7/attachment/9",
+                      "/discuss/channel/7/image/9/64x64",
+                      "/web/image", "/web/image/res.partner/3/image_128",
+                      "/mail/view", "/mail/message/7"):
+            with self.subTest(route):
+                targets = parse_targets([
+                    json.dumps({"module": "m", "target": route, "expect_selector": "#x"}),
+                ])
+                for database in ("odoo_test", WRITE_DATABASE):
+                    with self.assertRaises(RuntimeError) as caught:
+                        require_write_database(targets, database)
+                    self.assertIn(route, str(caught.exception))
+                    self.assertIn(get_writing_route(route), str(caught.exception))
+
+    def test_a_banned_target_is_refused_before_a_browser_launches(self) -> None:
+        # "Before any screen opens" is stronger than "before the first target":
+        # the ban reads no database, so there is nothing to wait for the login to
+        # report, and `open_screens` makes it before Playwright starts. A browser
+        # launch would reach this patched launcher and fail the test.
+        import playwright.sync_api
+
+        targets = parse_targets(['{"module": "m", "target": "/shop/payment/validate",'
+                                 ' "expect_selector": "#x"}'])
+        with tempfile.TemporaryDirectory() as directory:
+            out = os.path.join(directory, "open.jsonl")
+            with mock.patch.object(playwright.sync_api, "sync_playwright",
+                                   side_effect=AssertionError("a browser was launched")):
+                with self.assertRaisesRegex(RuntimeError, "/shop/payment/validate"):
+                    open_screens(Surface.PUBLIC, targets, out)
+            # And the evidence of whatever ran last is left where it was.
+            self.assertFalse(os.path.exists(out))
 
     def test_the_get_writing_guard_did_not_move_into_the_operation_enum(self) -> None:
         # The enum only ever names reads: NON_MUTATING_OPERATIONS is every
@@ -1346,6 +1577,173 @@ class CartStepTests(unittest.TestCase):
         ])
 
 
+CHECKOUT_TARGET = '{"module": "m", "target": "/shop/checkout", "expect_selector": "#x"}'
+CHECKOUT_WRITE = GET_WRITING_ROUTES["/shop/checkout"].write
+
+
+def screen_driver(context, *, database=WRITE_DATABASE) -> SurfaceDriver:
+    """A cart driver whose navigation is already done, so `open_screen` is what runs.
+
+    `_open` is the part that needs a browser; what this file is about is what
+    `open_screen` records around it -- here, the draft order a GET-writing
+    route left behind once its screen had rendered.
+    """
+    driver = cart_driver(context, database=database)
+    driver._open = lambda *args, **kwargs: observation()
+    return driver
+
+
+class GetWriteEvidenceTests(unittest.TestCase):
+    """What a target on a `GET_WRITING_ROUTES` route puts in `writes`. No browser."""
+
+    def test_a_get_writing_target_names_the_draft_order_the_visit_left(self) -> None:
+        # The navigation is a plain GET and Odoo writes while it renders, so the
+        # record said nothing about a mutation ADR 0012 has accounted for -- and
+        # `_judge` compared "none" with "none" whatever the two surfaces wrote.
+        target, = parse_targets([CHECKOUT_TARGET])
+        page = FakePage([1], order="7")
+        observed = screen_driver(FakeContext(page)).open_screen(target)
+        self.assertTrue(observed.available)
+        self.assertEqual(list(observed.writes), [
+            {"model": "sale.order", "id": "7", "items": 1,
+             "how": "the draft order the session held after the visit to /shop/checkout,"
+                    " which " + CHECKOUT_WRITE},
+        ])
+        # Read the way a failed cart step reads it: the cart page, once.
+        self.assertEqual(page.opened, [("/shop/cart", "domcontentloaded")])
+
+    def test_the_row_quotes_the_write_the_table_says_the_route_makes(self) -> None:
+        # The `how` is not a sentence of its own: it names the prefix the target
+        # fell under and the write `GET_WRITING_ROUTES` recorded for it, so an
+        # entry re-read later says in the evidence what it says in the table.
+        target, = parse_targets(['{"module": "m", "target": "/shop/pricelist", "expect_selector": "#x"}'])
+        observed = screen_driver(FakeContext(FakePage([2], order="7"))).open_screen(target)
+        self.assertEqual(observed.writes[0]["how"],
+                         "the draft order the session held after the visit to /shop/pricelist, which "
+                         + GET_WRITING_ROUTES["/shop/pricelist"].write)
+
+    def test_an_empty_draft_order_after_the_visit_is_a_row_like_any_other(self) -> None:
+        # `items: 0` is the #213 shape, and it joins and compares the same way:
+        # an order that lost its lines on one surface only is the difference
+        # this evidence exists to show.
+        target, = parse_targets([CHECKOUT_TARGET])
+        observed = screen_driver(FakeContext(FakePage([0], order="7"))).open_screen(target)
+        self.assertEqual(list(observed.writes), [
+            {"model": "sale.order", "id": "7", "items": 0,
+             "how": "the draft order the session held after the visit to /shop/checkout,"
+                    " which " + CHECKOUT_WRITE},
+        ])
+
+    def test_a_visit_that_left_no_draft_order_names_none_and_says_so(self) -> None:
+        # The badge carries "0" until the session has an order: there is no row
+        # to report, and a row naming `sale.order:0` would claim a record that
+        # does not exist. #213 settled that for the cart step
+        # (`test_an_empty_cart_naming_no_order_is_a_record_nobody_created`) and
+        # a GET that wrote on no draft order is the same reading: both surfaces
+        # say "none" because that is what the visit left, and the record says
+        # so in words rather than inventing a row to break the tie with.
+        target, = parse_targets([CHECKOUT_TARGET])
+        for missing in (None, "0", ""):
+            observed = screen_driver(FakeContext(FakePage([0], order=missing))).open_screen(target)
+            self.assertEqual(list(observed.writes), [], msg=repr(missing))
+            self.assertEqual(observed.result,
+                             "loaded; the cart named no order after the visit to /shop/checkout,"
+                             " so this run has no draft order to report")
+
+    def test_a_draft_order_that_could_not_be_read_is_no_row_and_the_record_says_why(self) -> None:
+        # Silence is what this issue is about, so a reading that failed is not
+        # silence either: the screen still loaded and the record carries both.
+        target, = parse_targets([CHECKOUT_TARGET])
+        unreadable = screen_driver(FakeContext(FakePage([None]))).open_screen(target)
+        self.assertEqual(list(unreadable.writes), [])
+        self.assertTrue(unreadable.available)
+        self.assertIn("did not show afterwards how many items", unreadable.result)
+        self.assertTrue(unreadable.result.startswith("loaded; "), unreadable.result)
+        gone = screen_driver(FakeContext(fail_after=0)).open_screen(target)
+        self.assertEqual(list(gone.writes), [])
+        self.assertIn("could not be read afterwards", gone.result)
+
+    def test_a_target_under_no_listed_prefix_is_recorded_exactly_as_before(self) -> None:
+        # The reading is a `/shop/cart` navigation, which writes: a target that
+        # named no GET-writing route must not get one.
+        target, = parse_targets(['{"module": "m", "target": "/odoo/action-1", "expect_model": "res.partner"}'])
+        context = FakeContext()
+        observed = screen_driver(context).open_screen(target)
+        self.assertEqual(list(observed.writes), [])
+        self.assertEqual(observed.result, "loaded")
+        self.assertEqual(context.made, 0)
+
+    def test_a_cart_target_names_the_cart_it_filled_and_the_order_the_visit_left(self) -> None:
+        # Two writes, two rows: `ensure_cart` says what the run set up before
+        # the screen, and this says what the screen's own GET left behind.
+        target, = parse_targets([CART_TARGET])
+        filling, after = FakePage([0, 1], order="7"), FakePage([1], order="7")
+        observed = screen_driver(FakeContext(filling, after)).open_screen(target)
+        self.assertEqual([(item["id"], item["items"]) for item in observed.writes], [("7", 1), ("7", 1)])
+        self.assertIn("added the product on /shop/product/desk-1", observed.writes[0]["how"])
+        self.assertIn("after the visit to /shop/checkout", observed.writes[1]["how"])
+
+    def test_a_failed_cart_step_takes_no_reading_for_a_visit_it_never_made(self) -> None:
+        # The cart step failed, so the screen was never opened and the route
+        # never wrote: the only row is the one the cart step left.
+        target, = parse_targets([CART_TARGET])
+        observed = screen_driver(FakeContext(FakePage([0, 0, 0, 0]), FakePage([1]))).open_screen(target)
+        self.assertFalse(observed.available)
+        self.assertEqual([item["how"] for item in observed.writes],
+                         ["the cart holds 1 item(s) after the cart step failed"])
+
+    def test_the_reading_is_refused_off_the_parity_database(self) -> None:
+        # The reading opens `/shop/cart`, which is itself a GET-writing route:
+        # it is bounded where every other write in this driver is. A target
+        # never gets here off `WRITE_DATABASE` -- `require_write_database`
+        # refuses it first -- so this is the bound for a caller that skipped it.
+        driver = screen_driver(FakeContext(), database="odoo_test")
+        with self.assertRaises(RuntimeError) as caught:
+            driver._draft_order_after_visit("/shop/checkout")
+        self.assertTrue(is_configuration_error(caught.exception))
+        self.assertIn("'odoo_test'", str(caught.exception))
+
+    def test_a_difference_in_what_the_get_wrote_is_judged_like_a_cart_write(self) -> None:
+        # The judgement this evidence unlocks: before it both surfaces reported
+        # "none" and a real divergence in what the GET wrote could never fire.
+        # No new evidence format -- `diff_runs` reads the same rows.
+        row = lambda items: {"model": "sale.order", "id": "7", "items": items,
+                             "how": "the draft order the session held after the visit to /shop/checkout,"
+                                    " which " + CHECKOUT_WRITE}
+        judge = lambda right: diff_runs(
+            [evidence_record(RUN, Surface.PUBLIC, module="m", identity="open:route:/shop/checkout",
+                             observation=observation(writes=(row(1),)))],
+            [evidence_record(RUN, Surface.HA_INGRESS, module="m", identity="open:route:/shop/checkout",
+                             observation=observation(writes=right))],
+        )[0]
+        self.assertEqual(judge((row(1),))["verdict"], "PARITY")
+        differs = judge((row(2),))
+        self.assertEqual((differs["verdict"], differs["severity"]), ("GAP", "blocker"))
+        self.assertIn("records written: public=sale.order:7 holding 1 ingress=sale.order:7 holding 2",
+                      differs["notes"])
+
+    def test_a_reading_that_failed_on_one_surface_is_a_difference_and_not_a_silence(self) -> None:
+        # The cost of leaving no row where the reading failed, written down: the
+        # surface that could not read its cart compares as "none" against the
+        # other surface's row and the pair is a blocker. That is the honest
+        # verdict -- the comparison the row exists for cannot be made -- and the
+        # `result` beside it in the joined record says it was the reading that
+        # failed and not the database that differed.
+        row = {"model": "sale.order", "id": "7", "items": 1,
+               "how": "the draft order the session held after the visit to /shop/checkout,"
+                      " which " + CHECKOUT_WRITE}
+        judged = diff_runs(
+            [evidence_record(RUN, Surface.PUBLIC, module="m", identity="open:route:/shop/checkout",
+                             observation=observation(writes=(row,)))],
+            [evidence_record(RUN, Surface.HA_INGRESS, module="m", identity="open:route:/shop/checkout",
+                             observation=observation(
+                                 result="loaded; the cart could not be read afterwards (Timeout 60000ms exceeded)"))],
+        )[0]
+        self.assertEqual((judged["verdict"], judged["severity"]), ("GAP", "blocker"))
+        self.assertIn("records written: public=sale.order:7 holding 1 ingress=none", judged["notes"])
+        self.assertIn("could not be read afterwards", judged["ingress"]["result"])
+
+
 TODO_TARGET = OpenTarget(module="project_todo", target="project_todo.project_task_action_todo",
                          label="To-do kanban", expect_model="project.task")
 
@@ -1465,6 +1863,511 @@ class ViewportTests(unittest.TestCase):
         for bad in ("390", "x844", "0x844", "390x844x2", "abc"):
             with self.assertRaises(ValueError, msg=bad):
                 parse_viewport(bad)
+
+
+class FakeResponse:
+    """What `context.request.post` answers: a status and a JSON-RPC body."""
+
+    def __init__(self, body, status: int = 200) -> None:
+        self.body = body
+        self.status = status
+
+    def json(self):
+        if isinstance(self.body, Exception):
+            raise self.body
+        return self.body
+
+
+class FakeRequest:
+    """The session's request context, answering one `search_count` per model.
+
+    `answers` maps a model to the count it reports, to an `Exception` the post
+    raises, or to a `FakeResponse` for an answer that is not a count. Every call
+    lands in `posted`, so a test can say what was asked and how.
+    """
+
+    def __init__(self, answers) -> None:
+        self.answers = dict(answers)
+        self.posted: list[tuple[str, dict]] = []
+
+    def post(self, url: str, **kwargs):
+        self.posted.append((url, kwargs.get("data")))
+        answer = self.answers.get(urlsplit(url).path.split("/")[-2])
+        if isinstance(answer, Exception):
+            raise answer
+        if isinstance(answer, FakeResponse):
+            return answer
+        if answer is None:
+            return FakeResponse({"error": {"message": "Object does not exist",
+                                           "data": {"message": "Object website.track doesn't exist"}}})
+        return FakeResponse({"result": answer})
+
+
+class CountingContext(FakeContext):
+    """A context whose `request` answers the counts, and makes no pages."""
+
+    def __init__(self, answers) -> None:
+        super().__init__()
+        self.request = FakeRequest(answers)
+
+
+def counted(**per_model) -> AmbientReading:
+    """A reading that counted every model it was given."""
+    return AmbientReading(counts=dict(per_model))
+
+
+class AmbientAccountingTests(unittest.TestCase):
+    """#256: a run names the ambient rows it left, in counts. No browser."""
+
+    def test_the_delta_is_the_two_counts_subtracted(self) -> None:
+        rows = ambient_deltas(counted(**{"website.track": 187, "website.visitor": 20}),
+                             counted(**{"website.track": 206, "website.visitor": 21}))
+        self.assertEqual(rows, {
+            "website.track": {"before": 187, "after": 206, "delta": 19},
+            "website.visitor": {"before": 20, "after": 21, "delta": 1},
+        })
+
+    def test_a_crawl_that_opened_no_tracked_page_says_zero_rather_than_nothing(self) -> None:
+        # ADR 0012's postscript claims a crawl never makes the tracking write:
+        # it navigates `/odoo/action-<id>`, whose response is not a tracked page.
+        # A zero delta is that claim measured, which is why a run whose figure is
+        # 0 still writes the figure.
+        rows = ambient_deltas(counted(**{"website.track": 187, "website.visitor": 20}),
+                              counted(**{"website.track": 187, "website.visitor": 20}))
+        self.assertEqual([row["delta"] for row in rows.values()], [0, 0])
+
+    def test_a_negative_delta_is_recorded_rather_than_clamped(self) -> None:
+        # `website.visitor` has a GC cron and it takes the visitor's `website.track`
+        # rows with it, so fewer rows after than before is a vacuum that ran
+        # during the run. Clamping it to zero would report a count nobody read.
+        rows = ambient_deltas(counted(**{"website.track": 187, "website.visitor": 20}),
+                              counted(**{"website.track": 99, "website.visitor": 4}))
+        self.assertEqual(rows["website.track"], {"before": 187, "after": 99, "delta": -88})
+
+    def test_a_reading_that_failed_leaves_the_reason_in_place_of_a_delta(self) -> None:
+        rows = ambient_deltas(AmbientReading.none("the session was not logged in"),
+                              counted(**{"website.track": 206, "website.visitor": 21}))
+        for model in AMBIENT_MODELS:
+            with self.subTest(model):
+                self.assertNotIn("delta", rows[model])
+                self.assertIn("before the run", rows[model]["unread"])
+                self.assertIn("the session was not logged in", rows[model]["unread"])
+
+    def test_a_model_this_database_does_not_hold_is_unread_and_not_zero(self) -> None:
+        # `website` uninstalled: the model does not exist, so there is no count
+        # and no ambient write either. A zero would claim a reading nobody took.
+        before = AmbientReading(counts={"website.visitor": 20},
+                                unread={"website.track": "Object website.track doesn't exist"})
+        rows = ambient_deltas(before, counted(**{"website.visitor": 21}))
+        self.assertEqual(rows["website.visitor"]["delta"], 1)
+        self.assertIn("website.track doesn't exist", rows["website.track"]["unread"])
+        self.assertIn("after the run", rows["website.track"]["unread"])
+
+    def test_both_sides_of_a_failed_reading_are_named(self) -> None:
+        rows = ambient_deltas(AmbientReading.none("no session before"), AmbientReading.none("no session after"))
+        said = rows["website.track"]["unread"]
+        self.assertIn("before the run: no session before", said)
+        self.assertIn("after the run: no session after", said)
+
+    def test_the_summary_is_its_own_schema_so_diff_never_judges_it(self) -> None:
+        summary = ambient_summary(RUN, Surface.HA_INGRESS, command="open", navigations=7,
+                                  before=counted(**{"website.track": 187, "website.visitor": 20}),
+                                  after=counted(**{"website.track": 206, "website.visitor": 21}))
+        self.assertEqual(summary["schema"], AMBIENT_SCHEMA)
+        self.assertEqual(AMBIENT_SCHEMA, "odoo-parity-ambient/v1")
+        self.assertNotEqual(AMBIENT_SCHEMA, EVIDENCE_SCHEMA)
+        # A summary that reached the evidence file is refused rather than joined:
+        # a delta is one surface's property, and `_judge` would read an ordering
+        # artefact as a difference between the surfaces.
+        with self.assertRaises(ValueError):
+            read_records([json.dumps(summary)])
+
+    def test_the_summary_names_the_run_the_delta_belongs_to(self) -> None:
+        summary = ambient_summary(RUN, Surface.HA_INGRESS, command="crawl", navigations=30,
+                                  before=counted(**{"website.track": 1, "website.visitor": 1}),
+                                  after=counted(**{"website.track": 1, "website.visitor": 1}))
+        self.assertEqual(summary["run_id"], RUN.run_id)
+        self.assertEqual(summary["database"], RUN.database)
+        self.assertEqual(summary["target"], RUN.target)
+        self.assertEqual(summary["client"], RUN.client)
+        self.assertEqual(summary["surface"], "ingress")
+        self.assertEqual(summary["command"], "crawl")
+        self.assertEqual(summary["navigations"], 30)
+        json.dumps(summary)
+
+    def test_the_summary_says_what_the_number_is_not(self) -> None:
+        # The figure is a net count over a window, not an authorship claim, and
+        # the record has to say so where it is read -- a reader comparing two
+        # surfaces' deltas would otherwise take an ordering artefact for a gap.
+        said = ambient_summary(RUN, Surface.PUBLIC, command="open", navigations=1,
+                               before=counted(**{"website.track": 1, "website.visitor": 1}),
+                               after=counted(**{"website.track": 2, "website.visitor": 1}))["notes"]
+        for promise in ("Counts only", "after the login", "another session", "cron", "`diff` does not judge it"):
+            with self.subTest(promise):
+                self.assertIn(promise, said)
+
+    def test_the_summary_sits_beside_the_evidence_it_accounts_for(self) -> None:
+        # The extension is replaced and not appended, so neither name carries two
+        # of them and the pair sorts together in an evidence directory.
+        self.assertEqual(ambient_summary_path("ingress-open.jsonl"), "ingress-open.ambient.json")
+        self.assertEqual(ambient_summary_path("/tmp/a.b/open"), "/tmp/a.b/open.ambient.json")
+
+    def test_the_summary_is_written_as_one_json_object(self) -> None:
+        summary = ambient_summary(RUN, Surface.PUBLIC, command="open", navigations=2,
+                                  before=counted(**{"website.track": 1, "website.visitor": 1}),
+                                  after=counted(**{"website.track": 3, "website.visitor": 2}))
+        with tempfile.TemporaryDirectory() as directory:
+            written = write_ambient_summary(os.path.join(directory, "public-open.jsonl"), summary)
+            self.assertEqual(os.path.basename(written), "public-open.ambient.json")
+            with open(written, encoding="utf-8") as stored:
+                self.assertEqual(json.load(stored), summary)
+
+    def test_the_stderr_line_says_the_delta_per_model(self) -> None:
+        summary = ambient_summary(RUN, Surface.PUBLIC, command="open", navigations=7,
+                                  before=counted(**{"website.track": 187, "website.visitor": 20}),
+                                  after=AmbientReading(counts={"website.visitor": 21},
+                                                       unread={"website.track": "boom"}))
+        line = ambient_line(summary)
+        self.assertIn("website.visitor +1", line)
+        self.assertIn("website.track unread", line)
+        self.assertIn("7 navigation(s)", line)
+
+
+class AmbientReadingTests(unittest.TestCase):
+    """How the counts are read: one read-only RPC per model. No browser."""
+
+    def test_the_count_is_one_read_only_search_count_per_model(self) -> None:
+        context = CountingContext({"website.track": 187, "website.visitor": 20})
+        reading = cart_driver(context).ambient_reading()
+        self.assertEqual(reading.counts, {"website.track": 187, "website.visitor": 20})
+        self.assertEqual(reading.unread, {})
+        self.assertEqual([url for url, _ in context.request.posted], [
+            "https://odoo.example/web/dataset/call_kw/website.track/search_count",
+            "https://odoo.example/web/dataset/call_kw/website.visitor/search_count",
+        ])
+        # A count and nothing else: an empty domain, no fields, no records, and
+        # no page -- a POST to `call_kw` renders no template, so the reading
+        # cannot add to the ambient rows it is reading.
+        for _, data in context.request.posted:
+            self.assertEqual(data["params"]["method"], "search_count")
+            self.assertEqual(data["params"]["args"], [[]])
+            self.assertEqual(data["params"]["kwargs"], {})
+        self.assertEqual(context.made, 0)
+
+    def test_the_reading_passes_through_the_read_only_policy(self) -> None:
+        # The enum is the seam for what this driver may do, so a request it makes
+        # belongs in it rather than beside it -- and every member of it is
+        # non-mutating, which is what makes the addition safe.
+        self.assertIn(Operation.COUNT_ROWS, NON_MUTATING_OPERATIONS)
+        without = OperationPolicy(allowed=NON_MUTATING_OPERATIONS - {Operation.COUNT_ROWS})
+        with mock.patch("e2e_menu_action_adapter.READ_ONLY_POLICY", without):
+            with self.assertRaises(PermissionError):
+                cart_driver(CountingContext({"website.track": 1})).count_rows("website.track")
+
+    def test_a_model_the_session_cannot_count_is_a_reason_and_not_a_zero(self) -> None:
+        # `website` uninstalled, or a user without access: the other model still
+        # reads, so the failure is recorded per model rather than for the run.
+        context = CountingContext({"website.visitor": 20})
+        reading = cart_driver(context).ambient_reading()
+        self.assertEqual(reading.counts, {"website.visitor": 20})
+        self.assertIn("website.track doesn't exist", reading.unread["website.track"])
+
+    def test_an_answer_that_is_not_a_count_is_refused(self) -> None:
+        for name, answer in {
+            "a string": FakeResponse({"result": "187"}),
+            "a boolean": FakeResponse({"result": True}),
+            "no result": FakeResponse({}),
+        }.items():
+            with self.subTest(name):
+                reading = cart_driver(CountingContext({"website.track": answer})).ambient_reading()
+                self.assertNotIn("website.track", reading.counts)
+                self.assertIn("website.track", reading.unread)
+
+    def test_a_dead_session_is_told_from_a_model_that_is_not_installed(self) -> None:
+        # The two reasons a count can be missing, and the record owes the
+        # operator which one it was: a lapsed session and a gateway that answered
+        # 502 both send HTML, so reading the body first would record a JSON parse
+        # error where the status is the answer.
+        gateway = FakeResponse(ValueError("Unexpected token '<'"), status=502)
+        reading = cart_driver(CountingContext({"website.track": gateway})).ambient_reading()
+        self.assertIn("HTTP 502", reading.unread["website.track"])
+        html = FakeResponse(ValueError("Unexpected token '<'"))
+        reading = cart_driver(CountingContext({"website.track": html})).ambient_reading()
+        self.assertIn("no JSON", reading.unread["website.track"])
+
+    def test_a_reading_that_raised_names_no_secret(self) -> None:
+        # The reason goes in a record a pull request quotes, and a raw Playwright
+        # message carries the host and the ingress token every other message in
+        # this driver hides.
+        driver = cart_driver(CountingContext(
+            {"website.track": RuntimeError("connect to https://odoo.example/web failed")}))
+        reading = driver.ambient_reading()
+        self.assertNotIn("odoo.example", reading.unread["website.track"])
+        self.assertIn("<PUBLIC_BASE>", reading.unread["website.track"])
+
+    def test_the_figure_counts_the_navigations_the_driver_made_not_the_targets(self) -> None:
+        # The denominator is per page view, and one target is several of them: a
+        # cart target opens the product page and the cart page too, and both are
+        # tracked website pages, so both write the rows being counted. Counting
+        # the loop would publish a figure short by a factor.
+        driver = cart_driver(CountingContext({"website.track": 187, "website.visitor": 20}))
+        with tempfile.TemporaryDirectory() as directory:
+            out = os.path.join(directory, "open.jsonl")
+            with ambient_accounting(driver, RUN, Surface.PUBLIC, out, command="open"):
+                for _ in range(3):
+                    driver.navigations += 1
+            summary = json.load(open(ambient_summary_path(out), encoding="utf-8"))
+        self.assertEqual(summary["navigations"], 3)
+
+    def test_navigations_before_the_window_are_not_in_the_figure(self) -> None:
+        # The login navigates too, and it is counted like everything else -- what
+        # keeps it out of the figure is that the window opens at the first
+        # reading, which cannot be taken before there is a session.
+        driver = cart_driver(CountingContext({"website.track": 1, "website.visitor": 1}))
+        driver.navigations = 9
+        with tempfile.TemporaryDirectory() as directory:
+            out = os.path.join(directory, "open.jsonl")
+            with ambient_accounting(driver, RUN, Surface.PUBLIC, out, command="open"):
+                driver.navigations += 2
+            summary = json.load(open(ambient_summary_path(out), encoding="utf-8"))
+        self.assertEqual(summary["navigations"], 2)
+
+    def test_the_accounting_writes_the_summary_even_when_the_run_fails(self) -> None:
+        # A run that died is exactly when what it left behind is worth knowing,
+        # and the reading is taken on the way out rather than at the end of a
+        # loop that may not be reached.
+        driver = cart_driver(CountingContext({"website.track": 187, "website.visitor": 20}))
+        with tempfile.TemporaryDirectory() as directory:
+            out = os.path.join(directory, "open.jsonl")
+            with self.assertRaisesRegex(RuntimeError, "the screen would not load"):
+                with ambient_accounting(driver, RUN, Surface.PUBLIC, out, command="open"):
+                    driver.navigations += 1
+                    raise RuntimeError("the screen would not load")
+            summary = json.load(open(ambient_summary_path(out), encoding="utf-8"))
+        self.assertEqual(summary["navigations"], 1)
+        self.assertEqual(summary["models"]["website.track"]["delta"], 0)
+
+    def test_a_driver_whose_reading_raises_does_not_take_the_run_with_it(self) -> None:
+        # `ambient_reading` answers a reason per model rather than raising, so
+        # this is the bound for a driver that does not -- the figure is worth a
+        # run and not the other way round.
+        class Dead:
+            def ambient_reading(self):
+                raise RuntimeError("the context was closed")
+
+        with tempfile.TemporaryDirectory() as directory:
+            out = os.path.join(directory, "open.jsonl")
+            with ambient_accounting(Dead(), RUN, Surface.PUBLIC, out, command="open"):
+                pass
+            summary = json.load(open(ambient_summary_path(out), encoding="utf-8"))
+        self.assertEqual(summary["navigations"], 0)
+        self.assertIn("the context was closed", summary["models"]["website.track"]["unread"])
+
+    def test_the_accounting_never_replaces_the_run_s_own_failure(self) -> None:
+        # The summary is written in a `finally`, so a failure to write it would
+        # otherwise swallow the exception the run was already raising.
+        driver = cart_driver(CountingContext({"website.track": 187, "website.visitor": 20}))
+        with self.assertRaisesRegex(RuntimeError, "the screen would not load"):
+            with ambient_accounting(driver, RUN, Surface.PUBLIC,
+                                    os.path.join("no", "such", "directory", "open.jsonl"), command="open"):
+                raise RuntimeError("the screen would not load")
+
+    def test_a_summary_that_could_not_be_written_fails_a_run_that_otherwise_passed(self) -> None:
+        # A figure nobody wrote and nobody missed is the thing #256 exists to
+        # stop, so on a run with no other failure the accounting is the failure.
+        driver = cart_driver(CountingContext({"website.track": 187, "website.visitor": 20}))
+        with self.assertRaises(OSError):
+            with ambient_accounting(driver, RUN, Surface.PUBLIC,
+                                    os.path.join("no", "such", "directory", "open.jsonl"), command="open"):
+                pass
+
+    def test_an_earlier_run_s_summary_is_not_left_beside_this_run_s_records(self) -> None:
+        # The summary is written at the end, so a run whose write failed would
+        # otherwise leave the last run's numbers beside fresh records under a
+        # different `run_id` -- and a runner told to quote the file would quote
+        # them. `out_path` is truncated before the first visit; so is this.
+        driver = cart_driver(CountingContext({"website.track": RuntimeError("no session")}))
+        with tempfile.TemporaryDirectory() as directory:
+            out = os.path.join(directory, "open.jsonl")
+            stale = ambient_summary_path(out)
+            with open(stale, "w", encoding="utf-8") as earlier:
+                earlier.write(json.dumps({"run_id": "WOOW-PARITY-19700101T000000Z"}))
+            with ambient_accounting(driver, RUN, Surface.PUBLIC, out, command="open"):
+                self.assertFalse(os.path.exists(stale))
+            self.assertEqual(json.load(open(stale, encoding="utf-8"))["run_id"], RUN.run_id)
+
+# --------------------------------------------------------------------------
+# The decision record: what a "read-only" run bounds, and what it does not.
+# --------------------------------------------------------------------------
+
+ROOT = Path(__file__).resolve().parents[1]
+REPO = ROOT.parent
+ADR_0012 = REPO / "docs/adr/0012-sweeps-verify-on-the-test-host.md"
+LIVE_TIER = REPO / "docs/agents/live-tier.md"
+ADAPTER = ROOT / "tests/e2e_menu_action_adapter.py"
+PLAN = REPO / "docs/testing/INGRESS_VS_PUBLIC_PARITY.md"
+
+
+def text(path: Path) -> str:
+    return path.read_text(encoding="utf-8")
+
+
+def collapsed(body: str) -> str:
+    """`body` with its line wrapping collapsed, so a quoted sentence matches
+    wherever the paragraph it lives in happens to break."""
+    return " ".join(body.split())
+
+
+def section(document: str, heading: str) -> str:
+    """The one `## <heading>` section of a markdown document, wrapping collapsed.
+
+    Two sections of that heading, or none, is the failure -- a document that
+    says a thing twice has two copies to keep in step.
+    """
+    found = [part for part in document.split("\n## ") if part.startswith(heading)]
+    assert len(found) == 1, "expected exactly one %r section, found %d" % (heading, len(found))
+    return collapsed(found[0])
+
+
+def github_anchor(heading: str) -> str:
+    """GitHub's fragment for a markdown heading: lowercased, punctuation
+    dropped, spaces hyphenated. Lets a test derive a cross-document link's
+    anchor from the heading it points at instead of spelling it twice."""
+    kept = [char for char in heading.lower() if char.isalnum() or char in " -_"]
+    return "".join(kept).strip().replace(" ", "-")
+
+
+class ReadOnlyBoundaryRecordTests(unittest.TestCase):
+    """#227: the two writes no route list can bound are recorded, not re-derived."""
+
+    def postscript(self) -> str:
+        """The #227 postscript alone, wrapping collapsed."""
+        return section(text(ADR_0012), "Postscript (2026-10-01, #227)")
+
+    def test_the_record_says_read_only_means_no_business_writes_not_zero_rows(self) -> None:
+        # The phrase this postscript exists to stop over-promising: ADR 0012's
+        # own body says the standing permission "covered read-only Live runs
+        # only", and a crawl of a website page has never been zero-write.
+        tail = self.postscript().lower()
+        self.assertIn("no business writes", tail)
+        self.assertIn("zero rows", tail)
+
+    def test_the_record_cites_both_mechanisms_where_they_were_read(self) -> None:
+        # Both were read out of the pinned `.deb` during #212's audit. A
+        # statement with no citation is one the next sweep has to re-derive.
+        tail = self.postscript()
+        self.assertIn("ir_http.py:203", tail)             # visitor tracking, any tracked page
+        self.assertIn("templates.xml:13", tail)           # the header cart link's own write
+        self.assertIn("/shop/products/recently_viewed_update", tail)   # the page's own JS
+
+    def test_the_record_says_which_subcommand_each_write_reaches(self) -> None:
+        # `crawl` navigates only `/odoo/action-<id>`, whose response is the web
+        # client bootstrap and not a tracked page, so the tracking write is
+        # `open`'s alone. Worth the sentence: the Issue that asked for this
+        # record had it the other way round.
+        tail = self.postscript()
+        # Every driver that opens a website page makes the tracking write, so
+        # the record names the hand-check driver beside `open` -- its `visit` is
+        # the run that exists to make it. A review round caught the first
+        # version calling it `open`'s alone.
+        self.assertIn("the adapter's `open` with a website target", tail)
+        self.assertIn("e2e_ingress_hand_checks.py", tail)
+        self.assertIn("`crawl` is the exception", tail)
+        self.assertIn("/odoo/action-<id>", tail)
+        self.assertIn("a crawl never makes it", tail)
+
+    def test_the_original_decision_is_untouched(self) -> None:
+        adr = collapsed(text(ADR_0012))
+        self.assertIn("an Iteration of a Sweep may deploy to the test host and run "
+                      "Live-tier checks that write, without asking first", adr)
+        self.assertIn("**Data a run creates is named after the run.**", adr)
+        self.assertIn("## Postscript (2026-10-01, #228)", adr)
+        # The postscripts are appended in the order they were decided.
+        self.assertLess(adr.index("## Postscript (2026-10-01, #228)"),
+                        adr.index("## Postscript (2026-10-01, #227)"))
+
+    def test_the_route_list_points_at_the_record_rather_than_carrying_it(self) -> None:
+        # #227's second acceptance criterion, as something a test can hold: the
+        # route list names the writes and sends the reader to the record, and
+        # the reasoning lives in the record rather than in both places.
+        adapter = collapsed(text(ADAPTER))
+        self.assertIn("docs/adr/0012-sweeps-verify-on-the-test-host.md", adapter)
+        self.assertIn("ir_http.py:203", adapter)
+        # What moved out, so the only copy is not back in the comment: the
+        # reasoning about why bounding the tracking write would be a decision
+        # about the guarantee as a whole.
+        for moved in ("the read-only guarantee as a whole",
+                      "would mean bounding every website page"):
+            with self.subTest(moved):
+                self.assertNotIn(moved, adapter)
+                self.assertIn(moved, collapsed(text(ADR_0012)))
+
+    def test_the_operational_half_points_at_the_same_record(self) -> None:
+        # An operator reading what a run leaves behind on the host finds the
+        # ambient rows there, not only in a test module's comment. The anchor is
+        # derived from the heading rather than spelled a second time, so
+        # rewording the heading fails here instead of leaving a link that
+        # silently lands at the top of the ADR.
+        heading = "Postscript (2026-10-01, #227)"
+        self.assertIn("\n## %s\n" % heading, text(ADR_0012))
+        live = text(LIVE_TIER)
+        self.assertIn("website.track", live)
+        self.assertIn("0012-sweeps-verify-on-the-test-host.md#%s" % github_anchor(heading), live)
+
+
+class AmbientWriteAccountingRecordTests(unittest.TestCase):
+    """#256: the per-run figure exists, and the documents say where to read it."""
+
+    def test_the_boundary_record_points_at_the_figure_not_forward_at_an_issue(self) -> None:
+        # #227 split this feature out and its postscript has carried the forward
+        # reference since. A record that still says the figure is owed sends a
+        # reader looking for an Issue where there is now a file.
+        said = section(text(ADR_0012), "Postscript (2026-10-01, #227)")
+        self.assertIn("ambient.json", said)
+        self.assertIn("#256", said)
+        self.assertNotIn("is a feature with an Issue of its own", said)
+        self.assertNotIn("not part of this statement", said)
+
+    def test_a_runner_is_told_to_keep_the_figure_with_the_evidence(self) -> None:
+        # Where a runner looks before writing an evidence README, which is where
+        # #227 put the operational half of the same boundary.
+        live = collapsed(text(LIVE_TIER))
+        self.assertIn("ambient.json", live)
+        self.assertIn("#256", live)
+
+    def test_the_plan_declares_the_schema_and_says_it_is_not_judged(self) -> None:
+        # Section 12 declares every schema a run writes, and this one needs the
+        # same carve-out `woow.peer-snapshot.v1` has: the conservation tally is
+        # over control identities with verdicts, and a count delta is neither.
+        plan = collapsed(text(PLAN))
+        self.assertIn("`%s`" % AMBIENT_SCHEMA, plan)
+        self.assertIn("`diff` 不讀它", plan)
+        self.assertIn("不佔守恆檢查的分母", plan)
+
+    def test_every_navigation_the_driver_makes_goes_through_one_chokepoint(self) -> None:
+        # The figure is only as good as the chokepoint: a `page.goto` written
+        # beside `_goto` would leave the denominator short while looking right,
+        # and a navigation to a tracked page is exactly what writes the rows the
+        # delta counts. Prose names the method without its parentheses.
+        calls = [line.strip() for line in text(ADAPTER).splitlines()
+                 if "page.goto(" in line and not line.strip().startswith("#")]
+        self.assertEqual(calls, ["page.goto(self.base + route, **kwargs)"])
+
+    def test_the_documents_spell_the_summary_s_name_the_way_it_is_built(self) -> None:
+        # The extension is replaced, not appended, so `<out>.ambient.json` read
+        # literally sends a reader looking for `public.jsonl.ambient.json`. Every
+        # document carries the worked example instead, derived from the function.
+        example = ambient_summary_path("ingress-open.jsonl")
+        for document in (ADR_0012, LIVE_TIER, PLAN, ADAPTER):
+            with self.subTest(document.name):
+                self.assertIn(example, text(document))
+
+    def test_the_figure_is_accounted_for_where_the_run_is_driven(self) -> None:
+        # The driver says what the number is and what it is not, so the sentence
+        # is not only in the documents a reader of the file may not have open.
+        adapter = collapsed(text(ADAPTER))
+        self.assertIn("ambient.json", adapter)
+        self.assertIn("Counts only", adapter)
 
 
 if __name__ == "__main__":

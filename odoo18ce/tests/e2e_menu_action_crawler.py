@@ -27,6 +27,11 @@ class Operation(str, Enum):
     READ_ACTION = "read_action"
     READ_VIEW = "read_view"
     NAVIGATE = "navigate"
+    # `search_count` on one model: a domain in, an integer out. It reads like
+    # the menu tree does and names no record, which is why it is a member here
+    # rather than a request made beside the policy -- the adapter's ambient-row
+    # accounting (#256) is the one caller.
+    COUNT_ROWS = "count_rows"
 
 
 NON_MUTATING_OPERATIONS = frozenset(Operation)

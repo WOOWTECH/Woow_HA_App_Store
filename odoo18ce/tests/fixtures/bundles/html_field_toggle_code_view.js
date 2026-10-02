@@ -1,0 +1,1 @@
+async toggleCodeView(){await this.commitChanges();this.state.showCodeView=!this.state.showCodeView;if(!this.state.showCodeView&&this.editor){this.editor.editable.innerHTML=this.value;this.editor.shared.history.addStep();}}
