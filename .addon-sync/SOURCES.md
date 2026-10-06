@@ -88,6 +88,7 @@
   6. 核對 Store 目錄、`catalog.json` 與 ha-rebrand `sync-state.json` 的 catalog ID 一致。
 - **tooling pin**：consumer 一律用 Store `main` 的 registry 重新檢查，所以 pin 落後不會放寬政策。只有在 publisher 程式或該來源的 registry 項目改變時才需要更新 pin。有 ruleset 的 repo（例如 `Woow_ha_odoo`）要走 PR。推到 fork `Woow_ha_ai_mcp` 的 master 會觸發上游的 dev 發布流程，非必要不要推。
 - **失敗處理**：看 Store run 頁面的 `WOOW addon blocked／waiting` 註記。修正來源後，先重跑來源的通知 workflow，再重跑 Store 同步。被擋的項目保留舊版，不會清空。映像 tag 在驗證後被改寫時會被擋下，這時要發新版本，不要覆寫 tag。
+- **排程被停用**：public repo 若 60 天沒有活動，GitHub 會自動停用其排程（來源的通知 workflow 平常很少 commit，最容易遇到）。push 與 workflow_run 觸發不受影響；在 Actions 頁面按 Enable workflow，或用 `PUT /repos/{owner}/{repo}/actions/workflows/{id}/enable` 重新啟用。
 - **停止同步**：停用 `sync-upstreams.yml`（必要時再停用來源通知）。要回復時，針對特定同步 commit 做 revert，不要 force push。
 - **輪替 rebrand deploy key**
   1. 產生新的 ed25519 金鑰。
