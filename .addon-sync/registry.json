@@ -503,9 +503,13 @@
     },
     "WOOWTECH/Woow_ha_nextcloud": {
       "default_branch": "main",
-      "required_workflows": [],
-      "observe_workflow_names": [],
-      "ref_policy": "main",
+      "required_workflows": [
+        ".github/workflows/publish-nextcloud-addon-images.yml"
+      ],
+      "observe_workflow_names": [
+        "Publish Nextcloud Office add-on image"
+      ],
+      "ref_policy": "release",
       "components": [
         {
           "id": "woow-nextcloud-office",
