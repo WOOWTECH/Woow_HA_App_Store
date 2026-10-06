@@ -1,0 +1,779 @@
+{
+  "schema": 1,
+  "description": "Explicit canonical WOOW HA addon producers; archived/development/retired providers never silently enter stable Store.",
+  "providers": {
+    "WOOWTECH/apporo_ha_multi_ha_core": {
+      "default_branch": "main",
+      "required_workflows": [],
+      "observe_workflow_names": [],
+      "ref_policy": "main",
+      "components": [
+        {
+          "id": "apporo_ha_core_1",
+          "source_path": "apporo_ha_core_1",
+          "config_file": "config.yaml",
+          "store_path": "apporo_ha_core_1",
+          "channel": "stable",
+          "enabled": true
+        },
+        {
+          "id": "apporo_ha_core_2",
+          "source_path": "apporo_ha_core_2",
+          "config_file": "config.yaml",
+          "store_path": "apporo_ha_core_2",
+          "channel": "stable",
+          "enabled": true
+        },
+        {
+          "id": "apporo_ha_core_3",
+          "source_path": "apporo_ha_core_3",
+          "config_file": "config.yaml",
+          "store_path": "apporo_ha_core_3",
+          "channel": "stable",
+          "enabled": true
+        },
+        {
+          "id": "apporo_ha_core_4",
+          "source_path": "apporo_ha_core_4",
+          "config_file": "config.yaml",
+          "store_path": "apporo_ha_core_4",
+          "channel": "stable",
+          "enabled": true
+        },
+        {
+          "id": "apporo_ha_core_5",
+          "source_path": "apporo_ha_core_5",
+          "config_file": "config.yaml",
+          "store_path": "apporo_ha_core_5",
+          "channel": "stable",
+          "enabled": true
+        }
+      ]
+    },
+    "WOOWTECH/woow-lan-gateway": {
+      "default_branch": "main",
+      "required_workflows": [
+        ".github/workflows/test.yml"
+      ],
+      "observe_workflow_names": [
+        "Test"
+      ],
+      "ref_policy": "main",
+      "components": [
+        {
+          "id": "woow_lan_gateway",
+          "source_path": "app",
+          "config_file": "config.yaml",
+          "store_path": "woow-lan-gateway",
+          "channel": "stable",
+          "enabled": true
+        }
+      ]
+    },
+    "WOOWTECH/woowtech_ha_multi_ha_core": {
+      "default_branch": "main",
+      "required_workflows": [],
+      "observe_workflow_names": [],
+      "ref_policy": "main",
+      "components": [
+        {
+          "id": "woow_ha_core_1",
+          "source_path": "woow_ha_core_1",
+          "config_file": "config.yaml",
+          "store_path": "woow_ha_core_1",
+          "channel": "stable",
+          "enabled": true
+        },
+        {
+          "id": "woow_ha_core_2",
+          "source_path": "woow_ha_core_2",
+          "config_file": "config.yaml",
+          "store_path": "woow_ha_core_2",
+          "channel": "stable",
+          "enabled": true
+        },
+        {
+          "id": "woow_ha_core_3",
+          "source_path": "woow_ha_core_3",
+          "config_file": "config.yaml",
+          "store_path": "woow_ha_core_3",
+          "channel": "stable",
+          "enabled": true
+        },
+        {
+          "id": "woow_ha_core_4",
+          "source_path": "woow_ha_core_4",
+          "config_file": "config.yaml",
+          "store_path": "woow_ha_core_4",
+          "channel": "stable",
+          "enabled": true
+        },
+        {
+          "id": "woow_ha_core_5",
+          "source_path": "woow_ha_core_5",
+          "config_file": "config.yaml",
+          "store_path": "woow_ha_core_5",
+          "channel": "stable",
+          "enabled": true
+        }
+      ]
+    },
+    "WOOWTECH/Woow_haos_ha_core": {
+      "default_branch": "main",
+      "required_workflows": [
+        ".github/workflows/validate.yml"
+      ],
+      "observe_workflow_names": [
+        "Validate package"
+      ],
+      "ref_policy": "main",
+      "components": [
+        {
+          "id": "woow_ha_core",
+          "source_path": "ha_core",
+          "config_file": "config.yaml",
+          "store_path": "woow_ha_core",
+          "channel": "stable",
+          "enabled": true
+        }
+      ]
+    },
+    "WOOWTECH/Woow_ha_ai_mcp": {
+      "default_branch": "master",
+      "required_workflows": [],
+      "observe_workflow_names": [
+        "Build Binaries and Attach to Release",
+        "Update Add-on Config Version",
+        "Home Assistant Add-on Publish (Dev)",
+        "Home Assistant Add-on Publish",
+        "Build Binary (Test Only)",
+        "CodeQL Code Quality",
+        "Dependabot auto-merge",
+        "Deploy to GitHub Pages",
+        "E2E Tests",
+        "HAOS E2E Tests (embedded)",
+        "HAOS E2E Tests (inaddon)",
+        "HAOS E2E Tests",
+        "Hotfix Release",
+        "🤖 Issue Triage",
+        "Notify Dev Channel on Merge",
+        "Send Codex PR Review",
+        "Admit Codex PR Review",
+        "Validate Hotfix Branch",
+        "PR Validation Pipeline",
+        "Publish Dev Channel",
+        "Release Publish",
+        "Sync Integration Mirror",
+        "Sync Tool Documentation",
+        "Codex Hello World Tests",
+        "Webhook Proxy Dev — Bump Version",
+        "Webhook Proxy Dev — Version Guard",
+        "Webhook Proxy — Promote Dev to Stable",
+        "Webhook Proxy — Reset Dev from Stable",
+        "Webhook Proxy — Stable Guard"
+      ],
+      "ref_policy": "main",
+      "components": [
+        {
+          "id": "ha_mcp_dev",
+          "source_path": "homeassistant-addon-dev",
+          "config_file": "config.yaml",
+          "store_path": "ha_mcp_dev",
+          "channel": "prerelease",
+          "enabled": true,
+          "note": "External homeassistant-ai runtime where image is declared; webhook proxies are local source builds. Fork image workflow produces a different image namespace and is not claimed as provenance."
+        },
+        {
+          "id": "ha_mcp_webhook_proxy_dev",
+          "source_path": "homeassistant-addon-webhook-proxy-dev",
+          "config_file": "config.yaml",
+          "store_path": "ha_mcp_webhook_proxy_dev",
+          "channel": "prerelease",
+          "enabled": true,
+          "note": "External homeassistant-ai runtime where image is declared; webhook proxies are local source builds. Fork image workflow produces a different image namespace and is not claimed as provenance."
+        },
+        {
+          "id": "ha_mcp_webhook_proxy",
+          "source_path": "homeassistant-addon-webhook-proxy",
+          "config_file": "config.yaml",
+          "store_path": "ha_mcp_webhook_proxy",
+          "channel": "stable",
+          "enabled": true,
+          "note": "External homeassistant-ai runtime where image is declared; webhook proxies are local source builds. Fork image workflow produces a different image namespace and is not claimed as provenance."
+        },
+        {
+          "id": "ha_mcp",
+          "source_path": "homeassistant-addon",
+          "config_file": "config.yaml",
+          "store_path": "ha_mcp",
+          "channel": "stable",
+          "enabled": true,
+          "note": "External homeassistant-ai runtime where image is declared; webhook proxies are local source builds. Fork image workflow produces a different image namespace and is not claimed as provenance."
+        }
+      ]
+    },
+    "WOOWTECH/Woow_ha_cloudflare_tunnel_webgui": {
+      "default_branch": "main",
+      "required_workflows": [
+        ".github/workflows/build.yaml"
+      ],
+      "observe_workflow_names": [
+        "Build"
+      ],
+      "ref_policy": "main",
+      "components": [
+        {
+          "id": "cloudflared",
+          "source_path": "cloudflared",
+          "config_file": "config.yaml",
+          "store_path": "cloudflared",
+          "channel": "stable",
+          "enabled": true
+        }
+      ]
+    },
+    "WOOWTECH/Woow_ha_code_server_add_on": {
+      "default_branch": "main",
+      "required_workflows": [
+        ".github/workflows/build.yml"
+      ],
+      "observe_workflow_names": [
+        "Build & Publish add-on image"
+      ],
+      "ref_policy": "main",
+      "components": [
+        {
+          "id": "woow_ha_code_server",
+          "source_path": ".",
+          "config_file": "config.yaml",
+          "store_path": "woow_ha_code_server",
+          "channel": "stable",
+          "enabled": true
+        }
+      ]
+    },
+    "WOOWTECH/Woow_ha_dnsmasq_dhcp_add_on": {
+      "default_branch": "main",
+      "required_workflows": [],
+      "observe_workflow_names": [
+        "image-mirror",
+        "mirror-sync"
+      ],
+      "ref_policy": "main",
+      "components": [
+        {
+          "id": "dnsmasq-dhcp",
+          "source_path": "dnsmasq-dhcp",
+          "config_file": "config.yaml",
+          "store_path": "dnsmasq-dhcp",
+          "channel": "stable",
+          "enabled": true
+        }
+      ]
+    },
+    "WOOWTECH/Woow_ha_emqx": {
+      "default_branch": "main",
+      "required_workflows": [],
+      "observe_workflow_names": [],
+      "ref_policy": "main",
+      "components": [
+        {
+          "id": "woow-emqx",
+          "source_path": "emqx",
+          "config_file": "config.yaml",
+          "store_path": "emqx",
+          "channel": "stable",
+          "enabled": true
+        }
+      ]
+    },
+    "WOOWTECH/Woow_ha_frigate_add_on": {
+      "default_branch": "main",
+      "required_workflows": [],
+      "observe_workflow_names": [
+        "image-mirror",
+        "mirror-sync"
+      ],
+      "ref_policy": "main",
+      "components": [
+        {
+          "id": "frigate",
+          "source_path": "frigate",
+          "config_file": "config.yaml",
+          "store_path": "frigate",
+          "channel": "stable",
+          "enabled": true
+        }
+      ]
+    },
+    "WOOWTECH/Woow_ha_hermes_add_on": {
+      "default_branch": "main",
+      "required_workflows": [
+        ".github/workflows/publish-hermes-addon-images.yml"
+      ],
+      "observe_workflow_names": [
+        "Publish Hermes add-on image"
+      ],
+      "ref_policy": "release",
+      "components": [
+        {
+          "id": "woow-hermes",
+          "source_path": "hermes",
+          "config_file": "config.yaml",
+          "store_path": "woow-hermes",
+          "channel": "stable",
+          "enabled": true
+        }
+      ]
+    },
+    "WOOWTECH/Woow_ha_immich": {
+      "default_branch": "main",
+      "required_workflows": [],
+      "observe_workflow_names": [],
+      "ref_policy": "main",
+      "components": [
+        {
+          "id": "woow-immich",
+          "source_path": "woow-immich",
+          "config_file": "config.yaml",
+          "store_path": "woow-immich",
+          "channel": "stable",
+          "enabled": true
+        }
+      ]
+    },
+    "WOOWTECH/Woow_ha_jellyfin_add_on": {
+      "default_branch": "main",
+      "required_workflows": [],
+      "observe_workflow_names": [
+        "image-mirror",
+        "mirror-sync"
+      ],
+      "ref_policy": "main",
+      "components": [
+        {
+          "id": "jellyfin",
+          "source_path": "jellyfin",
+          "config_file": "config.yaml",
+          "store_path": "jellyfin",
+          "channel": "stable",
+          "enabled": true
+        }
+      ]
+    },
+    "WOOWTECH/Woow_ha_knxd_add_on": {
+      "default_branch": "main",
+      "required_workflows": [],
+      "observe_workflow_names": [],
+      "ref_policy": "main",
+      "components": [
+        {
+          "id": "knxd",
+          "source_path": "knxd",
+          "config_file": "config.yaml",
+          "store_path": "knxd",
+          "channel": "stable",
+          "enabled": true
+        }
+      ]
+    },
+    "WOOWTECH/Woow_ha_matter_hub_add_on": {
+      "default_branch": "main",
+      "required_workflows": [],
+      "observe_workflow_names": [
+        "CI",
+        "image-mirror",
+        "mirror-sync",
+        "Release Home-Assistant-Matter-Hub"
+      ],
+      "ref_policy": "main",
+      "components": [
+        {
+          "id": "hamh-alpha",
+          "source_path": "hamh-alpha",
+          "config_file": "config.yaml",
+          "store_path": "hamh-alpha",
+          "channel": "prerelease",
+          "enabled": true
+        },
+        {
+          "id": "hamh-testing",
+          "source_path": "hamh-testing",
+          "config_file": "config.yaml",
+          "store_path": "hamh-testing",
+          "channel": "prerelease",
+          "enabled": true
+        },
+        {
+          "id": "hamh",
+          "source_path": "hamh",
+          "config_file": "config.yaml",
+          "store_path": "hamh",
+          "channel": "stable",
+          "enabled": true
+        }
+      ]
+    },
+    "WOOWTECH/Woow_ha_music_assistant_add_on": {
+      "default_branch": "main",
+      "required_workflows": [],
+      "observe_workflow_names": [
+        "image-mirror",
+        "mirror-sync"
+      ],
+      "ref_policy": "main",
+      "components": [
+        {
+          "id": "local_audio",
+          "source_path": "local_audio",
+          "config_file": "config.yaml",
+          "store_path": "local_audio",
+          "channel": "stable",
+          "enabled": true
+        },
+        {
+          "id": "music_assistant",
+          "source_path": "music_assistant",
+          "config_file": "config.yaml",
+          "store_path": "music_assistant",
+          "channel": "stable",
+          "enabled": true
+        },
+        {
+          "id": "music_assistant_beta",
+          "source_path": "music_assistant_beta",
+          "config_file": "config.yaml",
+          "store_path": "music_assistant_beta",
+          "channel": "prerelease",
+          "enabled": true
+        },
+        {
+          "id": "music_assistant_dev",
+          "source_path": "music_assistant_dev",
+          "config_file": "config.yaml",
+          "store_path": "music_assistant_dev",
+          "channel": "prerelease",
+          "enabled": true
+        },
+        {
+          "id": "music_assistant_nightly",
+          "source_path": "music_assistant_nightly",
+          "config_file": "config.yaml",
+          "store_path": "music_assistant_nightly",
+          "channel": "prerelease",
+          "enabled": true
+        },
+        {
+          "id": "netease_cloud_music_api",
+          "source_path": "netease_cloud_music_api",
+          "config_file": "config.yaml",
+          "store_path": "netease_cloud_music_api",
+          "channel": "stable",
+          "enabled": true
+        },
+        {
+          "id": "ytm_po_token_generator",
+          "source_path": "ytm_po_token_generator",
+          "config_file": "config.yaml",
+          "store_path": "ytm_po_token_generator",
+          "channel": "stable",
+          "enabled": true
+        }
+      ]
+    },
+    "WOOWTECH/Woow_ha_n8n": {
+      "default_branch": "main",
+      "required_workflows": [
+        ".github/workflows/publish-n8n-addon-images.yml"
+      ],
+      "observe_workflow_names": [
+        "Publish n8n add-on images"
+      ],
+      "ref_policy": "main",
+      "components": [
+        {
+          "id": "woow-n8n",
+          "source_path": "n8n",
+          "config_file": "config.yaml",
+          "store_path": "n8n",
+          "channel": "stable",
+          "enabled": true
+        }
+      ]
+    },
+    "WOOWTECH/Woow_ha_nextcloud": {
+      "default_branch": "main",
+      "required_workflows": [],
+      "observe_workflow_names": [],
+      "ref_policy": "main",
+      "components": [
+        {
+          "id": "woow-nextcloud-office",
+          "source_path": "woow-nextcloud-office",
+          "config_file": "config.yaml",
+          "store_path": "woow-nextcloud-office",
+          "channel": "stable",
+          "enabled": true
+        }
+      ]
+    },
+    "WOOWTECH/Woow_ha_nginxpm": {
+      "default_branch": "main",
+      "required_workflows": [],
+      "observe_workflow_names": [],
+      "ref_policy": "main",
+      "components": [
+        {
+          "id": "woow-nginxproxymanager",
+          "source_path": "nginxpm",
+          "config_file": "config.yaml",
+          "store_path": "woow-nginxproxymanager",
+          "channel": "stable",
+          "enabled": true
+        }
+      ]
+    },
+    "WOOWTECH/Woow_ha_odoo": {
+      "default_branch": "main",
+      "required_workflows": [
+        ".github/workflows/ci.yml",
+        ".github/workflows/release.yml"
+      ],
+      "observe_workflow_names": [
+        "CI",
+        "Literal rewrite gate",
+        "Odoo nightly bump",
+        "Perimeter check",
+        "Release"
+      ],
+      "ref_policy": "release",
+      "components": [
+        {
+          "id": "odoo18ce",
+          "source_path": "odoo18ce",
+          "config_file": "config.yaml",
+          "store_path": "odoo18ce",
+          "channel": "stable",
+          "enabled": true
+        }
+      ]
+    },
+    "WOOWTECH/Woow_ha_omnigent_addon": {
+      "default_branch": "main",
+      "required_workflows": [
+        ".github/workflows/publish-omnigent-addon-images.yml"
+      ],
+      "observe_workflow_names": [
+        "Publish omnigent add-on images"
+      ],
+      "ref_policy": "main",
+      "components": [
+        {
+          "id": "woow-omnigent",
+          "source_path": "omnigent",
+          "config_file": "config.yaml",
+          "store_path": "omnigent",
+          "channel": "stable",
+          "enabled": true
+        }
+      ]
+    },
+    "WOOWTECH/Woow_ha_opendesign_add_on": {
+      "default_branch": "main",
+      "required_workflows": [
+        ".github/workflows/build.yml"
+      ],
+      "observe_workflow_names": [
+        "Validate, build, and publish"
+      ],
+      "ref_policy": "main",
+      "components": [
+        {
+          "id": "woow_ha_opendesign",
+          "source_path": ".",
+          "config_file": "config.yaml",
+          "store_path": "woow_ha_opendesign",
+          "channel": "stable",
+          "enabled": true
+        }
+      ]
+    },
+    "WOOWTECH/Woow_ha_pi_agent_add_on": {
+      "default_branch": "main",
+      "required_workflows": [
+        ".github/workflows/build.yml"
+      ],
+      "observe_workflow_names": [
+        "Build & Publish add-on image"
+      ],
+      "ref_policy": "main",
+      "components": [
+        {
+          "id": "woow_ha_pi_agent",
+          "source_path": ".",
+          "config_file": "config.yaml",
+          "store_path": "woow_ha_pi_agent",
+          "channel": "stable",
+          "enabled": true
+        }
+      ]
+    },
+    "WOOWTECH/Woow_ha_vpn_headscale_package": {
+      "default_branch": "main",
+      "required_workflows": [],
+      "observe_workflow_names": [],
+      "ref_policy": "main",
+      "components": [
+        {
+          "id": "woow-headscale",
+          "source_path": "headscale",
+          "config_file": "config.yaml",
+          "store_path": "headscale",
+          "channel": "stable",
+          "enabled": true
+        }
+      ]
+    },
+    "WOOWTECH/Woow_ha_vpn_tailscale_package": {
+      "default_branch": "main",
+      "required_workflows": [],
+      "observe_workflow_names": [],
+      "ref_policy": "main",
+      "components": [
+        {
+          "id": "woow-tailscale",
+          "source_path": "tailscale",
+          "config_file": "config.yaml",
+          "store_path": "woow-tailscale",
+          "channel": "stable",
+          "enabled": true,
+          "note": "Store 0.1.1 currently ahead of source 0.1.0; never downgrade. Resume when individual source catches up or advances."
+        }
+      ]
+    },
+    "WOOWTECH/Woow_ha_vscode_add_on": {
+      "default_branch": "main",
+      "required_workflows": [],
+      "observe_workflow_names": [
+        "image-mirror",
+        "mirror-sync"
+      ],
+      "ref_policy": "main",
+      "components": [
+        {
+          "id": "vscode",
+          "source_path": "vscode",
+          "config_file": "config.yaml",
+          "store_path": "vscode",
+          "channel": "stable",
+          "enabled": false,
+          "reason": "Retired in Store; replaced by distinct woow_ha_code_server. Do not resurrect."
+        }
+      ]
+    }
+  },
+  "excluded_repositories": [
+    {
+      "repository": "WOOWTECH/haos-enrollment-bridge",
+      "reason": "archived",
+      "components": [
+        "haos_enrollment_bridge"
+      ]
+    },
+    {
+      "repository": "WOOWTECH/Woow_ha_community_add_ons",
+      "reason": "archived",
+      "components": [
+        "adguard",
+        "aircast",
+        "airsonos",
+        "appdaemon",
+        "bazarr",
+        "bitwarden",
+        "bookstack",
+        "chrony",
+        "emqx",
+        "example",
+        "foldingathome",
+        "ftp",
+        "glances",
+        "grafana",
+        "grocy",
+        "influxdb",
+        "jupyterlablite",
+        "lidarr",
+        "logviewer",
+        "motioneye",
+        "mqtt-io",
+        "nginxproxymanager",
+        "nodered",
+        "nut",
+        "overseerr",
+        "phpmyadmin",
+        "plex",
+        "prowlarr",
+        "radarr",
+        "sabnzbd",
+        "sonarr",
+        "spotify",
+        "sqlite-web",
+        "ssh",
+        "tailscale",
+        "sonweb",
+        "tautulli",
+        "thelounge",
+        "tor",
+        "traccar",
+        "unifi",
+        "uptime-kuma",
+        "vscode",
+        "whisparr",
+        "wireguard",
+        "zerotier",
+        "zwavejs2mqtt"
+      ]
+    },
+    {
+      "repository": "WOOWTECH/Woow_ha_multi_ha_core_1",
+      "reason": "archived",
+      "components": [
+        "woow_ha_core_1"
+      ]
+    },
+    {
+      "repository": "WOOWTECH/Woow_ha_multi_ha_core_2",
+      "reason": "archived",
+      "components": [
+        "woow_ha_core_2"
+      ]
+    },
+    {
+      "repository": "WOOWTECH/Woow_ha_multi_ha_core_3",
+      "reason": "archived",
+      "components": [
+        "woow_ha_core_3"
+      ]
+    },
+    {
+      "repository": "WOOWTECH/Woow_ha_multi_ha_core_4",
+      "reason": "archived",
+      "components": [
+        "woow_ha_core_4"
+      ]
+    },
+    {
+      "repository": "WOOWTECH/Woow_ha_multi_ha_core_5",
+      "reason": "archived",
+      "components": [
+        "woow_ha_core_5"
+      ]
+    },
+    {
+      "repository": "WOOWTECH/Woow_immich_docker_compose_all",
+      "reason": "archived",
+      "components": [
+        "woow-immich"
+      ]
+    }
+  ]
+}

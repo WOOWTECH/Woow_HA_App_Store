@@ -1,224 +1,80 @@
-name: Sync upstream addons
-
-# Daily sweep: for each WOOWTECH-owned addon, mirror its upstream individual
-# repo's subdir into the App Store copy. Auto-commits when there's a diff.
-#
-# The App Store repo is the aggregate store users add as ONE URL. Individual
-# per-addon repos are the source of truth for these mapped directories (that is
-# where releases or defensive upstream mirrors are maintained). Without this
-# workflow, every release requires a manual clone-and-copy round-trip; the
-# pi-agent 0.13.2 incident (2026-08-19) is what triggered it.
-#
-# Every add-on whose WOOWTECH mirror repo is the canonical source is mapped
-# here, so a release there reaches the store the same night. hamh and
-# music_assistant joined on 2026-09-09 — their mirror repos had been syncing
-# upstream nightly for weeks while the store copies sat two releases behind.
-#
-# 2026-09-11: `vscode` (the defensive mirror of hassio-addons/app-vscode) was
-# removed from the store and its mapping dropped. It is replaced by
-# `woow_ha_code_server`, WOOWTECH's own add-on, which is a different add-on
-# rather than a newer version of the same one — different slug, different
-# options schema, its own image. Anyone still running the old `vscode` keeps
-# it, but it is no longer offered here. The Woow_ha_vscode_add_on mirror repo
-# is untouched and simply stops feeding the store.
-#
-# 2026-09-24: `nextcloud` was replaced by `woow-nextcloud-office` on
-# 2026-09-22 (in the store and in Woow_ha_nextcloud), but its mapping still
-# named the deleted `nextcloud/` subdir. The missing subdir stopped the whole
-# sweep, so no add-on synced from 2026-09-22 to 2026-09-24 (odoo18ce 0.4.3
-# and 0.4.4 among them). The mapping now names `woow-nextcloud-office`, and a
-# missing subdir now fails only its own add-on, like a blocked downgrade.
-#
-# Still unmapped, deliberately:
-#   knxd           — no WOOWTECH mirror repo; pinned by hand against da-anda.
-#   woow-tailscale — the STORE is authoritative (0.1.1 vs the source repo's
-#                    0.1.0). Mapping it would downgrade users; the guard in the
-#                    sync loop now blocks that, but do not add it.
-#
-# A mapping may name a ref. "release" means the upstream's latest GitHub
-# Release tag, so the store never carries commits that were not released;
-# the default is the upstream's main branch. An upstream can also trigger
-# this sweep the moment it publishes a Release, through `repository_dispatch`
-# (event type `upstream-release`), so a Release reaches the store in minutes
-# instead of at the next cron tick. Odoo (Woow_ha_odoo) does both.
-#
-# Cron time: 20:00 UTC = 04:00 Asia/Taipei — off-peak for the team.
-
-on:
-  schedule:
-    - cron: '0 20 * * *'
-  workflow_dispatch: {}
+name: Synchronize validated WOOW addons and Local Download
+'on':
+  workflow_dispatch:
+    inputs:
+      only:
+        description: Optional addon ID for pilot; empty means all registered stable addons
+        required: false
+        type: string
+        default: ''
   repository_dispatch:
-    types: [upstream-release]
-
+    types:
+    - upstream-release
+    - woow-addon-ready
 permissions:
   contents: write
-
-# A dispatch arriving during the nightly sweep queues behind it rather than
-# racing it for the same push.
+  actions: read
 concurrency:
-  group: sync-upstreams
+  group: woow-addon-distribution
   cancel-in-progress: false
-
 jobs:
   sync:
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    timeout-minutes: 35
     steps:
-      - name: Checkout App Store repo
-        uses: actions/checkout@v4
-        with:
-          # Full history is not needed — we only push new commits on top.
-          fetch-depth: 1
+    - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+    - run: python3 -m pip install -r .addon-sync/requirements.txt
+    - name: Test synchronization and downloader guards
+      run: python3 .addon-sync/test_addon_sync.py -v
+    - name: Consume notifications and update Store
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        ONLY_ADDON: ${{ inputs.only }}
+      run: 'set -euo pipefail
 
-      - name: Note the trigger
-        if: github.event_name == 'repository_dispatch'
-        env:
-          SLUG: ${{ github.event.client_payload.slug }}
-          VERSION: ${{ github.event.client_payload.version }}
-          SENDER: ${{ github.event.client_payload.repository }}
-        run: |
-          echo "::notice::dispatched by ${SENDER:-unknown}: ${SLUG:-?} ${VERSION:-?} — syncing every mapped addon"
+        args=()
 
-      - name: Sync each upstream subdir
-        env:
-          GH_TOKEN: ${{ github.token }}
-          # slug|upstream-repo|upstream-subdir|ref
-          #   subdir "."   = repo root
-          #   ref  (empty) = the upstream's main branch
-          #   ref "release" = the upstream's latest GitHub Release tag; until
-          #                   the upstream has published one, main, with a warning
-          MAPPINGS: |
-            cloudflared|Woow_ha_cloudflare_tunnel_webgui|cloudflared
-            dnsmasq-dhcp|Woow_ha_dnsmasq_dhcp_add_on|dnsmasq-dhcp
-            emqx|Woow_ha_emqx|emqx
-            frigate|Woow_ha_frigate_add_on|frigate
-            headscale|Woow_ha_vpn_headscale_package|headscale
-            hamh|Woow_ha_matter_hub_add_on|hamh
-            jellyfin|Woow_ha_jellyfin_add_on|jellyfin
-            music_assistant|Woow_ha_music_assistant_add_on|music_assistant
-            n8n|Woow_ha_n8n|n8n
-            omnigent|Woow_ha_omnigent_addon|omnigent
-            odoo18ce|Woow_ha_odoo|odoo18ce|release
-            woow-immich|Woow_ha_immich|woow-immich
-            woow-nextcloud-office|Woow_ha_nextcloud|woow-nextcloud-office
-            woow-hermes|Woow_ha_hermes_add_on|hermes|release
-            woow-lan-gateway|woow-lan-gateway|app
-            woow_ha_core_1|woowtech_ha_multi_ha_core|woow_ha_core_1
-            woow_ha_core_2|woowtech_ha_multi_ha_core|woow_ha_core_2
-            woow_ha_core_3|woowtech_ha_multi_ha_core|woow_ha_core_3
-            woow_ha_core_4|woowtech_ha_multi_ha_core|woow_ha_core_4
-            woow_ha_core_5|woowtech_ha_multi_ha_core|woow_ha_core_5
-            woow_ha_code_server|Woow_ha_code_server_add_on|.
-            woow_ha_pi_agent|Woow_ha_pi_agent_add_on|.
-            woow_ha_opendesign|Woow_ha_opendesign_add_on|.
-        run: |
-          set -euo pipefail
-          mkdir -p /tmp/upstream
-          synced=()
-          downgrades=()
-          missing=()
-          declare -A synced_ref
+        if [ -n "$ONLY_ADDON" ]; then args+=(--only "$ONLY_ADDON"); fi
 
-          while IFS='|' read -r slug repo sub ref; do
-            [ -z "${slug:-}" ] && continue
-            ref="${ref:-main}"
-            if [ "${ref}" = "release" ]; then
-              # On a 404 `gh api` prints the JSON error body to stdout and
-              # exits 1, so the exit status has to be checked and the tag
-              # validated before it is handed to git as a branch name.
-              if tag="$(gh api "repos/WOOWTECH/${repo}/releases/latest" --jq '.tag_name' 2>/dev/null)" \
-                && [ -n "${tag}" ] && [ "${tag}" != "null" ] && [[ "${tag}" =~ ^[A-Za-z0-9._-]+$ ]]; then
-                ref="${tag}"
-              else
-                echo "::warning::${slug}: ${repo} has no GitHub Release yet; syncing main until the first Release"
-                ref="main"
-              fi
-            fi
-            src="/tmp/upstream/${slug}"
-            git clone --depth 1 --branch "${ref}" --single-branch --quiet \
-              "https://github.com/WOOWTECH/${repo}.git" "${src}"
-            src_dir="${src}"
-            [ "${sub}" != "." ] && src_dir="${src}/${sub}"
-            if [ ! -d "${src_dir}" ]; then
-              # Skip only this add-on: one repository's layout change must
-              # not hold back every other add-on's Release.
-              echo "::error::${slug}: required upstream subdir ${sub} not found in ${repo} at ${ref}"
-              missing+=("${slug}: ${sub} not found in ${repo} at ${ref}")
-              continue
-            fi
-            # Refuse to move an add-on backwards. rsync has no notion of
-            # "newer" — it just overwrites — so a mapping pointed at a source
-            # repo that trails the store silently rolls users back. woow-tailscale
-            # is the live example: the store carries 0.1.1 while its source repo
-            # is still 0.1.0, so mapping it would be a downgrade, not a sync.
-            store_ver=$(grep -m1 '^version:' "${slug}/config.yaml" 2>/dev/null | sed 's/version: *//;s/"//g;s/ *$//' || true)
-            src_ver=$(grep -m1 '^version:' "${src_dir}/config.yaml" 2>/dev/null | sed 's/version: *//;s/"//g;s/ *$//' || true)
-            if [ -n "${store_ver}" ] && [ -n "${src_ver}" ] && [ "${store_ver}" != "${src_ver}" ]; then
-              older=$(printf '%s\n%s\n' "${store_ver}" "${src_ver}" | sort -V | head -1)
-              if [ "${older}" = "${src_ver}" ]; then
-                echo "::error::${slug}: source ${repo}/${sub} is at ${src_ver}, behind the store's ${store_ver} — refusing to downgrade. Either drop the mapping (the store is authoritative for this add-on) or release the source repo first."
-                downgrades+=("${slug}: store ${store_ver} -> source ${src_ver}")
-                continue
-              fi
-            fi
+        python3 .addon-sync/addon_sync.py consume --registry .addon-sync/registry.json --workspace . "${args[@]}"
 
-            # Mirror into the App Store subdir. Excludes cover the 4 files
-            # that structurally belong to the upstream repo alone (its own
-            # git history, its own CI, its own single-addon store manifest).
-            rsync -a --delete \
-              --exclude='.git' \
-              --exclude='.github' \
-              --exclude='.gitignore' \
-              --exclude='repository.yaml' \
-              "${src_dir}/" "${slug}/"
-            # Sidebar-only metadata is store policy, including release-pinned
-            # sources; do not retag application images just to change a label.
-            python3 .github/scripts/sidebar_titles.py "${slug}"
-            if [ -n "$(git status --porcelain -- "${slug}")" ]; then
-              synced+=("${slug}")
-              synced_ref["${slug}"]="${ref}"
-              upver=$(grep -m1 '^version:' "${slug}/config.yaml" 2>/dev/null | sed 's/version: *//;s/"//g;s/ *$//' || echo unknown)
-              echo "::notice::${slug}: drift detected — new version ${upver} (from ${repo}@${ref})"
-            fi
-          done <<< "${MAPPINGS}"
+        python3 .addon-sync/rebrand_sync.py store-commit --store . --push
 
-          report_skipped() {
-            local failed=0
-            if [ ${#downgrades[@]} -gt 0 ]; then
-              echo "Blocked downgrades (nothing was overwritten for these):"
-              printf '  - %s\n' "${downgrades[@]}"
-              failed=1
-            fi
-            if [ ${#missing[@]} -gt 0 ]; then
-              echo "Missing upstream subdirs (these add-ons were not synced):"
-              printf '  - %s\n' "${missing[@]}"
-              failed=1
-            fi
-            return ${failed}
-          }
+        '
+    - name: Synchronize rebrand Local Download only
+      env:
+        REBRAND_KEY: ${{ secrets.REBRAND_SYNC_SSH_KEY }}
+      run: 'set -euo pipefail
 
-          if [ ${#synced[@]} -eq 0 ]; then
-            echo "All mapped subdirs already in sync with upstream — no commit needed."
-            report_skipped
-            exit $?
-          fi
+        test -n "$REBRAND_KEY" || { echo ''::error::Missing dedicated rebrand deploy key''; exit 1; }
 
-          git config user.name  'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          for slug in "${synced[@]}"; do
-            git add "${slug}"
-          done
+        key="$RUNNER_TEMP/woow-rebrand-deploy-key"
 
-          # Body lists which subdirs changed, their new versions and the
-          # upstream ref they came from, so the commit is self-documenting
-          # when reviewed on GitHub.
-          body="$(printf '\n\n'; for s in "${synced[@]}"; do
-            v=$(grep -m1 '^version:' "${s}/config.yaml" 2>/dev/null | sed 's/version: *//;s/"//g;s/ *$//' || echo unknown)
-            printf -- '- %s -> %s (%s)\n' "$s" "$v" "${synced_ref[$s]}"
-          done)"
-          title="chore(sync): mirror ${#synced[@]} upstream addon(s)"
-          git commit -m "${title}${body}"
-          git push
+        trap ''rm -f "$key"'' EXIT
 
-          # Surface any skipped add-on as a red run so the bad mapping is noticed.
-          report_skipped
+        umask 077
+
+        printf ''%s
+
+        '' "$REBRAND_KEY" > "$key"
+
+        export GIT_SSH_COMMAND="ssh -i $key -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$GITHUB_WORKSPACE/.addon-sync/github_known_hosts"
+
+        target="$RUNNER_TEMP/ha-rebrand-download-sync"
+
+        git init "$target"
+
+        git -C "$target" remote add origin git@github.com:WOOWTECH/ha-rebrand.git
+
+        git -C "$target" sparse-checkout init --cone
+
+        git -C "$target" sparse-checkout set release/addons
+
+        git -C "$target" fetch --depth=1 --filter=blob:none origin main
+
+        git -C "$target" checkout -B main FETCH_HEAD
+
+        python3 .addon-sync/rebrand_sync.py rebrand --store "$GITHUB_WORKSPACE" --target "$target" --push
+
+        '
