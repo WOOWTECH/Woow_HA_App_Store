@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-repo_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)
-service_dir="${repo_root}/woow-tailscale/rootfs/etc/s6-overlay/s6-rc.d/init-login-server-migration"
-tailscaled_dependencies="${repo_root}/woow-tailscale/rootfs/etc/s6-overlay/s6-rc.d/tailscaled/dependencies.d"
+addon_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
+service_dir="${addon_dir}/rootfs/etc/s6-overlay/s6-rc.d/init-login-server-migration"
+tailscaled_dependencies="${addon_dir}/rootfs/etc/s6-overlay/s6-rc.d/tailscaled/dependencies.d"
 run_script="${service_dir}/run"
 up_script="${service_dir}/up"
 expected_up_target='/etc/s6-overlay/s6-rc.d/init-login-server-migration/run'

@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-repo_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)
-helper="${repo_root}/woow-tailscale/rootfs/usr/local/lib/woow-tailscale/reconcile-login-server"
+addon_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
+helper="${addon_dir}/rootfs/usr/local/lib/woow-tailscale/reconcile-login-server"
 tmpdir=$(mktemp -d)
 trap 'rm -rf -- "${tmpdir}"' EXIT
 
