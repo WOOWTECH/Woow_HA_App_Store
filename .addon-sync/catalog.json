@@ -1,0 +1,103 @@
+{
+  "schema": 1,
+  "components": {
+    "woow_ha_pi_agent": {
+      "id": "woow_ha_pi_agent",
+      "name": "Woow HA Pi Agent",
+      "version": "0.14.3",
+      "repository": "WOOWTECH/Woow_ha_pi_agent_add_on",
+      "source_sha": "eaefb3cea4a70232b233e3ad550231e3c3897d91",
+      "source_path": ".",
+      "config_file": "config.yaml",
+      "config_sha256": "sha256:4e1be98d89eac2f82de8d6b568adce4537ca368a74655488b1ca6a3bf0cd519c",
+      "archive_sha256": "sha256:4ac04c1ca7630c28b05046662a92a2f55bc8459dfe8c550b7c382216534f10a5",
+      "context_fingerprint": "sha256:d2d77a81bdd707d882b18a4d9cec3e649cb18ac759714f7e9df4f4f9fe015b7f",
+      "material_fingerprint": "sha256:71fb0ccc4b91c94dae91eed85939f4be2150328bda7be9e597064a52055c873c",
+      "architectures": [
+        "amd64",
+        "aarch64"
+      ],
+      "config": {
+        "name": "Woow HA Pi Agent",
+        "version": "0.14.3",
+        "slug": "woow_ha_pi_agent",
+        "description": "pi-web 0.9.0 + pi coding agent SDK, with a browser terminal, AI providers configured inside the pi-web UI, and a video pipeline (ffmpeg / Playwright / edge-tts / rclone)",
+        "url": "https://github.com/WOOWTECH/Woow_ha_pi_agent_add_on",
+        "hassio_api": true,
+        "arch": [
+          "amd64",
+          "aarch64"
+        ],
+        "startup": "application",
+        "boot": "auto",
+        "init": false,
+        "map": [
+          {
+            "type": "addon_config",
+            "read_only": false
+          },
+          {
+            "type": "share",
+            "read_only": false
+          }
+        ],
+        "backup": "cold",
+        "backup_exclude": [
+          "**/sessions/*.jsonl.tmp",
+          "**/home/**/node_modules/**",
+          "**/home/**/.cache/**",
+          "**/playwright-cache/**",
+          "**/venv/**",
+          "**/projects/**/clips/**",
+          "**/projects/**/segments/**"
+        ],
+        "ingress": true,
+        "ingress_port": 30142,
+        "ingress_stream": true,
+        "panel_icon": "mdi:robot",
+        "panel_title": "Pi Agent",
+        "panel_admin": true,
+        "watchdog": "http://[HOST]:[PORT:30142]/api/home",
+        "options": {
+          "log_level": "info",
+          "timezone": "",
+          "reset_video_tools": false,
+          "env_vars": []
+        },
+        "schema": {
+          "log_level": "list(error|warn|info|debug)",
+          "timezone": "str?",
+          "reset_video_tools": "bool",
+          "env_vars": [
+            {
+              "name": "str",
+              "value": "str"
+            }
+          ]
+        },
+        "image": "ghcr.io/woowtech/woow-ha-pi-agent-{arch}"
+      },
+      "source_build_supported": true,
+      "images": {
+        "amd64": {
+          "reference": "ghcr.io/woowtech/woow-ha-pi-agent-amd64:0.14.3",
+          "index_digest": "sha256:45640f18659f8ae0059f3405181242b9cda8b317b225a28b046fb34e850659e9",
+          "digest": "sha256:45640f18659f8ae0059f3405181242b9cda8b317b225a28b046fb34e850659e9",
+          "source_revision": "b735dc82339c99959b3744ee459fe7242608374e"
+        },
+        "aarch64": {
+          "reference": "ghcr.io/woowtech/woow-ha-pi-agent-aarch64:0.14.3",
+          "index_digest": "sha256:2a26af7514f6578d13070288f9b4c597ce95a32c5eb6dfaf2f307836207de651",
+          "digest": "sha256:2a26af7514f6578d13070288f9b4c597ce95a32c5eb6dfaf2f307836207de651",
+          "source_revision": "b735dc82339c99959b3744ee459fe7242608374e"
+        }
+      },
+      "delivery": "published-image",
+      "validation": "manifest+architecture-images+configured-CI",
+      "publisher_run_id": "37409695823",
+      "channel": "stable",
+      "store_path": "woow_ha_pi_agent"
+    }
+  },
+  "catalog_id": "sha256:09d98702ce4872099fc853d556dfe26a9178261eef453e578048b167932012b4"
+}
