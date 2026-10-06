@@ -3,7 +3,7 @@ name: Synchronize validated WOOW addons and Local Download
   workflow_dispatch:
     inputs:
       only:
-        description: Optional addon ID for pilot; empty means all registered stable addons
+        description: Optional addon ID to limit this run; empty (and every schedule or dispatch run) means all registered stable addons
         required: false
         type: string
         default: ''
@@ -12,7 +12,7 @@ name: Synchronize validated WOOW addons and Local Download
     - upstream-release
     - woow-addon-ready
   schedule:
-  - cron: '*/5 * * * *'
+  - cron: '3,8,13,18,23,28,33,38,43,48,53,58 * * * *'
 permissions:
   contents: write
   actions: read
@@ -34,8 +34,6 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         ONLY_ADDON: ${{ inputs.only }}
       run: 'set -euo pipefail
-
-        if [ "$GITHUB_EVENT_NAME" = schedule ]; then ONLY_ADDON=woow_ha_pi_agent; fi
 
         args=()
 

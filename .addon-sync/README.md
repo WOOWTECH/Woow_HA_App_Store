@@ -24,7 +24,7 @@ After a successful Store update, the same workflow uses the **ha-rebrand-only wr
 
 ## Operations
 
-Run **Synchronize validated WOOW addons and Local Download** manually; optional `only` input selects an addon ID for a pilot. Empty input selects every enabled stable mapping. Repository dispatch payloads do not choose arbitrary repositories or files; the checked-in registry is the allowlist.
+Run **Synchronize validated WOOW addons and Local Download** manually; optional `only` input selects an addon ID for a pilot. Empty input selects every enabled stable mapping. Scheduled runs (every 5 minutes, offset from the top of the hour, best effort) and repository dispatches always process every enabled stable mapping. Repository dispatch payloads do not choose arbitrary repositories or files; the checked-in registry is the allowlist.
 
 To onboard a new source, review `registry.json`, add its publisher workflow pinned to a reviewed Store tooling commit, run the publisher, then verify both Store catalog and rebrand `sync-state.json` report the same catalog ID. New repositories are not granted cross-repository write credentials automatically.
 
