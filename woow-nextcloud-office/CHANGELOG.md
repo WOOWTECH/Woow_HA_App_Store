@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.2
+
+- Nextcloud 34.0.4（大版本 34）；建置時驗證官方 SHA256 與發行簽章。
+- **升級順序**：必須先在 33.0.9（0.2.1） 上完成升級並確認正常，才能更新到本版；不可跨大版本。更新前請備份本 add-on 與 `/share/nextcloud`。
+- richdocuments 會在升級後自動更新到與 Nextcloud 34 相容的版本。
+
 ## 0.2.1
 
 - 執行環境改為 Debian trixie＋PHP 8.4（Nextcloud 34／35 需要 PHP ≥ 8.3）；PostgreSQL 維持 16。

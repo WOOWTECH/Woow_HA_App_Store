@@ -2482,21 +2482,21 @@
     "woow-nextcloud-office": {
       "id": "woow-nextcloud-office",
       "name": "Woow Nextcloud Office",
-      "version": "0.2.1",
+      "version": "0.2.2",
       "repository": "WOOWTECH/Woow_ha_nextcloud",
-      "source_sha": "24efa06331358e0dc090809d64d6e735ff283fd6",
+      "source_sha": "97d61f85cea73f14ece474ccf718566e3cfe01f6",
       "source_path": "woow-nextcloud-office",
       "config_file": "config.yaml",
-      "config_sha256": "sha256:21bcd56e947381cdc8eedecba8d1c94743b51e9882d7be03adc1191a936ebd27",
-      "archive_sha256": "sha256:09dceea336e369d2894e59cc32362ef8b3f86671009538244099b684978a32f5",
-      "context_fingerprint": "sha256:fdbc21f5372ba2e6143dbf1176759549235afc863f4cf9f9007dcac743730a95",
-      "material_fingerprint": "sha256:343bb46680aa7d82d6dbf285e794ceced015937b91136edc76cc02befd7238d5",
+      "config_sha256": "sha256:2b812b5ca61f45f149be4adfd75c58c28123416fd49c2bb05225a638254bf9a2",
+      "archive_sha256": "sha256:797dbd63cc67ef216ff4dd44a62b6b186d806745aed7721918f50e72ef598d48",
+      "context_fingerprint": "sha256:59d5f9224a2b8b040246f2f82b0e18811661114a377dd5940217e1d7da05aba3",
+      "material_fingerprint": "sha256:9ce695a07f115439be14c663988850e370540c524984be4584083ac2856c06da",
       "architectures": [
         "amd64"
       ],
       "config": {
         "name": "Woow Nextcloud Office",
-        "version": "0.2.1",
+        "version": "0.2.2",
         "image": "ghcr.io/woowtech/woow-ha-nextcloud-office-{arch}",
         "slug": "woow-nextcloud-office",
         "description": "Nextcloud with built-in PostgreSQL, Redis, and Collabora Online Office",
@@ -2599,15 +2599,15 @@
       "source_build_supported": true,
       "images": {
         "amd64": {
-          "reference": "ghcr.io/woowtech/woow-ha-nextcloud-office-amd64:0.2.1",
-          "index_digest": "sha256:4b5194d4ad7d5ccc9a9d5432528f8cf84f95a2fdadde0a23f8f157bef979574a",
-          "digest": "sha256:7055ca659c5065a9519c0b9af34539c5528dbbc62375c596ca72e2c4c2d9585c",
+          "reference": "ghcr.io/woowtech/woow-ha-nextcloud-office-amd64:0.2.2",
+          "index_digest": "sha256:3ae92faf2b41a4a04603884b0bab2e55a00cf8c5b39318c6811473a41123a6fd",
+          "digest": "sha256:84f8c9723a2119d6930faa69df9e292570300269695879fa52a4dcbbebf220ed",
           "source_revision": null
         }
       },
       "delivery": "published-image",
       "validation": "manifest+architecture-images+configured-CI",
-      "publisher_run_id": "37424136305",
+      "publisher_run_id": "37428208359",
       "channel": "stable",
       "store_path": "woow-nextcloud-office"
     },
@@ -2987,5 +2987,5 @@
       "store_path": "odoo18ce"
     }
   },
-  "catalog_id": "sha256:d44ca447737f70f92c239389af94d5562080c3b083fd844dba87a116c468f5d5"
+  "catalog_id": "sha256:2c0376566df25efa565ff3fc60d9ad2fd7a8ed0c0a4c9868d660a4d6e57b3ffe"
 }

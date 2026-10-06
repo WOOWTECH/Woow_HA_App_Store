@@ -18,8 +18,8 @@ class PhpRuntimeTests(unittest.TestCase):
         self.assertIn('FROM debian:trixie-slim', docker)
         self.assertIn('https://apt.postgresql.org/pub/repos/apt trixie-pgdg main', docker)
         self.assertIn('postgresql-16 postgresql-client-16', docker)
-        # Still the Nextcloud 33 series here (patch releases allowed); majors are released one at a time.
-        self.assertRegex(docker, r'ARG NEXTCLOUD_VERSION=33\.\d+\.\d+\n')
+        # Supported series 33-35; majors are released one at a time (see CHANGELOG upgrade order).
+        self.assertRegex(docker, r'ARG NEXTCLOUD_VERSION=3[345]\.\d+\.\d+\n')
         expected = {f'php8.4-{suffix}' for suffix in (
             'fpm', 'cli', 'common', 'pgsql', 'curl', 'gd', 'intl', 'mbstring',
             'xml', 'zip', 'bcmath', 'gmp', 'imagick', 'redis', 'apcu', 'bz2',

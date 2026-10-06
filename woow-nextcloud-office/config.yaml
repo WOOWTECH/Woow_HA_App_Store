@@ -1,5 +1,5 @@
 name: Woow Nextcloud Office
-version: "0.2.1"
+version: "0.2.2"
 image: ghcr.io/woowtech/woow-ha-nextcloud-office-{arch}
 slug: woow-nextcloud-office
 description: Nextcloud with built-in PostgreSQL, Redis, and Collabora Online Office

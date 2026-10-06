@@ -57,9 +57,9 @@ RUN case "${TARGETARCH:-${BUILD_ARCH}}" in \
 COPY build/verify-nextcloud.sh build/nextcloud-release-key.asc /tmp/nextcloud-verify/
 # Declared here, after the OS/package layers, so changing the Nextcloud version only
 # rebuilds the Nextcloud layers (an ARG change invalidates every later RUN's cache).
-ARG NEXTCLOUD_VERSION=33.0.9
+ARG NEXTCLOUD_VERSION=34.0.4
 # Official SHA256 of nextcloud-${NEXTCLOUD_VERSION}.tar.bz2; must change together with the version.
-ARG NEXTCLOUD_SHA256=f331c1041d027e6588526d2a00ce42bc70a9622eab5871c0be9177252cf77423
+ARG NEXTCLOUD_SHA256=00f226e6364f96e0918ab06157158f66601b8cedc25af777f5ee5a3056f42b83
 # Nextcloud release signing key (primary fingerprint) shipped as build/nextcloud-release-key.asc.
 ARG NEXTCLOUD_KEY_FPR=28806A878AE423A28372792ED75899B9A724937A
 RUN mkdir -p /var/www \
