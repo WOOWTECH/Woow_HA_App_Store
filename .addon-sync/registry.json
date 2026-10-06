@@ -640,8 +640,12 @@
     },
     "WOOWTECH/Woow_ha_vpn_tailscale_package": {
       "default_branch": "main",
-      "required_workflows": [],
-      "observe_workflow_names": [],
+      "required_workflows": [
+        ".github/workflows/build.yml"
+      ],
+      "observe_workflow_names": [
+        "Build"
+      ],
       "ref_policy": "main",
       "components": [
         {
@@ -651,7 +655,7 @@
           "store_path": "woow-tailscale",
           "channel": "stable",
           "enabled": true,
-          "note": "Store 0.1.1 currently ahead of source 0.1.0; never downgrade. Resume when individual source catches up or advances."
+          "note": "Canonical source since 2026-10-06 (owner decision); 0.1.2 carries the Store 0.1.1 fix plus the current bind-tools pin. Source-built on the device; CI must build amd64 and aarch64 before distribution. Never downgrade the Store copy."
         }
       ]
     },

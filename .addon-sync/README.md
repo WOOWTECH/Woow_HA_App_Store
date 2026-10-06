@@ -18,7 +18,7 @@ After a successful Store update, the same workflow uses the **ha-rebrand-only wr
 - Store manifests retain normal Supervisor image-tag installation semantics. Local Download instead wraps the exact recorded platform image digest in a local Dockerfile; this is **not source recompilation**.
 - The downloader refuses existing directories and sets new contexts to manual boot. It does not install, start, uninstall, upgrade or migrate an appliance. Never uninstall an existing addon merely to switch packaging modes.
 - Archived repositories, retired VSCode and prerelease channels are not silently added to the stable catalog. Registry lists explicit mappings/exclusions.
-- Tailscale's individual repo is currently behind Store 0.1.1: no downgrade is permitted. Reconcile source authority before replacing Store-specific fixes.
+- Tailscale: since 2026-10-06 the individual repository `Woow_ha_vpn_tailscale_package` is canonical (owner decision). Its 0.1.2 carries the Store's 0.1.1 fix plus the current `bind-tools` pin, and its `Build` workflow must build `amd64` and `aarch64` before a snapshot is distributed. The downgrade guard still protects the Store copy.
 - A missing or failed source notification leaves the previous Store context/catalog intact and appears in the workflow summary and as a `::warning` annotation on the run; partial progress is explicitly reported. CI that is still running is reported as `waiting`, not success.
 - `release/addons/sync-state.json` names the Store commit that produced the published resources. When the catalog, downloader and README are unchanged, it keeps that commit, so unrelated Store commits do not create rebrand commits.
 
