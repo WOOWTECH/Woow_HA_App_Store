@@ -12,6 +12,17 @@ gosu postgres psql -h /run/postgresql -tc "SELECT 1 FROM pg_database WHERE datna
 mkdir -p /data/nextcloud/config /data/nextcloud/custom_apps "$NEXTCLOUD_DATADIR"
 if [[ ! -L /var/www/nextcloud/config ]]; then rm -rf /var/www/nextcloud/config; ln -s /data/nextcloud/config /var/www/nextcloud/config; fi
 if [[ ! -L /var/www/nextcloud/custom_apps ]]; then rm -rf /var/www/nextcloud/custom_apps; ln -s /data/nextcloud/custom_apps /var/www/nextcloud/custom_apps; fi
+# App store apps go to the persistent custom_apps (symlink to /data); the image's
+# apps/ stays read-only so a new image never silently drops an installed app.
+cat > /data/nextcloud/config/apps.config.php <<'APPS'
+<?php
+$CONFIG = [
+  'apps_paths' => [
+    ['path' => '/var/www/nextcloud/apps', 'url' => '/apps', 'writable' => false],
+    ['path' => '/var/www/nextcloud/custom_apps', 'url' => '/custom_apps', 'writable' => true],
+  ],
+];
+APPS
 chown -R www-data:www-data /data/nextcloud "$NEXTCLOUD_DATADIR" /var/www/nextcloud
 if [[ ! -s /data/nextcloud/config/config.php ]]; then
   echo "Installing Nextcloud..."
@@ -25,7 +36,13 @@ if [[ ! -s /data/nextcloud/config/config.php ]]; then
     --admin-pass "$ADMIN_PASS" \
     --data-dir "$NEXTCLOUD_DATADIR"
 else
-  occ upgrade --no-interaction || true
+  if occ upgrade --no-interaction; then
+    :
+  else
+    upgrade_status=$?
+    echo "Nextcloud upgrade failed; stopping initialization. Restore a matching validated backup before retrying." >&2
+    exit "$upgrade_status"
+  fi
 fi
 # Core config that keeps public/direct URL stable and HA iframe usable.
 occ config:system:set trusted_domains 0 --value "$PUBLIC_HOST"
@@ -37,9 +54,8 @@ occ config:system:set overwriteprotocol --value https
 occ config:system:set default_phone_region --value "$DEFAULT_PHONE_REGION" || true
 occ config:system:set dbpassword --value "$DB_PASS" || true
 occ config:app:set password_policy minLength --value 7 || true
-if occ user:info "$ADMIN_USER" >/dev/null 2>&1; then
-  OC_PASS="$ADMIN_PASS" occ user:resetpassword --password-from-env "$ADMIN_USER" || true
-fi
+# ADMIN_PASS is only an initial-install credential. Preserve the existing
+# account password across upgrades/restarts; resets require an explicit action.
 occ config:system:set memcache.local --value '\OC\Memcache\APCu'
 occ config:system:set memcache.locking --value '\OC\Memcache\Redis'
 occ config:system:set redis host --value /run/redis/redis.sock
@@ -47,6 +63,11 @@ occ config:system:set redis port --value 0 --type integer
 occ config:system:set maintenance_window_start --value 1 --type integer || true
 # Allow framing by HA/public hosts.
 php -r '$f="/data/nextcloud/config/config.php"; include $f; $c=$CONFIG ?? []; $tp=$c["trusted_proxies"]??[]; if (!is_array($tp)) { $tp=[$tp]; } $c["trusted_proxies"]=array_values(array_unique(array_merge($tp, ["127.0.0.1","172.30.32.2"]))); $c["overwritehost"]="'"$PUBLIC_HOST"'"; $out="<?php\n\$CONFIG = ".var_export($c,true).";\n"; file_put_contents($f,$out);'
+# HA backup/restore does not preserve file modes (seen: config.php 0640 -> 0644 after a
+# Supervisor restore). Re-assert them on every boot: config holds DB and instance secrets.
+chmod 0750 /data/nextcloud/config
+find /data/nextcloud/config -maxdepth 1 -type f -name '*.php' -exec chmod 0640 {} +
+chmod 0770 "$NEXTCLOUD_DATADIR"
 # Disable first-run modal and notify_push unless explicitly configured later.
 occ app:disable firstrunwizard || true
 occ app:disable notify_push || true

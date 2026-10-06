@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "scope": "isolated-synthetic",
+  "evidence_kind": "unresolved",
+  "architecture": "amd64",
+  "observation": "unresolved",
+  "images": {
+    "source": {
+      "digest": null,
+      "source_commit": null,
+      "architecture": "amd64",
+      "manifest": "unresolved",
+      "inputs": [],
+      "receipt": "unresolved"
+    },
+    "candidate": {
+      "digest": null,
+      "source_commit": null,
+      "architecture": "amd64",
+      "manifest": "unresolved",
+      "inputs": [],
+      "receipt": "unresolved"
+    }
+  },
+  "artifacts": []
+}

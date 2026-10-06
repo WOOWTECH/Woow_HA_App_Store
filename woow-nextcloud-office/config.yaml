@@ -1,5 +1,6 @@
 name: Woow Nextcloud Office
-version: "0.1.6"
+version: "0.2.1"
+image: ghcr.io/woowtech/woow-ha-nextcloud-office-{arch}
 slug: woow-nextcloud-office
 description: Nextcloud with built-in PostgreSQL, Redis, and Collabora Online Office
 url: https://github.com/WOOWTECH/Woow_HA_App_Store
@@ -18,7 +19,6 @@ hassio_api: true
 hassio_role: manager
 arch:
   - amd64
-  - aarch64
 init: false
 map:
   - type: data

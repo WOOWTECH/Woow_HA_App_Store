@@ -4,14 +4,25 @@ source /run/woow-office/env
 if [[ "$ENABLE_COLLABORA" != "true" ]]; then exit 0; fi
 for i in $(seq 1 90); do curl -fsS http://127.0.0.1:9980/hosting/capabilities >/dev/null 2>&1 && break; sleep 1; done
 for i in $(seq 1 90); do curl -fsS http://127.0.0.1:8000/hosting/discovery >/dev/null 2>&1 && break; sleep 1; done
-# Install/enable richdocuments. app:install may fail if already installed or no appstore; continue to app:enable.
-occ app:install richdocuments || true
-occ app:enable richdocuments || true
+# richdocuments lives in the persistent custom_apps. Download only when it is missing
+# (first install, or migration from the old non-persistent apps/), or update it only when
+# Nextcloud disabled it as incompatible after a core upgrade. A normal boot changes nothing.
+rich_enabled() { occ app:list --output=json | jq -e '.enabled.richdocuments' >/dev/null; }
+if ! rich_enabled; then
+  if ! occ app:getpath richdocuments >/dev/null 2>&1; then
+    occ app:install richdocuments || echo "richdocuments install failed (app store unreachable?); Office stays unavailable" >&2
+  fi
+  occ app:enable richdocuments || { occ app:update richdocuments && occ app:enable richdocuments; } \
+    || echo "richdocuments could not be enabled; Office stays unavailable" >&2
+fi
+echo "richdocuments $(occ app:getpath richdocuments 2>/dev/null || echo missing) $(occ config:app:get richdocuments installed_version 2>/dev/null || true)"
 # Nextcloud 33 + richdocuments 10.3.x can leave several app routes without a leading slash,
 # which makes /apps/richdocuments/token return 404 and prevents Collabora from opening files.
-php <<'PHP'
+RICH_PATH="$(occ app:getpath richdocuments 2>/dev/null || true)"
+export RICH_PATH
+ROUTES_PATCHED=$(php <<'PHP'
 <?php
-$p = '/var/www/nextcloud/apps/richdocuments/appinfo/routes.php';
+$p = getenv('RICH_PATH') . '/appinfo/routes.php';
 if (is_file($p)) {
     $s = file_get_contents($p);
     $repl = [
@@ -35,13 +46,17 @@ if (is_file($p)) {
         "'url' => 'assets/tasks'" => "'url' => '/assets/tasks'",
         "'url' => 'assets/{token}'" => "'url' => '/assets/{token}'",
     ];
-    file_put_contents($p, strtr($s, $repl));
+    $patched = strtr($s, $repl);
+    if ($patched !== $s) { file_put_contents($p, $patched); echo 'patched'; }
 }
 PHP
-occ app:disable richdocuments || true
-occ app:enable richdocuments || true
+)
+if [[ "$ROUTES_PATCHED" == patched ]]; then
+  occ app:disable richdocuments || true
+  occ app:enable richdocuments || true
+fi
 # php-fpm starts before this init step; restart it so Nextcloud drops route caches loaded before the patch.
-if [[ -s /run/php/php8.2-fpm.pid ]]; then kill -TERM "$(cat /run/php/php8.2-fpm.pid)" || true; sleep 2; fi
+if [[ -s /run/php/php8.4-fpm.pid ]]; then kill -TERM "$(cat /run/php/php8.4-fpm.pid)" || true; sleep 2; fi
 # Back-end WOPI URL stays internal; public URL is discovered from coolwsd server_name via discovery.
 occ config:app:set --value "http://127.0.0.1:9980" richdocuments wopi_url || true
 occ richdocuments:activate-config || true

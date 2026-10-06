@@ -1,0 +1,174 @@
+{
+  "schema_version": 1,
+  "scope": "isolated-synthetic",
+  "evidence_kind": "stub",
+  "candidate_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "source_digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "php": {
+    "cli": {
+      "version": "8.4.24",
+      "modules": [
+        "apcu",
+        "bcmath",
+        "bz2",
+        "ctype",
+        "curl",
+        "dom",
+        "fileinfo",
+        "gd",
+        "gmp",
+        "iconv",
+        "imagick",
+        "intl",
+        "mbstring",
+        "openssl",
+        "pdo_pgsql",
+        "pgsql",
+        "redis",
+        "simplexml",
+        "xml",
+        "xmlreader",
+        "xmlwriter",
+        "zend opcache",
+        "zip",
+        "zlib"
+      ],
+      "ini": {
+        "memory_limit": "1024M",
+        "upload_max_filesize": "16G",
+        "post_max_size": "16G",
+        "apc.enable_cli": "1"
+      }
+    },
+    "fpm": {
+      "version": "8.4.24",
+      "modules": [
+        "apcu",
+        "bcmath",
+        "bz2",
+        "ctype",
+        "curl",
+        "dom",
+        "fileinfo",
+        "gd",
+        "gmp",
+        "iconv",
+        "imagick",
+        "intl",
+        "mbstring",
+        "openssl",
+        "pdo_pgsql",
+        "pgsql",
+        "redis",
+        "simplexml",
+        "xml",
+        "xmlreader",
+        "xmlwriter",
+        "zend opcache",
+        "zip",
+        "zlib"
+      ],
+      "ini": {
+        "memory_limit": "1024M",
+        "upload_max_filesize": "16G",
+        "post_max_size": "16G",
+        "opcache.enable": "1"
+      }
+    }
+  },
+  "fpm": {
+    "binary": "php-fpm8.4",
+    "socket": "/run/php/php8.4-fpm.sock",
+    "socket_is_unix": true,
+    "pid_file": "/run/php/php8.4-fpm.pid",
+    "pid": 12345,
+    "master_pid": 12345,
+    "process_alive": true,
+    "config_test_exit": 0
+  },
+  "nginx": {
+    "config_test_exit": 0,
+    "process_alive": true,
+    "fastcgi_socket": "/run/php/php8.4-fpm.sock"
+  },
+  "code": {
+    "version": "26.04.4.2",
+    "version_exit": 0,
+    "process_alive": true,
+    "discovery_http_status": 200,
+    "discovery_xml_valid": true,
+    "websocket_http_status": 101,
+    "save_roundtrip": true,
+    "jail_enabled": true
+  },
+  "postgres": {
+    "source": {
+      "version": "16.15",
+      "libc_version": "2.41",
+      "icu_version": "76.1",
+      "locales": [
+        "C",
+        "C.UTF-8",
+        "en_US.UTF-8"
+      ],
+      "databases_complete": true,
+      "databases": [
+        {
+          "name": "synthetic",
+          "provider": "c",
+          "locale": "en_US.UTF-8",
+          "collate": "en_US.UTF-8",
+          "ctype": "en_US.UTF-8",
+          "recorded_version": "2.41",
+          "actual_version": "2.41",
+          "collations_complete": true,
+          "collations": [
+            {
+              "name": "pg_catalog.en_US",
+              "provider": "c",
+              "locale": "en_US.UTF-8",
+              "collate": "en_US.UTF-8",
+              "ctype": "en_US.UTF-8",
+              "recorded_version": "2.41",
+              "actual_version": "2.41"
+            }
+          ]
+        }
+      ]
+    },
+    "candidate": {
+      "version": "16.15",
+      "libc_version": "2.41",
+      "icu_version": "76.1",
+      "locales": [
+        "C",
+        "C.UTF-8",
+        "en_US.UTF-8"
+      ],
+      "databases_complete": true,
+      "databases": [
+        {
+          "name": "synthetic",
+          "provider": "c",
+          "locale": "en_US.UTF-8",
+          "collate": "en_US.UTF-8",
+          "ctype": "en_US.UTF-8",
+          "recorded_version": "2.41",
+          "actual_version": "2.41",
+          "collations_complete": true,
+          "collations": [
+            {
+              "name": "pg_catalog.en_US",
+              "provider": "c",
+              "locale": "en_US.UTF-8",
+              "collate": "en_US.UTF-8",
+              "ctype": "en_US.UTF-8",
+              "recorded_version": "2.41",
+              "actual_version": "2.41"
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

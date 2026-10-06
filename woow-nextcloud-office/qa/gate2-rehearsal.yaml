@@ -1,0 +1,55 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata: {name: ha-cand-data, namespace: nextcloud-ha-upgrade-rehearsal, labels: {woowtech.io/task: nextcloud-ha-upgrade, woowtech.io/gate: "2"}}
+spec: {accessModes: [ReadWriteOnce], storageClassName: longhorn, resources: {requests: {storage: 8Gi}}}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata: {name: ha-cand-share, namespace: nextcloud-ha-upgrade-rehearsal, labels: {woowtech.io/task: nextcloud-ha-upgrade, woowtech.io/gate: "2"}}
+spec: {accessModes: [ReadWriteOnce], storageClassName: longhorn, resources: {requests: {storage: 4Gi}}}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: ha-cand, namespace: nextcloud-ha-upgrade-rehearsal, labels: {woowtech.io/task: nextcloud-ha-upgrade, woowtech.io/gate: "2"}}
+spec:
+  selector: {app: ha-cand}
+  ports: [{name: http, port: 8000, targetPort: 8000}, {name: ingress, port: 8090, targetPort: 8090}]
+---
+# Synthetic HA candidate; root + default container capabilities only (no privileged, no SYS_ADMIN, no host mounts).
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: ha-cand, namespace: nextcloud-ha-upgrade-rehearsal, labels: {woowtech.io/task: nextcloud-ha-upgrade, woowtech.io/gate: "2"}}
+spec:
+  replicas: 1
+  strategy: {type: Recreate}
+  selector: {matchLabels: {app: ha-cand}}
+  template:
+    metadata: {labels: {app: ha-cand, woowtech.io/task: nextcloud-ha-upgrade}}
+    spec:
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      imagePullSecrets: [{name: registry-pull}]
+      securityContext: {seccompProfile: {type: RuntimeDefault}}
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms: [{matchExpressions: [{key: kubernetes.io/hostname, operator: NotIn, values: [ubuntuserver-59mqj]}]}]
+      initContainers:
+        - name: seed-options
+          image: busybox:1.37
+          # Write options only on first boot; a restart must not change them.
+          command: [sh, -c, 'test -s /data/options.json || { cp /seed/options.json /data/options.json && chmod 600 /data/options.json; }; ls -l /data/options.json']
+          securityContext: {allowPrivilegeEscalation: false, capabilities: {drop: [ALL], add: [DAC_OVERRIDE, FOWNER, CHOWN]}}
+          resources: {requests: {cpu: 10m, memory: 16Mi}, limits: {cpu: 100m, memory: 64Mi}}
+          volumeMounts: [{name: data, mountPath: /data}, {name: seed, mountPath: /seed, readOnly: true}]
+      containers:
+        - name: addon
+          image: jcr-prod.woowtech.io/woow-paas-docker-local/nextcloud-ha-office-rehearsal@sha256:d44cf5df8f0900d000b139904330964456ca97169e1acdfb51c825687eb426fc
+          ports: [{containerPort: 8000}, {containerPort: 8090}]
+          resources: {requests: {cpu: 500m, memory: 1536Mi}, limits: {cpu: '4', memory: 4Gi}}
+          volumeMounts: [{name: data, mountPath: /data}, {name: share, mountPath: /share}, {name: tmp, mountPath: /tmp}]
+      volumes:
+        - {name: data, persistentVolumeClaim: {claimName: ha-cand-data}}
+        - {name: share, persistentVolumeClaim: {claimName: ha-cand-share}}
+        - {name: seed, secret: {secretName: ha-cand-options, defaultMode: 0400}}
+        - {name: tmp, emptyDir: {medium: Memory, sizeLimit: 512Mi}}
