@@ -305,7 +305,7 @@ def publish(gh, registry, repo, apply=False, only=None):
     if apply and canonical(old)!=canonical(new):gh.put_outbox(repo,new)
     return report,new
 
-def validate_entry(gh, repo, component, entry):
+def validate_entry(gh, repo, component, entry, default_branch=None):
     if entry.get('repository')!=repo or entry.get('id')!=component['id']:raise Blocked('Notification identity mismatch')
     if entry.get('source_path')!=component['source_path'] or entry.get('config_file')!=component['config_file']:raise Blocked('Notification context mismatch')
     if not SHA.fullmatch(entry.get('source_sha','')):raise Blocked('Missing immutable source SHA')
@@ -315,7 +315,27 @@ def validate_entry(gh, repo, component, entry):
     if run.get('conclusion')!='success' or run.get('status')!='completed':raise Blocked('Producer publication is not yet successful')
     if run.get('path','').split('@')[0]!='.github/workflows/woow-addon-sync.yml' or run.get('event') not in ['push','workflow_dispatch','workflow_run','schedule']:raise Blocked('Unexpected publisher workflow')
     if run.get('head_repository',{}).get('full_name')!=repo:raise Blocked('Foreign workflow source')
+    # A topic branch can carry an edited publisher; only the default branch's workflow is a receipt.
+    if default_branch and run.get('head_branch')!=default_branch:raise Blocked('Publisher run did not execute on the default branch')
     if gh.fingerprint(repo,entry['source_sha'],component['source_path'])!=entry['context_fingerprint']:raise Blocked('Context fingerprint mismatch')
+
+def stable_release(gh, repo, sha):
+    """Tag of the published, non-prerelease Release whose commit is sha, newest first; None otherwise."""
+    for r in gh.api(repo,'releases?per_page=30'):
+        if r.get('draft') or r.get('prerelease'):continue
+        if gh.api(repo,'commits/'+urllib.parse.quote(r['tag_name'],safe=''))['sha']==sha:return r['tag_name']
+    return None
+
+def enforce_source_policy(gh, repo, provider, component, entry):
+    """The Store's checked-in registry is authoritative, even when a producer's
+    pinned tooling (and therefore its copy of the registry) lags behind it."""
+    sha=entry['source_sha']
+    if provider.get('ref_policy')=='release':
+        if not stable_release(gh,repo,sha):raise Blocked('Registry requires a published stable Release commit')
+    else:
+        branch=provider.get('default_branch') or gh.head(repo)[0]
+        if gh.api(repo,'compare/'+sha+'...'+urllib.parse.quote(branch,safe=''))['status'] not in ['ahead','identical']:raise Blocked('Snapshot is not on the default branch')
+    ci_gate(gh,repo,sha,component,provider.get('required_workflows',[]))
 
 def write_context(destination,files):
     # Caller chooses a registry-controlled package directory, never arbitrary payload paths.
@@ -343,7 +363,8 @@ def consume(gh, registry, workspace, only=None):
                 report.append({'id':cid,'state':'unchanged'});continue
             try:
                 if not SLUG.fullmatch(comp['store_path']):raise Blocked('Unsafe registered destination')
-                validate_entry(gh,repo,comp,entry)
+                validate_entry(gh,repo,comp,entry,provider.get('default_branch'))
+                enforce_source_policy(gh,repo,provider,comp,entry)
                 if previous and previous['source_sha']!=entry['source_sha']:
                     comparison=gh.api(repo,'compare/'+previous['source_sha']+'...'+entry['source_sha'])
                     if comparison['status'] not in ['ahead','identical']:raise Blocked('Out-of-order or divergent source notification')
@@ -381,14 +402,24 @@ def consume(gh, registry, workspace, only=None):
                         raise
                 catalog['components'][cid]={**entry,'store_path':comp['store_path']}
                 report.append({'id':cid,'state':'synced','version':entry['version']})
-            except Exception as e:report.append({'id':cid,'state':'blocked','reason':str(e) if isinstance(e,Blocked) else type(e).__name__})
+            except Exception as e:report.append({'id':cid,'state':'waiting' if isinstance(e,Deferred) else 'blocked','reason':str(e) if isinstance(e,Blocked) else type(e).__name__})
     catalog['catalog_id']=digest(canonical(catalog['components']))
     catpath.parent.mkdir(exist_ok=True);catpath.write_text(json.dumps(catalog,ensure_ascii=False,indent=2)+'\n')
     return report,catalog
 
+ATTENTION = ['blocked','waiting','waiting-for-source-notification']
+
+def annotation(value):
+    # GitHub workflow-command escaping, so a reason can never inject a command.
+    return str(value).replace('%','%25').replace('\r','%0D').replace('\n','%0A')
+
 def summary(report):
     text='## WOOW addon synchronization\n\n'+ '\n'.join('- '+json.dumps(r,ensure_ascii=False) for r in report)+'\n'
     print(text)
+    # A green run can still leave components behind; surface each one on the run page.
+    for r in report:
+        if r['state'] in ATTENTION:
+            print('::warning title='+annotation('WOOW addon '+r['state']).replace(':','%3A').replace(',','%2C')+'::'+annotation(str(r.get('id',r.get('repository')))+': '+r.get('reason',r['state'])))
     if os.environ.get('GITHUB_STEP_SUMMARY'):
         with open(os.environ['GITHUB_STEP_SUMMARY'],'a') as f:f.write(text)
 
@@ -399,6 +430,6 @@ def main():
     else:report,data=consume(gh,registry,a.workspace,a.only)
     summary(report)
     if a.result:pathlib.Path(a.result).write_text(json.dumps({'report':report,'data':data},ensure_ascii=False,indent=2))
-    if report and all(r['state'] in ['blocked','excluded','waiting-for-source-notification'] for r in report) and any(r['state']=='blocked' for r in report):raise SystemExit(1)
+    if report and all(r['state'] in ATTENTION+['excluded'] for r in report) and any(r['state']=='blocked' for r in report):raise SystemExit(1)
 
 if __name__=='__main__':main()

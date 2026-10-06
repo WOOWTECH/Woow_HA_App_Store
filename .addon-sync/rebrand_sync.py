@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Copy only public addon download resources into the private rebrand checkout."""
-import argparse,hashlib,json,pathlib,shutil,subprocess
+import argparse,hashlib,json,pathlib,re,subprocess
 
 def render(store,target,revision):
     store=pathlib.Path(store);target=pathlib.Path(target)
@@ -13,8 +13,6 @@ def render(store,target,revision):
     dest=target/'release/addons';dest.mkdir(parents=True,exist_ok=True)
     for name in ['catalog.json','download_addon.py','README.md','sync-state.json']:
         if (dest/name).is_symlink():raise ValueError('Refuse symlink output')
-    shutil.copyfile(store/'.addon-sync/catalog.json',dest/'catalog.json')
-    shutil.copyfile(store/'.addon-sync/download_addon.py',dest/'download_addon.py')
     rows=[]
     for cid,e in sorted(catalog['components'].items()):
         name=e['name'].replace('|','\\|').replace('\n',' ')
@@ -48,7 +46,14 @@ python3 download_addon.py woow_ha_pi_agent --catalog catalog.json --destination 
 | ID | 名稱 | 版本 | 架構 | 安裝內容 |
 |---|---|---|---|---|
 '''+ '\n'.join(rows)+'\n'
-    (dest/'README.md').write_text(text)
+    outputs={'catalog.json':(store/'.addon-sync/catalog.json').read_bytes(),'download_addon.py':(store/'.addon-sync/download_addon.py').read_bytes(),'README.md':text.encode()}
+    try:old=json.loads((dest/'sync-state.json').read_text())
+    except (OSError,ValueError):old={}
+    # Unchanged published resources keep the Store commit that produced them, so an
+    # unrelated Store commit never causes a private-repository commit.
+    if old.get('catalog_id')==expected and re.fullmatch(r'[0-9a-f]{40}',str(old.get('app_store_commit',''))) and all((dest/n).is_file() and (dest/n).read_bytes()==b for n,b in outputs.items()):
+        revision=old['app_store_commit']
+    for name,data in outputs.items():(dest/name).write_bytes(data)
     state={'schema':1,'app_store_repository':'WOOWTECH/Woow_HA_App_Store','app_store_commit':revision,'catalog_id':expected,'component_count':len(catalog['components'])}
     (dest/'sync-state.json').write_text(json.dumps(state,indent=2)+'\n')
     return state

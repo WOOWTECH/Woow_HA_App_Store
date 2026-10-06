@@ -124,12 +124,71 @@ class Tests(unittest.TestCase):
         class GH:
             def api(self,*args):return {'conclusion':'success','status':'completed','path':'.github/workflows/other.yml'}
         with self.assertRaises(s.Blocked):s.validate_entry(GH(),'WOOWTECH/test',{'id':'test','source_path':'pkg','config_file':'config.yaml'},entry(archive()))
+    def test_notification_wrong_branch(self):
+        class GH:
+            def api(self,*args):return {'conclusion':'success','status':'completed','path':'.github/workflows/woow-addon-sync.yml','event':'workflow_dispatch','head_repository':{'full_name':'WOOWTECH/test'},'head_branch':'topic'}
+        with self.assertRaisesRegex(s.Blocked,'default branch'):s.validate_entry(GH(),'WOOWTECH/test',{'id':'test','source_path':'pkg','config_file':'config.yaml'},entry(archive()),'main')
+    def policy_gh(self,releases=(),tags=None,compare='ahead',runs=None):
+        class GH:
+            calls=[]
+            def api(self,repo,path):
+                self.calls.append(path)
+                if path.startswith('releases'):return list(releases)
+                if path.startswith('commits/'):return {'sha':(tags or {})[path.split('/',1)[1]]}
+                if path.startswith('compare/'):return {'status':compare}
+                if '/runs' in path:return {'workflow_runs':runs or []}
+                raise AssertionError(path)
+            def fingerprint(self,*args,**kwargs):return 'material'
+        return GH()
+    def test_release_policy_accepts_stable_release_commit(self):
+        gh=self.policy_gh([{'tag_name':'v1.1','prerelease':True},{'tag_name':'v1.0'}],{'v1.1':'b'*40,'v1.0':'a'*40})
+        s.enforce_source_policy(gh,'WOOWTECH/test',{'ref_policy':'release','required_workflows':[]},{'source_path':'pkg'},entry(archive()))
+        self.assertNotIn('commits/v1.1',gh.calls)
+    def test_release_policy_rejects_unreleased_or_prerelease_commit(self):
+        for releases in [[{'tag_name':'v1.0'}],[{'tag_name':'v1.1','prerelease':True}],[{'tag_name':'v1.2','draft':True}],[]]:
+            with self.subTest(releases=releases),self.assertRaisesRegex(s.Blocked,'stable Release'):
+                s.enforce_source_policy(self.policy_gh(releases,{'v1.0':'b'*40,'v1.1':'a'*40,'v1.2':'a'*40}),'WOOWTECH/test',{'ref_policy':'release'},{'source_path':'pkg'},entry(archive()))
+    def test_main_policy_rejects_snapshot_off_default_branch(self):
+        for status in ['diverged','behind']:
+            with self.subTest(status=status),self.assertRaisesRegex(s.Blocked,'default branch'):
+                s.enforce_source_policy(self.policy_gh(compare=status),'WOOWTECH/test',{'ref_policy':'main','default_branch':'main'},{'source_path':'pkg'},entry(archive()))
+    def test_store_registry_ci_is_enforced(self):
+        failed=[{'id':2,'head_sha':'a'*40,'event':'push','status':'completed','conclusion':'failure'}]
+        with self.assertRaisesRegex(s.Blocked,'CI failed'):
+            s.enforce_source_policy(self.policy_gh(runs=failed),'WOOWTECH/test',{'default_branch':'main','required_workflows':['.github/workflows/ci.yml']},{'source_path':'pkg'},entry(archive()))
+        running=[{'id':3,'head_sha':'a'*40,'event':'push','status':'in_progress','conclusion':None}]
+        with self.assertRaises(s.Deferred):
+            s.enforce_source_policy(self.policy_gh(runs=running),'WOOWTECH/test',{'default_branch':'main','required_workflows':['.github/workflows/ci.yml']},{'source_path':'pkg'},entry(archive()))
+    def test_consumer_ci_running_waits_and_keeps_previous(self):
+        raw=archive();e=entry(raw)
+        class GH:
+            def outbox(self,repo):return {'components':{'test':e}}
+        registry={'providers':{'WOOWTECH/test':{'components':[{'id':'test','source_path':'pkg','config_file':'config.yaml','store_path':'test'}]}}}
+        with tempfile.TemporaryDirectory() as tmp,patch.object(s,'validate_entry'),patch.object(s,'enforce_source_policy',side_effect=s.Deferred('CI still running: ci.yml')):
+            target=pathlib.Path(tmp)/'test';target.mkdir();(target/'config.yaml').write_text('slug: test\nversion: 0.9.0\n')
+            report,catalog=s.consume(GH(),registry,tmp)
+            self.assertEqual(report[0]['state'],'waiting');self.assertIn('0.9.0',(target/'config.yaml').read_text());self.assertEqual(catalog['components'],{})
+    def test_summary_annotations_cannot_inject_commands(self):
+        out=io.StringIO()
+        with patch('sys.stdout',out),patch.dict(s.os.environ,{},clear=False):
+            s.os.environ.pop('GITHUB_STEP_SUMMARY',None)
+            s.summary([{'id':'test','state':'blocked','reason':'bad\n::error::injected'},{'id':'ok','state':'unchanged'}])
+        warnings=[l for l in out.getvalue().splitlines() if l.startswith('::')]
+        self.assertEqual(len(warnings),1);self.assertIn('%0A',warnings[0]);self.assertNotIn('ok:',warnings[0])
+    def test_rebrand_state_idempotent_for_unrelated_store_commit(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=pathlib.Path(tmp);store=root/'store';target=root/'private';(store/'.addon-sync').mkdir(parents=True);target.mkdir()
+            (store/'.addon-sync/catalog.json').write_text(json.dumps({'schema':1,'components':{},'catalog_id':s.digest(s.canonical({}))}));(store/'.addon-sync/download_addon.py').write_text('# v1\n')
+            self.assertEqual(mirror.render(store,target,'a'*40)['app_store_commit'],'a'*40)
+            self.assertEqual(mirror.render(store,target,'b'*40)['app_store_commit'],'a'*40)
+            (store/'.addon-sync/download_addon.py').write_text('# v2\n')
+            self.assertEqual(mirror.render(store,target,'c'*40)['app_store_commit'],'c'*40)
     def test_consumer_downgrade_preserves_files(self):
         raw=archive();e=entry(raw)
         class GH:
             def outbox(self,repo):return {'components':{'test':e}}
         registry={'providers':{'WOOWTECH/test':{'components':[{'id':'test','source_path':'pkg','config_file':'config.yaml','store_path':'test'}]}}}
-        with tempfile.TemporaryDirectory() as tmp,patch.object(s,'validate_entry'):
+        with tempfile.TemporaryDirectory() as tmp,patch.object(s,'validate_entry'),patch.object(s,'enforce_source_policy'):
             target=pathlib.Path(tmp)/'test';target.mkdir();(target/'config.yaml').write_text('slug: test\nversion: 2.0.0\n')
             report,catalog=s.consume(GH(),registry,tmp)
             self.assertEqual(report[0]['state'],'blocked');self.assertEqual(catalog['components'],{});self.assertIn('2.0.0',(target/'config.yaml').read_text())
@@ -138,7 +197,7 @@ class Tests(unittest.TestCase):
         class GH:
             def outbox(self,repo):return {'components':{'test':e}}
         registry={'providers':{'WOOWTECH/test':{'components':[{'id':'test','source_path':'pkg','config_file':'config.yaml','store_path':'test'}]}}}
-        with tempfile.TemporaryDirectory() as tmp,patch.object(s,'validate_entry'),patch.object(s,'source_archive',return_value=raw),patch.object(s,'image_ready',return_value=e['images']['amd64']):
+        with tempfile.TemporaryDirectory() as tmp,patch.object(s,'validate_entry'),patch.object(s,'enforce_source_policy'),patch.object(s,'source_archive',return_value=raw),patch.object(s,'image_ready',return_value=e['images']['amd64']):
             r,first=s.consume(GH(),registry,tmp);r,second=s.consume(GH(),registry,tmp)
             self.assertEqual(first,second);self.assertEqual(r[0]['state'],'unchanged')
     def test_consumer_failed_policy_keeps_previous(self):
@@ -146,7 +205,7 @@ class Tests(unittest.TestCase):
         class GH:
             def outbox(self,repo):return {'components':{'test':e}}
         registry={'providers':{'WOOWTECH/test':{'components':[{'id':'test','source_path':'pkg','config_file':'config.yaml','store_path':'test'}]}}}
-        with tempfile.TemporaryDirectory() as tmp,patch.object(s,'validate_entry'),patch.object(s,'source_archive',return_value=raw),patch.object(s,'image_ready',return_value=e['images']['amd64']):
+        with tempfile.TemporaryDirectory() as tmp,patch.object(s,'validate_entry'),patch.object(s,'enforce_source_policy'),patch.object(s,'source_archive',return_value=raw),patch.object(s,'image_ready',return_value=e['images']['amd64']):
             root=pathlib.Path(tmp);target=root/'test';target.mkdir();(target/'config.yaml').write_text('slug: test\nversion: 0.9.0\n')
             policy=root/'.github/scripts/sidebar_titles.py';policy.parent.mkdir(parents=True);policy.write_text('TITLES={"test":"Test"}\ndef normalize(*args):raise ValueError("broken policy")\n')
             report,catalog=s.consume(GH(),registry,tmp);self.assertEqual(report[0]['state'],'blocked');self.assertIn('0.9.0',(target/'config.yaml').read_text());self.assertEqual(catalog['components'],{})
