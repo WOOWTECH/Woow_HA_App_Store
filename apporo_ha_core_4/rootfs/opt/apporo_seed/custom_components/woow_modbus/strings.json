@@ -1,0 +1,14 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Woow Modbus Setup Guide",
+        "description": "This integration adds a sidebar panel with Modbus configuration guidance, AI assistant links, and useful tools.\n\nClick Submit to install.",
+        "data": {}
+      }
+    },
+    "abort": {
+      "already_configured": "Woow Modbus Setup Guide is already configured."
+    }
+  }
+}

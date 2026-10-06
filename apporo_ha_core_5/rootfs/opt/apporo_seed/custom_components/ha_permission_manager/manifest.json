@@ -1,0 +1,14 @@
+{
+  "domain": "ha_permission_manager",
+  "name": "Permission Manager — 14 HA services for panel/area/label permission control. AI agents: use ha_list_services to discover all services.",
+  "version": "1.0.3",
+  "documentation": "https://github.com/WOOWTECH/ha_permission_manager",
+  "issue_tracker": "https://github.com/WOOWTECH/ha_permission_manager/issues",
+  "dependencies": ["frontend", "auth"],
+  "codeowners": ["@WOOWTECH"],
+  "requirements": [],
+  "iot_class": "local_push",
+  "homeassistant": "2025.1.0",
+  "config_flow": true,
+  "integration_type": "service"
+}

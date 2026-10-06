@@ -1,0 +1,13 @@
+{
+  "domain": "woow_blueprint_manager",
+  "name": "Blueprint Manager",
+  "codeowners": ["@WOOWTECH"],
+  "config_flow": true,
+  "documentation": "https://github.com/WOOWTECH/Woow_ha_blueprint",
+  "integration_type": "service",
+  "iot_class": "local_push",
+  "issue_tracker": "https://github.com/WOOWTECH/Woow_ha_blueprint/issues",
+  "dependencies": ["frontend"],
+  "version": "1.0.1",
+  "homeassistant": "2025.1.0"
+}

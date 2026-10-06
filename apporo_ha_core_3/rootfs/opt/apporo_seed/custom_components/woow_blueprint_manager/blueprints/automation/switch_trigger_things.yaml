@@ -1,0 +1,156 @@
+blueprint:
+  name: 多切開關執行場景／腳本
+  description: |
+    多個 switch 開關觸發時，同時執行多個 Scene 或 Script。
+
+    ## 功能說明 / Functional Description
+    本 Blueprint 讓一或多個實體開關（domain: switch）的狀態變化觸發一組 Scene 或 Script 的執行。
+    與 switch_trigger_lights 不同，本 Blueprint 使用 turn_on 而非 toggle，適合啟動場景與腳本。
+    This blueprint fires selected scenes and/or scripts whenever any of the chosen switch
+    entities changes state. Uses homeassistant.turn_on, suitable for non-toggle actions.
+
+    ## 觸發方式 / Trigger
+    任一已選開關（domain: switch）的 state 發生變化時觸發（platform: state）。
+
+    ## 輸入參數 / Inputs
+    - **switch_entities**（必填）: 觸發用的開關實體清單（domain: switch, 可複選）
+    - **target_entities**（必填）: 要執行的 Scene 或 Script（domain: scene/script, 可複選）
+    - **after_this_time / before_this_time**（選填）: 執行時間區間，預設全天
+    - **condition_weekday**（選填）: 生效星期，預設每天
+    - **global_conditions**（選填）: 額外全域條件
+
+    ## 執行效果 / Effects
+    當目標清單非空時，對所有 Scene/Script 呼叫 homeassistant.turn_on。
+    模式為 single，同時只處理一次觸發。
+
+    ## 典型應用場景 / Use Cases
+    - 一鍵場景：按下實體開關啟動「回家模式」場景（開燈＋開冷氣＋播音樂）
+    - 開關觸發腳本：牆壁開關觸發自訂 Script 執行複雜動作序列
+    - 多開關共用場景：不同房間的開關都能啟動同一個場景
+  domain: automation
+  author: WOOW TECH CO., LTD.
+
+  input:
+    # ─── 觸發開關 ─────────────────────────
+    trigger_settings:
+      name: 觸發開關 (可複選)
+      icon: mdi:toggle-switch
+      collapsed: true
+      input:
+        switch_entities:
+          name: 開關實體
+          description: 當這些開關狀態變化時觸發
+          default: []
+          selector:
+            entity:
+              multiple: true
+              filter:
+                domain: switch
+
+    # ─── 執行場景／腳本 ────────────────────
+    execute_settings:
+      name: 執行場景／腳本
+      icon: mdi:play-circle-multiple
+      collapsed: true
+      input:
+        target_entities:
+          name: 目標 Scene / Script (可複選)
+          description: 選擇要執行的場景或腳本
+          default: []
+          selector:
+            entity:
+              multiple: true
+              filter:
+                - domain: scene
+                - domain: script
+
+    # ─── 時間／星期 條件 (選填) ────────────
+    condition_time:
+      name: 執行時間 (選填)
+      icon: mdi:clock-time-five-outline
+      collapsed: true
+      input:
+        after_this_time:
+          name: 開始時間
+          default: "00:00:00"
+          selector:
+            time: {}
+        before_this_time:
+          name: 結束時間
+          default: "23:59:59"
+          selector:
+            time: {}
+        condition_weekday:
+          name: 生效星期
+          default:
+            - mon
+            - tue
+            - wed
+            - thu
+            - fri
+            - sat
+            - sun
+          selector:
+            select:
+              multiple: true
+              mode: list
+              options:
+                - { label: 週一, value: mon }
+                - { label: 週二, value: tue }
+                - { label: 週三, value: wed }
+                - { label: 週四, value: thu }
+                - { label: 週五, value: fri }
+                - { label: 週六, value: sat }
+                - { label: 週日, value: sun }
+
+    # ─── Global Condition (選填) ──────────
+    global_conditions_settings:
+      name: Global Conditions (選填)
+      icon: mdi:earth
+      collapsed: true
+      input:
+        global_conditions:
+          name: 額外全域條件
+          default: []
+          selector:
+            condition: {}
+
+    _woow_meta:
+      name: "WOOW Metadata"
+      description: "Internal metadata - do not modify"
+      default:
+        version: "1.0.0"
+        name_zh: "開關觸發動作"
+        name_en: "Switch Trigger Things"
+        desc_zh: "多切開關觸發各種實體動作"
+        desc_en: "Multi-switch triggers various entity actions"
+        category: "device"
+# ─── 變數 ────────────────────────────────
+variables:
+  _triggers: !input switch_entities
+  _targets:  !input target_entities
+
+# ─── 觸發 ────────────────────────────────
+trigger:
+  - platform: state
+    entity_id: !input switch_entities
+    id: switch_changed
+
+# ─── 條件 ────────────────────────────────
+condition:
+  - condition: time
+    after: !input after_this_time
+    before: !input before_this_time
+    weekday: !input condition_weekday
+  - condition: !input global_conditions
+
+# ─── 動作 ────────────────────────────────
+action:
+  # 執行所有目標 Scene / Script
+  - if: "{{ _targets | length > 0 }}"
+    then:
+      - service: homeassistant.turn_on
+        target:
+          entity_id: "{{ _targets }}"
+
+mode: single

@@ -1,0 +1,10 @@
+source:
+  type: github-releases
+  repo: NginxProxyManager/nginx-proxy-manager
+  current_version: v2.12.4
+config:
+  # -vN marks a fork revision of the same upstream NPM release.
+  # Drop the suffix when current_version moves to a new NPM release.
+  version_template: "{{version}}-v2"
+test:
+  enable: true

@@ -1,0 +1,5 @@
+---
+network:
+  80/tcp: HTTP 入口連接埠
+  81/tcp: Nginx Proxy Manager 管理介面
+  443/tcp: HTTPS/SSL 入口連接埠

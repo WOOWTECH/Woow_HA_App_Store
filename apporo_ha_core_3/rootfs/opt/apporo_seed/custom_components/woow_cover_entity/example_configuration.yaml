@@ -1,0 +1,268 @@
+# =============================================================================
+# Example Configuration for WoowTech Cover Entity Integration
+# =============================================================================
+#
+# INTEGRATION GUIDE
+# =================
+#
+# This file provides all the helper entities needed to test and use the
+# WoowTech Cover Entity custom component. Copy the relevant sections into your
+# Home Assistant configuration.yaml file.
+#
+# ARCHITECTURE OVERVIEW
+# ---------------------
+#
+# The WoowTech Cover Entity creates a virtual cover entity that delegates
+# control to external HA entities via TX/RX (bidirectional state sync).
+#
+#   Cover Card (UI)                Helper Entities (HA)
+#   =====================         ==========================
+#
+#   Position (0-100%)     <--TX-->  input_number.cover_position
+#   Tilt Position (0-100%) <--TX-->  input_number.cover_tilt
+#   Stop                  ---TX-->  input_boolean.cover_stop_signal
+#
+# TIME-BASED POSITION ESTIMATION
+# ------------------------------
+# For covers without position feedback (e.g., Somfy PoE motors), configure
+# Opening Time and Closing Time instead of entity selectors. The cover
+# estimates position based on elapsed time during movement.
+#
+# TX PRIORITY CHAIN
+# -----------------
+# For each control action, commands dispatch via the first available channel:
+#   1. Action script override (highest priority)
+#   2. Entity selector (medium priority)
+#   3. Time-based estimation (if configured)
+#   4. Default internal logic (lowest priority)
+#
+# Per-method breakdown:
+#   Open:         open_cover script > set_position script (100) > position entity (100) > direct set
+#   Close:        close_cover script > set_position script (0) > position entity (0) > direct set
+#   Stop:         stop_cover script > clear movement flags
+#   Set Position: set_position script > position entity > direct set
+#   Open Tilt:    open_tilt script > set_tilt_position script (100) > tilt entity (100) > direct set
+#   Close Tilt:   close_tilt script > set_tilt_position script (0) > tilt entity (0) > direct set
+#   Stop Tilt:    stop_tilt script
+#   Set Tilt:     set_tilt_position script > tilt entity > direct set
+#
+# ENTITY DOMAIN RESTRICTIONS
+# --------------------------
+# Position Entity and Tilt Position Entity only accept:
+#   - input_number (HA helper entities)
+#   - number (native number entities from integrations)
+#
+# STATE RESTORATION
+# -----------------
+# The cover entity uses HA's RestoreEntity pattern. On restart:
+#   - Position and tilt are restored to last known values
+#   - Timers are NOT restored (no movement after restart)
+#   - If an RX entity is configured, initial sync overrides the restored value
+#
+# VALIDATION
+# ----------
+# - Both open_time AND close_time must be set together (partial config is ignored)
+# - Both tilt_open_time AND tilt_close_time must be set together (same rule)
+# - All position values are clamped to 0-100 range
+# - RX ignores "unavailable", "unknown", non-numeric, and out-of-range values
+#
+# HOW TO USE
+# ----------
+# 1. Add the entities below to your configuration.yaml
+# 2. Restart Home Assistant
+# 3. Go to Settings > Devices & Services > Add Integration > WoowTech Cover Entity
+# 4. Fill in the config form (see docs/QUICKSTART.md for step-by-step)
+# 5. Use the helper entities in Developer Tools to simulate hardware
+# 6. Observe the cover entity responding bidirectionally
+#
+# For a complete step-by-step setup, see docs/QUICKSTART.md
+#
+# =============================================================================
+
+
+# =============================================================================
+# SECTION 1: Stop Signal (input_boolean)
+# =============================================================================
+# A boolean entity used as the target for the Stop Cover action script.
+# When the cover's stop button is pressed, this entity turns ON.
+
+input_boolean:
+  cover_stop_signal:
+    name: Cover Stop Signal
+    icon: mdi:stop
+
+
+# =============================================================================
+# SECTION 2: Position Sliders (input_number)
+# =============================================================================
+# Numeric entities for cover position (0-100%) and tilt position (0-100%).
+# The cover entity reads and writes these values bidirectionally.
+
+input_number:
+  cover_position:
+    name: "Cover Position"
+    min: 0
+    max: 100
+    step: 1
+    initial: 0
+    mode: slider
+    unit_of_measurement: "%"
+    icon: mdi:window-shutter
+
+  cover_tilt:
+    name: "Cover Tilt Position"
+    min: 0
+    max: 100
+    step: 1
+    initial: 0
+    mode: slider
+    unit_of_measurement: "%"
+    icon: mdi:angle-acute
+
+
+# =============================================================================
+# SECTION 3: Full TX/RX Demo Entity (Config Flow Settings)
+# =============================================================================
+# After adding the helpers above and restarting HA, create the cover entity via:
+#
+#   Settings > Devices & Services > Add Integration > WoowTech Cover Entity
+#
+# Use these settings in the config flow:
+#
+# Device Class options: awning, blind, curtain, damper, door, garage,
+#                       gate, shade, shutter, window  (optional field)
+#
+#   Name:                    Demo Cover TX/RX
+#   Device Class:            Blind
+#   Enable Tilt:             Yes
+#   Position Entity:         input_number.cover_position
+#   Tilt Position Entity:    input_number.cover_tilt
+#   Stop Cover Action:       input_boolean.turn_on
+#                            target: input_boolean.cover_stop_signal
+#
+# This creates: cover.demo_cover_tx_rx
+#
+# Both controls are now bidirectional:
+#   - Slide input_number.cover_position -> cover card updates position
+#   - Slide input_number.cover_tilt -> cover card updates tilt position
+#   - Press Open on cover card -> input_number.cover_position set to 100
+#   - Press Close on cover card -> input_number.cover_position set to 0
+
+
+# =============================================================================
+# SECTION 4: Time-Based Position Demo (Config Flow Settings)
+# =============================================================================
+# For covers without position feedback, use time-based estimation.
+# No helper entities are needed for position -- the cover tracks it internally.
+#
+#   Settings > Devices & Services > Add Integration > WoowTech Cover Entity
+#
+# Use these settings:
+#
+#   Name:                    Demo Timed Shutter
+#   Device Class:            Shutter
+#   Enable Tilt:             Yes
+#   Opening Time:            20     (seconds to fully open)
+#   Closing Time:            15     (seconds to fully close)
+#   Tilt Opening Time:       3      (seconds for tilt 0->100)
+#   Tilt Closing Time:       2      (seconds for tilt 100->0)
+#
+# Optional action scripts (to command the actual motor):
+#
+#   Open Cover Action:       (your motor open command)
+#   Close Cover Action:      (your motor close command)
+#   Stop Cover Action:       (your motor stop command)
+#
+# This creates: cover.demo_timed_shutter
+#
+# Behavior:
+#   - Press Open -> position increments from 0% to 100% over 20 seconds
+#   - Press Close -> position decrements from 100% to 0% over 15 seconds
+#   - Press Stop -> position freezes at current estimated value
+#   - Set Position 50% -> cover moves to 50% using open/close rate
+#   - Open/close times can differ (closing is often faster due to gravity)
+#
+# The SET_POSITION and STOP features are auto-enabled in time-based mode.
+# SET_TILT_POSITION and STOP_TILT are auto-enabled in tilt time-based mode.
+# RX from position entity is disabled (timer is the position authority).
+# RX from tilt entity is also disabled in tilt time-based mode.
+# Position is restored after HA restart, but timers are not (cover starts idle).
+
+
+# =============================================================================
+# SECTION 5: Minimal Entity (No TX/RX, No Time)
+# =============================================================================
+# For a simple cover with only basic open/close:
+#
+#   Name:                    Simple Cover
+#   Device Class:            Curtain
+#   (leave everything else blank)
+#
+# This creates: cover.simple_cover
+# The cover manages position internally. Open sets 100%, Close sets 0%.
+# No entity selectors, action scripts, or time-based estimation are used.
+# Position is stored in memory and restored after HA restart via RestoreEntity.
+# Movement flags (is_opening/is_closing) are set and cleared immediately.
+
+
+# =============================================================================
+# SECTION 6: Action Script Override Examples
+# =============================================================================
+# Instead of (or in addition to) entity selectors, you can use action scripts
+# for TX. Action scripts have HIGHEST priority.
+#
+# Example: Override set_position with a REST command to a motor controller
+#
+#   Set Position Action:
+#     - action: rest_command.set_cover_position
+#       data:
+#         position: "{{ position }}"
+#
+# Example: Open cover via MQTT publish
+#
+#   Open Cover Action:
+#     - action: mqtt.publish
+#       data:
+#         topic: "cover/living_room/command"
+#         payload: "OPEN"
+#
+# Example: Stop cover via shell command
+#
+#   Stop Cover Action:
+#     - action: shell_command.stop_motor
+#
+# Available template variables per action:
+#   set_position:          {{ position }}       (0-100)
+#   set_tilt_position:     {{ tilt_position }}   (0-100)
+
+
+# =============================================================================
+# SECTION 7: Combined Mode (Time-Based + Action Scripts)
+# =============================================================================
+# The most common real-world setup: time-based estimation for position tracking
+# plus action scripts to actually command the motor.
+#
+#   Name:                    Living Room Shutter
+#   Device Class:            Shutter
+#   Enable Tilt:             No
+#   Opening Time:            25
+#   Closing Time:            20
+#   Open Cover Action:
+#     - action: switch.turn_on
+#       target:
+#         entity_id: switch.shutter_motor_up
+#   Close Cover Action:
+#     - action: switch.turn_on
+#       target:
+#         entity_id: switch.shutter_motor_down
+#   Stop Cover Action:
+#     - action: switch.turn_off
+#       target:
+#         entity_id:
+#           - switch.shutter_motor_up
+#           - switch.shutter_motor_down
+#
+# Result:
+#   - Press Open -> motor switch turns ON + position timer starts
+#   - After 25 seconds -> position reaches 100% + timer auto-stops
+#   - Press Stop at 12 seconds -> motor switches turn OFF + position = ~48%

@@ -1,0 +1,377 @@
+# =============================================================================
+# Example Configuration for Climate Template Integration
+# =============================================================================
+#
+# INTEGRATION GUIDE
+# =================
+#
+# This file provides all the helper entities needed to test and use the
+# Climate Template custom component. Copy the relevant sections into your
+# Home Assistant configuration.yaml file.
+#
+# ARCHITECTURE OVERVIEW
+# ---------------------
+# The Climate Template integration supports two modes:
+#
+#   1. Simple Mode - Select existing HA entities (heater switch, cooler switch,
+#      temperature sensor) and the integration controls them automatically
+#      with built-in thermostat logic (tolerance bands, hysteresis).
+#      Entity selectors provide full TX/RX bidirectional control.
+#
+#   2. Advanced Mode - Define Jinja2 templates for reading state (current
+#      temperature, HVAC mode, fan mode, etc.) and action scripts for
+#      writing state (set temperature, set HVAC mode, etc.).
+#
+# ENTITY RELATIONSHIPS
+# --------------------
+#
+#   input_number.test_room_temp_value  --(feeds)-->  sensor.test_room_temperature
+#         (UI slider, adjustable)              (template sensor, device_class: temperature)
+#                                                       |
+#                                                       v
+#                                              Climate Template Entity
+#                                              (reads current_temperature)
+#                                                       |
+#                                              +--------+--------+
+#                                              |                 |
+#                                        [Simple Mode]    [Advanced Mode]
+#                                              |                 |
+#                                    input_boolean.*      action scripts
+#                                   (heater/cooler)    (input_number, input_select)
+#
+# HOW TO USE
+# ----------
+# 1. Add the entities below to your configuration.yaml
+# 2. Restart Home Assistant
+# 3. Go to Settings > Devices & Services > Add Integration > Climate Template
+# 4. Choose Simple or Advanced mode
+# 5. Use the input_number sliders in the UI to simulate temperature changes
+# 6. Observe the climate entity responding (turning heater/cooler on/off)
+#
+# For a complete step-by-step demo setup, see docs/QUICKSTART_TX_RX_DEMO.md
+#
+# =============================================================================
+
+
+# =============================================================================
+# SECTION 1: Heater/Cooler Switches (input_boolean)
+# =============================================================================
+# Simple Mode uses these directly as heater/cooler entities.
+# Advanced Mode reads their state via templates.
+
+input_boolean:
+  test_heater:
+    name: "Test Heater"
+    icon: mdi:radiator
+    initial: false
+
+  test_ac_unit:
+    name: "Test AC Unit"
+    icon: mdi:air-conditioner
+    initial: false
+
+
+# =============================================================================
+# SECTION 2: Number Controls (input_number)
+# =============================================================================
+# Sliders for simulating temperature and TX/RX targets.
+
+input_number:
+  # Room temperature slider - drag to simulate indoor temperature changes
+  test_room_temp_value:
+    name: "Room Temperature Control"
+    min: -10
+    max: 50
+    step: 0.5
+    initial: 21.5
+    mode: slider
+    unit_of_measurement: "°C"
+    icon: mdi:thermometer
+
+  # Outdoor temperature slider - for multi-sensor template scenarios
+  test_outdoor_temp_value:
+    name: "Outdoor Temperature Control"
+    min: -20
+    max: 50
+    step: 0.5
+    initial: 15.0
+    mode: slider
+    unit_of_measurement: "°C"
+    icon: mdi:thermometer
+
+  # Target temperature - TX/RX target for Simple Mode + Advanced Mode action scripts
+  test_target_temperature:
+    name: "Test Target Temperature (TX/RX)"
+    min: 7
+    max: 35
+    step: 0.5
+    initial: 21
+    unit_of_measurement: "°C"
+    icon: mdi:thermometer-chevron-up
+    mode: slider
+
+  # Target humidity - TX/RX target for humidity control
+  test_target_humidity:
+    name: "Test Target Humidity (TX/RX)"
+    min: 0
+    max: 100
+    step: 1
+    initial: 50
+    unit_of_measurement: "%"
+    icon: mdi:water-percent
+    mode: slider
+
+
+# =============================================================================
+# SECTION 3: Mode Selectors (input_select)
+# =============================================================================
+# Used as TX/RX targets in Simple Mode (entity selectors) and as
+# state sources in Advanced Mode (read via templates, written via action scripts).
+
+input_select:
+  test_hvac_mode:
+    name: "Test HVAC Mode (TX/RX)"
+    options:
+      - "off"
+      - "heat"
+      - "cool"
+      - "heat_cool"
+    initial: "off"
+    icon: mdi:thermostat
+
+  test_fan_mode:
+    name: "Test Fan Mode (TX/RX)"
+    options:
+      - "auto"
+      - "low"
+      - "medium"
+      - "high"
+    initial: "auto"
+    icon: mdi:fan
+
+  test_preset_mode:
+    name: "Test Preset Mode (TX/RX)"
+    options:
+      - "none"
+      - "eco"
+      - "comfort"
+      - "away"
+      - "boost"
+      - "home"
+      - "sleep"
+      - "activity"
+    initial: "none"
+    icon: mdi:home-thermometer
+
+  test_swing_mode:
+    name: "Test Swing Mode (TX/RX)"
+    options:
+      - "on"
+      - "off"
+    initial: "off"
+    icon: mdi:arrow-up-down
+
+  test_swing_horizontal_mode:
+    name: "Test Swing Horizontal Mode (TX/RX)"
+    options:
+      - "on"
+      - "off"
+    initial: "off"
+    icon: mdi:arrow-left-right
+
+
+# =============================================================================
+# SECTION 4: Template Sensors
+# =============================================================================
+# These sensors have device_class set so the Climate Template integration
+# can use them as data sources.
+
+template:
+  - sensor:
+      - name: "Test Room Temperature"
+        unit_of_measurement: "°C"
+        device_class: temperature
+        state: "{{ states('input_number.test_room_temp_value') | float(21.5) }}"
+
+      - name: "Test Outdoor Temperature"
+        unit_of_measurement: "°C"
+        device_class: temperature
+        state: "{{ states('input_number.test_outdoor_temp_value') | float(15.0) }}"
+
+      # Average of room + outdoor - demonstrates multi-sensor templates
+      - name: "Test Average Temperature"
+        unit_of_measurement: "°C"
+        device_class: temperature
+        state: >
+          {% set room = states('input_number.test_room_temp_value') | float(21.5) %}
+          {% set outdoor = states('input_number.test_outdoor_temp_value') | float(15.0) %}
+          {{ ((room + outdoor) / 2) | round(1) }}
+
+      - name: "Test Room Humidity"
+        unit_of_measurement: "%"
+        device_class: humidity
+        state: "{{ states('input_number.test_target_humidity') | float(50) }}"
+
+
+# =============================================================================
+# CONFIGURATION EXAMPLES
+# =============================================================================
+#
+# After adding the entities above, create Climate Template entries via the UI:
+#
+# --- Simple Mode Example (Full TX/RX) ---
+#   Name:                        Demo Climate (Full TX/RX)
+#   Mode:                        Simple
+#   Temperature Sensor:          sensor.test_room_temperature
+#   Heater Entity:               input_boolean.test_heater
+#   Cooler Entity:               input_boolean.test_ac_unit
+#   HVAC Modes:                  off, heat, cool, heat_cool
+#   Min Temp: 7  |  Max Temp: 35  |  Step: 0.5
+#   Fan Modes:                   auto, low, medium, high
+#   Preset Modes:                eco, comfort, away, boost, home, sleep, activity
+#   Swing Modes:                 on, off
+#   Horizontal Swing Modes:      on, off
+#
+#   --- TX/RX Entity Selectors (what makes Simple Mode bidirectional) ---
+#   HVAC Mode Entity:            input_select.test_hvac_mode
+#   Fan Mode Entity:             input_select.test_fan_mode
+#   Preset Mode Entity:          input_select.test_preset_mode
+#   Swing Mode Entity:           input_select.test_swing_mode
+#   Horizontal Swing Entity:     input_select.test_swing_horizontal_mode
+#   Target Temperature Entity:   input_number.test_target_temperature
+#   Target Humidity Entity:      input_number.test_target_humidity
+#   Humidity Sensor:             sensor.test_room_humidity
+#
+#   --- Optional Action Script Overrides (advanced TX control) ---
+#   When configured, action scripts take priority over entity selectors.
+#   Use these when you need custom logic (e.g. calling a script, sending
+#   multiple commands, or transforming values before sending).
+#
+#   Set Temperature Action:
+#     - action: input_number.set_value
+#       target:
+#         entity_id: input_number.test_target_temperature
+#       data:
+#         value: "{{ temperature }}"
+#
+#   Set HVAC Mode Action:
+#     - action: input_select.select_option
+#       target:
+#         entity_id: input_select.test_hvac_mode
+#       data:
+#         option: "{{ hvac_mode }}"
+#
+#   Set Fan Mode Action:
+#     - action: input_select.select_option
+#       target:
+#         entity_id: input_select.test_fan_mode
+#       data:
+#         option: "{{ fan_mode }}"
+#
+#   Set Preset Mode Action:
+#     - action: input_select.select_option
+#       target:
+#         entity_id: input_select.test_preset_mode
+#       data:
+#         option: "{{ preset_mode }}"
+#
+#   Set Swing Mode Action:
+#     - action: input_select.select_option
+#       target:
+#         entity_id: input_select.test_swing_mode
+#       data:
+#         option: "{{ swing_mode }}"
+#
+#   Set Swing Horizontal Mode Action:
+#     - action: input_select.select_option
+#       target:
+#         entity_id: input_select.test_swing_horizontal_mode
+#       data:
+#         option: "{{ swing_horizontal_mode }}"
+#
+#   Set Humidity Action:
+#     - action: input_number.set_value
+#       target:
+#         entity_id: input_number.test_target_humidity
+#       data:
+#         value: "{{ humidity }}"
+#
+#   Available template variables per action:
+#     set_temperature:            {{ temperature }}
+#     set_hvac_mode:              {{ hvac_mode }}
+#     set_fan_mode:               {{ fan_mode }}
+#     set_preset_mode:            {{ preset_mode }}
+#     set_swing_mode:             {{ swing_mode }}
+#     set_swing_horizontal_mode:  {{ swing_horizontal_mode }}
+#     set_humidity:               {{ humidity }}
+#
+#   How to test TX (climate card -> helper entity):
+#   1. Open the climate card, change fan mode to "high"
+#   2. Check input_select.test_fan_mode -> should show "high"
+#   3. Change swing mode to "on"
+#   4. Check input_select.test_swing_mode -> should show "on"
+#   5. Adjust target temperature to 25
+#   6. Check input_number.test_target_temperature -> should show 25
+#   7. Set humidity to 65%
+#   8. Check input_number.test_target_humidity -> should show 65
+#
+#   How to test RX (helper entity -> climate card):
+#   1. Go to Developer Tools > States
+#   2. Set input_select.test_fan_mode to "low"
+#   3. Check climate card -> fan mode should update to "low"
+#   4. Set input_number.test_target_temperature to 28
+#   5. Check climate card -> target temperature should update to 28
+#   6. Set input_number.test_target_humidity to 40
+#   7. Check climate card -> humidity should update to 40
+#
+# --- Advanced Mode Example ---
+#   Name:                          Test Advanced Climate
+#   Mode:                          Advanced
+#   Current Temperature Template:  {{ states('sensor.test_room_temperature') | float }}
+#   HVAC Mode Template:            {{ states('input_select.test_hvac_mode') }}
+#   HVAC Action Template:
+#     {% if is_state('input_boolean.test_heater', 'on') %}heating
+#     {% elif is_state('input_boolean.test_ac_unit', 'on') %}cooling
+#     {% else %}idle{% endif %}
+#   Fan Mode Template:             {{ states('input_select.test_fan_mode') }}
+#   Preset Mode Template:          {{ states('input_select.test_preset_mode') }}
+#
+#   Set Temperature Action:
+#     - action: input_number.set_value
+#       target:
+#         entity_id: input_number.test_target_temperature
+#       data:
+#         value: "{{ temperature }}"
+#
+#   Set HVAC Mode Action:
+#     - action: input_select.select_option
+#       target:
+#         entity_id: input_select.test_hvac_mode
+#       data:
+#         option: "{{ hvac_mode }}"
+#
+#   Set Fan Mode Action:
+#     - action: input_select.select_option
+#       target:
+#         entity_id: input_select.test_fan_mode
+#       data:
+#         option: "{{ fan_mode }}"
+#
+#   Set Preset Mode Action:
+#     - action: input_select.select_option
+#       target:
+#         entity_id: input_select.test_preset_mode
+#       data:
+#         option: "{{ preset_mode }}"
+#
+#   HVAC Modes: off, heat, cool
+#   Fan Modes:  auto, low, medium, high
+#   Preset Modes: eco, comfort, away, boost
+#
+# --- Advanced Mode with Calculated Temperature ---
+#   Current Temperature Template:
+#     {% set room = states('sensor.test_room_temperature') | float(0) %}
+#     {% set outdoor = states('sensor.test_outdoor_temperature') | float(0) %}
+#     {{ ((room * 0.7 + outdoor * 0.3) | round(2)) }}
+#
+# =============================================================================

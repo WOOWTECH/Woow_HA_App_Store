@@ -1,0 +1,11 @@
+{
+  "domain": "woow_modbus",
+  "name": "Woow Modbus Setup Guide",
+  "codeowners": ["@woowtech"],
+  "config_flow": true,
+  "dependencies": ["frontend"],
+  "documentation": "https://aiot.woowtech.io/blog",
+  "iot_class": "",
+  "issue_tracker": "https://github.com/woowtech/Woow_ha_modbus_component/issues",
+  "version": "2.1.1"
+}

@@ -1,0 +1,25 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Set up WoowTech Somfy Cover",
+        "description": "Enter the connection details for your Somfy PoE Motor. You can find the Target ID and Encryption Key on the motor label or in the Somfy app.",
+        "data": {
+          "name": "Name",
+          "host": "IP Address",
+          "target_id": "Target ID (6-digit hex)",
+          "key": "Encryption Key (32-digit hex)"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect to the device. Please check the IP address and ensure the motor is powered on and connected to the network.",
+      "invalid_target_id": "Target ID must be a 6-character hexadecimal string (e.g., '160326').",
+      "invalid_key": "Encryption key must be a 32-character hexadecimal string.",
+      "unknown": "Unexpected error occurred. Please check the Home Assistant logs for details."
+    },
+    "abort": {
+      "already_configured": "This device is already configured. Please remove the existing configuration before adding it again."
+    }
+  }
+}

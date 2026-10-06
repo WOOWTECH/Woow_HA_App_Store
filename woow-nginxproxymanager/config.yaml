@@ -1,0 +1,21 @@
+---
+name: Woow Nginx Proxy Manager
+version: "2.12.4-v2"
+slug: woow-nginxproxymanager
+description: Manage Nginx proxy hosts with a simple, powerful interface - WOOWTECH edition
+url: https://github.com/WOOWTECH/Woow_ha_nginxpm
+webui: http://[HOST]:[PORT:81]
+startup: services
+init: false
+arch:
+  - aarch64
+  - amd64
+hassio_api: true
+ports:
+  80/tcp: 80
+  81/tcp: 81
+  443/tcp: 443
+map:
+  - addon_config:rw
+backup_exclude:
+  - "*/logs"

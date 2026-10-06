@@ -1,0 +1,85 @@
+list_blueprints:
+  fields:
+
+get_blueprint_detail:
+  fields:
+    blueprint_key:
+      required: true
+      selector:
+        text:
+
+list_instances:
+  fields:
+    type:
+      selector:
+        select:
+          options:
+            - automation
+            - script
+
+get_instance_detail:
+  fields:
+    entity_id:
+      required: true
+      selector:
+        text:
+
+create_instance:
+  fields:
+    blueprint_key:
+      required: true
+      selector:
+        text:
+    name:
+      required: true
+      selector:
+        text:
+    input:
+      required: true
+      selector:
+        object:
+
+update_instance:
+  fields:
+    entity_id:
+      required: true
+      selector:
+        text:
+    input:
+      required: true
+      selector:
+        object:
+    name:
+      selector:
+        text:
+
+delete_instance:
+  fields:
+    entity_id:
+      required: true
+      selector:
+        text:
+
+toggle_instance:
+  fields:
+    entity_id:
+      required: true
+      selector:
+        text:
+    action:
+      selector:
+        select:
+          options:
+            - toggle
+            - enable
+            - disable
+
+recommend_blueprint:
+  fields:
+    description:
+      required: true
+      selector:
+        text:
+
+get_system_status:
+  fields:

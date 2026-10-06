@@ -1,0 +1,566 @@
+blueprint:
+  name: 自適應燈光
+  description: |
+    根據一天中 6 個時段自動調整燈光亮度與色溫的自適應照明藍圖。
+
+    ## 功能說明 / Functional Description
+    此藍圖讓指定的燈光實體在一天的不同時段自動切換至預設的亮度與色溫組合，
+    模擬自然光節律。支援 6 段時間模式：早晨、白天、傍晚、晚上、睡前、夜間，
+    每段可獨立設定色溫 (Kelvin)、亮度 (%)、漸變過渡秒數。
+    Adaptive lighting blueprint that automatically adjusts brightness and color
+    temperature across 6 daily time periods to follow natural circadian rhythm.
+
+    ## 觸發方式 / Trigger
+    - 燈光實體從 off 變為 on 時（僅調整該燈）
+    - 每個時段開始時間到達時（僅調整已開啟的燈）
+
+    ## 輸入參數 / Inputs
+    - **light_entities** (必填): 要控制的燈光實體，可複選，domain=light
+    - **6 組時段設定** (選填，皆有預設值): 每組含開始時間、色溫、亮度、漸變秒數
+      - morning (07:00, 6410K, 100%), noon (10:00, 4291K, 100%)
+      - evening (18:00, 2890K, 100%), night (20:00, 2237K, 57%)
+      - before_sleep (22:00, 2000K, 35%), midnight (00:00, 2000K, 4%)
+    - **global_conditions** (選填): 額外全域條件
+    - **condition_weekday** (選填): 生效星期，預設每天
+
+    ## 執行效果 / Effects
+    開燈時自動套用當前時段的色溫與亮度；時段切換時已開啟的燈平滑過渡。
+
+    ## 典型應用場景 / Use Cases
+    - 臥室或客廳燈光全天自動色溫調節，晚間自動降低亮度與色溫助眠
+    - 辦公空間白天高色溫提神、傍晚自動轉暖色調
+    - 搭配感應器開燈，開燈瞬間即獲得符合時段的燈光設定
+  domain: automation
+  author: WOOW TECH CO., LTD.
+  source_url: https://github.com/WOOWTECH/HA_blueprint_adalight/blob/main/adalight.yaml
+  homeassistant:
+    min_version: "2024.6.0"
+  input:
+    light_entities:
+      name: 燈光 (可複選)
+      description: 選擇要自適應的燈光（可多選）
+      selector:
+        entity:
+          multiple: true
+          filter:
+            domain: light
+
+    # ——— 全域條件 (選填) —————————————
+    global_conditions_settings:
+      name: Global Conditions (選填)
+      icon: mdi:earth
+      collapsed: true
+      input:
+        global_conditions:
+          name: 額外全域條件
+          default: []
+          selector: { condition: {} }
+
+    # ——— 生效星期 (選填) —————————————
+    weekday_settings:
+      name: 生效星期 (選填)
+      icon: mdi:calendar-week
+      collapsed: true
+      input:
+        condition_weekday:
+          name: 選擇星期
+          default: [mon, tue, wed, thu, fri, sat, sun]
+          selector:
+            select:
+              multiple: true
+              mode: list
+              options:
+                - { label: 週一, value: mon }
+                - { label: 週二, value: tue }
+                - { label: 週三, value: wed }
+                - { label: 週四, value: thu }
+                - { label: 週五, value: fri }
+                - { label: 週六, value: sat }
+                - { label: 週日, value: sun }
+
+    # ——— 早晨模式 —————————————
+    event_morning:
+      name: 早晨模式
+      icon: mdi:weather-sunset-up
+      collapsed: true
+      input:
+        time_morning:
+          name: 早晨模式 - 開始時間
+          default: "07:00:00"
+          selector:
+            time:
+        colortemp_morning:
+          name: 早晨模式 - 色溫值
+          description: 單位Kelvin
+          default: 6410
+          selector:
+            color_temp:
+              unit: kelvin
+              min: 2000
+              max: 6500
+        brightness_morning:
+          name: 早晨模式 - 亮度值
+          description: 1~100%
+          default: 100
+          selector:
+            number:
+              mode: slider
+              min: 1
+              max: 100
+              step: 1
+        transition_morning:
+          name: 早晨模式 - 漸變時間 (秒)
+          default: 60
+          selector:
+            number:
+              min: 0
+              max: 300
+              step: 1
+              unit_of_measurement: s
+
+    # ——— 白天模式 —————————————
+    event_noon:
+      name: 白天模式
+      icon: mdi:white-balance-sunny
+      collapsed: true
+      input:
+        time_noon:
+          name: 白天模式 - 開始時間
+          default: "10:00:00"
+          selector:
+            time:
+        colortemp_noon:
+          name: 白天模式 - 色溫值
+          description: 單位Kelvin
+          default: 4291
+          selector:
+            color_temp:
+              unit: kelvin
+              min: 2000
+              max: 6500
+        brightness_noon:
+          name: 白天模式 - 亮度值
+          description: 1~100%
+          default: 100
+          selector:
+            number:
+              mode: slider
+              min: 1
+              max: 100
+              step: 1
+        transition_noon:
+          name: 白天模式 - 漸變時間 (秒)
+          default: 60
+          selector:
+            number:
+              min: 0
+              max: 300
+              step: 1
+              unit_of_measurement: s
+
+    # ——— 傍晚模式 —————————————
+    event_evening:
+      name: 傍晚模式
+      icon: mdi:weather-sunset-down
+      collapsed: true
+      input:
+        time_evening:
+          name: 傍晚模式 - 開始時間
+          default: "18:00:00"
+          selector:
+            time:
+        colortemp_evening:
+          name: 傍晚模式 - 色溫值
+          description: 單位Kelvin
+          default: 2890
+          selector:
+            color_temp:
+              unit: kelvin
+              min: 2000
+              max: 6500
+        brightness_evening:
+          name: 傍晚模式 - 亮度值
+          description: 1~100%
+          default: 100
+          selector:
+            number:
+              mode: slider
+              min: 1
+              max: 100
+              step: 1
+        transition_evening:
+          name: 傍晚模式 - 漸變時間 (秒)
+          default: 60
+          selector:
+            number:
+              min: 0
+              max: 300
+              step: 1
+              unit_of_measurement: s
+
+    # ——— 晚上模式 —————————————
+    event_night:
+      name: 晚上模式
+      icon: mdi:theme-light-dark
+      collapsed: true
+      input:
+        time_night:
+          name: 晚上模式 - 開始時間
+          default: "20:00:00"
+          selector:
+            time:
+        colortemp_night:
+          name: 晚上模式 - 色溫值
+          description: 單位Kelvin
+          default: 2237
+          selector:
+            color_temp:
+              unit: kelvin
+              min: 2000
+              max: 6500
+        brightness_night:
+          name: 晚上模式 - 亮度值
+          description: 1~100%
+          default: 57
+          selector:
+            number:
+              mode: slider
+              min: 1
+              max: 100
+              step: 1
+        transition_night:
+          name: 晚上模式 - 漸變時間 (秒)
+          default: 60
+          selector:
+            number:
+              min: 0
+              max: 300
+              step: 1
+              unit_of_measurement: s
+
+    # ——— 睡前模式 —————————————
+    event_before_sleep:
+      name: 睡前模式
+      icon: mdi:weather-night
+      collapsed: true
+      input:
+        time_before_sleep:
+          name: 睡前模式 - 開始時間
+          default: "22:00:00"
+          selector:
+            time:
+        colortemp_before_sleep:
+          name: 睡前模式 - 色溫值
+          description: 單位Kelvin
+          default: 2000
+          selector:
+            color_temp:
+              unit: kelvin
+              min: 2000
+              max: 6500
+        brightness_before_sleep:
+          name: 睡前模式 - 亮度值
+          description: 1~100%
+          default: 35
+          selector:
+            number:
+              mode: slider
+              min: 1
+              max: 100
+              step: 1
+        transition_before_sleep:
+          name: 睡前模式 - 漸變時間 (秒)
+          default: 60
+          selector:
+            number:
+              min: 0
+              max: 300
+              step: 1
+              unit_of_measurement: s
+
+    # ——— 夜間模式 —————————————
+    event_midnight:
+      name: 夜間模式
+      icon: mdi:sleep
+      collapsed: true
+      input:
+        time_midnight:
+          name: 夜間模式 - 開始時間
+          default: "00:00:00"
+          selector:
+            time:
+        colortemp_midnight:
+          name: 夜間模式 - 色溫值
+          description: 單位Kelvin
+          default: 2000
+          selector:
+            color_temp:
+              unit: kelvin
+              min: 2000
+              max: 6500
+        brightness_midnight:
+          name: 夜間模式 - 亮度值
+          description: 1~100%
+          default: 4
+          selector:
+            number:
+              mode: slider
+              min: 1
+              max: 100
+              step: 1
+        transition_midnight:
+          name: 夜間模式 - 漸變時間 (秒)
+          default: 60
+          selector:
+            number:
+              min: 0
+              max: 300
+              step: 1
+              unit_of_measurement: s
+
+    _woow_meta:
+      name: "WOOW Metadata"
+      description: "Internal metadata - do not modify"
+      default:
+        version: "1.0.0"
+        name_zh: "自適應燈光"
+        name_en: "Adaptive Lighting"
+        desc_zh: "根據一天中 6 個時段自動調整燈光亮度與色溫"
+        desc_en: "Auto-adjust brightness and color temperature across 6 daily time periods"
+        category: "lighting"
+variables:
+  _light_entities: !input light_entities
+
+triggers:
+  - trigger: state
+    entity_id: !input light_entities
+    from: "off"
+    to: "on"
+    id: light_from_off_to_on
+
+  - trigger: time
+    at: !input time_morning
+    id: time_morning_begin
+  - trigger: time
+    at: !input time_noon
+    id: time_noon_begin
+  - trigger: time
+    at: !input time_evening
+    id: time_evening_begin
+  - trigger: time
+    at: !input time_night
+    id: time_night_begin
+  - trigger: time
+    at: !input time_before_sleep
+    id: time_before_sleep_begin
+  - trigger: time
+    at: !input time_midnight
+    id: time_midnight_begin
+
+conditions:
+  - condition: time
+    weekday: !input condition_weekday
+  - condition: !input global_conditions
+
+actions:
+  # ---------- 開燈時依當前時段套用（僅調整觸發的燈） ----------
+  - if:
+      - condition: trigger
+        id: light_from_off_to_on
+    then:
+      - choose:
+          - conditions:
+              - condition: time
+                after: !input time_morning
+                before: !input time_noon
+            sequence:
+              - action: light.turn_on
+                data:
+                  color_temp_kelvin: !input colortemp_morning
+                  brightness_pct: !input brightness_morning
+                  transition: !input transition_morning
+                target:
+                  entity_id: "{{ trigger.entity_id }}"
+          - conditions:
+              - condition: time
+                after: !input time_noon
+                before: !input time_evening
+            sequence:
+              - action: light.turn_on
+                data:
+                  color_temp_kelvin: !input colortemp_noon
+                  brightness_pct: !input brightness_noon
+                  transition: !input transition_noon
+                target:
+                  entity_id: "{{ trigger.entity_id }}"
+          - conditions:
+              - condition: time
+                after: !input time_evening
+                before: !input time_night
+            sequence:
+              - action: light.turn_on
+                data:
+                  color_temp_kelvin: !input colortemp_evening
+                  brightness_pct: !input brightness_evening
+                  transition: !input transition_evening
+                target:
+                  entity_id: "{{ trigger.entity_id }}"
+          - conditions:
+              - condition: time
+                after: !input time_night
+                before: !input time_before_sleep
+            sequence:
+              - action: light.turn_on
+                data:
+                  color_temp_kelvin: !input colortemp_night
+                  brightness_pct: !input brightness_night
+                  transition: !input transition_night
+                target:
+                  entity_id: "{{ trigger.entity_id }}"
+          - conditions:
+              - condition: time
+                after: !input time_before_sleep
+                before: !input time_midnight
+            sequence:
+              - action: light.turn_on
+                data:
+                  color_temp_kelvin: !input colortemp_before_sleep
+                  brightness_pct: !input brightness_before_sleep
+                  transition: !input transition_before_sleep
+                target:
+                  entity_id: "{{ trigger.entity_id }}"
+          - conditions:
+              - condition: time
+                after: !input time_midnight
+                before: !input time_morning
+            sequence:
+              - action: light.turn_on
+                data:
+                  color_temp_kelvin: !input colortemp_midnight
+                  brightness_pct: !input brightness_midnight
+                  transition: !input transition_midnight
+                target:
+                  entity_id: "{{ trigger.entity_id }}"
+
+  # ---------- 各時間點到時自動過渡（僅調整已開啟的燈） ----------
+  - if:
+      - condition: trigger
+        id:
+          - time_morning_begin
+          - time_noon_begin
+          - time_evening_begin
+          - time_night_begin
+          - time_before_sleep_begin
+          - time_midnight_begin
+    then:
+      - choose:
+          - conditions:
+              - condition: and
+                conditions:
+                  - condition: trigger
+                    id: time_morning_begin
+                  - condition: state
+                    entity_id: !input light_entities
+                    state: "on"
+                    match: any
+            sequence:
+              - action: light.turn_on
+                data:
+                  color_temp_kelvin: !input colortemp_morning
+                  brightness_pct: !input brightness_morning
+                  transition: !input transition_morning
+                target:
+                  entity_id: >
+                    {{ expand(_light_entities) | selectattr('state', 'eq', 'on') | map(attribute='entity_id') | list }}
+          - conditions:
+              - condition: and
+                conditions:
+                  - condition: trigger
+                    id: time_noon_begin
+                  - condition: state
+                    entity_id: !input light_entities
+                    state: "on"
+                    match: any
+            sequence:
+              - action: light.turn_on
+                data:
+                  color_temp_kelvin: !input colortemp_noon
+                  brightness_pct: !input brightness_noon
+                  transition: !input transition_noon
+                target:
+                  entity_id: >
+                    {{ expand(_light_entities) | selectattr('state', 'eq', 'on') | map(attribute='entity_id') | list }}
+          - conditions:
+              - condition: and
+                conditions:
+                  - condition: trigger
+                    id: time_evening_begin
+                  - condition: state
+                    entity_id: !input light_entities
+                    state: "on"
+                    match: any
+            sequence:
+              - action: light.turn_on
+                data:
+                  color_temp_kelvin: !input colortemp_evening
+                  brightness_pct: !input brightness_evening
+                  transition: !input transition_evening
+                target:
+                  entity_id: >
+                    {{ expand(_light_entities) | selectattr('state', 'eq', 'on') | map(attribute='entity_id') | list }}
+          - conditions:
+              - condition: and
+                conditions:
+                  - condition: trigger
+                    id: time_night_begin
+                  - condition: state
+                    entity_id: !input light_entities
+                    state: "on"
+                    match: any
+            sequence:
+              - action: light.turn_on
+                data:
+                  color_temp_kelvin: !input colortemp_night
+                  brightness_pct: !input brightness_night
+                  transition: !input transition_night
+                target:
+                  entity_id: >
+                    {{ expand(_light_entities) | selectattr('state', 'eq', 'on') | map(attribute='entity_id') | list }}
+          - conditions:
+              - condition: and
+                conditions:
+                  - condition: trigger
+                    id: time_before_sleep_begin
+                  - condition: state
+                    entity_id: !input light_entities
+                    state: "on"
+                    match: any
+            sequence:
+              - action: light.turn_on
+                data:
+                  color_temp_kelvin: !input colortemp_before_sleep
+                  brightness_pct: !input brightness_before_sleep
+                  transition: !input transition_before_sleep
+                target:
+                  entity_id: >
+                    {{ expand(_light_entities) | selectattr('state', 'eq', 'on') | map(attribute='entity_id') | list }}
+          - conditions:
+              - condition: and
+                conditions:
+                  - condition: trigger
+                    id: time_midnight_begin
+                  - condition: state
+                    entity_id: !input light_entities
+                    state: "on"
+                    match: any
+            sequence:
+              - action: light.turn_on
+                data:
+                  color_temp_kelvin: !input colortemp_midnight
+                  brightness_pct: !input brightness_midnight
+                  transition: !input transition_midnight
+                target:
+                  entity_id: >
+                    {{ expand(_light_entities) | selectattr('state', 'eq', 'on') | map(attribute='entity_id') | list }}
+
+mode: single

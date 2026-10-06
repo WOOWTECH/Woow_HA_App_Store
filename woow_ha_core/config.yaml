@@ -1,0 +1,27 @@
+name: "Home Assistant Core (official image)"
+slug: "woow_ha_core"
+description: "Independent official Home Assistant Core 2026.9.1; no rebranding or seeded configuration."
+version: "2026.9.1-1"
+url: "https://github.com/WOOWTECH/Woow_haos_ha_core"
+arch:
+  - amd64
+  - aarch64
+startup: application
+boot: manual
+init: false
+stage: experimental
+timeout: 300
+backup: cold
+host_network: false
+hassio_api: false
+homeassistant_api: false
+ingress: false
+ports:
+  8123/tcp: null
+ports_description:
+  8123/tcp: "Independent HA Core UI/API. Choose an unused host port (e.g. 8129)."
+webui: "http://[HOST]:[PORT:8123]/"
+map:
+  - addon_config:rw
+options: {}
+schema: {}

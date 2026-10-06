@@ -97,7 +97,2758 @@
       "publisher_run_id": "37409695823",
       "channel": "stable",
       "store_path": "woow_ha_pi_agent"
+    },
+    "apporo_ha_core_1": {
+      "id": "apporo_ha_core_1",
+      "name": "Apporo HA Core 1",
+      "version": "2.3.0",
+      "repository": "WOOWTECH/apporo_ha_multi_ha_core",
+      "source_sha": "232366c56b0916235b116aac9cd9db4578d5bca8",
+      "source_path": "apporo_ha_core_1",
+      "config_file": "config.yaml",
+      "config_sha256": "sha256:33e1ef6a03d560176d172fae4664cb493b5193c9d210ca1bffa9f1ac438323d1",
+      "archive_sha256": "sha256:dec30664ccd0bc310dca84fd57bef6ae7e93279aae2dd56f920ea1877e035e30",
+      "context_fingerprint": "sha256:6fbdaad77ac844fdf6c97cc19e2b8d6261ea06c9eee9aadc5c21bf3b1c226643",
+      "material_fingerprint": "sha256:54cb25bbafa567637d4351fc1093e10758bc5d08d2a7da030872cbca3d69d084",
+      "architectures": [
+        "aarch64",
+        "amd64",
+        "armhf",
+        "armv7",
+        "i386"
+      ],
+      "config": {
+        "name": "Apporo HA Core 1",
+        "description": "Apporo Home Assistant Core instance 1",
+        "version": "2.3.0",
+        "slug": "apporo_ha_core_1",
+        "init": false,
+        "webui": "http://[HOST]:[PORT:8123]/",
+        "arch": [
+          "aarch64",
+          "amd64",
+          "armhf",
+          "armv7",
+          "i386"
+        ],
+        "ports": {
+          "8123/tcp": 8124
+        },
+        "map": [
+          "addon_config:rw"
+        ]
+      },
+      "source_build_supported": true,
+      "images": {},
+      "delivery": "local-source-build",
+      "validation": "manifest+source-context+configured-CI (runtime build not certified)",
+      "publisher_run_id": "37409994861",
+      "channel": "stable",
+      "store_path": "apporo_ha_core_1"
+    },
+    "apporo_ha_core_2": {
+      "id": "apporo_ha_core_2",
+      "name": "Apporo HA Core 2",
+      "version": "2.3.0",
+      "repository": "WOOWTECH/apporo_ha_multi_ha_core",
+      "source_sha": "232366c56b0916235b116aac9cd9db4578d5bca8",
+      "source_path": "apporo_ha_core_2",
+      "config_file": "config.yaml",
+      "config_sha256": "sha256:7b302fbb834e7a0397aba3e6349e80e552b394e663251bbc968edf7702f1106c",
+      "archive_sha256": "sha256:dec30664ccd0bc310dca84fd57bef6ae7e93279aae2dd56f920ea1877e035e30",
+      "context_fingerprint": "sha256:54343cf9b2f746d212f22bc41ed2e99da41a54a794052669775a61a4466b590b",
+      "material_fingerprint": "sha256:a4ebeaca7c4dba30a2760d0bc2d6ac0c0fe9ce90498fd55ba6bb591a28a6a866",
+      "architectures": [
+        "aarch64",
+        "amd64",
+        "armhf",
+        "armv7",
+        "i386"
+      ],
+      "config": {
+        "name": "Apporo HA Core 2",
+        "description": "Apporo Home Assistant Core instance 2",
+        "version": "2.3.0",
+        "slug": "apporo_ha_core_2",
+        "init": false,
+        "webui": "http://[HOST]:[PORT:8123]/",
+        "arch": [
+          "aarch64",
+          "amd64",
+          "armhf",
+          "armv7",
+          "i386"
+        ],
+        "ports": {
+          "8123/tcp": 8125
+        },
+        "map": [
+          "addon_config:rw"
+        ]
+      },
+      "source_build_supported": true,
+      "images": {},
+      "delivery": "local-source-build",
+      "validation": "manifest+source-context+configured-CI (runtime build not certified)",
+      "publisher_run_id": "37409994861",
+      "channel": "stable",
+      "store_path": "apporo_ha_core_2"
+    },
+    "apporo_ha_core_3": {
+      "id": "apporo_ha_core_3",
+      "name": "Apporo HA Core 3",
+      "version": "2.3.0",
+      "repository": "WOOWTECH/apporo_ha_multi_ha_core",
+      "source_sha": "232366c56b0916235b116aac9cd9db4578d5bca8",
+      "source_path": "apporo_ha_core_3",
+      "config_file": "config.yaml",
+      "config_sha256": "sha256:257a8772919282167225187bdd8135f8c0bd75220926298daf0bec887ea8b087",
+      "archive_sha256": "sha256:dec30664ccd0bc310dca84fd57bef6ae7e93279aae2dd56f920ea1877e035e30",
+      "context_fingerprint": "sha256:90d80855419ee04ee378130a6b053d107f0c5291ff9b687435446a64da70ee97",
+      "material_fingerprint": "sha256:a9785bff99a0ce7bbd082418adcd4472a1123d1f17659a4fcd2d57746945b475",
+      "architectures": [
+        "aarch64",
+        "amd64",
+        "armhf",
+        "armv7",
+        "i386"
+      ],
+      "config": {
+        "name": "Apporo HA Core 3",
+        "description": "Apporo Home Assistant Core instance 3",
+        "version": "2.3.0",
+        "slug": "apporo_ha_core_3",
+        "init": false,
+        "webui": "http://[HOST]:[PORT:8123]/",
+        "arch": [
+          "aarch64",
+          "amd64",
+          "armhf",
+          "armv7",
+          "i386"
+        ],
+        "ports": {
+          "8123/tcp": 8126
+        },
+        "map": [
+          "addon_config:rw"
+        ]
+      },
+      "source_build_supported": true,
+      "images": {},
+      "delivery": "local-source-build",
+      "validation": "manifest+source-context+configured-CI (runtime build not certified)",
+      "publisher_run_id": "37409994861",
+      "channel": "stable",
+      "store_path": "apporo_ha_core_3"
+    },
+    "apporo_ha_core_4": {
+      "id": "apporo_ha_core_4",
+      "name": "Apporo HA Core 4",
+      "version": "2.3.0",
+      "repository": "WOOWTECH/apporo_ha_multi_ha_core",
+      "source_sha": "232366c56b0916235b116aac9cd9db4578d5bca8",
+      "source_path": "apporo_ha_core_4",
+      "config_file": "config.yaml",
+      "config_sha256": "sha256:057c040884a435f63fee0b8ebfe3a10e4b926cf2b0ad9f4c8f23f1951540a01b",
+      "archive_sha256": "sha256:dec30664ccd0bc310dca84fd57bef6ae7e93279aae2dd56f920ea1877e035e30",
+      "context_fingerprint": "sha256:14ff9787226d42a7f2fefbae4041ff32d443c3b774669ad1248743f0ea1a0692",
+      "material_fingerprint": "sha256:dc6b6b7aeb8659d37bc24edb3ce83c2b730a918d177aaa0598a52338e4db7afd",
+      "architectures": [
+        "aarch64",
+        "amd64",
+        "armhf",
+        "armv7",
+        "i386"
+      ],
+      "config": {
+        "name": "Apporo HA Core 4",
+        "description": "Apporo Home Assistant Core instance 4",
+        "version": "2.3.0",
+        "slug": "apporo_ha_core_4",
+        "init": false,
+        "webui": "http://[HOST]:[PORT:8123]/",
+        "arch": [
+          "aarch64",
+          "amd64",
+          "armhf",
+          "armv7",
+          "i386"
+        ],
+        "ports": {
+          "8123/tcp": 8127
+        },
+        "map": [
+          "addon_config:rw"
+        ]
+      },
+      "source_build_supported": true,
+      "images": {},
+      "delivery": "local-source-build",
+      "validation": "manifest+source-context+configured-CI (runtime build not certified)",
+      "publisher_run_id": "37409994861",
+      "channel": "stable",
+      "store_path": "apporo_ha_core_4"
+    },
+    "apporo_ha_core_5": {
+      "id": "apporo_ha_core_5",
+      "name": "Apporo HA Core 5",
+      "version": "2.3.0",
+      "repository": "WOOWTECH/apporo_ha_multi_ha_core",
+      "source_sha": "232366c56b0916235b116aac9cd9db4578d5bca8",
+      "source_path": "apporo_ha_core_5",
+      "config_file": "config.yaml",
+      "config_sha256": "sha256:59cfb33c9e6a16be437b40e09626cfd5283c5066c442ba8f8768841a2359f3f1",
+      "archive_sha256": "sha256:dec30664ccd0bc310dca84fd57bef6ae7e93279aae2dd56f920ea1877e035e30",
+      "context_fingerprint": "sha256:68bedbce9e2f671fa2bfa4e22ae1606d3a651346f0838ded8c051dc61b849c1a",
+      "material_fingerprint": "sha256:12c1d957ceb4ec53097ccf4eb0457a932d1c889aae03b91c906431407147829b",
+      "architectures": [
+        "aarch64",
+        "amd64",
+        "armhf",
+        "armv7",
+        "i386"
+      ],
+      "config": {
+        "name": "Apporo HA Core 5",
+        "description": "Apporo Home Assistant Core instance 5",
+        "version": "2.3.0",
+        "slug": "apporo_ha_core_5",
+        "init": false,
+        "webui": "http://[HOST]:[PORT:8123]/",
+        "arch": [
+          "aarch64",
+          "amd64",
+          "armhf",
+          "armv7",
+          "i386"
+        ],
+        "ports": {
+          "8123/tcp": 8128
+        },
+        "map": [
+          "addon_config:rw"
+        ]
+      },
+      "source_build_supported": true,
+      "images": {},
+      "delivery": "local-source-build",
+      "validation": "manifest+source-context+configured-CI (runtime build not certified)",
+      "publisher_run_id": "37409994861",
+      "channel": "stable",
+      "store_path": "apporo_ha_core_5"
+    },
+    "woow_lan_gateway": {
+      "id": "woow_lan_gateway",
+      "name": "Woow LAN Gateway",
+      "version": "0.1.4",
+      "repository": "WOOWTECH/woow-lan-gateway",
+      "source_sha": "b7ad22ef0586c1fb32240278098b4554cfd89e36",
+      "source_path": "app",
+      "config_file": "config.yaml",
+      "config_sha256": "sha256:25522a7deae73da4d7bbb25e77f68abc27e671131e9dea93fa64fed9eb73c328",
+      "archive_sha256": "sha256:c73ba0ae458314aa4f7c725909507173b0bf492129d47fece3c9ce7f1e0f21be",
+      "context_fingerprint": "sha256:2c66a700c842943d0f0ed56929a95815a5aae6ab9590419ee4561a09f6dde7aa",
+      "material_fingerprint": "sha256:1327b5cffe4554145cc9d81c19f281fc8cbf91a0fcd056f88ccc9b1a18594702",
+      "architectures": [
+        "amd64"
+      ],
+      "config": {
+        "version": "0.1.4",
+        "slug": "woow_lan_gateway",
+        "name": "Woow LAN Gateway",
+        "description": "Fail-closed Internet-only NAT gateway for the fixed WOOWTECH enrollment LAN.",
+        "url": "https://github.com/WOOWTECH/woow-lan-gateway",
+        "arch": [
+          "amd64"
+        ],
+        "startup": "system",
+        "boot": "auto",
+        "init": false,
+        "host_network": true,
+        "hassio_api": true,
+        "homeassistant_api": true,
+        "ingress": true,
+        "panel_title": "LAN Gateway",
+        "ingress_port": 45987,
+        "ingress_stream": false,
+        "watchdog": "http://[HOST]:[PORT:45987]/health",
+        "privileged": [
+          "NET_ADMIN"
+        ],
+        "options": {
+          "lan_interface": "enp4s0",
+          "wan_interface": "enp2s0",
+          "source_cidr": "192.168.50.0/24",
+          "heartbeat_interval": 15,
+          "lease_timeout": 45
+        },
+        "schema": {
+          "lan_interface": "str",
+          "wan_interface": "str",
+          "source_cidr": "str",
+          "heartbeat_interval": "int(5,60)",
+          "lease_timeout": "int(15,180)"
+        },
+        "stage": "stable"
+      },
+      "source_build_supported": true,
+      "images": {},
+      "delivery": "local-source-build",
+      "validation": "manifest+source-context+configured-CI (runtime build not certified)",
+      "publisher_run_id": "37410010665",
+      "channel": "stable",
+      "store_path": "woow-lan-gateway"
+    },
+    "woow_ha_core_1": {
+      "id": "woow_ha_core_1",
+      "name": "Woowtech HA Core 1",
+      "version": "2.3.0",
+      "repository": "WOOWTECH/woowtech_ha_multi_ha_core",
+      "source_sha": "4f65388bfa6ee980125e8ca3a19b7b48d03979cf",
+      "source_path": "woow_ha_core_1",
+      "config_file": "config.yaml",
+      "config_sha256": "sha256:456f0715f977ef720c6898e85eaf0efe168e5962cac0c1007059d82dc527773c",
+      "archive_sha256": "sha256:a7bacf4a135802b3cf1a3c6c22cf60ebdaa339bc56fffbacfbf2dc96016a40d7",
+      "context_fingerprint": "sha256:24e053f662b3a72143b1f8c345c48e55e3e7133503467486e95679d5ce0fb029",
+      "material_fingerprint": "sha256:3d4d2c3c34bc23c924e7c960a7fb2401753490d05d35674dbda488549001035b",
+      "architectures": [
+        "aarch64",
+        "amd64",
+        "armhf",
+        "armv7",
+        "i386"
+      ],
+      "config": {
+        "name": "Woowtech HA Core 1",
+        "description": "Woowtech Home Assistant Core instance 1",
+        "version": "2.3.0",
+        "slug": "woow_ha_core_1",
+        "init": false,
+        "webui": "http://[HOST]:[PORT:8123]/",
+        "arch": [
+          "aarch64",
+          "amd64",
+          "armhf",
+          "armv7",
+          "i386"
+        ],
+        "ports": {
+          "8123/tcp": 8124
+        },
+        "map": [
+          "addon_config:rw"
+        ]
+      },
+      "source_build_supported": true,
+      "images": {},
+      "delivery": "local-source-build",
+      "validation": "manifest+source-context+configured-CI (runtime build not certified)",
+      "publisher_run_id": "37410032596",
+      "channel": "stable",
+      "store_path": "woow_ha_core_1"
+    },
+    "woow_ha_core_2": {
+      "id": "woow_ha_core_2",
+      "name": "Woowtech HA Core 2",
+      "version": "2.3.0",
+      "repository": "WOOWTECH/woowtech_ha_multi_ha_core",
+      "source_sha": "4f65388bfa6ee980125e8ca3a19b7b48d03979cf",
+      "source_path": "woow_ha_core_2",
+      "config_file": "config.yaml",
+      "config_sha256": "sha256:521e0df45eeff893bd9a95b2cab1ee06a53d0f75ba4ec87219b161355e65a37d",
+      "archive_sha256": "sha256:a7bacf4a135802b3cf1a3c6c22cf60ebdaa339bc56fffbacfbf2dc96016a40d7",
+      "context_fingerprint": "sha256:9e6fa4ed502fe0ff465d751fc2525c6892bb920e4399fa182a06fe2dbbdd8f30",
+      "material_fingerprint": "sha256:84daba3c37aed6c7915d32c5d7226251ae474c1c27a4d992c1268bf96a861205",
+      "architectures": [
+        "aarch64",
+        "amd64",
+        "armhf",
+        "armv7",
+        "i386"
+      ],
+      "config": {
+        "name": "Woowtech HA Core 2",
+        "description": "Woowtech Home Assistant Core instance 2",
+        "version": "2.3.0",
+        "slug": "woow_ha_core_2",
+        "init": false,
+        "webui": "http://[HOST]:[PORT:8123]/",
+        "arch": [
+          "aarch64",
+          "amd64",
+          "armhf",
+          "armv7",
+          "i386"
+        ],
+        "ports": {
+          "8123/tcp": 8125
+        },
+        "map": [
+          "addon_config:rw"
+        ]
+      },
+      "source_build_supported": true,
+      "images": {},
+      "delivery": "local-source-build",
+      "validation": "manifest+source-context+configured-CI (runtime build not certified)",
+      "publisher_run_id": "37410032596",
+      "channel": "stable",
+      "store_path": "woow_ha_core_2"
+    },
+    "woow_ha_core_3": {
+      "id": "woow_ha_core_3",
+      "name": "Woowtech HA Core 3",
+      "version": "2.3.0",
+      "repository": "WOOWTECH/woowtech_ha_multi_ha_core",
+      "source_sha": "4f65388bfa6ee980125e8ca3a19b7b48d03979cf",
+      "source_path": "woow_ha_core_3",
+      "config_file": "config.yaml",
+      "config_sha256": "sha256:42ebe01136c0aaf1d21114bc7fc304dc02d43af679d33534e5e9133097169ca0",
+      "archive_sha256": "sha256:a7bacf4a135802b3cf1a3c6c22cf60ebdaa339bc56fffbacfbf2dc96016a40d7",
+      "context_fingerprint": "sha256:1a61b26c35ac865536fdbbd66efe99a97a1b11b69e3bebf79761fda14a8f3805",
+      "material_fingerprint": "sha256:6151e0857a7ebcc753f3ce2bdc2bd0a90b72a4c68d591faa52e4e4f3022a4c70",
+      "architectures": [
+        "aarch64",
+        "amd64",
+        "armhf",
+        "armv7",
+        "i386"
+      ],
+      "config": {
+        "name": "Woowtech HA Core 3",
+        "description": "Woowtech Home Assistant Core instance 3",
+        "version": "2.3.0",
+        "slug": "woow_ha_core_3",
+        "init": false,
+        "webui": "http://[HOST]:[PORT:8123]/",
+        "arch": [
+          "aarch64",
+          "amd64",
+          "armhf",
+          "armv7",
+          "i386"
+        ],
+        "ports": {
+          "8123/tcp": 8126
+        },
+        "map": [
+          "addon_config:rw"
+        ]
+      },
+      "source_build_supported": true,
+      "images": {},
+      "delivery": "local-source-build",
+      "validation": "manifest+source-context+configured-CI (runtime build not certified)",
+      "publisher_run_id": "37410032596",
+      "channel": "stable",
+      "store_path": "woow_ha_core_3"
+    },
+    "woow_ha_core_4": {
+      "id": "woow_ha_core_4",
+      "name": "Woowtech HA Core 4",
+      "version": "2.3.0",
+      "repository": "WOOWTECH/woowtech_ha_multi_ha_core",
+      "source_sha": "4f65388bfa6ee980125e8ca3a19b7b48d03979cf",
+      "source_path": "woow_ha_core_4",
+      "config_file": "config.yaml",
+      "config_sha256": "sha256:ea9d4c1d6e460b3d44a558a2cbec676d223f88f9554c41da4bb835e151dbaf96",
+      "archive_sha256": "sha256:a7bacf4a135802b3cf1a3c6c22cf60ebdaa339bc56fffbacfbf2dc96016a40d7",
+      "context_fingerprint": "sha256:dd14e737a9bc38dbc22d888c987dc1d6b9bec84d282889669b95c5b70071d910",
+      "material_fingerprint": "sha256:a6e470ff617834caaf2df005c08169ca3f1a5cb10a3877cdc77fe9b57d562409",
+      "architectures": [
+        "aarch64",
+        "amd64",
+        "armhf",
+        "armv7",
+        "i386"
+      ],
+      "config": {
+        "name": "Woowtech HA Core 4",
+        "description": "Woowtech Home Assistant Core instance 4",
+        "version": "2.3.0",
+        "slug": "woow_ha_core_4",
+        "init": false,
+        "webui": "http://[HOST]:[PORT:8123]/",
+        "arch": [
+          "aarch64",
+          "amd64",
+          "armhf",
+          "armv7",
+          "i386"
+        ],
+        "ports": {
+          "8123/tcp": 8127
+        },
+        "map": [
+          "addon_config:rw"
+        ]
+      },
+      "source_build_supported": true,
+      "images": {},
+      "delivery": "local-source-build",
+      "validation": "manifest+source-context+configured-CI (runtime build not certified)",
+      "publisher_run_id": "37410032596",
+      "channel": "stable",
+      "store_path": "woow_ha_core_4"
+    },
+    "woow_ha_core_5": {
+      "id": "woow_ha_core_5",
+      "name": "Woowtech HA Core 5",
+      "version": "2.3.0",
+      "repository": "WOOWTECH/woowtech_ha_multi_ha_core",
+      "source_sha": "4f65388bfa6ee980125e8ca3a19b7b48d03979cf",
+      "source_path": "woow_ha_core_5",
+      "config_file": "config.yaml",
+      "config_sha256": "sha256:26c124c2687437f488c3266c56b4e69eeb19c1d3dd742dd48a230573301ee04c",
+      "archive_sha256": "sha256:a7bacf4a135802b3cf1a3c6c22cf60ebdaa339bc56fffbacfbf2dc96016a40d7",
+      "context_fingerprint": "sha256:6c8a24c7c6147e72ff60a845217edbc19342738514983f5495d2739e19bd93d1",
+      "material_fingerprint": "sha256:e03a34e23d6774e9d987d3d5bbda4b15f6150fedad327465da5012155a25cf5e",
+      "architectures": [
+        "aarch64",
+        "amd64",
+        "armhf",
+        "armv7",
+        "i386"
+      ],
+      "config": {
+        "name": "Woowtech HA Core 5",
+        "description": "Woowtech Home Assistant Core instance 5",
+        "version": "2.3.0",
+        "slug": "woow_ha_core_5",
+        "init": false,
+        "webui": "http://[HOST]:[PORT:8123]/",
+        "arch": [
+          "aarch64",
+          "amd64",
+          "armhf",
+          "armv7",
+          "i386"
+        ],
+        "ports": {
+          "8123/tcp": 8128
+        },
+        "map": [
+          "addon_config:rw"
+        ]
+      },
+      "source_build_supported": true,
+      "images": {},
+      "delivery": "local-source-build",
+      "validation": "manifest+source-context+configured-CI (runtime build not certified)",
+      "publisher_run_id": "37410032596",
+      "channel": "stable",
+      "store_path": "woow_ha_core_5"
+    },
+    "woow_ha_core": {
+      "id": "woow_ha_core",
+      "name": "Home Assistant Core (official image)",
+      "version": "2026.9.1-1",
+      "repository": "WOOWTECH/Woow_haos_ha_core",
+      "source_sha": "521c076ae13267454485b0575dd855c98904a699",
+      "source_path": "ha_core",
+      "config_file": "config.yaml",
+      "config_sha256": "sha256:d1282943556a6f725e977e9267e3351343ea25def58a6cf58294fa98936c2dfa",
+      "archive_sha256": "sha256:4a93f4c548d9e7e2cb5ee394f910b91f0f3a81719e766662be73830a854d0926",
+      "context_fingerprint": "sha256:9813552f8ed324d7beb09d653bf073f3e4358cf710659334d0a50a7522953cd2",
+      "material_fingerprint": "sha256:776f6e9ed2fe69c832982b11a7a3187dc917a05beb22b14fd0e944e365d322d1",
+      "architectures": [
+        "amd64",
+        "aarch64"
+      ],
+      "config": {
+        "name": "Home Assistant Core (official image)",
+        "slug": "woow_ha_core",
+        "description": "Independent official Home Assistant Core 2026.9.1; no rebranding or seeded configuration.",
+        "version": "2026.9.1-1",
+        "url": "https://github.com/WOOWTECH/Woow_haos_ha_core",
+        "arch": [
+          "amd64",
+          "aarch64"
+        ],
+        "startup": "application",
+        "boot": "manual",
+        "init": false,
+        "stage": "experimental",
+        "timeout": 300,
+        "backup": "cold",
+        "host_network": false,
+        "hassio_api": false,
+        "homeassistant_api": false,
+        "ingress": false,
+        "ports": {
+          "8123/tcp": null
+        },
+        "ports_description": {
+          "8123/tcp": "Independent HA Core UI/API. Choose an unused host port (e.g. 8129)."
+        },
+        "webui": "http://[HOST]:[PORT:8123]/",
+        "map": [
+          "addon_config:rw"
+        ],
+        "options": {},
+        "schema": {}
+      },
+      "source_build_supported": true,
+      "images": {},
+      "delivery": "local-source-build",
+      "validation": "manifest+source-context+configured-CI (runtime build not certified)",
+      "publisher_run_id": "37410049318",
+      "channel": "stable",
+      "store_path": "woow_ha_core"
+    },
+    "ha_mcp_webhook_proxy": {
+      "id": "ha_mcp_webhook_proxy",
+      "name": "Nabu Casa - Webhook Proxy for HA MCP",
+      "version": "2.0.4",
+      "repository": "WOOWTECH/Woow_ha_ai_mcp",
+      "source_sha": "b94ee5419d961c9814357206694ef66fd91f139d",
+      "source_path": "homeassistant-addon-webhook-proxy",
+      "config_file": "config.yaml",
+      "config_sha256": "sha256:fbd30e177718a2390a34145278388adbc8826f05c086c90892403c39a88f200e",
+      "archive_sha256": "sha256:2bc976f83bf43832ce246423194604b44f80ef347f5d6579e9f03e4f42839246",
+      "context_fingerprint": "sha256:c97dd9446bca402cd672e122410c671a05888489606a016996a367d60b238e47",
+      "material_fingerprint": "sha256:f5123c45b7a569cef1e284c1bf3e6f28f86bad422f25683befd7665dfba8fae9",
+      "architectures": [
+        "aarch64",
+        "amd64"
+      ],
+      "config": {
+        "name": "Nabu Casa - Webhook Proxy for HA MCP",
+        "description": "Remote access proxy via Nabu Casa or any reverse proxy (Cloudflare, DuckDNS, nginx)",
+        "version": "2.0.4",
+        "slug": "ha_mcp_webhook_proxy",
+        "url": "https://github.com/homeassistant-ai/ha-mcp",
+        "arch": [
+          "aarch64",
+          "amd64"
+        ],
+        "init": false,
+        "startup": "application",
+        "boot": "auto",
+        "hassio_api": true,
+        "hassio_role": "manager",
+        "homeassistant_api": true,
+        "host_network": true,
+        "map": [
+          "config:rw"
+        ],
+        "options": {
+          "remote_url": "",
+          "mcp_server_url": "",
+          "mcp_port": 9583,
+          "debug_logging": false
+        },
+        "schema": {
+          "remote_url": "str?",
+          "mcp_server_url": "str?",
+          "mcp_port": "port?",
+          "enable_oauth": "bool?",
+          "oauth_mode": "list(ha_auth|legacy)?",
+          "oauth_client_id": "str?",
+          "oauth_client_secret": "password?",
+          "regenerate_oauth_creds": "bool?",
+          "debug_logging": "bool?"
+        }
+      },
+      "source_build_supported": true,
+      "images": {},
+      "delivery": "local-source-build",
+      "validation": "manifest+source-context+configured-CI (runtime build not certified)",
+      "publisher_run_id": "37410078805",
+      "channel": "stable",
+      "store_path": "ha_mcp_webhook_proxy"
+    },
+    "ha_mcp": {
+      "id": "ha_mcp",
+      "name": "Home Assistant MCP Server",
+      "version": "7.14.1",
+      "repository": "WOOWTECH/Woow_ha_ai_mcp",
+      "source_sha": "b94ee5419d961c9814357206694ef66fd91f139d",
+      "source_path": "homeassistant-addon",
+      "config_file": "config.yaml",
+      "config_sha256": "sha256:7d0262d3636733b64e073a8ccbd55a691ca317b005bfdfce85ebb7fc8a8208ea",
+      "archive_sha256": "sha256:2bc976f83bf43832ce246423194604b44f80ef347f5d6579e9f03e4f42839246",
+      "context_fingerprint": "sha256:9da2a154f42c9eeafe924849057949a8cc7b22d1b1531d2799bc717d279811b4",
+      "material_fingerprint": "sha256:956b4b60c1f0f99527045cf33820ada137b2c90aa76e70a09fcb301e40b77c43",
+      "architectures": [
+        "aarch64",
+        "amd64"
+      ],
+      "config": {
+        "name": "Home Assistant MCP Server",
+        "description": "AI assistant integration for Home Assistant via Model Context Protocol (MCP)",
+        "version": "7.14.1",
+        "slug": "ha_mcp",
+        "url": "https://github.com/homeassistant-ai/ha-mcp",
+        "arch": [
+          "aarch64",
+          "amd64"
+        ],
+        "init": false,
+        "startup": "application",
+        "boot": "manual",
+        "ingress": true,
+        "ingress_port": 9583,
+        "ingress_stream": true,
+        "hassio_api": true,
+        "hassio_role": "manager",
+        "homeassistant_api": true,
+        "host_network": true,
+        "image": "ghcr.io/homeassistant-ai/ha-mcp-addon-{arch}",
+        "options": {
+          "backup_hint": "normal",
+          "enable_tool_search": false,
+          "tool_search_max_results": 5,
+          "enable_tool_security_policies": false,
+          "read_only_mode": false,
+          "enable_mandatory_bps": true,
+          "enable_strict_mandatory_bps": true,
+          "disabled_tools": "",
+          "pinned_tools": "",
+          "enable_auto_backup": true,
+          "auto_backup_throttle_minutes": 0,
+          "auto_backup_retain_per_entity": 100,
+          "enable_snapshot_delete": false,
+          "snapshot_delete_min_age_days": 7,
+          "verify_ssl": true
+        },
+        "schema": {
+          "backup_hint": "list(strong|normal|weak|auto)",
+          "secret_path": "str?",
+          "enable_tool_search": "bool?",
+          "tool_search_max_results": "int(2,10)?",
+          "enable_tool_security_policies": "bool?",
+          "read_only_mode": "bool?",
+          "enable_mandatory_bps": "bool?",
+          "enable_strict_mandatory_bps": "bool?",
+          "disabled_tools": "str?",
+          "pinned_tools": "str?",
+          "enable_auto_backup": "bool?",
+          "auto_backup_throttle_minutes": "int(0,1440)?",
+          "auto_backup_retain_per_entity": "int(1,10000)?",
+          "enable_snapshot_delete": "bool?",
+          "snapshot_delete_min_age_days": "int(0,365)?",
+          "verify_ssl": "bool?"
+        },
+        "ports": {
+          "9583/tcp": 9583
+        }
+      },
+      "source_build_supported": false,
+      "images": {
+        "aarch64": {
+          "reference": "ghcr.io/homeassistant-ai/ha-mcp-addon-aarch64:7.14.1",
+          "index_digest": "sha256:ff321015965d957feb6bab0b7f634b71aa69a62cfe8650e9f1b6f1627b54662a",
+          "digest": "sha256:10b898e586f4e2d629eb58ac6c6321b8d636ce97abd81a5b3863eebf8558cd48",
+          "source_revision": null
+        },
+        "amd64": {
+          "reference": "ghcr.io/homeassistant-ai/ha-mcp-addon-amd64:7.14.1",
+          "index_digest": "sha256:49baaa7cedb8c011666a2c9b25428b9d36fba689999d3447b6ef37ed0ef8a8a0",
+          "digest": "sha256:5cef3017731656a22f68183b82d7fbb8f63476e7951d018efd9c054210a811b3",
+          "source_revision": null
+        }
+      },
+      "delivery": "published-image",
+      "validation": "manifest+architecture-images+configured-CI",
+      "publisher_run_id": "37410078805",
+      "channel": "stable",
+      "store_path": "ha_mcp"
+    },
+    "cloudflared": {
+      "id": "cloudflared",
+      "name": "Woow Cloudflared",
+      "version": "1.0.4",
+      "repository": "WOOWTECH/Woow_ha_cloudflare_tunnel_webgui",
+      "source_sha": "53776ea3536547a2da7309fa6f6c90dc7610a825",
+      "source_path": "cloudflared",
+      "config_file": "config.yaml",
+      "config_sha256": "sha256:ac8797cf6f9a1dbf68e78b163dbe51744734cc411f6c8ae8983c2e728cfb25a4",
+      "archive_sha256": "sha256:be0bc0f76a08cc2f4d5b8218fb8f1d59f1aeab1ae4adfc577f5024a64fc30ea4",
+      "context_fingerprint": "sha256:fe442b9db0b048d5c225226f086d5dfa25b3d3f9ff0afcba6c2811691dd00757",
+      "material_fingerprint": "sha256:8df170e7c4b5bca6a8025a598bcd5c569ae7619c4fa2e5bf2232b1720319d9ee",
+      "architectures": [
+        "aarch64",
+        "amd64"
+      ],
+      "config": {
+        "name": "Woow Cloudflared",
+        "version": "1.0.4",
+        "breaking_versions": [
+          "5.3.7",
+          "6.0.0"
+        ],
+        "slug": "cloudflared",
+        "description": "Use a Cloudflare Tunnel to remotely connect to Home Assistant without opening any ports — now with a Web GUI",
+        "url": "https://github.com/WOOWTECH/Woow_ha_cloudflare_tunnel_webgui",
+        "image": "ghcr.io/woowtech/{arch}-addon-cloudflared-webgui",
+        "startup": "services",
+        "init": false,
+        "hassio_api": true,
+        "hassio_role": "manager",
+        "ingress": true,
+        "ingress_port": 8099,
+        "ingress_panel": true,
+        "panel_icon": "mdi:cloud-lock-outline",
+        "panel_title": "Cloudflared",
+        "arch": [
+          "aarch64",
+          "amd64"
+        ],
+        "map": [
+          "addon_config:rw",
+          "homeassistant_config"
+        ],
+        "options": {
+          "external_hostname": "",
+          "additional_hosts": []
+        },
+        "ports": {
+          "36500/tcp": null
+        },
+        "schema": {
+          "external_hostname": "str?",
+          "additional_hosts": [
+            {
+              "hostname": "str",
+              "service": "str",
+              "disableChunkedEncoding": "bool?"
+            }
+          ],
+          "tunnel_name": "str?",
+          "catch_all_service": "str?",
+          "nginx_proxy_manager": "bool?",
+          "tunnel_token": "password?",
+          "post_quantum": "bool?",
+          "run_parameters": [
+            "match(^(--edge-bind-address|--edge-ip-version|--grace-period|--ha-connections|--logfile|--loglevel|--pidfile|--protocol|--region|--retries|--tag)=.*$)?"
+          ],
+          "log_level": "list(trace|debug|info|notice|warning|error|fatal)?"
+        }
+      },
+      "source_build_supported": true,
+      "images": {
+        "aarch64": {
+          "reference": "ghcr.io/woowtech/aarch64-addon-cloudflared-webgui:1.0.4",
+          "index_digest": "sha256:29d9f5b7d0f91ff74832069dff4f4a70182a03e01b071d6f0dfaf85435dc78f3",
+          "digest": "sha256:29d9f5b7d0f91ff74832069dff4f4a70182a03e01b071d6f0dfaf85435dc78f3",
+          "source_revision": ""
+        },
+        "amd64": {
+          "reference": "ghcr.io/woowtech/amd64-addon-cloudflared-webgui:1.0.4",
+          "index_digest": "sha256:c4d59b412384783ac57cc5c356d22f1ec5f40d85f4aa8eb16312ad3645cb9795",
+          "digest": "sha256:c4d59b412384783ac57cc5c356d22f1ec5f40d85f4aa8eb16312ad3645cb9795",
+          "source_revision": ""
+        }
+      },
+      "delivery": "published-image",
+      "validation": "manifest+architecture-images+configured-CI",
+      "publisher_run_id": "37410095400",
+      "channel": "stable",
+      "store_path": "cloudflared"
+    },
+    "woow_ha_code_server": {
+      "id": "woow_ha_code_server",
+      "name": "Woow Code Server",
+      "version": "0.1.6",
+      "repository": "WOOWTECH/Woow_ha_code_server_add_on",
+      "source_sha": "14cfd949c92505cec48dbe502080298da5cc36d5",
+      "source_path": ".",
+      "config_file": "config.yaml",
+      "config_sha256": "sha256:aa7bcaf1fb3d5daac04cf4d9030d676e25394417abe87d468bf33bf3b368c60b",
+      "archive_sha256": "sha256:ee36c3498eccc838c14d1590c5222dd9fa5f44008acbea9063010db8070b63ee",
+      "context_fingerprint": "sha256:369e2e7bbed05dcf9e13e9d4a3bda319811015dd40fbb5e51ad62da8d9fd7af4",
+      "material_fingerprint": "sha256:49cb566b25dce2db697a5a37482e00695044b93e515766669dc829660f246348",
+      "architectures": [
+        "amd64",
+        "aarch64"
+      ],
+      "config": {
+        "name": "Woow Code Server",
+        "version": "0.1.6",
+        "slug": "woow_ha_code_server",
+        "description": "code-server 4.139.1 with the pi coding agent (0.99.1) and Claude Code (2.1.285), pi-acp and the ACP Client chat sidebar baked in — WOOWTECH build layered on the Home Assistant Community vscode add-on",
+        "url": "https://github.com/WOOWTECH/Woow_ha_code_server_add_on",
+        "arch": [
+          "amd64",
+          "aarch64"
+        ],
+        "init": false,
+        "startup": "services",
+        "boot": "auto",
+        "uart": true,
+        "hassio_api": true,
+        "hassio_role": "manager",
+        "homeassistant_api": true,
+        "ingress": true,
+        "ingress_port": 1337,
+        "ingress_stream": true,
+        "panel_icon": "mdi:microsoft-visual-studio-code",
+        "panel_title": "Code Server",
+        "panel_admin": true,
+        "watchdog": "http://[HOST]:[PORT:1337]/healthz",
+        "map": [
+          {
+            "type": "addons",
+            "read_only": false
+          },
+          {
+            "type": "all_addon_configs",
+            "read_only": false
+          },
+          {
+            "type": "backup",
+            "read_only": false
+          },
+          {
+            "type": "homeassistant_config",
+            "read_only": false,
+            "path": "/config"
+          },
+          {
+            "type": "media",
+            "read_only": false
+          },
+          {
+            "type": "share",
+            "read_only": false
+          },
+          {
+            "type": "ssl",
+            "read_only": false
+          }
+        ],
+        "services": [
+          "mysql:want",
+          "mqtt:want"
+        ],
+        "backup": "cold",
+        "backup_exclude": [
+          "**/vscode/logs/**",
+          "**/vscode/CachedProfilesData/**",
+          "**/pi-agent/models-store.json",
+          "**/pi-agent/home/**/node_modules/**",
+          "**/pi-agent/sessions/*.jsonl.tmp"
+        ],
+        "ports": {
+          "1338/tcp": null
+        },
+        "ports_description": {
+          "1338/tcp": "Direct (non-ingress) access front. Leave unmapped. Only map this if the ACP chat sidebar does not render under HA ingress — and only together with direct_password, which gates it with HTTP Basic auth."
+        },
+        "options": {
+          "log_level": "info",
+          "config_path": "/share/projects",
+          "packages": [],
+          "init_commands": [],
+          "timezone": "",
+          "pi_default_provider": "",
+          "pi_default_model": "",
+          "direct_password": "",
+          "anthropic_api_key": "",
+          "reset_pi_state": false,
+          "env_vars": []
+        },
+        "schema": {
+          "log_level": "list(trace|debug|info|notice|warning|error|fatal)?",
+          "config_path": "str?",
+          "packages": [
+            "str"
+          ],
+          "init_commands": [
+            "str"
+          ],
+          "timezone": "str?",
+          "pi_default_provider": "str?",
+          "pi_default_model": "str?",
+          "direct_password": "password?",
+          "anthropic_api_key": "password?",
+          "reset_pi_state": "bool",
+          "env_vars": [
+            {
+              "name": "str",
+              "value": "str"
+            }
+          ]
+        },
+        "image": "ghcr.io/woowtech/woow-ha-code-server-{arch}"
+      },
+      "source_build_supported": true,
+      "images": {
+        "amd64": {
+          "reference": "ghcr.io/woowtech/woow-ha-code-server-amd64:0.1.6",
+          "index_digest": "sha256:6fc9cb57a8e34898bded261c9d6c00a8361f8c034d11824acb90a37b74b1b879",
+          "digest": "sha256:6fc9cb57a8e34898bded261c9d6c00a8361f8c034d11824acb90a37b74b1b879",
+          "source_revision": "ce35422ee4c589a3cbf920656510ae1b3783fe2e"
+        },
+        "aarch64": {
+          "reference": "ghcr.io/woowtech/woow-ha-code-server-aarch64:0.1.6",
+          "index_digest": "sha256:9322345b83de6b54fd5042c1f70926126b6dd0e46600ae3f341317670cca5d50",
+          "digest": "sha256:9322345b83de6b54fd5042c1f70926126b6dd0e46600ae3f341317670cca5d50",
+          "source_revision": "ce35422ee4c589a3cbf920656510ae1b3783fe2e"
+        }
+      },
+      "delivery": "published-image",
+      "validation": "manifest+architecture-images+configured-CI",
+      "publisher_run_id": "37410125463",
+      "channel": "stable",
+      "store_path": "woow_ha_code_server"
+    },
+    "dnsmasq-dhcp": {
+      "id": "dnsmasq-dhcp",
+      "name": "Dnsmasq-DHCP",
+      "version": "5.1.0",
+      "repository": "WOOWTECH/Woow_ha_dnsmasq_dhcp_add_on",
+      "source_sha": "c5978d62b53d573a7376fa41116e03718285ef8c",
+      "source_path": "dnsmasq-dhcp",
+      "config_file": "config.yaml",
+      "config_sha256": "sha256:2904c4f885c3f93db4b91cd29889a1b31d972586b3c890e42e9a494621081968",
+      "archive_sha256": "sha256:b60456417e5116330a532aae587ffe174a9955de1898b0bf668c1772ca0d397e",
+      "context_fingerprint": "sha256:a44e0c1a58d90cb7ee8599fcdc70c69f1a1f312b4bac1de17a1544e1e287367d",
+      "material_fingerprint": "sha256:76fe3d8a76c349f986683c5a73b71d1721dcfd360830b9d1696542fd520af526",
+      "architectures": [
+        "aarch64",
+        "amd64"
+      ],
+      "config": {
+        "description": "A DHCP/DNS server based on dnsmasq",
+        "url": "https://github.com/f18m/ha-addon-dnsmasq-dhcp-server/tree/main",
+        "version": "5.1.0",
+        "slug": "dnsmasq-dhcp",
+        "name": "Dnsmasq-DHCP",
+        "stage": "stable",
+        "arch": [
+          "aarch64",
+          "amd64"
+        ],
+        "host_network": true,
+        "image": "ghcr.io/woowtech/ha-mirror-ghcr-io-f18m-addon-dnsmasq-dhcp",
+        "init": false,
+        "ingress": true,
+        "ingress_port": 8100,
+        "panel_icon": "mdi:ip-network-outline",
+        "panel_title": "DHCP",
+        "options": {
+          "interfaces": [
+            "auto"
+          ],
+          "dhcp_server": {
+            "default_lease": "1h",
+            "address_reservation_lease": "1h",
+            "reset_dhcp_lease_database_on_reboot": false,
+            "forget_past_clients_after": "30d",
+            "log_requests": true,
+            "dns_domain": "lan",
+            "dns_servers": [
+              "0.0.0.0"
+            ],
+            "ntp_servers": [
+              "0.europe.pool.ntp.org",
+              "1.europe.pool.ntp.org",
+              "2.europe.pool.ntp.org"
+            ],
+            "dnsmasq_customizations": ""
+          },
+          "dhcp_pools": [
+            {
+              "interface": "auto",
+              "start": "192.168.1.50",
+              "end": "192.168.1.150",
+              "gateway": "192.168.1.254",
+              "netmask": "255.255.255.0"
+            }
+          ],
+          "dhcp_client_settings": [
+            {
+              "name": "important-server",
+              "description": "My important server",
+              "mac": "aa:bb:cc:dd:ee:ff",
+              "reserved_ip": "192.168.1.15",
+              "link": "http://{{ .ip }}/landing-page/for/this/host",
+              "tags": [
+                "server"
+              ],
+              "dns_aliases": [
+                "alias-for-this-device",
+                "another-alias.lan"
+              ]
+            },
+            {
+              "name": "work-laptop",
+              "description": "My laptop",
+              "mac": "dd:ee:aa:dd:bb:ee",
+              "reserved_ip": "",
+              "link": "http://{{ .ip }}/landing-page/for/this/host",
+              "tags": [
+                "laptop"
+              ],
+              "dns_aliases": [
+                "alias-for-this-friendly-device"
+              ]
+            }
+          ],
+          "dhcp_mac_address_blocklist": [
+            {
+              "mac": "aa:bb:cc:dd:ee:fa",
+              "description": "This is a blocked MAC address"
+            }
+          ],
+          "dns_server": {
+            "enable": true,
+            "port": 53,
+            "cache_size": 10000,
+            "log_requests": false,
+            "dns_domain": "lan",
+            "upstream_servers": [
+              "8.8.8.8",
+              "8.8.4.4"
+            ]
+          },
+          "dns_custom_hosts": [
+            {
+              "name": "my-custom-host",
+              "ipv4_address": "192.168.1.99",
+              "ipv6_address": ""
+            }
+          ],
+          "web_ui": {
+            "log_activity": false,
+            "port": 8976,
+            "refresh_interval_sec": 10,
+            "data_tables_num_rows": 20
+          }
+        },
+        "schema": {
+          "interfaces": [
+            "match(^([a-z][a-zA-Z0-9\\.:]*)$)"
+          ],
+          "dhcp_server": {
+            "default_lease": "str",
+            "address_reservation_lease": "str",
+            "reset_dhcp_lease_database_on_reboot": "bool",
+            "forget_past_clients_after": "str",
+            "log_requests": "bool",
+            "dns_servers": [
+              "str"
+            ],
+            "dns_domain": "str",
+            "ntp_servers": [
+              "str"
+            ],
+            "dnsmasq_customizations": "str"
+          },
+          "dhcp_pools": [
+            {
+              "interface": "match(^([a-z][a-zA-Z0-9\\.:]*)$)",
+              "start": "str",
+              "end": "str",
+              "gateway": "str",
+              "netmask": "str"
+            }
+          ],
+          "dhcp_client_settings": [
+            {
+              "name": "match(^[a-zA-Z0-9]([a-zA-Z0-9\\-]*[a-zA-Z0-9])?$)",
+              "description": "str?",
+              "mac": "match(^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$)",
+              "reserved_ip": "str?",
+              "link": "str?",
+              "tags": [
+                "str?"
+              ],
+              "dns_aliases": [
+                "str?"
+              ]
+            }
+          ],
+          "dhcp_mac_address_blocklist": [
+            {
+              "mac": "match(^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$)",
+              "description": "str?"
+            }
+          ],
+          "dns_server": {
+            "enable": "bool",
+            "port": "int",
+            "cache_size": "int",
+            "log_requests": "bool",
+            "dns_domain": "str",
+            "upstream_servers": [
+              "str"
+            ]
+          },
+          "dns_custom_hosts": [
+            {
+              "name": "match(^[a-zA-Z0-9]([a-zA-Z0-9\\-.]*[a-zA-Z0-9])?$)",
+              "ipv4_address": "str?",
+              "ipv6_address": "str?"
+            }
+          ],
+          "web_ui": {
+            "log_activity": "bool",
+            "port": "int",
+            "refresh_interval_sec": "int",
+            "data_tables_num_rows": "int"
+          }
+        },
+        "startup": "system",
+        "privileged": [
+          "NET_ADMIN"
+        ]
+      },
+      "source_build_supported": true,
+      "images": {
+        "aarch64": {
+          "reference": "ghcr.io/woowtech/ha-mirror-ghcr-io-f18m-addon-dnsmasq-dhcp:5.1.0",
+          "index_digest": "sha256:ed0000af59b550a3f176f30e5cfc8a23170ad82e213a10afcf6fdd4b19f4c996",
+          "digest": "sha256:2fdcceed13a7aaa52156439809bc11a28dacb2507979026e418fa24a93489b30",
+          "source_revision": null
+        },
+        "amd64": {
+          "reference": "ghcr.io/woowtech/ha-mirror-ghcr-io-f18m-addon-dnsmasq-dhcp:5.1.0",
+          "index_digest": "sha256:ed0000af59b550a3f176f30e5cfc8a23170ad82e213a10afcf6fdd4b19f4c996",
+          "digest": "sha256:365f3e625b8a58f27248dbdf1ec5d88099ea77a50c0135211e8d033b8f1b400f",
+          "source_revision": null
+        }
+      },
+      "delivery": "published-image",
+      "validation": "manifest+architecture-images+configured-CI",
+      "publisher_run_id": "37410166618",
+      "channel": "stable",
+      "store_path": "dnsmasq-dhcp"
+    },
+    "woow-emqx": {
+      "id": "woow-emqx",
+      "name": "Woow EMQX",
+      "version": "5.9.0",
+      "repository": "WOOWTECH/Woow_ha_emqx",
+      "source_sha": "70947402ddeb58e8f060e864b04fd789c02419da",
+      "source_path": "emqx",
+      "config_file": "config.yaml",
+      "config_sha256": "sha256:a210a902bda64a06e92bc14fa3c6a88fa844c8d861c14ee786b3470f4a2c49f2",
+      "archive_sha256": "sha256:f7ea46d636de0cd6c46c004cf1cb2871a930d0a942c027658bdb8c1440d13007",
+      "context_fingerprint": "sha256:00b4f59f86200b097b6cf5cfecb8719d061806d82e2a35f8a97a0d8d1c72bb69",
+      "material_fingerprint": "sha256:d93cb52682cb9df1efe65722b4a0a56d42b5ad8dd4dc85c65526df30a448d0f2",
+      "architectures": [
+        "aarch64",
+        "amd64"
+      ],
+      "config": {
+        "name": "Woow EMQX",
+        "version": "5.9.0",
+        "slug": "woow-emqx",
+        "description": "The most scalable open-source MQTT broker for IoT (WOOWTECH fork)",
+        "url": "https://github.com/WOOWTECH/Woow_ha_emqx",
+        "startup": "services",
+        "ingress": true,
+        "ingress_port": 18083,
+        "ingress_stream": true,
+        "init": false,
+        "panel_icon": "mdi:pipe",
+        "panel_title": "EMQX",
+        "arch": [
+          "aarch64",
+          "amd64"
+        ],
+        "map": [
+          "ssl",
+          "addon_config:rw"
+        ],
+        "options": {
+          "env_vars": [],
+          "ngrok_enabled": false,
+          "ngrok_authtoken": "",
+          "ngrok_tcp_addr": ""
+        },
+        "host_network": true,
+        "schema": {
+          "env_vars": [
+            {
+              "name": "match(^EMQX_([A-Z0-9_])+$)",
+              "value": "str"
+            }
+          ],
+          "ngrok_enabled": "bool",
+          "ngrok_authtoken": "password?",
+          "ngrok_tcp_addr": "str?"
+        }
+      },
+      "source_build_supported": true,
+      "images": {},
+      "delivery": "local-source-build",
+      "validation": "manifest+source-context+configured-CI (runtime build not certified)",
+      "publisher_run_id": "37410195634",
+      "channel": "stable",
+      "store_path": "emqx"
+    },
+    "frigate": {
+      "id": "frigate",
+      "name": "Frigate",
+      "version": "0.18.0",
+      "repository": "WOOWTECH/Woow_ha_frigate_add_on",
+      "source_sha": "886e9ad1a991e839e64ed4f5f185db817e174515",
+      "source_path": "frigate",
+      "config_file": "config.yaml",
+      "config_sha256": "sha256:828f5c454cbb99217257b7805619f7d18627512d742643374753395461d20fbf",
+      "archive_sha256": "sha256:cf015cee9a5023267022b0cdd636ab6a9e225073b67e616676488c9642ef651e",
+      "context_fingerprint": "sha256:ccb380de82e1a68f2063ea02b33c41568a2253ae2a35655b69171b03ad445777",
+      "material_fingerprint": "sha256:781ebd8ebd0ca816ffa9ac9bd92b4933803dce931cc3541b8f73cc55be623544",
+      "architectures": [
+        "amd64",
+        "aarch64"
+      ],
+      "config": {
+        "name": "Frigate",
+        "version": "0.18.0",
+        "breaking_versions": [
+          "0.18.0",
+          "0.17.0",
+          "0.16.0",
+          "0.15.0",
+          "0.14.0"
+        ],
+        "panel_icon": "mdi:cctv",
+        "panel_title": "Frigate",
+        "slug": "frigate",
+        "description": "NVR with realtime local object detection for IP cameras",
+        "url": "https://github.com/blakeblackshear/frigate",
+        "image": "ghcr.io/woowtech/ha-mirror-ghcr-io-blakeblackshear-frigate",
+        "startup": "application",
+        "boot": "auto",
+        "init": false,
+        "webui": "http://[HOST]:[PORT:5000]/",
+        "watchdog": "http://[HOST]:[PORT:5000]/",
+        "ingress": true,
+        "ingress_port": 5000,
+        "ingress_entry": "/",
+        "panel_admin": false,
+        "homeassistant_api": true,
+        "hassio_api": true,
+        "ports": {
+          "8555/tcp": 8555,
+          "8555/udp": 8555,
+          "8554/tcp": null,
+          "8971/tcp": null,
+          "5000/tcp": null,
+          "1984/tcp": null,
+          "1935/tcp": null
+        },
+        "ports_description": {
+          "8555/tcp": "WebRTC over tcp",
+          "8555/udp": "WebRTC over udp",
+          "8554/tcp": "RTSP Restream",
+          "8971/tcp": "Authenticated Web interface",
+          "5000/tcp": "Unauthenticated Web interface (not required for Home Assistant Ingress)",
+          "1984/tcp": "go2rtc API"
+        },
+        "host_network": false,
+        "devices": [
+          "/dev/dri/renderD128",
+          "/dev/apex_0",
+          "/dev/apex_1",
+          "/dev/apex_2",
+          "/dev/apex_3",
+          "/dev/dri/card0",
+          "/dev/vchiq",
+          "/dev/video10",
+          "/dev/video0",
+          "/dev/hailo0",
+          "/dev/hailo1"
+        ],
+        "usb": true,
+        "video": true,
+        "tmpfs": true,
+        "full_access": false,
+        "privileged": [
+          "PERFMON"
+        ],
+        "schema": {
+          "plus_api_key": "password?",
+          "go2rtc_allow_arbitrary_exec": "str?"
+        },
+        "services": [
+          "mqtt:want"
+        ],
+        "arch": [
+          "amd64",
+          "aarch64"
+        ],
+        "map": [
+          "media:rw",
+          "addon_config:rw",
+          "homeassistant_config:rw",
+          "ssl"
+        ]
+      },
+      "source_build_supported": false,
+      "images": {
+        "amd64": {
+          "reference": "ghcr.io/woowtech/ha-mirror-ghcr-io-blakeblackshear-frigate:0.18.0",
+          "index_digest": "sha256:9678a83a76e4730ac7d9ea7428370e32ae656d6b312aaad30d6c69f3fef14d35",
+          "digest": "sha256:b1f339cf08ae9148b0fac4295cf59f8e158455f6e72d29af32b773a3d8129851",
+          "source_revision": null
+        },
+        "aarch64": {
+          "reference": "ghcr.io/woowtech/ha-mirror-ghcr-io-blakeblackshear-frigate:0.18.0",
+          "index_digest": "sha256:9678a83a76e4730ac7d9ea7428370e32ae656d6b312aaad30d6c69f3fef14d35",
+          "digest": "sha256:258b5be305a38376fbd3c61020a2cdb61433174ca38088d53d9b5c377aa14b70",
+          "source_revision": null
+        }
+      },
+      "delivery": "published-image",
+      "validation": "manifest+architecture-images+configured-CI",
+      "publisher_run_id": "37410203014",
+      "channel": "stable",
+      "store_path": "frigate"
+    },
+    "woow-hermes": {
+      "id": "woow-hermes",
+      "name": "Woow Hermes Agent",
+      "version": "0.1.6",
+      "repository": "WOOWTECH/Woow_ha_hermes_add_on",
+      "source_sha": "38e6eafa20ab635e71195b7d08303c2267d77207",
+      "source_path": "hermes",
+      "config_file": "config.yaml",
+      "config_sha256": "sha256:47e7bc0cfd943a6b178abd207967bb780085c83680b679cfc04305e73688e348",
+      "archive_sha256": "sha256:d9a112e5d3310c7a1556f9e3c58a40c2ee00df5038838c51bbbf70d0ce99cddf",
+      "context_fingerprint": "sha256:9e38f19c1358a0c6716867b865dc7d5cc6b005ae895f26941d1fda671fcd8a1f",
+      "material_fingerprint": "sha256:91fe702f42047a0138c2fcb64b4b7d42b2763a25d3bd3a099f72048574329902",
+      "architectures": [
+        "amd64"
+      ],
+      "config": {
+        "name": "Woow Hermes Agent",
+        "version": "0.1.6",
+        "slug": "woow-hermes",
+        "description": "Hermes Agent (NousResearch) with the dashboard in the HA sidebar and on the LAN, plus the OpenAI-compatible API and webhooks for Cloudflare Tunnel",
+        "url": "https://github.com/WOOWTECH/Woow_ha_hermes_add_on",
+        "image": "ghcr.io/woowtech/woow-ha-hermes-{arch}",
+        "arch": [
+          "amd64"
+        ],
+        "init": false,
+        "startup": "application",
+        "boot": "auto",
+        "timeout": 60,
+        "hassio_api": true,
+        "ingress": true,
+        "ingress_port": 9120,
+        "ingress_stream": true,
+        "panel_icon": "mdi:robot-outline",
+        "panel_title": "Hermes",
+        "panel_admin": true,
+        "webui": "http://[HOST]:[PORT:9119]",
+        "watchdog": "tcp://[HOST]:[PORT:9119]",
+        "map": [
+          {
+            "type": "addon_config",
+            "path": "/opt/data",
+            "read_only": false
+          },
+          {
+            "type": "media",
+            "read_only": false
+          }
+        ],
+        "backup": "cold",
+        "backup_exclude": [
+          "**/logs",
+          "**/lazy-packages",
+          "**/.cache",
+          "**/.npm"
+        ],
+        "ports": {
+          "8642/tcp": 8642,
+          "9119/tcp": 9119,
+          "8644/tcp": 8644
+        },
+        "ports_description": {
+          "8642/tcp": "Gateway (OpenAI-compatible API)",
+          "9119/tcp": "Dashboard and chat terminal",
+          "8644/tcp": "Webhook receiver"
+        },
+        "options": {
+          "dashboard_username": "admin",
+          "env_vars": []
+        },
+        "schema": {
+          "dashboard_username": "match(^[A-Za-z0-9_.@-]{1,64}$)",
+          "dashboard_password": "password?",
+          "api_server_key": "password?",
+          "webhook_secret": "password?",
+          "public_url": "url?",
+          "minimax_api_key": "password?",
+          "openrouter_api_key": "password?",
+          "github_token": "password?",
+          "env_vars": [
+            {
+              "key": "match(^[A-Z][A-Z0-9_]*$)",
+              "value": "str"
+            }
+          ]
+        }
+      },
+      "source_build_supported": true,
+      "images": {
+        "amd64": {
+          "reference": "ghcr.io/woowtech/woow-ha-hermes-amd64:0.1.6",
+          "index_digest": "sha256:5071be6b86a5cccd42090ece55877dc4c3e98c40183d6cf13df4f55335194de5",
+          "digest": "sha256:c49fc76aa016042c3c5cb95b07f133392f8572fb5316f198ccb6fe8c25f9e94b",
+          "source_revision": "29112bef099274229cadff79cdff7bf7b99c4b77"
+        }
+      },
+      "delivery": "published-image",
+      "validation": "manifest+architecture-images+configured-CI",
+      "publisher_run_id": "37410231817",
+      "channel": "stable",
+      "store_path": "woow-hermes"
+    },
+    "woow-immich": {
+      "id": "woow-immich",
+      "name": "Woow Immich",
+      "version": "2.5.7",
+      "repository": "WOOWTECH/Woow_ha_immich",
+      "source_sha": "3378bcd2fe9240ad9d95c33da0dd42d08bc6c450",
+      "source_path": "woow-immich",
+      "config_file": "config.yaml",
+      "config_sha256": "sha256:69e898c8daf1861728e1e3cec1e49379ba6ac7e3bfa9f6d1fb14de5880ec1362",
+      "archive_sha256": "sha256:6c5a1d7a5cc2f28c281a5e1a4c4854d7cc958f772014bbd9613b82bf2a746f64",
+      "context_fingerprint": "sha256:f07c217f95825ee7e2fa1dfb6585f9930dc0647f3efadb7729ec39e2e6b7081b",
+      "material_fingerprint": "sha256:7cb90bc365964f814dc7a0ae7d07feab045f0f24a2d14d3a96fb3fc8d786ed27",
+      "architectures": [
+        "aarch64",
+        "amd64"
+      ],
+      "config": {
+        "name": "Woow Immich",
+        "version": "2.5.7",
+        "slug": "woow-immich",
+        "description": "High performance self-hosted photo and video management solution (HTTP for LAN, use Cloudflare Tunnel for HTTPS)",
+        "url": "https://github.com/WOOWTECH/Woow_ha_immich",
+        "webui": "http://[HOST]:[PORT:8080]",
+        "arch": [
+          "aarch64",
+          "amd64"
+        ],
+        "init": false,
+        "map": [
+          {
+            "type": "addon_config",
+            "read_only": false
+          },
+          {
+            "type": "share",
+            "read_only": false
+          },
+          {
+            "type": "media",
+            "read_only": false
+          }
+        ],
+        "backup": "cold",
+        "backup_exclude": [
+          "**/cache",
+          "**/logs"
+        ],
+        "tmpfs": true,
+        "video": true,
+        "usb": true,
+        "udev": true,
+        "privileged": [
+          "SYS_ADMIN",
+          "DAC_READ_SEARCH"
+        ],
+        "devices": [
+          "/dev/ttyUSB0",
+          "/dev/kfd",
+          "/dev/dri",
+          "/dev/dxg",
+          "/dev/dri/renderD128",
+          "/dev/vchiq",
+          "/dev/video0",
+          "/dev/video1",
+          "/dev/video10",
+          "/dev/mmcblk",
+          "/dev/fuse",
+          "/dev/nvme",
+          "/dev/nvme0",
+          "/dev/nvme0n1",
+          "/dev/nvme0n1p1",
+          "/dev/nvme0n1p2",
+          "/dev/nvme0n1p3",
+          "/dev/nvme1",
+          "/dev/nvme1n1",
+          "/dev/nvme1n1p1",
+          "/dev/nvme1n1p2",
+          "/dev/nvme1n1p3",
+          "/dev/nvme2",
+          "/dev/nvme2n1",
+          "/dev/nvme2n1p1",
+          "/dev/nvme2n1p2",
+          "/dev/nvme2n3p3",
+          "/dev/nvme3",
+          "/dev/nvme3n1",
+          "/dev/nvme3n1p1",
+          "/dev/nvme3n1p2",
+          "/dev/nvme3n3p3",
+          "/dev/nvme4",
+          "/dev/nvme4n1",
+          "/dev/nvme4n1p1",
+          "/dev/nvme4n1p2",
+          "/dev/nvme4n3p3",
+          "/dev/sda",
+          "/dev/sda1",
+          "/dev/sda2",
+          "/dev/sda3",
+          "/dev/sda4",
+          "/dev/sdb",
+          "/dev/sdb1",
+          "/dev/sdb2",
+          "/dev/sdb3",
+          "/dev/sdb4",
+          "/dev/sdc",
+          "/dev/sdc1",
+          "/dev/sdc2",
+          "/dev/sdc3",
+          "/dev/sdc4",
+          "/dev/sdd",
+          "/dev/sdd1",
+          "/dev/sdd2",
+          "/dev/sdd3",
+          "/dev/sdd4",
+          "/dev/sde",
+          "/dev/sde1",
+          "/dev/sde2",
+          "/dev/sde3",
+          "/dev/sde4",
+          "/dev/sdf",
+          "/dev/sdf1",
+          "/dev/sdf2",
+          "/dev/sdf3",
+          "/dev/sdf4",
+          "/dev/vda",
+          "/dev/vda1",
+          "/dev/vda2",
+          "/dev/vda3",
+          "/dev/vda4",
+          "/dev/vdb",
+          "/dev/vdb1",
+          "/dev/vdb2",
+          "/dev/vdb3",
+          "/dev/vdb4",
+          "/dev/vdc",
+          "/dev/vdc1",
+          "/dev/vdc2",
+          "/dev/vdc3",
+          "/dev/vdc4",
+          "/dev/vdd",
+          "/dev/vdd1",
+          "/dev/vdd2",
+          "/dev/vdd3",
+          "/dev/vdd4",
+          "/dev/vde",
+          "/dev/vde1",
+          "/dev/vde2",
+          "/dev/vde3",
+          "/dev/vde4",
+          "/dev/vdf",
+          "/dev/vdf1",
+          "/dev/vdf2",
+          "/dev/vdf3",
+          "/dev/vdf4"
+        ],
+        "schema": {
+          "TZ": "str?",
+          "IMMICH_LOG_LEVEL": "list(verbose|debug|log|warn|error)",
+          "DB_STORAGE_TYPE": "list(SSD|HDD)",
+          "MACHINE_LEARNING_WORKERS": "int(0,)?",
+          "MACHINE_LEARNING_MODEL_TTL": "int(0,)?",
+          "MACHINE_LEARNING_WORKER_TIMEOUT": "int(0,)?",
+          "MACHINE_LEARNING_PRELOAD__CLIP__TEXTUAL": "str?",
+          "MACHINE_LEARNING_PRELOAD__CLIP__VISUAL": "str?",
+          "MACHINE_LEARNING_PRELOAD__FACIAL_RECOGNITION__RECOGNITION": "str?",
+          "MACHINE_LEARNING_PRELOAD__FACIAL_RECOGNITION__DETECTION": "str?",
+          "IMMICH_TRUSTED_PROXIES": "str?",
+          "IMMICH_PROCESS_INVALID_IMAGES": "bool?",
+          "storage_mounts": [
+            {
+              "path": "str",
+              "type": "list(local|smb|cifs|nfs)",
+              "mount": "str",
+              "options": "str?",
+              "auto_format": "bool?",
+              "erase": "bool?",
+              "username": "str?",
+              "password": "password?"
+            }
+          ],
+          "IMMICH_MEDIA_LOCATION": "match(^/config/library$|^/(media|share|mnt)(/.*)?$)",
+          "PUID": "int(0,)",
+          "PGID": "int(0,)",
+          "clean_redis": "bool?",
+          "APPLY_PERMISSIONS": "bool",
+          "backup_location": "str?",
+          "restore_backup": "bool",
+          "delete_db": "bool?",
+          "env_vars": [
+            {
+              "key": "match(^[A-Za-z0-9_-]+$)",
+              "value": "str"
+            }
+          ]
+        },
+        "options": {
+          "TZ": "Etc/UTC",
+          "IMMICH_LOG_LEVEL": "log",
+          "DB_STORAGE_TYPE": "HDD",
+          "MACHINE_LEARNING_MODEL_TTL": 300,
+          "MACHINE_LEARNING_WORKER_TIMEOUT": 300,
+          "IMMICH_TRUSTED_PROXIES": "172.30.32.0/23",
+          "storage_mounts": [],
+          "IMMICH_MEDIA_LOCATION": "/media/immich",
+          "PUID": 0,
+          "PGID": 0,
+          "APPLY_PERMISSIONS": false,
+          "restore_backup": false,
+          "env_vars": []
+        },
+        "ports": {
+          "8080/tcp": 8080,
+          "5432/tcp": null,
+          "6379/tcp": null
+        },
+        "ports_description": {
+          "8080/tcp": "Immich",
+          "5432/tcp": "Postgresql DB",
+          "6379/tcp": "Redis DB"
+        }
+      },
+      "source_build_supported": true,
+      "images": {},
+      "delivery": "local-source-build",
+      "validation": "manifest+source-context+configured-CI (runtime build not certified)",
+      "publisher_run_id": "37410249410",
+      "channel": "stable",
+      "store_path": "woow-immich"
+    },
+    "jellyfin": {
+      "id": "jellyfin",
+      "name": "Jellyfin",
+      "version": "0.2.1",
+      "repository": "WOOWTECH/Woow_ha_jellyfin_add_on",
+      "source_sha": "b089bdf4276a6016100b3745a57e152b5d19e34a",
+      "source_path": "jellyfin",
+      "config_file": "config.yaml",
+      "config_sha256": "sha256:f8f6019e21254320e95da37ee98d810d86bf6aec7658ba07816eca2c907cb5c7",
+      "archive_sha256": "sha256:275a23a1a9afc50e5f7c916645a616c8b04c603c9bfb550a07919689c1896e57",
+      "context_fingerprint": "sha256:4f261decef2203495bac44be91558a51e09ae96f8255a4b9dba74af9fd08ac52",
+      "material_fingerprint": "sha256:90d04d90549506b6cc9f15679c5e032a640c9aa9248d37b7a1a5d256be4cfeea",
+      "architectures": [
+        "aarch64",
+        "amd64"
+      ],
+      "config": {
+        "name": "Jellyfin",
+        "version": "0.2.1",
+        "slug": "jellyfin",
+        "description": "The free software media system for your movies, shows and music",
+        "url": "https://github.com/hassio-addons/app-jellyfin",
+        "ingress": true,
+        "ingress_stream": true,
+        "panel_icon": "mdi:jellyfish",
+        "init": false,
+        "arch": [
+          "aarch64",
+          "amd64"
+        ],
+        "backup": "cold",
+        "backup_exclude": [
+          "**/cache/**",
+          "**/log/**"
+        ],
+        "video": true,
+        "map": [
+          {
+            "type": "addon_config",
+            "read_only": false
+          },
+          {
+            "type": "media",
+            "read_only": false
+          },
+          {
+            "type": "share",
+            "read_only": false
+          },
+          {
+            "type": "ssl",
+            "read_only": true
+          }
+        ],
+        "ports": {
+          "8096/tcp": 8096,
+          "8920/tcp": null,
+          "7359/udp": null
+        },
+        "ports_description": {
+          "8096/tcp": "Web interface & API, and where the Jellyfin apps connect",
+          "8920/tcp": "The same over HTTPS, once `ssl` is turned on",
+          "7359/udp": "Server discovery, so the apps can find this server themselves"
+        },
+        "options": {
+          "ssl": false,
+          "certfile": "fullchain.pem",
+          "keyfile": "privkey.pem"
+        },
+        "schema": {
+          "log_level": "list(trace|debug|info|notice|warning|error|fatal)?",
+          "ssl": "bool",
+          "certfile": "str",
+          "keyfile": "str"
+        },
+        "image": "ghcr.io/woowtech/ha-mirror-ghcr-io-hassio-addons-jellyfin"
+      },
+      "source_build_supported": false,
+      "images": {
+        "aarch64": {
+          "reference": "ghcr.io/woowtech/ha-mirror-ghcr-io-hassio-addons-jellyfin:0.2.1",
+          "index_digest": "sha256:755450bc3aa9d75eb3144af7c164cc8a800bee87bfcbfa980b2176ecdfbca424",
+          "digest": "sha256:628f45dcc86468b187db6a7498e22a99ad25835ef2b7eb19ccc0ee5411158a95",
+          "source_revision": "a4a71176081125e7f341baf1f18d1a389df9d8e1"
+        },
+        "amd64": {
+          "reference": "ghcr.io/woowtech/ha-mirror-ghcr-io-hassio-addons-jellyfin:0.2.1",
+          "index_digest": "sha256:755450bc3aa9d75eb3144af7c164cc8a800bee87bfcbfa980b2176ecdfbca424",
+          "digest": "sha256:51d52be86f9a886376154d905fc63f605e54d9af7738465e69cf9e76000deed0",
+          "source_revision": "a4a71176081125e7f341baf1f18d1a389df9d8e1"
+        }
+      },
+      "delivery": "published-image",
+      "validation": "manifest+architecture-images+configured-CI",
+      "publisher_run_id": "37410273438",
+      "channel": "stable",
+      "store_path": "jellyfin"
+    },
+    "knxd": {
+      "id": "knxd",
+      "name": "KNXD daemon",
+      "version": "0.6.1",
+      "repository": "WOOWTECH/Woow_ha_knxd_add_on",
+      "source_sha": "9a449b818c4db9636799581c3426c9c4bc963ec1",
+      "source_path": "knxd",
+      "config_file": "config.yaml",
+      "config_sha256": "sha256:c1b6536fd6fa71cc351335a0c0ef55f787a74448f3e698daf92d7ca690f25cc1",
+      "archive_sha256": "sha256:433eb1b326874c74b960c131947cbfb211bf13b4cf03ded5f71fd19ae753fd0d",
+      "context_fingerprint": "sha256:3cc49f57990d374281875d3b0a209f8e4c89d2ed4fa1d64199b64e0988e8af8e",
+      "material_fingerprint": "sha256:e01f1410f051a7ac67beb418365bcfb970b6b83c3c00c3586265f8a85d5e42a0",
+      "architectures": [
+        "armhf",
+        "armv7",
+        "aarch64",
+        "amd64",
+        "i386"
+      ],
+      "config": {
+        "name": "KNXD daemon",
+        "version": "0.6.1",
+        "slug": "knxd",
+        "description": "KNXD daemon you can use to create a KNX/IP gateway via TPUART or USB bus adapters",
+        "url": "https://github.com/da-anda/hass-io-addons/tree/main/knxd",
+        "arch": [
+          "armhf",
+          "armv7",
+          "aarch64",
+          "amd64",
+          "i386"
+        ],
+        "init": false,
+        "startup": "services",
+        "host_network": true,
+        "privileged": [
+          "SYS_MODULE",
+          "SYS_RAWIO"
+        ],
+        "options": {
+          "address": "0.0.1",
+          "client_address": "0.0.2:8",
+          "interface": "usb",
+          "log_error_level": "warning",
+          "usb_filters": "single",
+          "dest_port": "99"
+        },
+        "schema": {
+          "address": "match(^\\d+\\.\\d+.\\d+$)",
+          "client_address": "match(^\\d+\\.\\d+.\\d+\\:\\d+$)",
+          "interface": "list(tpuart|tpuart-ip|usb|ft12|ft12cemi|ncn5120|ncn5120-ip|ipt|dummy)",
+          "device": "device?",
+          "log_error_level": "list(warning|error|fatal|note|info|debug)",
+          "usb_filters": "str?",
+          "ip_address": "str?",
+          "dest_port": "port?",
+          "custom_config": "str?"
+        },
+        "watchdog": "tcp://[HOST]:[PORT:6720]",
+        "ports": {
+          "6720/tcp": 6720,
+          "3671/udp": 3671
+        },
+        "ports_description": {
+          "6720/tcp": "Required by knx interface and being able to access the KNX bus via ETS",
+          "3671/udp": "Required by knx interface and being able to access the KNX bus via ETS"
+        },
+        "image": "ghcr.io/da-anda/hass-io-addons-{arch}-addon-knxd",
+        "uart": true,
+        "usb": true,
+        "map": [
+          {
+            "type": "addon_config",
+            "read_only": false
+          }
+        ]
+      },
+      "source_build_supported": true,
+      "images": {
+        "armhf": {
+          "reference": "ghcr.io/da-anda/hass-io-addons-armhf-addon-knxd:0.6.1",
+          "index_digest": "sha256:21bd7c798ac769c859205966918c4e84b6f1585faf62dc86eda3077240d9898c",
+          "digest": "sha256:21bd7c798ac769c859205966918c4e84b6f1585faf62dc86eda3077240d9898c",
+          "source_revision": null
+        },
+        "armv7": {
+          "reference": "ghcr.io/da-anda/hass-io-addons-armv7-addon-knxd:0.6.1",
+          "index_digest": "sha256:a436233cd8d7f238dc8bbbaddb34492259d0744c0b76bd48029ea1d1eeb14d04",
+          "digest": "sha256:a436233cd8d7f238dc8bbbaddb34492259d0744c0b76bd48029ea1d1eeb14d04",
+          "source_revision": null
+        },
+        "aarch64": {
+          "reference": "ghcr.io/da-anda/hass-io-addons-aarch64-addon-knxd:0.6.1",
+          "index_digest": "sha256:ad1b3df2b0d22924429fba888f33e55e8e80e31e0907f5d99aa448274107aa5d",
+          "digest": "sha256:ad1b3df2b0d22924429fba888f33e55e8e80e31e0907f5d99aa448274107aa5d",
+          "source_revision": null
+        },
+        "amd64": {
+          "reference": "ghcr.io/da-anda/hass-io-addons-amd64-addon-knxd:0.6.1",
+          "index_digest": "sha256:9dc71293ea19a98bf7384c5340dba76692eae32177b3209f525369410e8c1d11",
+          "digest": "sha256:9dc71293ea19a98bf7384c5340dba76692eae32177b3209f525369410e8c1d11",
+          "source_revision": null
+        },
+        "i386": {
+          "reference": "ghcr.io/da-anda/hass-io-addons-i386-addon-knxd:0.6.1",
+          "index_digest": "sha256:5e179cd9debb3853edd5636b38c57a22b211a2e29e5bf311a53b7a97471f7e7b",
+          "digest": "sha256:5e179cd9debb3853edd5636b38c57a22b211a2e29e5bf311a53b7a97471f7e7b",
+          "source_revision": null
+        }
+      },
+      "delivery": "published-image",
+      "validation": "manifest+architecture-images+configured-CI",
+      "publisher_run_id": "37410293299",
+      "channel": "stable",
+      "store_path": "knxd"
+    },
+    "hamh": {
+      "id": "hamh",
+      "name": "Home-Assistant-Matter-Hub",
+      "version": "2.0.58",
+      "repository": "WOOWTECH/Woow_ha_matter_hub_add_on",
+      "source_sha": "283418b3ac41028a429625b096a7e83b5af3b11a",
+      "source_path": "hamh",
+      "config_file": "config.yaml",
+      "config_sha256": "sha256:1b3fd62e85f97b026f4f697526172fc8ce64a1240fba0c4922aa6a3821b4858e",
+      "archive_sha256": "sha256:ad97c256edf2083e78814ca0c70a06a87f7145d97dcbc7c8f25506317977b270",
+      "context_fingerprint": "sha256:adafc81c5e842f5385ba23b88b904d879f77339e91943722bf81223400834430",
+      "material_fingerprint": "sha256:b258da2aeccbb97e0582c5f18f56503d2c939aa270f17bf90b698a116d0c5bb4",
+      "architectures": [
+        "aarch64",
+        "amd64"
+      ],
+      "config": {
+        "version": "2.0.58",
+        "image": "ghcr.io/woowtech/ha-mirror-ghcr-io-riddix-home-assistant-matter-hub-addon",
+        "slug": "hamh",
+        "name": "Home-Assistant-Matter-Hub",
+        "description": "Publish your entities from Home Assistant to any Matter-compatible controller like Alexa, Apple Home or Google Home.",
+        "url": "https://github.com/riddix/home-assistant-matter-hub",
+        "panel_icon": "mdi:hub",
+        "panel_title": "Matter Hub",
+        "homeassistant": "2024.1.0",
+        "homeassistant_api": true,
+        "host_network": true,
+        "init": false,
+        "arch": [
+          "aarch64",
+          "amd64"
+        ],
+        "ingress": true,
+        "ingress_port": 0,
+        "map": [
+          "addon_config:rw"
+        ],
+        "options": {
+          "app_log_level": "info",
+          "disable_log_colors": false,
+          "mdns_network_interface": "",
+          "mdns_strip_global_ipv6": false,
+          "heap_size_mb": 0
+        },
+        "schema": {
+          "app_log_level": "list(silly|debug|info|notice|warn|error|fatal)",
+          "disable_log_colors": "bool",
+          "mdns_network_interface": "str?",
+          "mdns_strip_global_ipv6": "bool",
+          "heap_size_mb": "int(0,8192)"
+        }
+      },
+      "source_build_supported": false,
+      "images": {
+        "aarch64": {
+          "reference": "ghcr.io/woowtech/ha-mirror-ghcr-io-riddix-home-assistant-matter-hub-addon:2.0.58",
+          "index_digest": "sha256:0beefd476309671e115372e8e89e3f98833dde7dbe280d32bebea2b005c42106",
+          "digest": "sha256:796ae326204e350e20115ffb30fe7046d8881cac60dca641da9adacb14167a34",
+          "source_revision": "bddd6646b846dc44b2ceb744d5a0229191d7ecef"
+        },
+        "amd64": {
+          "reference": "ghcr.io/woowtech/ha-mirror-ghcr-io-riddix-home-assistant-matter-hub-addon:2.0.58",
+          "index_digest": "sha256:0beefd476309671e115372e8e89e3f98833dde7dbe280d32bebea2b005c42106",
+          "digest": "sha256:9ba116d08d17e1871a7bc27561f0d215376d7aa70de4bb87c070ee2e0710b309",
+          "source_revision": "bddd6646b846dc44b2ceb744d5a0229191d7ecef"
+        }
+      },
+      "delivery": "published-image",
+      "validation": "manifest+architecture-images+configured-CI",
+      "publisher_run_id": "37410306640",
+      "channel": "stable",
+      "store_path": "hamh"
+    },
+    "local_audio": {
+      "id": "local_audio",
+      "name": "Local Audio",
+      "version": "0.1.13",
+      "repository": "WOOWTECH/Woow_ha_music_assistant_add_on",
+      "source_sha": "21ca94aeca16f46d31101ad543096763644ea1f7",
+      "source_path": "local_audio",
+      "config_file": "config.yaml",
+      "config_sha256": "sha256:f90da1bf7ed668de6dee0b347ec400e98c6f0742f598213e1d90829eae02dfc8",
+      "archive_sha256": "sha256:f651b23ed159fc9988ebed1dda0e3c64d9cbc047bed1468c725f77b8c0d0f350",
+      "context_fingerprint": "sha256:8ffd883cb93858fabcc3b18dfda9fce66b597ad9eb84c11f4d076813943bd0b2",
+      "material_fingerprint": "sha256:bc7f6d0ced6caac2b1116835557dc5462ae87247050aa697dca14120a277116f",
+      "architectures": [
+        "amd64",
+        "aarch64"
+      ],
+      "config": {
+        "name": "Local Audio",
+        "version": "0.1.13",
+        "slug": "local_audio",
+        "description": "Turns this Home Assistant system into a synchronized Sendspin player for Music Assistant, playing to speakers or a USB DAC attached to it.",
+        "url": "https://github.com/music-assistant/local-audio-addon",
+        "image": "ghcr.io/woowtech/ha-mirror-ghcr-io-music-assistant-local-audio-addon",
+        "arch": [
+          "amd64",
+          "aarch64"
+        ],
+        "stage": "experimental",
+        "startup": "services",
+        "init": false,
+        "host_network": true,
+        "audio": true,
+        "options": {
+          "name": "",
+          "log_level": "info"
+        },
+        "schema": {
+          "name": "str?",
+          "log_level": "list(debug|info|warning|error)",
+          "server": "str?",
+          "buffer_ms": "int(10,2000)?",
+          "hook_start": "str?",
+          "hook_stop": "str?"
+        }
+      },
+      "source_build_supported": false,
+      "images": {
+        "amd64": {
+          "reference": "ghcr.io/woowtech/ha-mirror-ghcr-io-music-assistant-local-audio-addon:0.1.13",
+          "index_digest": "sha256:0af919b86c7e3bdc9333efea6454dd566ec18d3bf378935b9a55cd369cfda868",
+          "digest": "sha256:a21ed48816d5e14849cc3ac583e34d6965aa4036a7a05d3129e939a082ed5928",
+          "source_revision": null
+        },
+        "aarch64": {
+          "reference": "ghcr.io/woowtech/ha-mirror-ghcr-io-music-assistant-local-audio-addon:0.1.13",
+          "index_digest": "sha256:0af919b86c7e3bdc9333efea6454dd566ec18d3bf378935b9a55cd369cfda868",
+          "digest": "sha256:0e6185057e4e94bec2212ec47e44e93493b4ed1fbcfdaa2c7b9203ceacffa6d0",
+          "source_revision": null
+        }
+      },
+      "delivery": "published-image",
+      "validation": "manifest+architecture-images+configured-CI",
+      "publisher_run_id": "37410335353",
+      "channel": "stable",
+      "store_path": "local_audio"
+    },
+    "music_assistant": {
+      "id": "music_assistant",
+      "name": "Music Assistant",
+      "version": "2.10.5",
+      "repository": "WOOWTECH/Woow_ha_music_assistant_add_on",
+      "source_sha": "21ca94aeca16f46d31101ad543096763644ea1f7",
+      "source_path": "music_assistant",
+      "config_file": "config.yaml",
+      "config_sha256": "sha256:a0e7609e7c616439f3bf7f3b55635bb3fb930761e346388447f949c3ad6bc441",
+      "archive_sha256": "sha256:f651b23ed159fc9988ebed1dda0e3c64d9cbc047bed1468c725f77b8c0d0f350",
+      "context_fingerprint": "sha256:36ac84a9af86283e17720f8af1086c49c523f676278a29a807abd46f5bac5836",
+      "material_fingerprint": "sha256:c06157da4a0df04775e810e963b37bfc4d4530a07749c6519f8d2ba607da186a",
+      "architectures": [
+        "amd64",
+        "aarch64"
+      ],
+      "config": {
+        "name": "Music Assistant",
+        "version": "2.10.5",
+        "slug": "music_assistant",
+        "description": "The Music Assistant server is a free, opensource Media library manager that connects to your streaming services and a wide range of connected speakers.",
+        "url": "https://music-assistant.io",
+        "arch": [
+          "amd64",
+          "aarch64"
+        ],
+        "homeassistant_api": true,
+        "hassio_api": true,
+        "hassio_role": "manager",
+        "discovery": [
+          "music_assistant"
+        ],
+        "auth_api": true,
+        "host_network": true,
+        "ingress": true,
+        "ingress_port": 8094,
+        "audio": true,
+        "panel_icon": "mdi:music-assistant",
+        "panel_title": "Music Assistant",
+        "panel_admin": false,
+        "uart": false,
+        "apparmor": true,
+        "map": [
+          "media:rw",
+          "ssl:ro"
+        ],
+        "init": false,
+        "backup_exclude": [
+          "cache.db",
+          "collage_images/*",
+          ".cache/*"
+        ],
+        "stage": "stable",
+        "image": "ghcr.io/woowtech/ha-mirror-ghcr-io-music-assistant-server",
+        "tmpfs": true,
+        "options": {
+          "log_level": "info",
+          "safe_mode": false
+        },
+        "schema": {
+          "log_level": "list(debug|info|warning|error)",
+          "safe_mode": "bool"
+        },
+        "privileged": [
+          "SYS_ADMIN",
+          "DAC_READ_SEARCH"
+        ]
+      },
+      "source_build_supported": false,
+      "images": {
+        "amd64": {
+          "reference": "ghcr.io/woowtech/ha-mirror-ghcr-io-music-assistant-server:2.10.5",
+          "index_digest": "sha256:28023f8c0d96ca2496391f3218a6d70d7ef3ba84db846b3a3f3cd9ce7ef8aedc",
+          "digest": "sha256:8bd47e7d7915cfd9b5a679fc39d88f84f18e25b5b686b3af54b1fb46faec6b39",
+          "source_revision": "452e23745588f01e734298e0a10e556fc140db45"
+        },
+        "aarch64": {
+          "reference": "ghcr.io/woowtech/ha-mirror-ghcr-io-music-assistant-server:2.10.5",
+          "index_digest": "sha256:28023f8c0d96ca2496391f3218a6d70d7ef3ba84db846b3a3f3cd9ce7ef8aedc",
+          "digest": "sha256:6102026d481c70d2a2fea1a154d4d1890403ee3e4d61d0248f036d62be36d80b",
+          "source_revision": "452e23745588f01e734298e0a10e556fc140db45"
+        }
+      },
+      "delivery": "published-image",
+      "validation": "manifest+architecture-images+configured-CI",
+      "publisher_run_id": "37410335353",
+      "channel": "stable",
+      "store_path": "music_assistant"
+    },
+    "netease_cloud_music_api": {
+      "id": "netease_cloud_music_api",
+      "name": "NetEase Cloud Music API",
+      "version": "0.1.1",
+      "repository": "WOOWTECH/Woow_ha_music_assistant_add_on",
+      "source_sha": "21ca94aeca16f46d31101ad543096763644ea1f7",
+      "source_path": "netease_cloud_music_api",
+      "config_file": "config.yaml",
+      "config_sha256": "sha256:5e05ab5207e0f6b7dc6aec761d428ef4cd7d188a1f58f4a21a9fc374a1406f43",
+      "archive_sha256": "sha256:f651b23ed159fc9988ebed1dda0e3c64d9cbc047bed1468c725f77b8c0d0f350",
+      "context_fingerprint": "sha256:8cd572a3dfa5147dbdb309e8bf1bb83c0880fef5bd46c8050e859d67d2c0a2e3",
+      "material_fingerprint": "sha256:15f096d3b0fee469a144b3f4a81fd83224fba6134a28faeaf55d1b30ca01460c",
+      "architectures": [
+        "aarch64",
+        "amd64"
+      ],
+      "config": {
+        "name": "NetEase Cloud Music API",
+        "version": "0.1.1",
+        "slug": "netease_cloud_music_api",
+        "description": "NetEase Cloud Music API service for Music Assistant.",
+        "url": "https://github.com/NeteaseCloudMusicApiEnhanced/api-enhanced",
+        "startup": "services",
+        "boot": "auto",
+        "init": false,
+        "arch": [
+          "aarch64",
+          "amd64"
+        ],
+        "ports": {
+          "3000/tcp": 3000
+        },
+        "ports_description": {
+          "3000/tcp": "NetEase API HTTP"
+        }
+      },
+      "source_build_supported": true,
+      "images": {},
+      "delivery": "local-source-build",
+      "validation": "manifest+source-context+configured-CI (runtime build not certified)",
+      "publisher_run_id": "37410335353",
+      "channel": "stable",
+      "store_path": "netease_cloud_music_api"
+    },
+    "ytm_po_token_generator": {
+      "id": "ytm_po_token_generator",
+      "name": "YT Music PO Token Generator",
+      "version": "2.0.1",
+      "repository": "WOOWTECH/Woow_ha_music_assistant_add_on",
+      "source_sha": "21ca94aeca16f46d31101ad543096763644ea1f7",
+      "source_path": "ytm_po_token_generator",
+      "config_file": "config.yaml",
+      "config_sha256": "sha256:02bbbde560a3c14ce8cd96c1b860beac4d748e0e8b2d7623d7681d9805187a10",
+      "archive_sha256": "sha256:f651b23ed159fc9988ebed1dda0e3c64d9cbc047bed1468c725f77b8c0d0f350",
+      "context_fingerprint": "sha256:3b2e9c58e2ba3dea291702eae2c54378e565c3efe02db61f2aa2e36f65071dbc",
+      "material_fingerprint": "sha256:3b2e9c58e2ba3dea291702eae2c54378e565c3efe02db61f2aa2e36f65071dbc",
+      "architectures": [
+        "amd64",
+        "aarch64"
+      ],
+      "config": {
+        "name": "YT Music PO Token Generator",
+        "version": "2.0.1",
+        "slug": "ytm_po_token_generator",
+        "description": "An HA App wrapper for the BgUtils POT Provider that can generate PO tokens for Youtube Music.",
+        "url": "https://github.com/Brainicism/bgutil-ytdlp-pot-provider",
+        "image": "ghcr.io/woowtech/ha-mirror-brainicism-bgutil-ytdlp-pot-provider",
+        "arch": [
+          "amd64",
+          "aarch64"
+        ],
+        "ports": {
+          "4416/tcp": 4416
+        }
+      },
+      "source_build_supported": false,
+      "images": {
+        "amd64": {
+          "reference": "ghcr.io/woowtech/ha-mirror-brainicism-bgutil-ytdlp-pot-provider:2.0.1",
+          "index_digest": "sha256:96d95372bbf04db68e29329ba05a20bd406844fa3c5ac43315fe476870c6084d",
+          "digest": "sha256:59170817f6dba3410a4961e26055f123c0798e34f1b6127da4a33ef6bf91fa6e",
+          "source_revision": "2df09aeaa71a4eec1e31901e84fbddbf0c7c54a9"
+        },
+        "aarch64": {
+          "reference": "ghcr.io/woowtech/ha-mirror-brainicism-bgutil-ytdlp-pot-provider:2.0.1",
+          "index_digest": "sha256:96d95372bbf04db68e29329ba05a20bd406844fa3c5ac43315fe476870c6084d",
+          "digest": "sha256:104eec534338376ea6d1b394aa3456d4176f51046dc885fc7e452b54cd22e7ef",
+          "source_revision": "2df09aeaa71a4eec1e31901e84fbddbf0c7c54a9"
+        }
+      },
+      "delivery": "published-image",
+      "validation": "manifest+architecture-images+configured-CI",
+      "publisher_run_id": "37410335353",
+      "channel": "stable",
+      "store_path": "ytm_po_token_generator"
+    },
+    "woow-n8n": {
+      "id": "woow-n8n",
+      "name": "Woow n8n",
+      "version": "2.12.17",
+      "repository": "WOOWTECH/Woow_ha_n8n",
+      "source_sha": "e8723ee9759e556535ae3b8bf38b98abfc13e1b4",
+      "source_path": "n8n",
+      "config_file": "config.yaml",
+      "config_sha256": "sha256:3884755d23fd8ba9980abc998797f975ba6320cf4ccbe5ba26c7d1f2340ea27e",
+      "archive_sha256": "sha256:d5b5fced7a312fd786586b353e223941c01d4cccb85d06b7140a3d59d6970969",
+      "context_fingerprint": "sha256:952a0d45ad91691d48b669a5619c969424dd13f93981a1d1e0a2f2135b4a7413",
+      "material_fingerprint": "sha256:537428573b15fcd16e5870ae973d4f7437e47755d314ecba7c0b4c459232370d",
+      "architectures": [
+        "aarch64",
+        "amd64"
+      ],
+      "config": {
+        "name": "Woow n8n",
+        "version": "2.12.17",
+        "slug": "woow-n8n",
+        "image": "ghcr.io/woowtech/woow-ha-n8n-{arch}",
+        "description": "Flexible AI workflow automation (HTTP for LAN, use Cloudflare Tunnel for HTTPS)",
+        "url": "https://github.com/WOOWTECH/Woow_ha_n8n",
+        "webui": "http://[HOST]:[PORT:5678]",
+        "hassio_api": true,
+        "ingress": true,
+        "ingress_port": 5690,
+        "ingress_entry": "signin",
+        "ingress_stream": true,
+        "panel_icon": "mdi:sitemap-outline",
+        "panel_title": "n8n",
+        "panel_admin": true,
+        "watchdog": "http://[HOST]:[PORT:5690]/healthz",
+        "arch": [
+          "aarch64",
+          "amd64"
+        ],
+        "init": false,
+        "map": [
+          {
+            "type": "addon_config",
+            "read_only": false
+          },
+          {
+            "type": "share",
+            "read_only": false
+          },
+          {
+            "type": "media",
+            "read_only": false
+          }
+        ],
+        "backup": "cold",
+        "backup_exclude": [
+          "**/logs"
+        ],
+        "schema": {
+          "N8N_LOG_LEVEL": "list(error|warn|info|debug)",
+          "TZ": "str?",
+          "GENERIC_TIMEZONE": "str?",
+          "N8N_HOST": "str?",
+          "N8N_PATH": "str?",
+          "N8N_EDITOR_BASE_URL": "url?",
+          "N8N_WEBHOOK_URL": "url?",
+          "WEBHOOK_URL": "url?",
+          "N8N_PROXY_HOPS": "int(0,)?",
+          "N8N_SECURE_COOKIE": "bool",
+          "clean_redis": "bool?",
+          "env_vars": [
+            {
+              "key": "match(^[A-Za-z0-9_-]+$)",
+              "value": "str"
+            }
+          ]
+        },
+        "options": {
+          "N8N_LOG_LEVEL": "info",
+          "N8N_SECURE_COOKIE": false,
+          "env_vars": []
+        },
+        "ports": {
+          "5678/tcp": 5678
+        },
+        "ports_description": {
+          "5678/tcp": "Web UI"
+        }
+      },
+      "source_build_supported": true,
+      "images": {
+        "aarch64": {
+          "reference": "ghcr.io/woowtech/woow-ha-n8n-aarch64:2.12.17",
+          "index_digest": "sha256:39b2ccc3e2a4974e7875a942b6ea0b3c0088cb98334d89ee1d85519f7ff54126",
+          "digest": "sha256:30f4a83e8799e7c27da46b25d4076ecef7f9012cb1a802e6eecc6ed4d76e327b",
+          "source_revision": "195f131508f64c0292ae857fe02c62e316745f46"
+        },
+        "amd64": {
+          "reference": "ghcr.io/woowtech/woow-ha-n8n-amd64:2.12.17",
+          "index_digest": "sha256:f668d22207215d0f0887c385e9c31252b41ae3bf81ce5108f2760459b7a39adf",
+          "digest": "sha256:760f0a95f6046bef7cae8bad32ce89776c22bb8eebdb8e578215b66606eeddcc",
+          "source_revision": "195f131508f64c0292ae857fe02c62e316745f46"
+        }
+      },
+      "delivery": "published-image",
+      "validation": "manifest+architecture-images+configured-CI",
+      "publisher_run_id": "37410365503",
+      "channel": "stable",
+      "store_path": "n8n"
+    },
+    "woow-nextcloud-office": {
+      "id": "woow-nextcloud-office",
+      "name": "Woow Nextcloud Office",
+      "version": "0.1.6",
+      "repository": "WOOWTECH/Woow_ha_nextcloud",
+      "source_sha": "fcbb8bbcb7ebae8c0c7a636d960fdfdf12780d1e",
+      "source_path": "woow-nextcloud-office",
+      "config_file": "config.yaml",
+      "config_sha256": "sha256:743237552caf4df5e685293a818d29e20a4672226952cfc6b4642b22f645ad88",
+      "archive_sha256": "sha256:4370ff7df0179b5af87400d5735442e3d2b34d06d148a2a0b26c7196f77620be",
+      "context_fingerprint": "sha256:3c297a95915ac27aec5406cac2bd2281827abb1ba7136937f3fa3f32b42dd64d",
+      "material_fingerprint": "sha256:19129507232a6aeb5c80a327829fd0bb6590395f6c6dfeb654a4c2b42329bef9",
+      "architectures": [
+        "amd64",
+        "aarch64"
+      ],
+      "config": {
+        "name": "Woow Nextcloud Office",
+        "version": "0.1.6",
+        "slug": "woow-nextcloud-office",
+        "description": "Nextcloud with built-in PostgreSQL, Redis, and Collabora Online Office",
+        "url": "https://github.com/WOOWTECH/Woow_HA_App_Store",
+        "startup": "services",
+        "stage": "stable",
+        "webui": "http://[HOST]:[PORT:8000]",
+        "ingress": true,
+        "ingress_port": 8090,
+        "ingress_entry": "login",
+        "ingress_stream": false,
+        "panel_icon": "mdi:file-cloud-outline",
+        "panel_title": "Woow Nextcloud Office",
+        "panel_admin": false,
+        "watchdog": "http://[HOST]:[PORT:8090]/healthz",
+        "hassio_api": true,
+        "hassio_role": "manager",
+        "arch": [
+          "amd64",
+          "aarch64"
+        ],
+        "init": false,
+        "map": [
+          {
+            "type": "data",
+            "read_only": false
+          },
+          {
+            "type": "share",
+            "read_only": false
+          },
+          {
+            "type": "addon_config",
+            "read_only": false
+          },
+          {
+            "type": "ssl",
+            "read_only": true
+          }
+        ],
+        "backup": "cold",
+        "backup_exclude": [
+          "**/log"
+        ],
+        "tmpfs": true,
+        "privileged": [
+          "SYS_ADMIN"
+        ],
+        "schema": {
+          "TZ": "str?",
+          "NEXTCLOUD_PUBLIC_URL": "url",
+          "HA_PUBLIC_URL": "url?",
+          "ADMIN_USER": "str",
+          "ADMIN_PASS": "password",
+          "db_password": "password?",
+          "NEXTCLOUD_DATADIR": "str",
+          "DEFAULT_PHONE_REGION": "str?",
+          "COLLABORA_ADMIN_USER": "str",
+          "COLLABORA_ADMIN_PASS": "password",
+          "ENABLE_COLLABORA": "bool",
+          "ENABLE_COLLABORA_ADMIN": "bool",
+          "trusted_domains": [
+            "str?"
+          ],
+          "trusted_proxies": [
+            "str?"
+          ],
+          "SMTP_HOST": "str?",
+          "SMTP_SECURE": "list(STARTTLS|SSL)?",
+          "SMTP_PORT": "port?",
+          "SMTP_AUTH": "bool?",
+          "SMTP_AUTHTYPE": "list(LOGIN|PLAIN)?",
+          "SMTP_USER": "str?",
+          "SMTP_PASS": "password?",
+          "MAIL_FROM_ADDRESS": "str?",
+          "MAIL_DOMAIN": "str?"
+        },
+        "options": {
+          "TZ": "Asia/Taipei",
+          "NEXTCLOUD_PUBLIC_URL": "https://woowtech-nextcloud.woowtech.io",
+          "HA_PUBLIC_URL": "https://woowtech-ha.woowtech.io",
+          "ADMIN_USER": "admin",
+          "ADMIN_PASS": null,
+          "db_password": null,
+          "NEXTCLOUD_DATADIR": "/share/nextcloud",
+          "DEFAULT_PHONE_REGION": "TW",
+          "COLLABORA_ADMIN_USER": "admin",
+          "COLLABORA_ADMIN_PASS": null,
+          "ENABLE_COLLABORA": true,
+          "ENABLE_COLLABORA_ADMIN": true,
+          "trusted_domains": [],
+          "trusted_proxies": []
+        },
+        "ports": {
+          "8000/tcp": 18080
+        },
+        "ports_description": {
+          "8000/tcp": "Staging HTTP origin for Nextcloud Office"
+        }
+      },
+      "source_build_supported": true,
+      "images": {},
+      "delivery": "local-source-build",
+      "validation": "manifest+source-context+configured-CI (runtime build not certified)",
+      "publisher_run_id": "37410424663",
+      "channel": "stable",
+      "store_path": "woow-nextcloud-office"
+    },
+    "woow-nginxproxymanager": {
+      "id": "woow-nginxproxymanager",
+      "name": "Woow Nginx Proxy Manager",
+      "version": "2.12.4-v2",
+      "repository": "WOOWTECH/Woow_ha_nginxpm",
+      "source_sha": "869e38647863d8efa800e036efdba417adae448e",
+      "source_path": "nginxpm",
+      "config_file": "config.yaml",
+      "config_sha256": "sha256:dce7a0ea626118eaa0b84543d10e288e1bc1a1e875d416ff50bf3ac75728a48a",
+      "archive_sha256": "sha256:acab76fa2e528272fe463c5be76f355c8036a28431dc3c73a86edf9d9fce2ce7",
+      "context_fingerprint": "sha256:8370ea98977771ab511be33e129f583ca9749b644b8084e7bc5ce77ee0fe9f81",
+      "material_fingerprint": "sha256:8102929dcb898ea8f5cd00de849fc7fc0a46ad748aadc56c54b08d06005d96d7",
+      "architectures": [
+        "aarch64",
+        "amd64"
+      ],
+      "config": {
+        "name": "Woow Nginx Proxy Manager",
+        "version": "2.12.4-v2",
+        "slug": "woow-nginxproxymanager",
+        "description": "Manage Nginx proxy hosts with a simple, powerful interface - WOOWTECH edition",
+        "url": "https://github.com/WOOWTECH/Woow_ha_nginxpm",
+        "webui": "http://[HOST]:[PORT:81]",
+        "startup": "services",
+        "init": false,
+        "arch": [
+          "aarch64",
+          "amd64"
+        ],
+        "hassio_api": true,
+        "ports": {
+          "80/tcp": 80,
+          "81/tcp": 81,
+          "443/tcp": 443
+        },
+        "map": [
+          "addon_config:rw"
+        ],
+        "backup_exclude": [
+          "*/logs"
+        ]
+      },
+      "source_build_supported": true,
+      "images": {},
+      "delivery": "local-source-build",
+      "validation": "manifest+source-context+configured-CI (runtime build not certified)",
+      "publisher_run_id": "37410457066",
+      "channel": "stable",
+      "store_path": "woow-nginxproxymanager"
+    },
+    "woow-omnigent": {
+      "id": "woow-omnigent",
+      "name": "Woow Omnigent",
+      "version": "0.1.15",
+      "repository": "WOOWTECH/Woow_ha_omnigent_addon",
+      "source_sha": "4a2f012c44ee86f2c5889412f88ec01b4b7ff757",
+      "source_path": "omnigent",
+      "config_file": "config.yaml",
+      "config_sha256": "sha256:c1246556a8c3004dba50aa18b10f6706e4130e7e1286a15db9998d95a697101d",
+      "archive_sha256": "sha256:da8995719c3e87ff23b4591ecca24220bf13bd6792c62fa5ca00ff5af2c183de",
+      "context_fingerprint": "sha256:324236bf6c3fe26d33ff16545e69f447babe1e1f2b5b539dae076f650733a84d",
+      "material_fingerprint": "sha256:969af37b50c41a47ceb924aa86634e64cfc0866d7f1182a43aa1e22539920dbf",
+      "architectures": [
+        "amd64",
+        "aarch64"
+      ],
+      "config": {
+        "name": "Woow Omnigent",
+        "version": "0.1.15",
+        "slug": "woow-omnigent",
+        "image": "ghcr.io/woowtech/woow-ha-omnigent-{arch}",
+        "description": "Omnigent 0.12.0 meta-harness — orchestration server + bundled Postgres. External runners (pi / claude / codex / …) register from wherever via `omnigent host --server http://homeassistant.local:8000`. HTTP for LAN; pair with the Cloudflared add-on for HTTPS.",
+        "url": "https://github.com/WOOWTECH/Woow_ha_omnigent_addon",
+        "arch": [
+          "amd64",
+          "aarch64"
+        ],
+        "init": false,
+        "hassio_api": true,
+        "homeassistant_api": false,
+        "ingress": true,
+        "ingress_port": 8080,
+        "ingress_stream": true,
+        "panel_icon": "mdi:brain",
+        "panel_title": "Omnigent",
+        "panel_admin": true,
+        "webui": "http://[HOST]:[PORT:8000]",
+        "watchdog": "http://[HOST]:[PORT:8080]/health",
+        "ports": {
+          "8000/tcp": 8000
+        },
+        "ports_description": {
+          "8000/tcp": "Web UI + runner tunnel endpoint (LAN). Bind to a public-reachable URL via the Cloudflared HA add-on if remote runners need to dial in."
+        },
+        "map": [
+          {
+            "type": "addon_config",
+            "read_only": false
+          },
+          {
+            "type": "share",
+            "read_only": false
+          },
+          {
+            "type": "backup",
+            "read_only": false
+          }
+        ],
+        "backup": "cold",
+        "backup_exclude": [
+          "**/logs/**",
+          "**/pg_wal/**"
+        ],
+        "schema": {
+          "admin_username": "str",
+          "admin_password": "password",
+          "base_url": "str?",
+          "features": "str?",
+          "env_vars": [
+            {
+              "key": "match(^[A-Z][A-Z0-9_]*$)",
+              "value": "str"
+            }
+          ]
+        },
+        "options": {
+          "admin_username": "woow",
+          "admin_password": "woowtech2026",
+          "base_url": "",
+          "features": "usage_page,harness_install",
+          "env_vars": []
+        }
+      },
+      "source_build_supported": true,
+      "images": {
+        "amd64": {
+          "reference": "ghcr.io/woowtech/woow-ha-omnigent-amd64:0.1.15",
+          "index_digest": "sha256:162d518f76b30797aab8d6bcd915c26a98926fea53ea11c96caa9fe78f899dcc",
+          "digest": "sha256:8ba1b25ce212626699733df4b317275318a9aeb887164f266204ecd8f974f610",
+          "source_revision": "0101855defe81ac8b156c68d6eb411a7ae874d0b"
+        },
+        "aarch64": {
+          "reference": "ghcr.io/woowtech/woow-ha-omnigent-aarch64:0.1.15",
+          "index_digest": "sha256:8287fd21bb7b457de584f66ffbba5ac56e367070813f361d51f5282d7a5bf358",
+          "digest": "sha256:2f327c41e7bc3d880637f887ab47426b53ed3eebacfc07a643ed66f907e6fa65",
+          "source_revision": "0101855defe81ac8b156c68d6eb411a7ae874d0b"
+        }
+      },
+      "delivery": "published-image",
+      "validation": "manifest+architecture-images+configured-CI",
+      "publisher_run_id": "37410512898",
+      "channel": "stable",
+      "store_path": "omnigent"
+    },
+    "woow-headscale": {
+      "id": "woow-headscale",
+      "name": "Woow Headscale VPN",
+      "version": "0.1.0",
+      "repository": "WOOWTECH/Woow_ha_vpn_headscale_package",
+      "source_sha": "6a8664bb69c92b1d0bad17581dbc85ab8909b01d",
+      "source_path": "headscale",
+      "config_file": "config.yaml",
+      "config_sha256": "sha256:181e1d15c817899623c77825d3873965ffdb8856babace73bb2a30e5e0491469",
+      "archive_sha256": "sha256:14160223147538b21ea4842b72f67d1f06ca71f760e95446e0ba8ef9a826be91",
+      "context_fingerprint": "sha256:93c23984b9b3a670d692bac0e4c928a40e6f9cb7775e8665b022068a810eda87",
+      "material_fingerprint": "sha256:c1295cbe8c057700e56b7d74fc7fe6ac657aa3f217b273f4bab4a703d5fa0665",
+      "architectures": [
+        "aarch64",
+        "amd64"
+      ],
+      "config": {
+        "name": "Woow Headscale VPN",
+        "version": "0.1.0",
+        "slug": "woow-headscale",
+        "description": "Self-hosted Tailscale control plane (Headscale + Headplane) by WoowTech",
+        "url": "https://github.com/WOOWTECH/Woow_ha_vpn_headscale_package",
+        "init": false,
+        "startup": "services",
+        "arch": [
+          "aarch64",
+          "amd64"
+        ],
+        "ingress": true,
+        "ingress_port": 3000,
+        "panel_title": "Headscale VPN",
+        "panel_icon": "mdi:vpn",
+        "ports": {
+          "8080/tcp": 28080,
+          "9090/tcp": null,
+          "50443/tcp": null
+        },
+        "ports_description": {
+          "8080/tcp": "Headscale control plane（tailscale login-server／反代目標）",
+          "9090/tcp": "Metrics（預設關閉）",
+          "50443/tcp": "gRPC remote CLI（需有效 TLS，預設關閉）"
+        },
+        "map": [
+          {
+            "type": "addon_config",
+            "path": "/etc/headscale",
+            "read_only": false
+          },
+          {
+            "type": "data",
+            "path": "/var/lib/headscale"
+          }
+        ],
+        "backup": "cold",
+        "backup_exclude": [
+          "*/logs"
+        ],
+        "options": {
+          "server_url": "http://homeassistant.local:28080",
+          "log_level": "info",
+          "ipv4_prefix": "100.64.0.0/10",
+          "ipv6_prefix": "fd7a:115c:a1e0::/48",
+          "magic_dns_base_domain": "ts.local",
+          "create_default_user": true,
+          "ngrok_enabled": false,
+          "ngrok_authtoken": "",
+          "ngrok_mode": "http",
+          "ngrok_domain": ""
+        },
+        "schema": {
+          "server_url": "url",
+          "log_level": "list(trace|debug|info|warn|error)",
+          "ipv4_prefix": "str",
+          "ipv6_prefix": "str",
+          "magic_dns_base_domain": "str",
+          "create_default_user": "bool",
+          "ngrok_enabled": "bool",
+          "ngrok_authtoken": "password?",
+          "ngrok_mode": "list(http|tcp)",
+          "ngrok_domain": "str?"
+        }
+      },
+      "source_build_supported": true,
+      "images": {},
+      "delivery": "local-source-build",
+      "validation": "manifest+source-context+configured-CI (runtime build not certified)",
+      "publisher_run_id": "37410582924",
+      "channel": "stable",
+      "store_path": "headscale"
     }
   },
-  "catalog_id": "sha256:09d98702ce4872099fc853d556dfe26a9178261eef453e578048b167932012b4"
+  "catalog_id": "sha256:06db54568d381c078710011a768029b768d95d5341b900dd12d1a107f1d51b48"
 }

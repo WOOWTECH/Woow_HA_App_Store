@@ -1,0 +1,368 @@
+blueprint:
+  name: 場景循環 - 詳細版
+  description: |
+    虛擬開關控制場景循環播放器，每個場景可獨立設定轉場與維持時間 (最多10組)。
+
+    ## 功能說明 / Functional Description
+    透過 input_boolean 虛擬開關控制最多 10 個 Scene 的循環播放。每個場景可
+    獨立設定 transition (轉場秒數) 與 hold (維持秒數)，開關 ON 時持續循環，
+    OFF 時立即停止。Scene loop player controlled by input_boolean toggle.
+    Supports up to 10 scenes with individual transition and hold time settings.
+    Loops continuously while switch is ON; stops immediately when turned OFF.
+
+    ## 觸發方式 / Trigger
+    - trigger: state，監控 input_boolean 從 off 變為 on
+    - 自動化模式: restart (重新觸發時重新開始循環)
+
+    ## 輸入參數 / Inputs
+    - **input_boolean_entity** (必填): 虛擬開關實體 (domain: input_boolean)
+    - **scene_entity_1~10** (選填): 最多 10 個場景實體 (domain: scene)
+    - **transition_time_1~10** (選填, 預設 5秒): 各場景轉場時間 (0-1800秒)
+    - **hold_time_1~10** (選填, 預設 60秒): 各場景維持時間 (0-1800秒)
+    - **after/before_this_time** (選填, 預設全天): 生效時間窗口
+    - **condition_weekday** (選填, 預設每天): 生效星期
+    - **global_conditions** (選填): 額外自訂條件
+
+    ## 執行效果 / Effects
+    1. 檢查時間/星期/全域條件，不符合則不執行
+    2. 外層 while 迴圈：只要 input_boolean 保持 ON 就持續循環
+    3. 內層 repeat(10)：依序對 scene_1~10 呼叫 scene.turn_on + delay
+    4. 空場景自動跳過，僅執行有設定的場景步驟
+
+    ## 典型應用場景 / Use Cases
+    - 商店展示燈光循環：多組氣氛場景輪播吸引顧客
+    - 派對/活動情境：彩色燈光場景自動循環切換
+    - 水族箱/植物燈模擬日照：不同色溫場景漸變循環
+  domain: automation
+  author: WOOW TECH CO., LTD.
+  input:
+    ###################################################################
+    # 基本：Input Boolean 觸發
+    ###################################################################
+    input_boolean_entity:
+      name: 虛擬開關 (Input Boolean)
+      description: 開啟 → 開始循環；關閉 → 停止
+      selector:
+        entity: { filter: { domain: input_boolean } }
+
+    ###################################################################
+    # Scene 1‑10：transition ＋ hold 秒數
+    ###################################################################
+    scene_1:
+      name: 場景1
+      icon: mdi:palette
+      collapsed: true
+      input:
+        transition_time_1:
+          name: transition (秒)
+          default: 5
+          selector: { number: { mode: slider, min: 0, max: 1800, step: 1 } }
+        scene_entity_1:
+          name: 場景1
+          default: []
+          selector: { entity: { filter: { domain: scene } } }
+        hold_time_1:
+          name: 維持時間 (秒)
+          default: 60
+          selector: { number: { mode: slider, min: 0, max: 1800, step: 1 } }
+
+    scene_2:
+      name: 場景2
+      icon: mdi:palette
+      collapsed: true
+      input:
+        transition_time_2:
+          name: transition (秒)
+          default: 5
+          selector: { number: { mode: slider, min: 0, max: 1800, step: 1 } }
+        scene_entity_2:
+          name: 場景2
+          default: []
+          selector: { entity: { filter: { domain: scene } } }
+        hold_time_2:
+          name: 維持時間 (秒)
+          default: 60
+          selector: { number: { mode: slider, min: 0, max: 1800, step: 1 } }
+
+    scene_3:
+      name: 場景3
+      icon: mdi:palette
+      collapsed: true
+      input:
+        transition_time_3:
+          name: transition (秒)
+          default: 5
+          selector: { number: { mode: slider, min: 0, max: 1800, step: 1 } }
+        scene_entity_3:
+          name: 場景3
+          default: []
+          selector: { entity: { filter: { domain: scene } } }
+        hold_time_3:
+          name: 維持時間 (秒)
+          default: 60
+          selector: { number: { mode: slider, min: 0, max: 1800, step: 1 } }
+
+    scene_4:
+      name: 場景4
+      icon: mdi:palette
+      collapsed: true
+      input:
+        transition_time_4:
+          name: transition (秒)
+          default: 5
+          selector: { number: { mode: slider, min: 0, max: 1800, step: 1 } }
+        scene_entity_4:
+          name: 場景4
+          default: []
+          selector: { entity: { filter: { domain: scene } } }
+        hold_time_4:
+          name: 維持時間 (秒)
+          default: 60
+          selector: { number: { mode: slider, min: 0, max: 1800, step: 1 } }
+
+    scene_5:
+      name: 場景5
+      icon: mdi:palette
+      collapsed: true
+      input:
+        transition_time_5:
+          name: transition (秒)
+          default: 5
+          selector: { number: { mode: slider, min: 0, max: 1800, step: 1 } }
+        scene_entity_5:
+          name: 場景5
+          default: []
+          selector: { entity: { filter: { domain: scene } } }
+        hold_time_5:
+          name: 維持時間 (秒)
+          default: 60
+          selector: { number: { mode: slider, min: 0, max: 1800, step: 1 } }
+
+    scene_6:
+      name: 場景6
+      icon: mdi:palette
+      collapsed: true
+      input:
+        transition_time_6:
+          name: transition (秒)
+          default: 5
+          selector: { number: { mode: slider, min: 0, max: 1800, step: 1 } }
+        scene_entity_6:
+          name: 場景6
+          default: []
+          selector: { entity: { filter: { domain: scene } } }
+        hold_time_6:
+          name: 維持時間 (秒)
+          default: 60
+          selector: { number: { mode: slider, min: 0, max: 1800, step: 1 } }
+
+    scene_7:
+      name: 場景7
+      icon: mdi:palette
+      collapsed: true
+      input:
+        transition_time_7:
+          name: transition (秒)
+          default: 5
+          selector: { number: { mode: slider, min: 0, max: 1800, step: 1 } }
+        scene_entity_7:
+          name: 場景7
+          default: []
+          selector: { entity: { filter: { domain: scene } } }
+        hold_time_7:
+          name: 維持時間 (秒)
+          default: 60
+          selector: { number: { mode: slider, min: 0, max: 1800, step: 1 } }
+
+    scene_8:
+      name: 場景8
+      icon: mdi:palette
+      collapsed: true
+      input:
+        transition_time_8:
+          name: transition (秒)
+          default: 5
+          selector: { number: { mode: slider, min: 0, max: 1800, step: 1 } }
+        scene_entity_8:
+          name: 場景8
+          default: []
+          selector: { entity: { filter: { domain: scene } } }
+        hold_time_8:
+          name: 維持時間 (秒)
+          default: 60
+          selector: { number: { mode: slider, min: 0, max: 1800, step: 1 } }
+
+    scene_9:
+      name: 場景9
+      icon: mdi:palette
+      collapsed: true
+      input:
+        transition_time_9:
+          name: transition (秒)
+          default: 5
+          selector: { number: { mode: slider, min: 0, max: 1800, step: 1 } }
+        scene_entity_9:
+          name: 場景9
+          default: []
+          selector: { entity: { filter: { domain: scene } } }
+        hold_time_9:
+          name: 維持時間 (秒)
+          default: 60
+          selector: { number: { mode: slider, min: 0, max: 1800, step: 1 } }
+
+    scene_10:
+      name: 場景10
+      icon: mdi:palette
+      collapsed: true
+      input:
+        transition_time_10:
+          name: transition (秒)
+          default: 5
+          selector: { number: { mode: slider, min: 0, max: 1800, step: 1 } }
+        scene_entity_10:
+          name: 場景10
+          default: []
+          selector: { entity: { filter: { domain: scene } } }
+        hold_time_10:
+          name: 維持時間 (秒)
+          default: 60
+          selector: { number: { mode: slider, min: 0, max: 1800, step: 1 } }
+
+    ###################################################################
+    # 時間條件 (選填)
+    ###################################################################
+    condition_time:
+      name: 執行時間 (選填)
+      icon: mdi:clock-time-five-outline
+      collapsed: true
+      input:
+        after_this_time:
+          name: 開始時間
+          default: "00:00:00"
+          selector: { time: {} }
+        before_this_time:
+          name: 結束時間
+          default: "23:59:59"
+          selector: { time: {} }
+        condition_weekday:
+          name: 生效星期
+          default: [mon, tue, wed, thu, fri, sat, sun]
+          selector:
+            select:
+              multiple: true
+              mode: list
+              options:
+                - { label: 週一, value: mon }
+                - { label: 週二, value: tue }
+                - { label: 週三, value: wed }
+                - { label: 週四, value: thu }
+                - { label: 週五, value: fri }
+                - { label: 週六, value: sat }
+                - { label: 週日, value: sun }
+
+    ###################################################################
+    # 額外全域條件 (選填)
+    ###################################################################
+    global_conditions_settings:
+      name: 額外全域條件 (選填)
+      icon: mdi:earth
+      collapsed: true
+      input:
+        global_conditions:
+          name: 額外全域條件
+          description: 可新增任意條件類型，如：狀態條件、數值條件、範本條件、裝置條件等；留空不檢查
+          default: []
+          selector: { condition: {} }
+
+    _woow_meta:
+      name: "WOOW Metadata"
+      description: "Internal metadata - do not modify"
+      default:
+        version: "1.0.0"
+        name_zh: "場景循環（進階）"
+        name_en: "Scene Loop (Detail)"
+        desc_zh: "進階場景循環播放，支援自訂時間與轉場"
+        desc_en: "Advanced scene loop with custom timing and transitions"
+        category: "scene"
+# ─────────────────── 變數 ───────────────────
+variables:
+  _boolean: !input input_boolean_entity
+
+  transition_time_list:
+    - !input transition_time_1
+    - !input transition_time_2
+    - !input transition_time_3
+    - !input transition_time_4
+    - !input transition_time_5
+    - !input transition_time_6
+    - !input transition_time_7
+    - !input transition_time_8
+    - !input transition_time_9
+    - !input transition_time_10
+  scene_entity_list:
+    - !input scene_entity_1
+    - !input scene_entity_2
+    - !input scene_entity_3
+    - !input scene_entity_4
+    - !input scene_entity_5
+    - !input scene_entity_6
+    - !input scene_entity_7
+    - !input scene_entity_8
+    - !input scene_entity_9
+    - !input scene_entity_10
+  hold_time_list:
+    - !input hold_time_1
+    - !input hold_time_2
+    - !input hold_time_3
+    - !input hold_time_4
+    - !input hold_time_5
+    - !input hold_time_6
+    - !input hold_time_7
+    - !input hold_time_8
+    - !input hold_time_9
+    - !input hold_time_10
+
+# ─────────────────── 觸發 ───────────────────
+triggers:
+  - trigger: state
+    entity_id: !input input_boolean_entity
+    from: "off"
+    to: "on"
+
+# ─────────────────── 動作 ───────────────────
+actions:
+  # 時間 & 額外全域條件檢查
+  - condition: time
+    after: !input after_this_time
+    before: !input before_this_time
+    weekday: !input condition_weekday
+  - condition: !input global_conditions
+
+  # 只要開關保持 ON，就一直循環播放場景
+  - repeat:
+      while:
+        - condition: state
+          entity_id: !input input_boolean_entity
+          state: "on"
+      sequence:
+        - repeat:
+            count: 10
+            sequence:
+              - condition: state
+                entity_id: !input input_boolean_entity
+                state: "on"
+              - variables:
+                  _idx: "{{ repeat.index - 1 }}"
+                  _transition: "{{ transition_time_list[_idx] | int }}"
+                  _scene: "{{ scene_entity_list[_idx] }}"
+                  _hold: "{{ hold_time_list[_idx] | int }}"
+              - if: "{{ _scene | length > 0 }}"
+                then:
+                  - action: scene.turn_on
+                    data:
+                      entity_id: "{{ _scene }}"
+                      transition: "{{ _transition }}"
+                  - delay: "{{ _hold }}"
+
+# ─────────────────── 其他 ───────────────────
+mode: restart

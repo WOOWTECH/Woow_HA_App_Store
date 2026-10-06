@@ -1,0 +1,12 @@
+{
+  "state": {
+    "woow_ha_remote_ha_control___": {
+      "disconnected": "Odpojené",
+      "connecting": "Pripája sa",
+      "connected": "Pripojené",
+      "reconnecting": "Opätovné pripojenie",
+      "auth_invalid": "Neplatný prístupový token",
+      "auth_required": "Vyžaduje sa overenie"
+    }
+  }
+}

@@ -1,0 +1,144 @@
+blueprint:
+  name: 語音指令觸發多場景 / 多腳本（conversation 版）
+  description: |
+    語音指令（conversation 觸發）批次啟動多個 Scene / Script，支援條件過濾。
+
+    ## 功能說明 / Functional Description
+    透過 Home Assistant conversation 整合，使用者說出自訂語音指令即可批次啟動選定的 Scene 與 Script。
+    Uses HA conversation platform trigger to match user-defined voice commands, then batch-activates selected scenes/scripts.
+    支援時段、星期、全域條件過濾，確保僅在允許時段內回應語音指令。
+
+    ## 觸發方式 / Trigger
+    platform: conversation，比對 my_voice_trigger 輸入的語音指令清單（多行，每行一句指令）。
+
+    ## 輸入參數 / Inputs
+    - **my_voice_trigger** (必填): 語音指令句子清單，每行一句（如「派對模式」）
+    - **target_entities** (必填): 要執行的 Scene/Script 實體清單（多選）
+    - **after_this_time / before_this_time** (選填): 生效時段，預設全天
+    - **condition_weekday** (選填): 生效星期，預設每天
+    - **global_conditions** (選填): 額外全域條件，預設無
+
+    ## 執行效果 / Effects
+    1. 比對語音指令成功後檢查時間與全域條件
+    2. 若 target_entities 非空，呼叫 homeassistant.turn_on 批次啟動
+    3. 若無目標實體則靜默跳過（不報錯）
+
+    ## 典型應用場景 / Use Cases
+    - 說「派對模式」一次啟動多個燈光場景與音樂腳本
+    - 語音指令「晚安」觸發關燈場景，僅限晚間時段生效
+    - 搭配智慧音箱，用中文語音控制自訂場景組合
+  domain: automation
+  author: WOOW TECH CO., LTD. - Matt
+
+  input:
+    # ─── 語音指令清單 ───────────────────────
+    voice:
+      name: 語音指令
+      icon: mdi:account-voice
+      collapsed: true
+      input:
+        my_voice_trigger:
+          name: 指令 (一行一句，不限數量)
+          description: |
+            在此輸入要觸發的完整語音句子，每行一個。
+          default: 派對模式
+          selector:
+            text:
+              multiple: true
+
+    # ─── 目標 Scene / Script ──────────────
+    target:
+      name: 目標執行
+      icon: mdi:play-circle
+      collapsed: true
+      input:
+        target_entities:
+          name: 目標 Scene / Script
+          description: 選擇要執行的 Scene 和/或 Script（可多選）
+          default: []
+          selector:
+            entity:
+              multiple: true
+              filter:
+                - domain: scene
+                - domain: script
+
+    # ─── 時間條件 (選填) ───────────────────
+    condition_time:
+      name: 執行時間 (選填)
+      icon: mdi:clock-time-five-outline
+      collapsed: true
+      input:
+        after_this_time:
+          name: 開始時間
+          default: "00:00:00"
+          selector: { time: {} }
+        before_this_time:
+          name: 結束時間
+          default: "23:59:59"
+          selector: { time: {} }
+        condition_weekday:
+          name: 生效星期
+          default: [mon, tue, wed, thu, fri, sat, sun]
+          selector:
+            select:
+              multiple: true
+              mode: list
+              options:
+                - { label: 週一, value: mon }
+                - { label: 週二, value: tue }
+                - { label: 週三, value: wed }
+                - { label: 週四, value: thu }
+                - { label: 週五, value: fri }
+                - { label: 週六, value: sat }
+                - { label: 週日, value: sun }
+
+    # ─── Global Conditions (選填) ──────────
+    global_conditions_settings:
+      name: Global Conditions (選填)
+      icon: mdi:earth
+      collapsed: true
+      input:
+        global_conditions:
+          name: Global Conditions
+          description: 任何額外條件皆可設定（留空則不檢查）
+          default: []
+          selector:
+            condition: {}
+
+    _woow_meta:
+      name: "WOOW Metadata"
+      description: "Internal metadata - do not modify"
+      default:
+        version: "1.0.0"
+        name_zh: "語音觸發動作"
+        name_en: "Voice Trigger Things"
+        desc_zh: "語音助手觸發各種實體動作"
+        desc_en: "Voice assistant triggers various entity actions"
+        category: "device"
+# ─── 變數 ────────────────────────────────
+variables:
+  _targets: !input target_entities
+
+# ─── 觸發：Conversation (多指令) ──────────
+trigger:
+  - platform: conversation
+    command: !input my_voice_trigger
+
+# ─── 條件：時間 / 星期 / Global ───────────
+condition:
+  - condition: time
+    after: !input after_this_time
+    before: !input before_this_time
+    weekday: !input condition_weekday
+  - condition: !input global_conditions
+
+# ─── 動作 ────────────────────────────────
+action:
+  - if: "{{ _targets | length > 0 }}"
+    then:
+      - service: homeassistant.turn_on
+        target:
+          entity_id: "{{ _targets }}"
+
+mode: single

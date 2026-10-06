@@ -1,0 +1,237 @@
+blueprint:
+  name: Todo 變化 & 週期提醒
+  description: |
+    Todo 狀態變化即時通知 + 未完成待辦每 N 小時週期提醒，雙觸發推播系統。
+
+    ## 功能說明 / Functional Description
+    監控 todo 實體狀態變化，立即推播通知；同時以每小時整點 time_pattern 週期檢查，若待辦未清空則再次提醒。
+    Monitors todo entity state changes for instant notification, plus hourly periodic checks that re-alert if items remain incomplete.
+    支援時段、星期、全域條件過濾，通知內容可完全自訂（支援 Jinja）。
+
+    ## 觸發方式 / Trigger
+    雙觸發器（OR 邏輯）：
+    - trigger: state（id: todo_change）—— Todo 實體狀態變化時立即觸發
+    - trigger: time_pattern（id: periodic）—— 每小時整點觸發，需符合 N 小時整除條件且待辦未清空
+
+    ## 輸入參數 / Inputs
+    - **todo_entities** (必填): 要監控的 todo 實體清單（多選）
+    - **check_interval_hours** (選填): 週期檢查間隔小時數，0 = 停用，預設 0
+    - **after_this_time / before_this_time** (選填): 生效時段，預設全天
+    - **condition_weekday** (選填): 生效星期，預設每天
+    - **global_conditions** (選填): 額外全域條件，預設無
+    - **send_notify** (選填): 是否發送通知，預設是
+    - **notify_title / notify_message** (選填): 自訂通知標題與內容，支援 Jinja
+
+    ## 執行效果 / Effects
+    1. 計算觸發來源（狀態變化 vs 週期）並組裝通知資料
+    2. 建立 persistent_notification（含 Todo 連結）
+    3. 呼叫 notify.notify 推播
+    週期觸發額外條件：interval > 0、目前小時可被 interval 整除、且至少一個 todo state != '0'。
+
+    ## 典型應用場景 / Use Cases
+    - 購物清單新增項目時即時通知家人
+    - 工作待辦未完成，每 2 小時提醒一次直到清空
+    - 上班日限定時段內才發送 todo 提醒通知
+  domain: automation
+  author: WOOW TECH CO., LTD.
+
+  input:
+    # ─── Todo 清單 ─────────────────────────
+    todo_group:
+      name: Todo 清單
+      icon: mdi:check-bold
+      collapsed: false
+      input:
+        todo_entities:
+          name: Todo 實體 (可複選)
+          default: []
+          selector:
+            entity:
+              multiple: true
+              filter:
+                domain: todo
+
+    # ─── 週期間隔（每 N 小時）──────────────
+    interval_group:
+      name: 週期檢查間隔
+      icon: mdi:update
+      collapsed: true
+      input:
+        check_interval_hours:
+          name: 週期間隔 (0 = 停用)
+          description: 1–23 → 每 N 小時整點檢查
+          default: 0
+          selector:
+            number:
+              min: 0
+              max: 23
+              step: 1
+              mode: slider
+              unit_of_measurement: h
+
+    # ─── 時段 / 星期 條件 ───────────────────
+    condition_time:
+      name: 執行時間 (選填)
+      icon: mdi:clock-time-five-outline
+      collapsed: true
+      input:
+        after_this_time:
+          name: 開始時間
+          default: "00:00:00"
+          selector:
+            time: {}
+        before_this_time:
+          name: 結束時間
+          default: "23:59:59"
+          selector:
+            time: {}
+        condition_weekday:
+          name: 生效星期
+          default: [mon, tue, wed, thu, fri, sat, sun]
+          selector:
+            select:
+              multiple: true
+              mode: list
+              options:
+                - { label: 週一, value: mon }
+                - { label: 週二, value: tue }
+                - { label: 週三, value: wed }
+                - { label: 週四, value: thu }
+                - { label: 週五, value: fri }
+                - { label: 週六, value: sat }
+                - { label: 週日, value: sun }
+
+    # ─── Global Conditions (選填) ──────────
+    global_conditions_settings:
+      name: Global Conditions (選填)
+      icon: mdi:earth
+      collapsed: true
+      input:
+        global_conditions:
+          name: Global Conditions
+          default: []
+          selector:
+            condition: {}
+
+    # ─── 通知內容 (可自訂) ──────────────────
+    notify_settings:
+      name: 通知內容
+      icon: mdi:message-text
+      collapsed: true
+      input:
+        send_notify:
+          name: 是否發送通知
+          default: y
+          selector:
+            select:
+              options:
+                - { label: 是, value: y }
+                - { label: 否, value: n }
+        notify_title:
+          name: 通知標題 (留空自動產生)
+          default: ""
+          selector:
+            text: {}
+        notify_message:
+          name: 通知內容 (留空自動產生，可寫 Jinja)
+          default: ""
+          selector:
+            text: {}
+
+    _woow_meta:
+      name: "WOOW Metadata"
+      description: "Internal metadata - do not modify"
+      default:
+        version: "1.0.0"
+        name_zh: "待辦事項觸發通知"
+        name_en: "Todo Trigger Notify"
+        desc_zh: "待辦事項更新時觸發通知"
+        desc_en: "Trigger notification when todo item updates"
+        category: "notify"
+# ─── 變數 ────────────────────────────────
+variables:
+  _todos: !input todo_entities
+  _interval: !input check_interval_hours
+  _send: !input send_notify
+  _title_in: !input notify_title
+  _msg_in: !input notify_message
+
+# ─── 觸發 ────────────────────────────────
+triggers:
+  # Todo 狀態變化
+  - trigger: state
+    entity_id: !input todo_entities
+    id: todo_change
+
+  # 每小時整點檢查
+  - trigger: time_pattern
+    hours: "*"
+    minutes: 0
+    seconds: 0
+    id: periodic
+
+# ─── 條件 ────────────────────────────────
+conditions:
+  # 時段 / 星期
+  - condition: time
+    after: !input after_this_time
+    before: !input before_this_time
+    weekday: !input condition_weekday
+
+  # Global Condition
+  - condition: !input global_conditions
+
+  # 週期觸發需符合：N>0 且 整除 且 Todo 未清空
+  - alias: 周期條件
+    condition: template
+    value_template: >
+      {% if trigger.id != 'periodic' %}
+        true
+      {% else %}
+        {% set N = _interval|int %}
+        {{ N > 0
+           and (now().hour % N == 0)
+           and (expand(_todos) | selectattr('state', 'ne', '0') | list | length > 0) }}
+      {% endif %}
+
+# ─── 動作 ────────────────────────────────
+actions:
+  - variables:
+      _entity: >
+        {% if trigger.id == 'todo_change' %}
+          {{ trigger.entity_id }}
+        {% else %}
+          {{ (expand(_todos) | selectattr('state', 'ne', '0') | map(attribute='entity_id') | list | first) | default(_todos[0], true) }}
+        {% endif %}
+      _friendly: "{{ state_attr(_entity,'friendly_name') or _entity }}"
+      _from: "{{ trigger.from_state.state if trigger.id == 'todo_change' else states(_entity) }}"
+      _to:   "{{ trigger.to_state.state   if trigger.id == 'todo_change' else states(_entity) }}"
+      _when: "{{ now().strftime('%Y-%m-%d %H:%M:%S') }}"
+      _area: "{{ area_name(_entity) or '未設定區域' }}"
+      _link: "/todo"
+      _title: "{{ _title_in | default('Todo 提醒 - ' ~ _friendly, true) }}"
+      _msg: >
+        {% if _msg_in %}
+          {{ _msg_in }}
+        {% else %}
+          時間：{{ _when }}<br>
+          區域：{{ _area }}<br>
+          狀態：{{ _from }} ➜ {{ _to }}<br>
+          <a href="{{ _link }}">查看 Todo 清單</a>
+        {% endif %}
+
+  # 通知（可關）
+  - if: "{{ _send == 'y' }}"
+    then:
+      - alias: "建立持久通知"
+        action: persistent_notification.create
+        data:
+          title: "{{ _title }}"
+          message: "{{ _msg }}"
+      - alias: "發送 notify.notify 推播"
+        action: notify.notify
+        data:
+          title: "{{ _title }}"
+          message: "{{ _msg }}"
+
+mode: single

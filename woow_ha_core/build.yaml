@@ -1,0 +1,6 @@
+# Official Home Assistant Core 2026.9.1, pinned per platform.
+# aarch64 is Supervisor's name for the OCI linux/arm64 platform.
+build_from:
+  amd64: ghcr.io/home-assistant/home-assistant:2026.9.1@sha256:31076d37e3b7dc9681b32d892aa4413fa866c9a90e5c8a50324b397dce415d17
+  aarch64: ghcr.io/home-assistant/home-assistant:2026.9.1@sha256:134bdc1b5f3d32f201987966134fc6edbba0809c6d5100651b28dc653f443d39
+squash: false

@@ -1,0 +1,6 @@
+#!/bin/sh
+set -eu
+# Supervisor manages the add-on, not this independent Core's integrations.
+# Do not pass host-Supervisor discovery/credentials to the Core process.
+unset SUPERVISOR_TOKEN HASSIO_TOKEN HASSIO SUPERVISOR
+exec "$@"

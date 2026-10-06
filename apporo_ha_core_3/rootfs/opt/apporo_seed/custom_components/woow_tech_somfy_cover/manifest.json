@@ -1,0 +1,11 @@
+{
+  "domain": "woow_tech_somfy_cover",
+  "name": "WoowTech Somfy Cover",
+  "codeowners": ["@alanlin"],
+  "config_flow": true,
+  "documentation": "https://github.com/woowtech/somfy-cover",
+  "integration_type": "device",
+  "iot_class": "local_polling",
+  "requirements": ["cryptography>=41.0.0"],
+  "version": "1.0.4"
+}

@@ -1,0 +1,192 @@
+# ===================================================================
+#  SYNC｜多 Climate 雙向同步（完整屬性同步）
+# ===================================================================
+blueprint:
+  name: 同步Climate狀態
+  description: |
+    多個 Climate 實體雙向同步：HVAC 模式、溫度、風量、擺動、預設模式等全屬性同步。
+
+    ## 功能說明 / Functional Description
+    本 Blueprint 將多個 climate 實體進行雙向即時同步。當任一 climate 狀態或屬性改變時，
+    自動將變更同步至其他所有已選的 climate 實體，含迴圈偵測避免無限觸發。
+    This blueprint bidirectionally syncs multiple climate entities. When any selected
+    climate entity changes, it mirrors HVAC mode and all attributes to the others,
+    with context-based loop prevention to avoid infinite trigger cascades.
+
+    ## 觸發方式 / Trigger
+    任一已選 climate 實體的 state 發生變化時觸發（platform: state）。
+    內建迴圈防護：比對 trigger context ID 與自動化 context ID，避免自身觸發。
+
+    ## 輸入參數 / Inputs
+    - **sync_entities**（必填）: 要同步的 climate 實體清單（domain: climate, 可複選）
+    - **global_conditions**（選填）: 額外全域條件
+
+    ## 執行效果 / Effects
+    依序同步以下屬性（僅當來源實體擁有該屬性時才同步）：
+    1. HVAC 模式（off 時呼叫 climate.turn_off，其他模式呼叫 climate.set_hvac_mode）
+    2. 目標溫度（temperature）
+    3. 風量模式（fan_mode）
+    4. 擺動模式（swing_mode）
+    5. 水平擺動模式（swing_horizontal_mode）
+    6. 預設模式（preset_mode）
+    7. 目標濕度（humidity）
+    8. 溫度範圍（target_temp_high / target_temp_low，適用於 heat_cool 模式）
+    支援的 HVAC 模式：off, heat, cool, heat_cool, auto, dry, fan_only。模式為 restart。
+
+    ## 典型應用場景 / Use Cases
+    - 主從空調同步：主臥冷氣調整時自動同步至客房冷氣
+    - 多室一致控溫：辦公室多台空調保持相同設定
+    - 虛實整合：虛擬 climate 面板控制實體空調設備
+  domain: automation
+
+  input:
+    sync_entities:
+      name: Climate 列表
+      description: 選擇要同步的 Climate 實體
+      selector:
+        entity:
+          domain: climate
+          multiple: true
+
+    # ─── 額外全域條件 (選填) ──────────────────
+    global_conditions_settings:
+      name: 額外全域條件 (選填)
+      icon: mdi:earth
+      collapsed: true
+      input:
+        global_conditions:
+          name: 額外全域條件
+          description: 可新增任意條件類型，如：狀態條件、數值條件、範本條件、裝置條件等
+          default: []
+          selector:
+            condition: {}
+
+    _woow_meta:
+      name: "WOOW Metadata"
+      description: "Internal metadata - do not modify"
+      default:
+        version: "1.0.0"
+        name_zh: "同步溫控"
+        name_en: "Sync Climate"
+        desc_zh: "多台冷氣同步控制溫度與模式"
+        desc_en: "Synchronize temperature and mode across multiple climate devices"
+        category: "climate"
+mode: restart
+max_exceeded: silent
+
+trigger:
+  - platform: state
+    entity_id: !input sync_entities
+
+variables:
+  all_climates: !input sync_entities
+  src: "{{ trigger.entity_id }}"
+
+  # 來源 HVAC 模式（直接使用實體狀態）
+  src_state: "{{ states(src) }}"
+
+  # 有效的 HVAC 模式列表（HA 官方標準）
+  valid_modes: "{{ ['off', 'heat', 'cool', 'heat_cool', 'auto', 'dry', 'fan_only'] }}"
+
+  # 若狀態為有效模式則使用，否則空字串（不觸發同步）
+  hvac: "{{ src_state if src_state in valid_modes else '' }}"
+
+  temp: "{{ state_attr(src, 'temperature') }}"
+  fan_mode: "{{ state_attr(src, 'fan_mode') }}"
+
+  # ─── 擴展屬性 ───
+  swing_mode: "{{ state_attr(src, 'swing_mode') }}"
+  swing_horizontal_mode: "{{ state_attr(src, 'swing_horizontal_mode') }}"
+  preset_mode: "{{ state_attr(src, 'preset_mode') }}"
+  humidity: "{{ state_attr(src, 'humidity') }}"
+  target_temp_high: "{{ state_attr(src, 'target_temp_high') }}"
+  target_temp_low: "{{ state_attr(src, 'target_temp_low') }}"
+
+  targets: "{{ all_climates | reject('equalto', src) | list }}"
+
+condition:
+  # 避免循環；並且只在 hvac 為有效模式時才動作
+  - "{{ trigger.to_state.context.id != this.context.id }}"
+  - "{{ hvac != '' }}"
+  # ─── 額外全域條件 ──────────────────
+  - condition: !input global_conditions
+
+action:
+  # ── 同步 HVAC 模式 / 開關 ──
+  - choose:
+      - conditions: "{{ hvac == 'off' }}"
+        sequence:
+          - service: climate.turn_off
+            target:
+              entity_id: "{{ targets }}"
+      - conditions: "{{ hvac != 'off' }}"
+        sequence:
+          - service: climate.set_hvac_mode
+            target:
+              entity_id: "{{ targets }}"
+            data:
+              hvac_mode: "{{ hvac }}"
+
+  # ── 同步目標溫度（若存在） ──
+  - if: "{{ temp is not none }}"
+    then:
+      - service: climate.set_temperature
+        target:
+          entity_id: "{{ targets }}"
+        data:
+          temperature: "{{ temp }}"
+
+  # ── 同步風量模式（若存在） ──
+  - if: "{{ fan_mode is not none }}"
+    then:
+      - service: climate.set_fan_mode
+        target:
+          entity_id: "{{ targets }}"
+        data:
+          fan_mode: "{{ fan_mode }}"
+
+  # ── 同步擺動模式（若存在） ──
+  - if: "{{ swing_mode is not none }}"
+    then:
+      - service: climate.set_swing_mode
+        target:
+          entity_id: "{{ targets }}"
+        data:
+          swing_mode: "{{ swing_mode }}"
+
+  # ── 同步水平擺動模式（若存在） ──
+  - if: "{{ swing_horizontal_mode is not none }}"
+    then:
+      - service: climate.set_swing_horizontal_mode
+        target:
+          entity_id: "{{ targets }}"
+        data:
+          swing_horizontal_mode: "{{ swing_horizontal_mode }}"
+
+  # ── 同步預設模式（若存在） ──
+  - if: "{{ preset_mode is not none }}"
+    then:
+      - service: climate.set_preset_mode
+        target:
+          entity_id: "{{ targets }}"
+        data:
+          preset_mode: "{{ preset_mode }}"
+
+  # ── 同步目標濕度（若存在） ──
+  - if: "{{ humidity is not none }}"
+    then:
+      - service: climate.set_humidity
+        target:
+          entity_id: "{{ targets }}"
+        data:
+          humidity: "{{ humidity }}"
+
+  # ── 同步溫度範圍（若存在，適用於 heat_cool 模式） ──
+  - if: "{{ target_temp_high is not none and target_temp_low is not none }}"
+    then:
+      - service: climate.set_temperature
+        target:
+          entity_id: "{{ targets }}"
+        data:
+          target_temp_high: "{{ target_temp_high }}"
+          target_temp_low: "{{ target_temp_low }}"

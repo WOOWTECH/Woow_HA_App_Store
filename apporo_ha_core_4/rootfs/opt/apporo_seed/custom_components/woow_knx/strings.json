@@ -1,0 +1,14 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Woow KNX Setup Guide",
+        "description": "This integration adds a sidebar panel with KNX configuration guidance, AI assistant links, and useful tools.\n\nClick Submit to install.",
+        "data": {}
+      }
+    },
+    "abort": {
+      "already_configured": "Woow KNX Setup Guide is already configured."
+    }
+  }
+}

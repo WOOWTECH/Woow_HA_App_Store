@@ -1,0 +1,236 @@
+blueprint:
+  name: 場景循環控制 / Scene Loop Control
+  description: |
+    場景循環控制腳本：對多個場景執行依序輪播或同時啟動，支援過渡時間與循環次數。
+    Scene Loop Control script: sequentially cycles or simultaneously activates multiple scenes with transition time and loop count.
+
+    ## 功能說明 / Functional Description
+    此腳本藍圖可控制一組場景實體的執行方式。支援兩種模式：「依序執行」逐一啟動場景並在每個場景間等待固定間隔，
+    可設定循環次數重複整個序列；「同時執行」一次性啟動所有場景（忽略間隔與循環次數）。所有場景啟動時可套用過渡時間。
+    This script blueprint controls execution of a list of scene entities. Two modes: "sequential" activates scenes one-by-one with
+    configurable interval between each, repeatable for multiple cycles; "simultaneous" activates all scenes at once (ignoring interval
+    and loop count). All scene activations support a transition time parameter.
+
+    ## 呼叫方式 / Invocation
+    透過 script.turn_on 服務呼叫或從自動化(automation)觸發。腳本模式為 restart（重新呼叫會中斷並重新執行）。
+    空場景清單時腳本會立即結束（內建空清單防護）。
+    Called via script.turn_on service or triggered from automations. Script mode is "restart" (re-invocation interrupts and restarts).
+    Empty scene list causes immediate exit (built-in empty list guard).
+
+    ## 輸入參數 / Inputs
+    - **scenes** (必填/Required): 要執行的場景實體清單，domain: scene，支援多選
+    - **execution_mode** (選填/Optional, 預設 "sequential"): "sequential"=依序執行 / "simultaneous"=同時執行
+    - **transition_time** (選填/Optional, 預設 2s): 場景啟動的漸變過渡秒數 (0-300)
+    - **interval_time** (選填/Optional, 預設 5s): 依序模式下場景之間的等待秒數 (0-300)，同時模式無效
+    - **loop_count** (選填/Optional, 預設 1): 依序模式下序列重複次數 (1-50)，同時模式固定為1次
+
+    ## 執行效果 / Effects
+    依序模式：外層迴圈依 loop_count 重複，內層迴圈逐一呼叫 scene.turn_on 並等待 interval_time。
+    同時模式：一次對所有場景呼叫 scene.turn_on，loop_count 強制為 1，忽略 interval_time。
+    Sequential: outer loop repeats by loop_count, inner loop calls scene.turn_on per scene with interval_time delay.
+    Simultaneous: single scene.turn_on call targeting all scenes, loop_count forced to 1, interval_time ignored.
+
+    ## 典型應用場景 / Use Cases
+    - 情境輪播：客廳場景每30秒切換（閱讀→電影→用餐）/ Living room scene rotation every 30s (reading->movie->dining)
+    - 一鍵啟動多場景：同時執行客廳+臥室+走廊場景 / One-tap multi-room activation simultaneously
+    - 展示/Demo模式：循環展示所有預設場景給訪客觀看 / Demo mode cycling through all preset scenes for visitors
+  domain: script
+  author: WOOW TECH CO., LTD.
+
+  input:
+    # ═══════════════════════════════════════════════════════════════
+    # 場景選擇 / Scene Selection
+    # ═══════════════════════════════════════════════════════════════
+    scene_settings:
+      name: 場景設定 / Scene Settings
+      icon: mdi:palette
+      collapsed: false
+      input:
+        scenes:
+          name: 場景清單 / Scene List
+          description: |
+            選擇要執行的場景（可多選）。
+
+            Select scenes to execute (multiple selection allowed).
+          default: []
+          selector:
+            entity:
+              domain: scene
+              multiple: true
+
+    # ═══════════════════════════════════════════════════════════════
+    # 執行模式 / Execution Mode
+    # ═══════════════════════════════════════════════════════════════
+    mode_settings:
+      name: 執行模式 / Execution Mode
+      icon: mdi:cog-play
+      collapsed: true
+      input:
+        execution_mode:
+          name: 執行模式 / Execution Mode
+          description: |
+            選擇場景執行方式：
+
+            • sequential (依序執行): 場景依序執行，每個場景之間有固定間隔時間
+            • simultaneous (同時執行): 所有場景同時啟動
+
+            Choose how scenes are executed:
+
+            • sequential: Execute scenes one-by-one with interval between each
+            • simultaneous: Execute all scenes at the same time
+          default: sequential
+          selector:
+            select:
+              mode: dropdown
+              options:
+                - label: "依序執行 / Sequential"
+                  value: sequential
+                - label: "同時執行 / Simultaneous"
+                  value: simultaneous
+
+    # ═══════════════════════════════════════════════════════════════
+    # 時序設定 / Timing Settings
+    # ═══════════════════════════════════════════════════════════════
+    timing_settings:
+      name: 時序設定 / Timing Settings
+      icon: mdi:timer-cog
+      collapsed: true
+      input:
+        transition_time:
+          name: 過渡時間（秒）/ Transition Time (seconds)
+          description: |
+            場景啟動時的漸變過渡時間，適用於所有場景。
+            設為 0 表示立即切換。
+
+            Fade transition time when activating scenes, applies to all scenes.
+            Set to 0 for instant switching.
+          default: 2
+          selector:
+            number:
+              min: 0
+              max: 300
+              step: 1
+              unit_of_measurement: s
+
+        interval_time:
+          name: 場景間隔時間（秒）/ Interval Between Scenes (seconds)
+          description: |
+            「依序執行」模式下，每個場景之間的等待時間。
+            「同時執行」模式下此設定無效。
+
+            Wait time between scenes in "Sequential" mode.
+            This setting is ignored in "Simultaneous" mode.
+          default: 5
+          selector:
+            number:
+              min: 0
+              max: 300
+              step: 1
+              unit_of_measurement: s
+
+    # ═══════════════════════════════════════════════════════════════
+    # 循環設定 / Loop Settings
+    # ═══════════════════════════════════════════════════════════════
+    loop_settings:
+      name: 循環設定 / Loop Settings
+      icon: mdi:repeat
+      collapsed: true
+      input:
+        loop_count:
+          name: 循環次數 / Loop Count
+          description: |
+            「依序執行」模式下，整個場景序列的重複執行次數。
+            設為 1 表示只執行一次。
+            注意：「同時執行」模式下此設定無效（僅執行一次）。
+
+            Number of times to repeat the entire scene sequence in "Sequential" mode.
+            Set to 1 to run only once.
+            Note: This setting is ignored in "Simultaneous" mode (runs only once).
+          default: 1
+          selector:
+            number:
+              min: 1
+              max: 50
+              step: 1
+
+# ═══════════════════════════════════════════════════════════════════
+# Script 本體 / Script Body
+# ═══════════════════════════════════════════════════════════════════
+mode: restart
+
+variables:
+  # 場景設定 / Scene settings
+  _scenes: !input scenes
+  _mode: !input execution_mode
+
+  # 時序設定 / Timing settings
+  _transition: !input transition_time
+  _interval: !input interval_time
+
+  # 循環設定 / Loop settings
+  _loop_count: !input loop_count
+
+sequence:
+  # ═════════════════════════════════════════════════════════════════
+  # 空清單檢查 / Empty list guard
+  # ═════════════════════════════════════════════════════════════════
+  - condition: template
+    value_template: "{{ _scenes | length > 0 }}"
+
+  # ═════════════════════════════════════════════════════════════════
+  # 外層循環：重複執行整個序列 / Outer loop: repeat entire sequence
+  # ═════════════════════════════════════════════════════════════════
+  - alias: "循環執行場景序列 / Loop through scene sequence"
+    repeat:
+      count: "{{ 1 if _mode == 'simultaneous' else _loop_count }}"
+      sequence:
+        # ═══════════════════════════════════════════════════════════
+        # 根據模式執行 / Execute based on mode
+        # ═══════════════════════════════════════════════════════════
+        - choose:
+            # ─────────────────────────────────────────────────────────
+            # 模式 1: 依序執行 / Mode 1: Sequential
+            # ─────────────────────────────────────────────────────────
+            - conditions:
+                - condition: template
+                  value_template: "{{ _mode == 'sequential' }}"
+              sequence:
+                - alias: "依序執行 / Sequential execution"
+                  repeat:
+                    for_each: "{{ _scenes }}"
+                    sequence:
+                      - action: scene.turn_on
+                        target:
+                          entity_id: "{{ repeat.item }}"
+                        data:
+                          transition: "{{ _transition }}"
+                      - delay:
+                          seconds: "{{ _interval }}"
+
+            # ─────────────────────────────────────────────────────────
+            # 模式 2: 同時執行 / Mode 2: Simultaneous
+            # ─────────────────────────────────────────────────────────
+            - conditions:
+                - condition: template
+                  value_template: "{{ _mode == 'simultaneous' }}"
+              sequence:
+                - alias: "同時執行所有場景 / Execute all scenes simultaneously"
+                  action: scene.turn_on
+                  target:
+                    entity_id: "{{ _scenes }}"
+                  data:
+                    transition: "{{ _transition }}"
+
+          # 預設：依序執行（如果模式無效）/ Default: sequential (if invalid mode)
+          default:
+            - alias: "預設依序執行 / Default sequential execution"
+              repeat:
+                for_each: "{{ _scenes }}"
+                sequence:
+                  - action: scene.turn_on
+                    target:
+                      entity_id: "{{ repeat.item }}"
+                    data:
+                      transition: "{{ _transition }}"
+                  - delay:
+                      seconds: "{{ _interval }}"

@@ -1,0 +1,46 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "新增財務帳戶",
+        "description": "建立新的財務帳戶以追蹤您的財務狀況。",
+        "data": {
+          "account_name": "帳戶名稱",
+          "account_id": "帳戶 ID（選填）",
+          "initial_balance": "初始餘額"
+        }
+      }
+    },
+    "error": {
+      "invalid_day_weekly": "每週頻率的執行日必須為 1-7",
+      "invalid_day_monthly": "每月頻率的執行日必須為 1-28",
+      "invalid_day_yearly": "每年頻率的執行日必須為 1-28"
+    },
+    "abort": {
+      "already_configured": "此帳戶已設定",
+      "invalid_input": "帳戶建立輸入無效"
+    }
+  },
+  "entity": {
+    "sensor": {
+      "balance_display": {
+        "name": "餘額"
+      },
+      "last_transaction": {
+        "name": "最後交易金額"
+      },
+      "last_note": {
+        "name": "最後交易備註"
+      },
+      "last_time": {
+        "name": "最後交易時間"
+      },
+      "plan_next_date": {
+        "name": "{title} 下次執行日"
+      },
+      "plan_last_executed": {
+        "name": "{title} 上次執行時間"
+      }
+    }
+  }
+}

@@ -1,0 +1,60 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "權限管理器",
+        "description": "這將為所有用戶和資源（區域、標籤、面板）創建權限選擇實體。\n\n您可以透過側邊欄面板或直接透過實體來管理權限。"
+      }
+    },
+    "abort": {
+      "already_configured": "權限管理器已配置。",
+      "single_instance_allowed": "已經設定完成，只能設定一次。"
+    }
+  },
+  "entity": {
+    "select": {
+      "permission": {
+        "state": {
+          "0": "關閉",
+          "1": "檢視",
+          "2": "有限",
+          "3": "編輯"
+        }
+      }
+    }
+  },
+  "panel": {
+    "tabs": {
+      "areas": "區域",
+      "labels": "標籤"
+    },
+    "area_control": {
+      "title": "區域控制",
+      "setup_title": "設定區域控制",
+      "setup_description": "點擊提交以安裝區域控制面板。",
+      "select_area": "選擇區域",
+      "no_permitted_areas": "沒有可存取的區域",
+      "entities_in_area": "{area} 中的實體"
+    },
+    "label_control": {
+      "title": "標籤控制",
+      "setup_title": "設定標籤控制",
+      "setup_description": "點擊提交以安裝標籤控制面板。",
+      "select_label": "選擇標籤",
+      "no_permitted_labels": "沒有可存取的標籤",
+      "entities_with_label": "具有 {label} 標籤的實體"
+    },
+    "domain_groups": {
+      "light": "燈光",
+      "switch": "開關",
+      "sensor": "感測器",
+      "binary_sensor": "二元感測器",
+      "climate": "空調",
+      "cover": "窗簾",
+      "fan": "風扇",
+      "lock": "門鎖",
+      "media_player": "媒體播放器",
+      "other": "其他"
+    }
+  }
+}

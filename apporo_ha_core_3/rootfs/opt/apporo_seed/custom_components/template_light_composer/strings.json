@@ -1,0 +1,57 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Basic Configuration & Templates",
+        "description": "Configure the basic settings and template sources for your light.",
+        "data": {
+          "name": "Name",
+          "level_entity": "Brightness Entity",
+          "level_attribute": "Brightness Attribute",
+          "level_unit": "Brightness Unit",
+          "state_entity": "State Entity",
+          "state_attribute": "State Attribute",
+          "state_operator": "State Operator",
+          "state_threshold": "State Threshold",
+          "temperature_entity": "Color Temperature Entity",
+          "temperature_attribute": "Temperature Attribute",
+          "min_temperature": "Minimum Color Temperature (K)",
+          "max_temperature": "Maximum Color Temperature (K)"
+        }
+      },
+      "actions": {
+        "title": "Actions Configuration",
+        "description": "Configure the actions for turn on, turn off, set brightness, and set temperature.",
+        "data": {
+          "turn_on_action_type": "Turn On Action Type",
+          "turn_on_action_target": "Turn On Action Target",
+          "turn_off_action_type": "Turn Off Action Type",
+          "turn_off_action_target": "Turn Off Action Target",
+          "set_level_action_type": "Set Brightness Action Type",
+          "set_level_action_target": "Set Brightness Action Target",
+          "set_temperature_action_type": "Set Temperature Action Type",
+          "set_temperature_action_target": "Set Temperature Action Target"
+        }
+      },
+      "advanced": {
+        "title": "Advanced Options",
+        "description": "Configure advanced settings for your template light (optional).",
+        "data": {
+          "supports_transition": "Supports Transition",
+          "icon": "Icon",
+          "availability_template": "Availability Template"
+        }
+      }
+    },
+    "error": {
+      "name_required": "Name is required",
+      "entity_not_found": "Entity not found",
+      "min_temp_invalid": "Minimum temperature must be less than maximum",
+      "script_prefix_required": "Script entity must start with 'script.'",
+      "scene_prefix_required": "Scene entity must start with 'scene.'"
+    },
+    "abort": {
+      "already_configured": "This light is already configured"
+    }
+  }
+}

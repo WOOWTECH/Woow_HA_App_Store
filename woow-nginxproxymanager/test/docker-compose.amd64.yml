@@ -1,0 +1,30 @@
+name: npm-amd64
+services:
+  npm-amd64:
+    image: woowtech/woow-nginxproxymanager:${VERSION:-latest}-amd64
+    build:
+      context: ..
+      args:
+        BUILD_ARCH: amd64
+        BUILD_VERSION: ${VERSION:-latest}
+    container_name: npm-amd64
+    ports:
+      - 80:80
+      - 81:81
+      - 443:443
+    environment:
+      - TZ=Asia/Taipei
+    volumes:
+      - data:/data
+      - ./options.json:/data/options.json:ro
+      - config:/config
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://127.0.0.1:81 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+
+volumes:
+  data:
+  config:

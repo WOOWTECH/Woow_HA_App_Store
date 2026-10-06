@@ -1,0 +1,116 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "WoowTech Cover Entity",
+        "description": "Configure your cover entity using entity selectors and optional action scripts.",
+        "data": {
+          "name": "Name",
+          "device_class": "Device Class",
+          "enable_tilt": "Enable Tilt Control",
+          "position_entity": "Position Entity",
+          "tilt_position_entity": "Tilt Position Entity",
+          "open_time": "Opening Time",
+          "close_time": "Closing Time",
+          "tilt_open_time": "Tilt Opening Time",
+          "tilt_close_time": "Tilt Closing Time",
+          "set_position": "Set Position Action",
+          "set_tilt_position": "Set Tilt Position Action",
+          "open_cover": "Open Cover Action",
+          "close_cover": "Close Cover Action",
+          "stop_cover": "Stop Cover Action",
+          "open_tilt": "Open Tilt Action",
+          "close_tilt": "Close Tilt Action",
+          "stop_tilt": "Stop Tilt Action"
+        },
+        "data_description": {
+          "name": "A friendly name for this cover entity.",
+          "device_class": "The type of cover (blind, shade, curtain, etc.).",
+          "enable_tilt": "Enable tilt/blind angle control.",
+          "position_entity": "Entity to sync cover position with (input_number, number). Enables TX/RX.",
+          "tilt_position_entity": "Entity to sync tilt position with (input_number, number). Enables TX/RX.",
+          "open_time": "Time in seconds for the cover to fully open (0% to 100%). Enables time-based position estimation.",
+          "close_time": "Time in seconds for the cover to fully close (100% to 0%). Enables time-based position estimation.",
+          "tilt_open_time": "Time in seconds for the tilt to fully open. Requires Enable Tilt.",
+          "tilt_close_time": "Time in seconds for the tilt to fully close. Requires Enable Tilt.",
+          "set_position": "Optional: Action script override for position changes. Variable: {{ position }}",
+          "set_tilt_position": "Optional: Action script override for tilt position changes. Variable: {{ tilt_position }}",
+          "open_cover": "Optional: Action script for opening the cover.",
+          "close_cover": "Optional: Action script for closing the cover.",
+          "stop_cover": "Optional: Action script for stopping the cover.",
+          "open_tilt": "Optional: Action script for opening the tilt.",
+          "close_tilt": "Optional: Action script for closing the tilt.",
+          "stop_tilt": "Optional: Action script for stopping tilt movement."
+        }
+      }
+    },
+    "error": {
+      "unknown": "Unexpected error.",
+      "time_pair_incomplete": "Both Opening Time and Closing Time must be configured together for time-based position estimation.",
+      "tilt_time_pair_incomplete": "Both Tilt Opening Time and Tilt Closing Time must be configured together."
+    },
+    "abort": {
+      "already_configured": "Already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "WoowTech Cover Entity Options",
+        "description": "Modify your cover entity settings.",
+        "data": {
+          "device_class": "Device Class",
+          "enable_tilt": "Enable Tilt Control",
+          "position_entity": "Position Entity",
+          "tilt_position_entity": "Tilt Position Entity",
+          "open_time": "Opening Time",
+          "close_time": "Closing Time",
+          "tilt_open_time": "Tilt Opening Time",
+          "tilt_close_time": "Tilt Closing Time",
+          "set_position": "Set Position Action",
+          "set_tilt_position": "Set Tilt Position Action",
+          "open_cover": "Open Cover Action",
+          "close_cover": "Close Cover Action",
+          "stop_cover": "Stop Cover Action",
+          "open_tilt": "Open Tilt Action",
+          "close_tilt": "Close Tilt Action",
+          "stop_tilt": "Stop Tilt Action"
+        },
+        "data_description": {
+          "device_class": "The type of cover.",
+          "enable_tilt": "Enable tilt control.",
+          "position_entity": "Entity to sync cover position with.",
+          "tilt_position_entity": "Entity to sync tilt position with.",
+          "open_time": "Time in seconds for the cover to fully open. Enables time-based position estimation.",
+          "close_time": "Time in seconds for the cover to fully close. Enables time-based position estimation.",
+          "tilt_open_time": "Time in seconds for the tilt to fully open.",
+          "tilt_close_time": "Time in seconds for the tilt to fully close.",
+          "set_position": "Optional: Action script override for position changes.",
+          "set_tilt_position": "Optional: Action script override for tilt changes.",
+          "open_cover": "Optional: Action script for open.",
+          "close_cover": "Optional: Action script for close.",
+          "stop_cover": "Optional: Action script for stop.",
+          "open_tilt": "Optional: Action script for open tilt.",
+          "close_tilt": "Optional: Action script for close tilt.",
+          "stop_tilt": "Optional: Action script for stop tilt."
+        }
+      }
+    }
+  },
+  "selector": {
+    "device_class": {
+      "options": {
+        "awning": "Awning",
+        "blind": "Blind",
+        "curtain": "Curtain",
+        "damper": "Damper",
+        "door": "Door",
+        "garage": "Garage",
+        "gate": "Gate",
+        "shade": "Shade",
+        "shutter": "Shutter",
+        "window": "Window"
+      }
+    }
+  }
+}

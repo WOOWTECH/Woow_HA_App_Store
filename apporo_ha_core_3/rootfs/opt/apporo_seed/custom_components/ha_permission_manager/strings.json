@@ -1,0 +1,13 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Permission Manager",
+        "description": "This will create permission select entities for all users and resources (areas, labels, panels).\n\nYou can manage permissions from the sidebar panel or directly via the entities."
+      }
+    },
+    "abort": {
+      "already_configured": "Permission Manager is already configured."
+    }
+  }
+}

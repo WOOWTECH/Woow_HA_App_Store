@@ -1,0 +1,48 @@
+# Example YAML Configuration for WoowTech Somfy Cover Integration
+#
+# This file demonstrates how to configure Somfy PoE covers in configuration.yaml
+# Copy the relevant sections to your Home Assistant configuration.yaml file
+
+# Single Cover Configuration
+cover:
+  - platform: woow_tech_somfy_cover
+    name: Living Room Shade
+    host: 192.168.1.77
+    target_id: "160326"
+    key: "FBE90399BA25B4B67DC1B23BE0D9C084"
+
+# Multiple Covers Configuration
+# Uncomment and modify the section below to configure multiple covers
+#
+# cover:
+#   - platform: woow_tech_somfy_cover
+#     name: Living Room Shade
+#     host: 192.168.1.77
+#     target_id: "160326"
+#     key: "FBE90399BA25B4B67DC1B23BE0D9C084"
+#
+#   - platform: woow_tech_somfy_cover
+#     name: Bedroom Shade
+#     host: 192.168.1.78
+#     target_id: "160327"
+#     key: "ABC90399BA25B4B67DC1B23BE0D9C085"
+#
+#   - platform: woow_tech_somfy_cover
+#     name: Office Shade
+#     host: 192.168.1.79
+#     target_id: "160328"
+#     key: "DEF90399BA25B4B67DC1B23BE0D9C086"
+
+# Configuration Variables:
+#
+# platform (required): Must be "woow_tech_somfy_cover"
+# name (optional): Friendly name for the cover. Default: "Somfy Cover"
+# host (required): IP address of the Somfy motor
+# target_id (required): 6-digit hexadecimal target ID (found on motor label)
+# key (required): 32-digit hexadecimal encryption key (found on motor label)
+#
+# Notes:
+# - After modifying configuration.yaml, restart Home Assistant
+# - YAML configuration coexists with Config Flow (UI) configuration
+# - Each YAML cover gets its own coordinator and operates independently
+# - Find target_id and key on the motor label or in the Somfy mobile app
