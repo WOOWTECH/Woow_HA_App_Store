@@ -11,6 +11,8 @@ name: Synchronize validated WOOW addons and Local Download
     types:
     - upstream-release
     - woow-addon-ready
+  schedule:
+  - cron: '*/5 * * * *'
 permissions:
   contents: write
   actions: read
@@ -32,6 +34,8 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         ONLY_ADDON: ${{ inputs.only }}
       run: 'set -euo pipefail
+
+        if [ "$GITHUB_EVENT_NAME" = schedule ]; then ONLY_ADDON=woow_ha_pi_agent; fi
 
         args=()
 
