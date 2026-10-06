@@ -475,6 +475,100 @@ neither of them — `toggleCodeView` is one line as served — so no `sub_filter
 parameter here would have to carry a newline. The test pins both line counts, so
 a re-capture that changed either says so.
 
+Derived 2026-10-02 from the pinned `.deb` (`ODOO_DEB_VERSION` 18.0.20260930)
+through Odoo's own serve path, for the ORM **search patterns** of issue #271 --
+the class #266's run turned up beside #239's comparisons: a generic literal
+rewrite reaches a domain literal and not only a URL. Five excerpts, because
+`attachmentsDomain` exists once per selector and Odoo 18 ships three of them in
+each dialog's directory:
+
+| File | Bundle | What it holds |
+|---|---|---|
+| `media_dialog_document_domain.js` | `web.assets_backend` | `DocumentSelector.attachmentsDomain`, the whole getter, out of `html_editor`'s dialog -- whose `domain.unshift(…, "!", ["url", "=like", "/web/assets/%"])` is the clause that excludes generated asset bundles from the Documents tab |
+| `legacy_media_dialog_document_domain.js` | `web.assets_backend` | the same getter out of the legacy `web_editor` dialog, single-quoted |
+| `media_dialog_image_domain.js` | `web.assets_backend` | `ImageSelector.attachmentsDomain` out of `html_editor`'s dialog -- three more pattern literals, none of them reached by a rule |
+| `legacy_media_dialog_image_domain.js` | `web.assets_backend` | the same getter out of the legacy dialog |
+| `file_documents_selector_domain.js` | `web.assets_backend` | `FileDocumentsSelector.attachmentsDomain` -- `html_editor`'s compatibility override for the `/file` command, whose own header says the file is no longer used. It is here because it is why a bundle carries a shape literal three times and not twice, and because it spells no `/web/assets/%` of its own: it inherits the document getter's through `super.attachmentsDomain` |
+
+Measured 2026-10-02 across the nineteen bundles of #240's table. **The unit is
+one literal as the bytes it actually is**, because quote style turns out to be
+per *site* and not per file: the legacy `web_editor` image selector writes its
+two shape literals *double*-quoted while writing `/%/static/%` single-quoted,
+so "one literal per dialog" would have counted a pattern that is not there.
+
+| Pattern | Prefixed before the fix | Bundles that carry it, with counts |
+|---|---|---|
+| `["url","=like","/web/assets/%"]` | **yes** | `web.assets_backend`, `web.assets_web`, `web.assets_web_print`, `web.assets_frontend`, `web.assets_frontend_lazy`, `html_editor.assets_media_dialog`, `project.webclient` -- once each |
+| `['url','=like','/web/assets/%']` | **yes** | the first five of those once each, plus `web_editor.assets_media_dialog` once |
+| `["url","=ilike","/html_editor/shape/%"]` | no | the first five **three times each**, `html_editor.assets_media_dialog` and `project.webclient` **twice each**, `web_editor.assets_media_dialog` once |
+| `["url","=ilike","/web_editor/shape/%"]` | no | the same bundles with the same counts |
+| `["url","=like","/%/static/%"]` | no | the first five **twice each**, `html_editor.assets_media_dialog` and `project.webclient` twice each |
+| `['url','=like','/%/static/%']` | no | the first five once each, plus `web_editor.assets_media_dialog` once |
+
+**Every bundle not named in a row carries that row's pattern zero times**, and
+the nineteen counted are #240's list, so the claim is a list and not a count:
+`web.assets_backend`, `web.assets_backend_lazy`, `web.assets_web`,
+`web.assets_web_print`, `web.assets_frontend`, `web.assets_frontend_lazy`,
+`web.assets_frontend_minimal`, `web.report_assets_common`,
+`web_editor.assets_wysiwyg`, `web_editor.backend_assets_wysiwyg`,
+`web_editor.wysiwyg_iframe_editor_assets`, `web_editor.assets_media_dialog`,
+`html_editor.assets_media_dialog`, `website.assets_wysiwyg`,
+`website.assets_editor`, `mass_mailing.assets_wysiwyg`,
+`im_livechat.assets_embed_external`, `html_builder.assets` and
+`project.webclient`. Eleven of them carry **none** of the six:
+`web.assets_backend_lazy`, `web.assets_frontend_minimal`,
+`web.report_assets_common`, `web_editor.assets_wysiwyg`,
+`web_editor.backend_assets_wysiwyg`, `web_editor.wysiwyg_iframe_editor_assets`,
+`website.assets_wysiwyg`, `website.assets_editor`, `mass_mailing.assets_wysiwyg`,
+`im_livechat.assets_embed_external` and `html_builder.assets`. The remaining
+eight vary by row, and the two media-dialog bundles are each other's complement
+rather than a pair, for #239's reason: neither dialog's files are in the other's
+bundle, and `project.webclient` carries only `html_editor`'s.
+
+**The three-per-bundle counts are the finding the issue did not have.** A shape
+literal occurs three times in `web.assets_backend` because three files carry
+it: both `image_selector.js` files -- which spell it the *same* way, so one
+pattern would serve both -- and `file_documents_selector.js`. `/%/static/%`
+occurs twice there for the same reason minus the legacy file, which spells that
+one single-quoted. Across the whole package each of the six occurs in exactly
+the files named above and nowhere else.
+
+**Which rules reach which, measured against the shipped rule set.** Only two of
+the Ingress asset location's rules reach a pattern literal: the double- and
+single-quoted `/web/` literal rules of the #166 family, both landing on
+`DocumentSelector.attachmentsDomain`. `/html_editor/shape/%` and `/%/static/%`
+are reached by nothing, and `/web_editor/shape/%` survives because the rule
+needs `/web/` and `/web_editor/` has `_` where the rule has `/`. So the fix is
+**two counter-rules and not six**, and the three left alone are captured and
+served through a real nginx anyway, so that a future generic rule which starts
+claiming one turns `test_ingress_media_dialog_domain.py` red instead of
+silently changing which attachments a picker lists.
+
+Each counter-rule is its own pattern spelled as its own replacement: the job is
+to claim those bytes before a generic rule can. `sub_filter` tracks one match
+attempt at a time, so the pattern starting at the earlier byte wins and the
+inner `"/web/` never gets a turn; the rules are also written *ahead* of the
+generic ones, which is the other half of the same rule (#158: two patterns
+starting at the same byte go by written order). Both halves are executed --
+`test_without_the_counter_rules_a_real_nginx_prefixes_the_exclusion` serves
+these same bytes through the rule set from before the fix and requires the
+prefix to appear.
+
+The two document excerpts are **320 bytes** each, which is the number #266 read
+off the Public origin for this getter (`served_domain_length`); the same getter
+under Ingress measured 383, one 63-byte prefix more. A capture of a different
+length would be a capture of something else, and the test pins it.
+
+**How each was counted.** The same derivation as #239's and #240's: reproducing
+`addons/base/models/assetsbundle.py` over every `*/static/src/**/*.js` file in
+the pinned package -- `rjsmin(transpile_javascript(url, source))` -- with
+bundle membership from `ast.literal_eval` on each addon's `__manifest__.py`,
+walking `d["assets"]` with `**/` matching zero or more directories, honouring
+`remove`, `replace` and `('include', ...)`, and skipping a file the bundle
+already holds the way `AssetPaths.append` does. Checked by reproducing #239's
+and #240's per-bundle counts, which it does row for row before any count here
+was trusted.
+
 ## Re-capturing
 
 The bundles are public, so no login is needed; the asset route redirects a

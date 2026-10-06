@@ -570,6 +570,51 @@ http {
 
             sub_filter_once off;
             sub_filter_types application/javascript text/javascript text/css;
+            # A string literal that is a *search pattern* and not a URL (issue
+            # #271, ADR 0004's 2026-10-02 postscript). The generic literal
+            # rules below are a byte-level substring search and have no idea
+            # what a literal is for, so `'/web/assets/%'` -- the `=like`
+            # operand `DocumentSelector.attachmentsDomain` excludes generated
+            # asset bundles with -- was prefixed like an address. The exclusion
+            # then reads `NOT (url =like '<prefix>/web/assets/%')`, which
+            # matches no stored `url` (every bundle attachment is
+            # `/web/assets/...` in the database), so the `|` beside it let
+            # every bundle through and the media dialog's Documents tab filled
+            # its first page of 30 tiles with asset bundles. Nothing is stored
+            # -- the domain travels in a request body -- and the Public origin
+            # was always right.
+            #
+            # Each rule is its own pattern spelled as its own replacement: the
+            # whole job is to *claim these bytes* before a generic rule can.
+            # nginx's `sub_filter` tracks one match attempt at a time, so the
+            # pattern that starts at an earlier byte wins and the inner
+            # `"/web/` never gets a turn; #158 pins the other half of that
+            # rule, which is that two patterns starting at the *same* byte are
+            # resolved by the order they are written. These sit ahead of the
+            # generic rules so the fix holds under either half, and because
+            # `sub_filter` never rescans what it wrote, what they emit is final.
+            #
+            # Identity and not a cleverer spelling, deliberately. Splitting the
+            # literal (`"/web"+"/assets/%"`) would survive the same way, but it
+            # changes the served bytes the Live probe reads --
+            # `served_domain_has_web_assets_literal` is a plain
+            # `includes("/web/assets/")` -- and the reading that shows this
+            # fixed is "the literal is there and carries no prefix".
+            #
+            # Three more pattern paths of the same class sit in the image
+            # selectors and `FileDocumentsSelector` -- `/html_editor/shape/%`,
+            # `/web_editor/shape/%` and `/%/static/%`; four as bytes, because
+            # `/%/static/%` is spelled with a different quote in each dialog.
+            # Measured: no rule of this location reaches any of them
+            # (`/web_editor/` survives because the rule needs `/web/` and this
+            # has `_` where the rule has `/`), so none needs a counter-rule and
+            # adding one would be a no-op nobody could see.
+            # `test_ingress_media_dialog_domain.py` serves all six through a
+            # real nginx and asserts what each becomes, so a future generic
+            # rule that starts claiming one turns that test red instead of
+            # silently changing a picker.
+            sub_filter '["url","=like","/web/assets/%"]' '["url","=like","/web/assets/%"]';
+            sub_filter "['url','=like','/web/assets/%']" "['url','=like','/web/assets/%']";
             sub_filter 'url(/' 'url($safe_ingress_path/';
             sub_filter "url('/" "url('$safe_ingress_path/";
             sub_filter 'url("/' 'url("$safe_ingress_path/';

@@ -4,6 +4,7 @@
 Nothing here opens a browser, a websocket or reads credentials.
 """
 import contextlib
+import io
 import itertools
 import json
 import os
@@ -14,6 +15,8 @@ from unittest import mock
 from urllib.parse import urlsplit
 
 from e2e_menu_action_adapter import (
+    AMBIENT_BASIS_DOCUMENTS,
+    AMBIENT_BASIS_GOTO,
     AMBIENT_MODELS,
     AMBIENT_SCHEMA,
     AmbientReading,
@@ -36,8 +39,10 @@ from e2e_menu_action_adapter import (
     is_configuration_error,
     session_database,
     Masker,
+    NavigationCount,
     OpenTarget,
     RunInfo,
+    SessionAmbientDriver,
     SurfaceDriver,
     SurfaceObservation,
     UNCLASSIFIED,
@@ -61,6 +66,7 @@ from e2e_menu_action_adapter import (
     skipped_record,
     url_literal_violation,
     validate_session_command,
+    validated_count,
     verdict_lines,
     websocket_url,
     ws_result,
@@ -2195,6 +2201,321 @@ class AmbientReadingTests(unittest.TestCase):
             with ambient_accounting(driver, RUN, Surface.PUBLIC, out, command="open"):
                 self.assertFalse(os.path.exists(stale))
             self.assertEqual(json.load(open(stale, encoding="utf-8"))["run_id"], RUN.run_id)
+
+
+class FakeNavigationRequest:
+    """What Playwright hands a `request` listener, of the two fields read."""
+
+    def __init__(self, url: str, resource_type: str = "document") -> None:
+        self.url = url
+        self.resource_type = resource_type
+
+
+class FakeEventContext(FakeContext):
+    """A context that registers `request` listeners and can fire them."""
+
+    def __init__(self, *pages) -> None:
+        super().__init__(*pages)
+        self.listeners: dict[str, list] = {}
+
+    def on(self, event: str, handler) -> None:
+        self.listeners.setdefault(event, []).append(handler)
+
+    def fire(self, url: str, resource_type: str = "document") -> None:
+        for handler in self.listeners.get("request", []):
+            handler(FakeNavigationRequest(url, resource_type))
+
+
+class FakeSession:
+    """A `Side`-shaped session: a context, a base, and one generic `rpc`.
+
+    `e2e_parity_shared_layers_live.Side` is what the three hand-driven Live
+    drivers hold, and `rpc(model, method, args)` is all of it the ambient figure
+    uses. `answers` maps a model to the count its `search_count` reports, or to
+    an exception the call raises.
+    """
+
+    def __init__(self, base: str, answers=None) -> None:
+        self.base = base
+        self.context = FakeEventContext()
+        self.answers = dict(answers or {})
+        self.calls: list[tuple] = []
+
+    def rpc(self, model: str, method: str, args=None, kwargs=None):
+        self.calls.append((model, method, args, kwargs))
+        answer = self.answers.get(model)
+        if isinstance(answer, Exception):
+            raise answer
+        return answer
+
+
+def counts_for(**per_model) -> dict:
+    """`FakeSession` answers for the two models, by their short names."""
+    return {"website." + name: count for name, count in per_model.items()}
+
+
+class SharedAmbientFigureTests(unittest.TestCase):
+    """#264: the figure the hand-driven Live drivers read. No browser.
+
+    `crawl` and `open` have had it since #256. Three drivers did not -- the
+    markup family's, the peer snapshot's and the hand checks' -- and #243's run
+    on 0.4.10 had to fall back to counting on the host afterwards and say in its
+    evidence that no delta could be stated. These are the parts that made the
+    figure readable off a session that is not a `SurfaceDriver`, and off a run
+    that does not navigate through one call.
+    """
+
+    def test_a_boolean_is_not_a_count_of_one(self) -> None:
+        # `True` is an `int` in Python, so a controller that answered a boolean
+        # would be recorded as one row. One guard, in one place, shared by
+        # `SurfaceDriver.count_rows` and `SessionAmbientDriver.count_rows`.
+        self.assertEqual(validated_count("website.track", 187), 187)
+        for refused in (True, False, "187", 1.0, None):
+            with self.subTest(repr(refused)):
+                with self.assertRaisesRegex(RuntimeError, "answered no count"):
+                    validated_count("website.track", refused)
+
+    def test_a_document_get_under_the_base_is_a_navigation(self) -> None:
+        context = FakeEventContext()
+        counter = NavigationCount(context, "http://ha.example:8123" + PREFIX)
+        context.fire("http://ha.example:8123" + PREFIX + "/odoo/project.task/5")
+        context.fire("http://ha.example:8123" + PREFIX + "/contactus")
+        self.assertEqual(counter.navigations, 2)
+
+    def test_what_a_page_asks_for_after_it_loaded_is_not_a_navigation(self) -> None:
+        # The figure is per page view. A bundle, an image and the `call_kw` POST
+        # that takes the reading itself are all requests under the same base, and
+        # counting them would publish a denominator in the hundreds.
+        context = FakeEventContext()
+        counter = NavigationCount(context, "https://odoo.example")
+        for resource in ("stylesheet", "script", "image", "xhr", "fetch", "websocket"):
+            context.fire("https://odoo.example/web/assets/1/x." + resource, resource)
+        self.assertEqual(counter.navigations, 0)
+
+    def test_a_document_off_the_base_belongs_to_another_surface(self) -> None:
+        # The Home Assistant panel page is a document on the HA origin and *not*
+        # under the Ingress prefix: it is how the add-on is reached and not a page
+        # Odoo served, so it writes none of the rows being counted.
+        context = FakeEventContext()
+        counter = NavigationCount(context, "http://ha.example:8123" + PREFIX)
+        context.fire("http://ha.example:8123/woow-odoo-ce")
+        context.fire("http://ha.example:8123/auth/authorize")
+        context.fire("https://odoo.example/contactus")
+        self.assertEqual(counter.navigations, 0)
+
+    def test_the_base_is_read_per_request_because_ingress_learns_it_late(self) -> None:
+        # `IngressSide.base` is the HA origin plus the prefix, and the prefix is
+        # read off the iframe URL by `start()`. A base captured at construction
+        # would be the origin alone, which matches every HA document too.
+        session = FakeSession("http://ha.example:8123")
+        counter = NavigationCount(session.context, lambda: session.base)
+        session.context.fire("http://ha.example:8123" + PREFIX + "/odoo")
+        self.assertEqual(counter.navigations, 1)
+        session.base = "http://ha.example:8123" + PREFIX
+        session.context.fire("http://ha.example:8123/woow-odoo-ce")
+        self.assertEqual(counter.navigations, 1)
+
+    def test_a_listener_that_raises_does_not_raise_inside_playwright(self) -> None:
+        # The listener runs in Playwright's dispatch, on whatever call happened to
+        # be waiting, so an accounting failure there would surface as a failure of
+        # an unrelated step. Counting is worth a run and not the other way round.
+        class Exploding:
+            @property
+            def base(self):
+                raise RuntimeError("the frame went away")
+
+        session = Exploding()
+        context = FakeEventContext()
+        counter = NavigationCount(context, lambda: session.base)
+        context.fire("https://odoo.example/contactus")
+        self.assertEqual(counter.navigations, 0)
+
+    def test_the_counts_come_over_the_session_s_own_rpc(self) -> None:
+        # #256's rule, which #264 carries to the drivers that are not the
+        # adapter: a figure the run read itself is the run's own evidence, and one
+        # read on the host over `ssh` afterwards is a different measurement.
+        session = FakeSession("https://odoo.example", counts_for(track=187, visitor=20))
+        reading = SessionAmbientDriver(session).ambient_reading()
+        self.assertEqual(reading.counts, {"website.track": 187, "website.visitor": 20})
+        self.assertEqual(reading.unread, {})
+        self.assertEqual(session.calls, [("website.track", "search_count", [[]], None),
+                                         ("website.visitor", "search_count", [[]], None)])
+
+    def test_the_count_passes_through_the_read_only_seam(self) -> None:
+        # A request a driver makes belongs in the `Operation` enum rather than
+        # beside it, and this one is the same request `SurfaceDriver.count_rows`
+        # makes -- a domain in, an integer out.
+        self.assertIn(Operation.COUNT_ROWS, NON_MUTATING_OPERATIONS)
+        session = FakeSession("https://odoo.example", counts_for(track=1, visitor=1))
+        without = OperationPolicy(allowed=NON_MUTATING_OPERATIONS - {Operation.COUNT_ROWS})
+        with mock.patch("e2e_menu_action_adapter.READ_ONLY_POLICY", without):
+            with self.assertRaises(PermissionError):
+                SessionAmbientDriver(session).count_rows("website.track")
+            # And the reading still answers a reason per model rather than
+            # raising: the policy is a seam and not a second failure mode.
+            self.assertIn("mutating or unknown",
+                          SessionAmbientDriver(session).ambient_reading().unread["website.track"])
+
+    def test_a_count_that_is_not_a_number_is_refused_here_too(self) -> None:
+        session = FakeSession("https://odoo.example", counts_for(track=True, visitor=20))
+        reading = SessionAmbientDriver(session).ambient_reading()
+        self.assertEqual(reading.counts, {"website.visitor": 20})
+        self.assertIn("answered no count", reading.unread["website.track"])
+
+    def test_one_reason_per_model_and_not_one_per_reading(self) -> None:
+        # A database without `website` has neither model and reports two reasons;
+        # a session that lost one answer still reports the count it got.
+        session = FakeSession("https://odoo.example",
+                              {"website.track": RuntimeError("Object website.track doesn't exist"),
+                               "website.visitor": 20})
+        reading = SessionAmbientDriver(session).ambient_reading()
+        self.assertEqual(reading.counts, {"website.visitor": 20})
+        self.assertIn("doesn't exist", reading.unread["website.track"])
+
+    def test_a_reason_is_masked_before_it_reaches_the_record(self) -> None:
+        # The record is quoted in a pull request and a raw Playwright message
+        # carries the host and the Ingress prefix.
+        session = FakeSession("https://odoo.example",
+                              {"website.track": RuntimeError("connect to https://odoo.example failed")})
+        masker = Masker(bases={"<PUBLIC_BASE>": "https://odoo.example"}, ingress_prefix=None, secrets=())
+        reading = SessionAmbientDriver(session, mask=masker.text).ambient_reading()
+        self.assertNotIn("odoo.example", reading.unread["website.track"])
+        self.assertIn("<PUBLIC_BASE>", reading.unread["website.track"])
+
+    def test_the_counts_come_over_the_first_session_and_the_navigations_over_both(self) -> None:
+        # The two models are database-wide, so one session's count is the figure
+        # and `surface` says which took it. The denominator is both sessions': a
+        # delta over a database-wide count cannot be split between two sessions
+        # that were open at once, so counting one of them would publish a
+        # fraction of the window's own page views.
+        first = FakeSession("http://ha.example:8123" + PREFIX, counts_for(track=187, visitor=20))
+        second = FakeSession("https://odoo.example", counts_for(track=999, visitor=999))
+        figure = SessionAmbientDriver(first, second)
+        self.assertEqual(figure.ambient_reading().counts, {"website.track": 187, "website.visitor": 20})
+        self.assertEqual(second.calls, [])
+        first.context.fire("http://ha.example:8123" + PREFIX + "/odoo/project.task/5")
+        second.context.fire("https://odoo.example/odoo/project.task/5")
+        second.context.fire("https://odoo.example/odoo/project.task/5")
+        self.assertEqual(figure.navigations, 3)
+
+    def test_a_driver_that_already_has_a_reading_hands_it_in(self) -> None:
+        # The hand checks hold a `SurfaceDriver`, whose `ambient_reading` is the
+        # same count through its own request context. What it does not have is a
+        # navigation denominator that sees a click, which is the half it takes
+        # from here -- so there is one implementation of the count and not two.
+        session = FakeSession("https://odoo.example", counts_for(track=1, visitor=1))
+        figure = SessionAmbientDriver(session, reading=lambda: counted(**{"website.track": 5}))
+        self.assertEqual(figure.ambient_reading().counts, {"website.track": 5})
+        self.assertEqual(session.calls, [])
+
+    def test_a_figure_needs_a_session_to_be_read_over(self) -> None:
+        with self.assertRaisesRegex(ValueError, "at least one session"):
+            SessionAmbientDriver()
+
+    def test_the_two_denominators_are_named_in_the_file_that_carries_them(self) -> None:
+        # Both are page views and neither is the other, so a reader comparing one
+        # driver's `navigations` with another's needs the sentence beside the
+        # number. The default is this driver's own.
+        self.assertNotEqual(AMBIENT_BASIS_GOTO, AMBIENT_BASIS_DOCUMENTS)
+        self.assertIn("SurfaceDriver._goto", AMBIENT_BASIS_GOTO)
+        self.assertIn("document GET", AMBIENT_BASIS_DOCUMENTS)
+        self.assertIn("upper bound", AMBIENT_BASIS_DOCUMENTS)
+        empty = AmbientReading()
+        self.assertEqual(ambient_summary(RUN, Surface.PUBLIC, command="open", navigations=0,
+                                         before=empty, after=empty)["navigation_basis"],
+                         AMBIENT_BASIS_GOTO)
+        said = ambient_summary(RUN, Surface.PUBLIC, command="visit", navigations=1,
+                               before=empty, after=empty,
+                               navigation_basis=AMBIENT_BASIS_DOCUMENTS)
+        self.assertEqual(said["navigation_basis"], AMBIENT_BASIS_DOCUMENTS)
+
+    def test_a_surface_key_says_a_run_that_drove_both_in_one_go(self) -> None:
+        # The peer snapshot's run is a pair, not a surface, and `_SURFACE_KEY` has
+        # two entries because an adapter run is one surface. The trap is that
+        # `Surface` is a `str` subclass, so a `isinstance(surface, str)` test would
+        # pass for both and write `ha_ingress` where every record says `ingress`.
+        self.assertIsInstance(Surface.HA_INGRESS, str)
+        empty = AmbientReading()
+        for surface, key in ((Surface.HA_INGRESS, "ingress"), (Surface.PUBLIC, "public"),
+                             ("ingress-public", "ingress-public"), ("ingress-ingress", "ingress-ingress")):
+            with self.subTest(surface):
+                self.assertEqual(ambient_summary(RUN, surface, command="run", navigations=0,
+                                                 before=empty, after=empty)["surface"], key)
+
+    def test_a_driver_whose_records_append_appends_its_figure(self) -> None:
+        # `markup.jsonl` carries 38 records taken over a whole session, and
+        # `peer.jsonl` one per pair. Truncating the figure there would leave the
+        # last invocation's numbers standing for every invocation's rows.
+        driver = cart_driver(CountingContext(counts_for(track=187, visitor=20)))
+        with tempfile.TemporaryDirectory() as directory:
+            out = os.path.join(directory, "markup.jsonl")
+            for navigations in (1, 2):
+                with ambient_accounting(driver, RUN, Surface.PUBLIC, out, command="media-image-website",
+                                        append=True, navigation_basis=AMBIENT_BASIS_DOCUMENTS):
+                    driver.navigations += navigations
+            with open(ambient_summary_path(out), encoding="utf-8") as written:
+                lines = [json.loads(line) for line in written if line.strip()]
+        self.assertEqual([line["navigations"] for line in lines], [1, 2])
+        self.assertEqual(os.path.basename(ambient_summary_path(out)), "markup.ambient.json")
+
+    def test_an_appending_driver_does_not_clear_the_earlier_invocations(self) -> None:
+        # The clearing exists because this driver truncates `out_path` per run, so
+        # a stale figure would sit beside fresh records. An appending driver's
+        # earlier lines are earlier invocations' figures, which are not stale.
+        driver = cart_driver(CountingContext(counts_for(track=1, visitor=1)))
+        with tempfile.TemporaryDirectory() as directory:
+            out = os.path.join(directory, "peer.jsonl")
+            with open(ambient_summary_path(out), "w", encoding="utf-8") as earlier:
+                earlier.write(json.dumps({"run_id": "WOOW-PEER-20261002T015318Z"}) + "\n")
+            with ambient_accounting(driver, RUN, Surface.PUBLIC, out, command="run", append=True):
+                pass
+            with open(ambient_summary_path(out), encoding="utf-8") as written:
+                lines = [json.loads(line) for line in written if line.strip()]
+        self.assertEqual([line["run_id"] for line in lines],
+                         ["WOOW-PEER-20261002T015318Z", RUN.run_id])
+
+    def test_every_figure_file_is_read_one_json_object_per_line(self) -> None:
+        # The name is the one #256 gave it and #264 asked for, and an appending
+        # driver puts more than one object in it -- so the file is read a line at a
+        # time and this driver's is the *one-line* case of that reader, not a
+        # second format under the same extension. A `json.load` over the whole file
+        # is right only where the records truncate, which is why every document
+        # that tells a runner to keep the file says "one JSON object per line".
+        driver = cart_driver(CountingContext(counts_for(track=1, visitor=1)))
+        with tempfile.TemporaryDirectory() as directory:
+            truncating, appending = (os.path.join(directory, name)
+                                     for name in ("ingress-open.jsonl", "markup.jsonl"))
+            for _ in range(2):
+                with ambient_accounting(driver, RUN, Surface.PUBLIC, truncating, command="open"):
+                    pass
+                with ambient_accounting(driver, RUN, Surface.PUBLIC, appending, command="codeview",
+                                        append=True):
+                    pass
+            lines = {}
+            for path in (truncating, appending):
+                with open(ambient_summary_path(path), encoding="utf-8") as written:
+                    lines[path] = [json.loads(line) for line in written if line.strip()]
+            self.assertEqual(len(lines[truncating]), 1)
+            self.assertEqual(len(lines[appending]), 2)
+            # The one-line file is the only one a whole-file read may be used on.
+            with open(ambient_summary_path(truncating), encoding="utf-8") as whole:
+                self.assertEqual(json.load(whole), lines[truncating][0])
+        for read in lines.values():
+            with self.subTest(len(read)):
+                self.assertEqual({line["schema"] for line in read}, {AMBIENT_SCHEMA})
+
+    def test_a_subcommand_that_keeps_no_records_prints_the_figure(self) -> None:
+        # The peer snapshot's `probe` writes no file, so there is nothing for the
+        # figure to sit beside -- and it is still read, because "it writes nothing"
+        # is a claim about the field and never about the rows a page view leaves.
+        driver = cart_driver(CountingContext(counts_for(track=187, visitor=187)))
+        said = io.StringIO()
+        with contextlib.redirect_stderr(said):
+            with ambient_accounting(driver, RUN, "ingress-public", None, command="probe"):
+                driver.navigations += 2
+        self.assertIn("website.track +0", said.getvalue())
+        self.assertIn("2 navigation(s)", said.getvalue())
+        self.assertIn("writes no records", said.getvalue())
 
 # --------------------------------------------------------------------------
 # The decision record: what a "read-only" run bounds, and what it does not.

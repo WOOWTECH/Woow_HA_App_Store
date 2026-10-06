@@ -42,6 +42,19 @@ evidence README carries the way it carries the adapter's. Writing: `visit`
 creates a `website.visitor` / `website.track` row, `todosave` writes
 `project.task.description` (its marker names the run, so a later reader can
 tell whose text it is), `editbtn` writes nothing. The boundary is ADR 0012.
+
+**How many** ambient rows an invocation left is its own figure since #256, and
+#264 gave it to this driver: each invocation counts `website.track` and
+`website.visitor` over its own session's RPC after the login and again after the
+step, and appends the delta to `--out`'s name with `.ambient.json` for its
+extension (`hand-checks.jsonl` -> `hand-checks.ambient.json`) -- counts only, no
+URL and no visitor identity, one line per invocation because the records append
+too. `visit` is the one subcommand where that figure is the measurement rather
+than accounting: it exists to make the tracking write. The denominator is every
+document GET the browser context made under the Ingress base, which is the only
+way to count `editbtn`'s click-driven navigation and the website editor's own
+preview fetches. It is accounting and not a verdict -- `diff` never reads it and
+the conservation tally does not move for it.
 """
 from __future__ import annotations
 
@@ -246,30 +259,44 @@ def run(command: str, out_path: str, *, path: str, marker: str | None = None,
             )
             driver.log_in()
             run_id = adapter.new_run_id()
+            info = adapter.RunInfo(run_id=run_id, target=os.environ.get("PARITY_TARGET", "local"),
+                                   database=adapter.session_database(driver.database))
             record: dict[str, Any] = {
                 "check": command,
                 "surface": adapter.Surface.HA_INGRESS.value,
-                "database": adapter.session_database(driver.database),
-                "run_id": run_id,
-                "target": os.environ.get("PARITY_TARGET", "local"),
+                "database": info.database,
+                "run_id": info.run_id,
+                "target": info.target,
             }
-            signals = Signals()
-            page = driver.context.new_page()
-            signals.watch(page)
-            try:
-                if command == "visit":
-                    do_visit(page, driver, record, path)
-                elif command == "editbtn":
-                    do_editbtn(page, driver, record, path, preview_selector)
-                else:
-                    do_todosave(page, driver, record, marker or marker_for(run_id), save=save)
-            finally:
-                signals.into(record, driver)
-                page.close()
-            line = json.dumps(driver.masker.value(record), ensure_ascii=False, sort_keys=True)
-            with open(out_path, "a", encoding="utf-8") as out:
-                out.write(line + "\n")
-            print(line)
+            # The ambient rows this invocation leaves, counted by the invocation
+            # itself (#256, #264). `visit` exists to make that write -- `U-C5` is
+            # judged from the `website.track` row and not from the page -- so here
+            # the figure is the point and not a footnote. The denominator is the
+            # document counter and not `driver.navigations`: the three steps below
+            # navigate with `page.goto`, `editbtn` navigates again by clicking a
+            # link, and the website editor's preview iframe fetches documents of
+            # its own, none of which `SurfaceDriver._goto` sees.
+            ambient = adapter.SessionAmbientDriver(driver, reading=driver.ambient_reading)
+            with adapter.ambient_accounting(ambient, info, adapter.Surface.HA_INGRESS, out_path,
+                                            command=command, append=True,
+                                            navigation_basis=adapter.AMBIENT_BASIS_DOCUMENTS):
+                signals = Signals()
+                page = driver.context.new_page()
+                signals.watch(page)
+                try:
+                    if command == "visit":
+                        do_visit(page, driver, record, path)
+                    elif command == "editbtn":
+                        do_editbtn(page, driver, record, path, preview_selector)
+                    else:
+                        do_todosave(page, driver, record, marker or marker_for(run_id), save=save)
+                finally:
+                    signals.into(record, driver)
+                    page.close()
+                line = json.dumps(driver.masker.value(record), ensure_ascii=False, sort_keys=True)
+                with open(out_path, "a", encoding="utf-8") as out:
+                    out.write(line + "\n")
+                print(line)
             return 0
         finally:
             if driver is not None:

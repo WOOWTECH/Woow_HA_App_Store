@@ -1503,6 +1503,26 @@ AMBIENT_NOTE = (
     "Why these rows exist and why no targets file can bound them: ADR 0012, postscript 2026-10-01 "
     "(#227)."
 )
+# What the `navigations` denominator counted, said in the file that carries it.
+# Two drivers count two different things and both are page views, so the number
+# is not comparable across files without this sentence: this driver counts the
+# navigations it issued, and the hand-driven drivers count the document GETs
+# their browser context made -- which is the only way to see a navigation a
+# click caused or one the website editor's preview iframe made for itself.
+AMBIENT_BASIS_GOTO = (
+    "Every navigation this run issued, counted in `SurfaceDriver._goto` -- the one place this driver "
+    "navigates. A page's own subsequent requests are not navigations and are not counted, and neither "
+    "is the login, which falls before the first reading."
+)
+AMBIENT_BASIS_DOCUMENTS = (
+    "Every document GET this run's browser context(s) made under the surface's base URL, counted off "
+    "Playwright's request event (`NavigationCount`): a click's navigation, a redirect hop and a "
+    "document the website editor's preview iframe fetched for itself all count, because what writes "
+    "the rows is a GET being served and this driver does not navigate through one call. It is "
+    "therefore an upper bound on page views rather than a count of them -- a redirect's own response "
+    "renders no tracked page. Requests off the base (the Home Assistant frontend's own documents) are "
+    "outside it, and so is the login, which falls before the first reading."
+)
 
 
 @dataclass(frozen=True)
@@ -1552,8 +1572,9 @@ def ambient_deltas(before: AmbientReading, after: AmbientReading) -> dict[str, d
 
 
 def ambient_summary(
-    run: RunInfo, surface: Surface, *, command: str, navigations: int,
+    run: RunInfo, surface: Surface | str, *, command: str, navigations: int,
     before: AmbientReading, after: AmbientReading,
+    navigation_basis: str = AMBIENT_BASIS_GOTO,
 ) -> dict[str, Any]:
     """One surface's run and the ambient rows it left, as its own record.
 
@@ -1570,6 +1591,20 @@ def ambient_summary(
     It is none of the parity plan's conservation tally's business either: that
     tally is over control identities with verdicts (section 12), and this record
     holds neither.
+
+    `navigation_basis` says what the denominator counted, because the drivers do
+    not count the same thing: this one counts its own `_goto` calls, and a
+    hand-driven driver counts the document GETs its browser context made
+    (`NavigationCount`). Both are page views and neither is the other, so a
+    reader comparing two files' `navigations` needs the sentence beside the
+    number rather than under it.
+
+    `surface` takes a key as well as a `Surface`, for the drivers that drive both
+    in one run: `_SURFACE_KEY` has two entries because an adapter run is one
+    surface, and a peer-snapshot run is a pair. The test is `isinstance(...,
+    Surface)` and not `isinstance(..., str)`, because `Surface` *is* a `str`
+    subclass -- a string test passes for both and would write `ha_ingress` where
+    every existing record says `ingress`.
     """
     return {
         "schema": AMBIENT_SCHEMA,
@@ -1577,9 +1612,10 @@ def ambient_summary(
         "target": run.target,
         "database": run.database,
         "client": run.client,
-        "surface": _SURFACE_KEY[surface],
+        "surface": _SURFACE_KEY[surface] if isinstance(surface, Surface) else str(surface),
         "command": command,
         "navigations": int(navigations),
+        "navigation_basis": navigation_basis,
         "models": ambient_deltas(before, after),
         "notes": AMBIENT_NOTE,
     }
@@ -1600,10 +1636,26 @@ def clear_ambient_summary(out_path: str) -> None:
         os.remove(ambient_summary_path(out_path))
 
 
-def write_ambient_summary(out_path: str, summary: Mapping[str, Any]) -> str:
-    """Write the summary beside `out_path` and answer where it went."""
+def write_ambient_summary(out_path: str, summary: Mapping[str, Any], *, append: bool = False) -> str:
+    """Write the summary beside `out_path` and answer where it went.
+
+    `append` follows the records the summary accounts for. This driver truncates
+    `out_path` per run, so one object is the whole figure and a second run
+    replaces it. The hand-driven drivers append one record per invocation to a
+    records file an evidence directory keeps across a whole session
+    (`markup.jsonl` carries 38 of them), so their figure appends too -- one JSON
+    object per line, in the order the invocations ran. Truncating there would
+    leave the last invocation's figure standing for every invocation's rows.
+
+    So **a figure file is read one JSON object per line**, and this driver's is
+    the one-line case of that -- not a different format under the same name. The
+    extension stays `.ambient.json` because the name is the one #256 gave it and
+    #264 asked for (`ingress-open.jsonl` -> `ingress-open.ambient.json`), and the
+    documents that tell a runner to keep the file say how to read it; a
+    `json.load` over a whole file is right only where the records truncate.
+    """
     path = ambient_summary_path(out_path)
-    with open(path, "w", encoding="utf-8") as out:
+    with open(path, "a" if append else "w", encoding="utf-8") as out:
         out.write(json.dumps(summary, ensure_ascii=False, sort_keys=True) + "\n")
     return path
 
@@ -1641,7 +1693,9 @@ def _ambient_reading(driver) -> AmbientReading:
 
 
 @contextlib.contextmanager
-def ambient_accounting(driver, run: RunInfo, surface: Surface, out_path: str, *, command: str):
+def ambient_accounting(driver, run: RunInfo, surface: Surface | str, out_path: str | None, *,
+                       command: str, append: bool = False,
+                       navigation_basis: str = AMBIENT_BASIS_GOTO):
     """Count the ambient rows around a run's navigations and write the summary.
 
     The reading before is taken as early as a reading can be: it goes over the
@@ -1660,9 +1714,18 @@ def ambient_accounting(driver, run: RunInfo, surface: Surface, out_path: str, *,
     Any summary of an earlier run is removed first, the way `out_path` is
     truncated before the first visit. A figure is written at the end, so without
     that a run whose summary could not be written would leave the last run's
-    numbers sitting beside this run's records under a different `run_id`.
+    numbers sitting beside this run's records under a different `run_id`. On an
+    `append` driver there is nothing to clear for the same reason it appends:
+    the earlier lines are earlier invocations' figures and not this one's.
+
+    `out_path` may be `None`, for a subcommand that writes no records -- the peer
+    snapshot's `probe`. There is then nothing to sit beside, so the figure is
+    printed and not written; a driver that only prints it still read it, which is
+    the distinction #256 draws between a zero that is read and one that is
+    assumed.
     """
-    clear_ambient_summary(out_path)
+    if out_path is not None and not append:
+        clear_ambient_summary(out_path)
     before, navigated = _ambient_reading(driver), _ambient_navigations(driver)
     ran = False
     try:
@@ -1672,9 +1735,11 @@ def ambient_accounting(driver, run: RunInfo, surface: Surface, out_path: str, *,
         try:
             summary = ambient_summary(run, surface, command=command,
                                       navigations=_ambient_navigations(driver) - navigated,
-                                      before=before, after=_ambient_reading(driver))
-            print("ambient rows: %s; %s" % (ambient_line(summary), write_ambient_summary(out_path, summary)),
-                  file=sys.stderr)
+                                      before=before, after=_ambient_reading(driver),
+                                      navigation_basis=navigation_basis)
+            written = ("not written: this subcommand writes no records" if out_path is None
+                       else write_ambient_summary(out_path, summary, append=append))
+            print("ambient rows: %s; %s" % (ambient_line(summary), written), file=sys.stderr)
         except Exception as error:  # noqa: BLE001 -- said either way, raised only when it is the only failure
             print("ambient accounting failed (%s)" % sanitize_diagnostic(str(error)), file=sys.stderr)
             if ran:
@@ -1683,6 +1748,133 @@ def ambient_accounting(driver, run: RunInfo, surface: Surface, out_path: str, *,
                 # missed -- which is the thing #256 exists to stop. When the run
                 # was already failing, that failure is the one the operator needs.
                 raise
+
+
+def validated_count(model: str, count: Any) -> int:
+    """`count` as the integer a `search_count` answered, or the reason it is not.
+
+    One place, because the trap is one line wide and reachable from every caller:
+    `True` is an `int` in Python and would pass as a count of one, so a method
+    that answered a boolean -- which is what a controller that refused answers --
+    would be recorded as "one row". `SurfaceDriver.count_rows` and the
+    hand-driven drivers' `SessionAmbientDriver` both read their count through
+    here rather than each writing the test.
+    """
+    if not isinstance(count, int) or isinstance(count, bool):
+        raise RuntimeError("%s.search_count answered no count: %r" % (model, count))
+    return count
+
+
+class NavigationCount:
+    """Every document GET one browser context made under a base URL.
+
+    The ambient figure's denominator, for a driver that does not navigate through
+    one call the way `SurfaceDriver._goto` does. Three of this repository's Live
+    drivers do not: the hand checks' `editbtn` navigates by clicking a link, the
+    markup driver drives the website editor, whose preview iframe fetches
+    documents on its own account, and the peer snapshot opens a form on two
+    sessions. A counter at the call sites would have to be written beside every
+    one of them and would still miss both of those -- a click and an iframe are
+    not calls this code makes.
+
+    So it counts what actually went over the wire. `resource_type == "document"`
+    is Playwright's own name for a navigation request, main frame or sub-frame,
+    which is exactly the GET that writes the rows being counted: serving a
+    tracked page upserts the visitor and inserts the track row (ADR 0012,
+    postscript 2026-10-01). The base filter keeps the Home Assistant frontend's
+    own documents out -- the panel page is on the HA origin but not under the
+    Ingress prefix -- and it is read per request rather than at construction,
+    because `IngressSide.base` does not exist until the iframe has been found.
+
+    What it over-counts, and the summary's `navigation_basis` says so: a redirect
+    hop is a document GET whose response renders no page, and whether a request
+    is a hop is not known when it is made.
+    """
+
+    def __init__(self, context, base_of) -> None:
+        self.navigations = 0
+        self._base_of = base_of if callable(base_of) else (lambda: base_of)
+        context.on("request", self._seen)
+
+    def _seen(self, request) -> None:
+        # A listener that raised would raise inside Playwright's dispatch, on
+        # whatever call happened to be waiting, and an accounting failure may not
+        # become the run's failure (`ambient_accounting`).
+        with contextlib.suppress(Exception):
+            base = self._base_of()
+            if request.resource_type == "document" and base and request.url.startswith(base):
+                self.navigations += 1
+
+
+class SessionAmbientDriver:
+    """The ambient figure read off sessions that are not a `SurfaceDriver`.
+
+    `ambient_accounting` asks its driver two questions -- how many navigations
+    are inside the window, and the counts now -- and `SurfaceDriver` answers both.
+    The hand-driven Live drivers hold a `Side` instead
+    (`e2e_parity_shared_layers_live.py`), or hold a `SurfaceDriver` whose
+    navigations do not go through `_goto`. This answers the same two questions off
+    either, so the figure is read the one way for every driver rather than three
+    ways.
+
+    The counts go over a session's own RPC and never over `ssh`, which is #256's
+    point: a figure the run itself read is the run's own evidence, and one read on
+    the host afterwards is a different measurement that cannot be a delta. One
+    session is enough, because the two models are database-wide -- so the first
+    session named is the one that counts, and `surface` says which it was.
+
+    The navigation denominator is every session's, summed. A delta over a
+    database-wide count has no way to attribute a row to one of two sessions that
+    were both open, so a denominator covering only one of them would be a
+    fraction of the figure's own window.
+    """
+
+    def __init__(self, *sessions, reading=None, mask=None) -> None:
+        if not sessions:
+            raise ValueError("the ambient figure needs at least one session")
+        self.sessions = sessions
+        self.counters = [NavigationCount(session.context, lambda session=session: session.base)
+                         for session in sessions]
+        self._reading = reading
+        self._mask = mask or (lambda value: value)
+
+    @property
+    def navigations(self) -> int:
+        return sum(counter.navigations for counter in self.counters)
+
+    def count_rows(self, model: str) -> int:
+        """`search_count` with an empty domain, over the first session's own RPC.
+
+        `READ_ONLY_POLICY` is the seam here too (`Operation.COUNT_ROWS`): a
+        request a driver makes belongs in the enum rather than beside it, and this
+        request is the same one `SurfaceDriver.count_rows` makes -- a domain goes
+        in and an integer comes out, with no record to name and no field to read.
+        """
+        READ_ONLY_POLICY.require(Operation.COUNT_ROWS)
+        return validated_count(model, self.sessions[0].rpc(model, "search_count", [[]]))
+
+    def ambient_reading(self) -> AmbientReading:
+        """A count of each `AMBIENT_MODELS` model now, and the reason for any missing.
+
+        One reason per model, not one per reading, for `SurfaceDriver.ambient_reading`'s
+        reason: a database without `website` has neither model and reports two
+        reasons, while a session that lost one answer still reports the count it
+        got. A driver that already has a reading of its own (the hand checks hold a
+        `SurfaceDriver`) hands it in, so there is one implementation of the count
+        and not two.
+        """
+        if self._reading is not None:
+            return self._reading()
+        counts: dict[str, int] = {}
+        unread: dict[str, str] = {}
+        for model in AMBIENT_MODELS:
+            try:
+                counts[model] = self.count_rows(model)
+            except Exception as error:  # noqa: BLE001 -- why a count is missing is the record's answer
+                # Masked: the reason goes into a record a pull request quotes, and
+                # a raw Playwright message carries the host and the Ingress token.
+                unread[model] = str(self._mask((str(error).splitlines() or [""])[0]))
+        return AmbientReading(counts=counts, unread=unread)
 
 
 # --- Runtime (Live tier) --------------------------------------------------
@@ -2066,12 +2258,10 @@ class SurfaceDriver:
             raise RuntimeError("%s.search_count failed: %s"
                                % (model, (error.get("data") or {}).get("message")
                                   or error.get("message") or "no message"))
-        count = body.get("result")
-        # `True` is an `int` in Python and would pass as a count of one. A method
-        # that answered something other than a number did not answer this one.
-        if not isinstance(count, int) or isinstance(count, bool):
-            raise RuntimeError("%s.search_count answered no count: %r" % (model, count))
-        return count
+        # A method that answered something other than a number did not answer
+        # this one, and `True` would pass as a count of one: `validated_count` is
+        # the one place that test is written, shared with `SessionAmbientDriver`.
+        return validated_count(model, body.get("result"))
 
     def ambient_reading(self) -> AmbientReading:
         """A count of each `AMBIENT_MODELS` model now, and the reason for any missing.

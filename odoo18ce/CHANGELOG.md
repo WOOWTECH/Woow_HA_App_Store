@@ -1,5 +1,1142 @@
 # Changelog
 
+## 0.4.11 — 2026-10-06
+
+Only #271 changes the image: the gateway no longer prefixes the media dialog's
+document domain, so the dialog stops listing generated asset bundles as
+documents. Everything else below is parity drivers, Static-tier tests,
+evidence and ADR text, none of it in the add-on's runtime -- hence the ~0.1 MiB
+download (#303).
+
+### Added
+- The Ingress markup family's owed Live-tier checks are run on Release 0.4.10
+  (#243), and four of the five rows have a driver they did not have:
+  `odoo18ce/tests/e2e_ingress_markup_live.py`, eight checks, each judged against
+  an expectation that **differs** by surface -- under Ingress a root-relative
+  `src` must resolve under the prefix, on the Public origin at the origin root,
+  and the two sides being *equal* is the failure, which is why none of these is
+  the adapter's two-surface diff. Its records are the parity plan's fourth
+  evidence schema, `woow.ingress-markup/v1`, and like the other two additions it
+  does not feed `conservation`. Escape judgement is `adapter.is_prefix_escape`
+  and the stored-prefix shape and its redaction come from
+  `e2e_collab_peer_snapshot_live`, so neither is reimplemented here.
+- Results: #237's four checks `PARITY` on both surfaces, with the iframe path's
+  `sandbox` attribute confirming which branch rendered; #238's three lines
+  `PARITY`, including the half that matters -- `mailing.mailing.body_html`, the
+  inlined field that leaves the installation, read back root-relative after a
+  real save from the designer; #240's two halves `PARITY`; #239's image line
+  `PARITY`; #234 `CLEAN` on both pairs with `escalate_issue_234_to_blocker:
+  false`, so it stays `severity: important`.
+- Three screens that were written down wrong, each corrected by a measurement
+  rather than a reading of the source. #237's check 2 cannot be taken on
+  `project.task.description` (`sanitize_tags=True` strips the `<head>`, so the
+  value renders the plain path -- check 1's screen measured twice); its check 1
+  is not on the To-do form (`project_todo`'s controller whitelists its cog items
+  and filters *Version History* out); and #240's is not the user signature,
+  which on this build is served by `o_field_html_mail` and renders an **empty**
+  editor, leaving no text to select and so no floating toolbar. Also measured:
+  `?debug=1` does **not** survive a navigation here, so it belongs on the form
+  navigation itself -- without it the toolbar comes up with seven groups and no
+  code view, which reads exactly like a missing button.
+- What the run leaves owed, each with an issue rather than a sentence: the
+  collaboration transport never delivered on either pair, so #234's `CLEAN` is
+  about the save path and not a delivered peer snapshot (#265); `probe` writes
+  the field it says it does not, and its constant marker made one reading a
+  false `delivered` (#263); the hand-driven drivers emit no `.ambient.json`, so
+  #256's accounting has a hole (#264); and two of #239's three lines are still
+  unmeasured, one of them needing a fixture carrying `data-original-src` (#266).
+- **#239's other two lines are measured, and all four media checks now build what
+  they measure** (#266, no Release and no Deploy -- the rules were already in
+  0.4.10, and the run reads `rule_in_served_method` **and**
+  `legacy_rule_in_served_method` as `true` under Ingress and `false` on the Public
+  origin rather than trusting the version number). `media-image-website` builds a
+  `website.page` whose stored arch carries one attachment's own `image_src` in
+  **both** `src` and `data-original-src` -- the only screen on which that attribute
+  can arrive prefixed, because the generic HTML location's `src="/` is a bare
+  substring and claims the tail of the longer attribute name, while a field value
+  over `call_kw` has its quotes escaped and is untouched. Ingress reads it prefixed
+  and selects its tile; the Public origin reads it root-relative and selects the
+  same one. A ninth check, `media-document-mailing`, reads the document tile on the
+  **legacy** dialog, which the mail designer opens: both surfaces select the
+  fixture's tile, and the control the open list implied, `#media-replace`, turns out
+  to be **present and hidden** -- the legacy editor hides its whole toolbar for a
+  media whose `data-mimetype` is not an image, and the dialog's own
+  `createElements` always stamps one on a document, so a double-click is the way in.
+  The current editor stays unreachable by construction and now says so from a
+  fixture rather than from an empty record.
+- Two readings in that first record exist because either would otherwise produce a
+  false pass, and both are new: `data-original-src` is read **again after the
+  element is selected**, because `ImageTools._initializeImage` deletes the whole
+  `data-original-*` group when the attribute fails to load; and the fixture carries
+  `data-mimetype-before-conversion`, because without it `loadImageInfo` overwrites
+  `data-original-src` with the root-relative value the ORM just returned -- so the
+  branch would compare two unprefixed values and pass whether or not the rule
+  shipped.
+- Why **all four** media checks build their fixtures and not only the two #266
+  named: the two it named could measure nothing because the host carries nothing
+  for their branches to execute on, and the two it did not could no longer measure
+  anything because #243's fixtures were made by hand and correctly cleaned up --
+  so the next run found a static module asset with no `ir.attachment` behind it and
+  an empty description, and could only say so. Both first attempts are kept in the
+  evidence as the reason. Each fixture is one public `ir.attachment` plus one
+  record, named after the run, removed by `--cleanup`; `public=True` is what lists
+  it whatever record the dialog was opened from, and `order: 'id desc'` with a
+  limit of 30 is what makes it the first tile rather than something to search for.
+- **One divergence found beside them, filed as #271 rather than against #239.**
+  Under Ingress the Documents tab lists every generated asset bundle:
+  `DocumentSelector.attachmentsDomain` excludes them with
+  `!['url', '=like', '/web/assets/%']`, and that pattern is a string literal in the
+  same bundle as the URL literals the Ingress asset location rewrites, so it
+  arrives prefixed (the served getter is 383 bytes against 320 -- one prefix
+  insertion) and the exclusion matches no stored `url`. The finding is the class:
+  a generic literal rewrite reaches **ORM domain literals**, not only URLs.
+  #239's severity does not move for it -- the preselection is correct on both
+  surfaces and a search domain travels in a request body, so nothing is stored.
+- This is also the markup family's first `.ambient.json`, which is what #243's
+  evidence said the next run of this family owed: 22 lines beside 22 records,
+  `website.track` and `website.visitor` deltas **0** on every line including the
+  website editor's five navigations per surface, absolute counts 198 and 59 on
+  either side of every window.
+- **Every Live driver now names the ambient rows it left, not only the adapter**
+  (#264, found by the run above). #256 made the figure the run's own — count
+  `website.track` and `website.visitor` after the login and again on the way out,
+  write the delta beside the records under their own name with `.ambient.json`
+  for its extension (`ingress-open.jsonl` → `ingress-open.ambient.json`) — and
+  built it in `crawl` and `open`, which left the three hand-driven drivers
+  reconstructing it on the host afterwards: that is exactly what #243's evidence
+  had to do, an absolute `website.track` 198 with no before-reading and so no
+  delta. `e2e_ingress_markup_live.py` now writes one line per surface per check,
+  `e2e_collab_peer_snapshot_live.py`'s `run` one per pair, and
+  `e2e_ingress_hand_checks.py` one per invocation — so **a figure file is read one
+  JSON object per line**, and the adapter's own, which truncates with its records,
+  is the one-line case of that rather than a second format under the same
+  extension. The counts go over the
+  session's own `search_count` and never over `ssh` (`Operation.COUNT_ROWS`, the
+  same seam `SurfaceDriver.count_rows` passes through), and the shared parts live
+  in `e2e_menu_action_adapter.py` rather than in three copies: `ambient_accounting`
+  takes a `SessionAmbientDriver` wrapping any session with an `rpc` and a
+  `context`, and the `True`-is-an-`int` guard that would record a refusing
+  controller's boolean as "one row" is `validated_count`, in one place.
+- The navigation denominator is **counted and not estimated**, and the record now
+  says which quantity it is (`navigation_basis`, a new field in the schema).
+  `SurfaceDriver._goto` is the adapter's one navigation call and the hand-driven
+  drivers have no equivalent — the hand checks' `editbtn` navigates by clicking a
+  link, the markup driver drives a website editor whose preview iframe fetches
+  documents on its own account, and the peer snapshot opens a form on two
+  sessions — so for those the denominator is every document GET the browser
+  context made under the surface's base, off Playwright's `request` event. That
+  is an upper bound on page views rather than a count of them, because a redirect
+  hop is a document GET that renders nothing, and the field carries that sentence
+  beside the number so two files' `navigations` are not read as the same thing. A
+  two-session run counts rows over session A — the models are database-wide, so a
+  row cannot be attributed to one of two open sessions — sums both sessions'
+  navigations, and records the pair name in `surface`.
+- `probe` keeps no records, so `ambient_accounting` takes `out_path=None` and the
+  figure is printed on stderr rather than written. It opens only `/odoo/...`
+  backend routes, so its delta is expected to be zero, and reading it anyway is
+  the point: **a zero that is read is a reading and a zero that is assumed is
+  not**, which is the distinction #256 drew about `crawl`. `visit` is the
+  opposite case and the one subcommand where the figure is the measurement rather
+  than the accounting — it exists to make the tracking write, and `U-C5` is
+  judged from the row. Nothing about judging moved: `read_records` still refuses
+  the schema, `diff` never reads the file, and the §10.6 and §12 conservation
+  figures do not move for it. `docs/agents/live-tier.md`, ADR 0012's 2026-10-01
+  postscript and the parity plan's §12 say it of every driver now, and
+  `docs/testing/evidence/2026-10-02-issue-243/README.md` is **annotated** rather
+  than rewritten: the absolute count it read is still what that run read. The
+  pure parts are driven at the Static tier. No image change and no version bump.
+- **The collaboration transport has now been seen to deliver, and a delivered peer
+  snapshot does put the Ingress prefix in a record** (#265, on Release 0.4.10, the
+  version #243 measured). Both pairs delivered. `ingress-ingress` is `CLEAN` *after
+  a delivered snapshot*, which is the sentence #234's row had been quoted for and
+  which no run had made; `ingress-public` stored
+  `/api/hassio_ingress/<the add-on's token>` on both of the to-do's images —
+  `FOREIGN-PREFIX-STORED`, the write #234 has described since 2026-10-01, measured
+  for the first time — and the Ingress session's next save removed it, both `src`
+  root-relative. So both halves of "the fix heals the record rather than preventing
+  the write" are measured, the write itself is registered as `G-08` in the parity
+  plan's §11, and `report` escalates on it: #234's criterion is a *confirmed*
+  stored foreign token, so the rule reads every value the run read and not only the
+  last, with the heal reported beside it rather than instead of it. #234 read that
+  and **stays `severity: important`**, closed: the token entered the row and the next
+  Ingress save removed it, which is all this fix ever claimed. What stays open is
+  `G-08`'s shape — a record a Public peer wrote and no Ingress session saves again.
+  Evidence:
+  `docs/testing/evidence/2026-10-02-issue-265/`; #243's directory is **annotated**,
+  not rewritten. No image change and no version bump.
+- **`G-10` is recorded rather than fixed, and the direction it rests on is pinned at
+  the Static tier** (#296; no Release, no Deploy, no host write). There is no
+  admissible Ingress-side fix: the prefixed value is in `project.task.description`
+  the moment the Public-origin peer saves it, and ADR 0003 keeps that surface
+  unchanged, so what the add-on decides is only whether the field stays prefixed too
+  -- and #234's strip, which turns "a prefixed live field, indefinitely" into "a
+  clean field plus one history entry that ages out", is a strict improvement.
+  `G-08` is therefore not re-graded; #234 is told by comment that its standing
+  sentence is **partial by construction** and its disposition is left alone. The two
+  prefixed revisions on the host stay untouched as a decision: editing the store a
+  reading comes from is the move ADR 0014 refuses a stored-prefix valve under, with
+  fewer witnesses, and the only ways in are `super(HtmlFieldHistory, rec).write(...)`
+  or SQL, neither auditable from the record.
+- `odoo18ce/tests/test_html_field_history_prefix.py` keeps the claim from drifting
+  silently. `diff_utils.py` imports only `re` and `difflib`, so the pinned package's
+  own `generate_patch` and `apply_patch` -- captured verbatim with
+  `html_field_history_mixin.py` under the new `odoo18ce/tests/fixtures/server/` -- are
+  **executed** over `project.task(5).description` exactly as #282's `markup.jsonl`
+  recorded it: the Public peer's store patch carries no prefix, the Ingress heal's
+  patch carries both pictures, and `apply_patch` reconstructs a prefixed document from
+  the clean value the field holds today, which is what the Version History dialog drew.
+  Two store-and-heal pairs replayed offline leave the prefix in the *second* revision
+  of each, the host's revision 13 and 16 shape, and the residue is gone once
+  `_html_field_history_size_limit` further revisions exist. The source shape the
+  direction rests on is pinned with `ast` rather than text, so prose cannot satisfy
+  it: the pre-write capture precedes `super().write(vals)`, `generate_patch` is called
+  new-then-old, `_patch_generator` appends only `old_content_lines`, the
+  reconstruction starts from the current field value, and both `create` and `write`
+  drop `html_field_history` out of the incoming vals.
+
+### Fixed
+- **`media-document-mailing` could not run on a database with no draft
+  mailing** (#274, found by #271's Live run). It built its own attachment and
+  only *looked up* its mailing -- `editable_mailing_id`, a `search` for
+  `state in ('draft','in_queue')` with `limit=1` -- so it was the one member of
+  the media family still resting on a record it did not create, which is
+  precisely what #266 moved the other three away from. `odoo_parity` happens to
+  carry a draft mailing, so every recorded run had found one; #271's run was
+  pointed at `catchup164b`, where `mass_mailing` had been installed minutes
+  earlier, and the first attempt recorded
+  `{"verdict": "NOT-RUN", "notes": "no mailing.mailing in state draft or
+  in_queue on this database"}`. That run seeded a mailing by hand over
+  `odoo shell` and passed, which is the only thing that stopped it being
+  unattended -- and a fixture made by hand is not named after the run, not
+  removed by `--cleanup`, and in no record's `fixture` block.
+- The check now **creates** a draft mailing when the database has none, named
+  the way every other scratch record here is
+  (`WOOW scratch (delete me) <run id>`), recorded under `extra["fixture"]`
+  beside the attachment with its id, subject and state, and deleted under
+  `--cleanup` with the outcome in `fixture_removed.mailing`. `subject` is the
+  only field the create has to pass: every other `required=True` field on
+  `mailing.mailing` has a default or a stored `precompute` compute, and
+  `mailing_model_id`'s default is `mass_mailing.model_mailing_list` -- the very
+  record #271's hand seeding searched for, passed anyway when the search finds
+  it so the create does not rest on a module data ref resolving.
+- **The distinction the fix is about is "restore what I borrowed" against
+  "delete what I made".** A mailing this run created is deleted and *not*
+  restored -- writing its old body back would put `body_restored: true` in a
+  record where nothing was borrowed. A mailing it found is restored and *never*
+  deleted, because #266's own lesson is that a check which deletes what it did
+  not create is how the next run ends up with nothing to measure. `--mailing-id`
+  keeps its meaning exactly: reuse this one, do not look, do not create, do not
+  delete, and do not second-guess the state the operator named. Which of the
+  three it was is now a reading of its own, `extra["mailing_source"]`
+  (`given` / `found` / `created`).
+- **A scratch mailing an earlier surface or run left behind is *reclaimed*, not
+  borrowed.** Without this, `--surface both` without `--cleanup` had the ingress
+  surface leave its scratch mailing, the public surface's `search` find it, and
+  the run record it as `found`: it would then restore *this run's own* fixture
+  body while reporting `body_restored: true` -- evidence saying a real campaign
+  was put back when nothing was borrowed -- and the row would be permanent,
+  because every later run would read it the same way and no `--cleanup` could
+  reach it. The test is the subject's `SCRATCH_NAME_PREFIX`, which is sound
+  because this check is the only thing in the repository that creates a
+  `mailing.mailing`; a real campaign whose subject merely *mentions* the words
+  keeps every protection a borrowed row has.
+- **`email_from` is the one required field whose precompute can come back
+  empty**, and a required stored field is `NOT NULL` in Postgres
+  (`fields.apply_required`), so that would be an `IntegrityError` on the create
+  rather than an odd record. With no `mail_server_id` the compute resolves to
+  `create_uid.email_formatted or env.user.email_formatted`
+  (`mailing.py:260-275`), and `email_formatted` is `False` for a user whose
+  partner has no email -- exactly the fresh or catch-up database this seed
+  exists for, so #274's fix would have failed in its own headline case. The
+  compute is left to do its job wherever it can and an unroutable
+  `.invalid` placeholder is passed only where the value it would reach is
+  empty.
+- Two smaller things the same seam fixes. The created row's `state` is **read
+  back** and the row removed if it is not one of `EDITABLE_MAILING_STATES` --
+  the designer's body field is `readonly="state in ('sending','done')"`, so a
+  row outside those two would give the check a readonly screen that reads like
+  a fixture which did not survive its field; and the attachment `create`, the
+  `before` read and the `body_arch` write now sit **inside** the seeder's
+  guard, where they were below it. `run_check` discards a handler's return
+  value when it raises, so a failure in any of those three used to leave a
+  public `ir.attachment` on the host with nothing in the evidence naming it --
+  the trap #266's review caught twice in the other checks. A compensating
+  removal that *itself* fails now prints what it left to stderr, because
+  `run_check` discards the handler's return value on a raise and the evidence
+  can carry no `fixture_removed` from there.
+- **`mailing-editable` could not run on a database with no draft mailing
+  either, and it saved over a mailing it did not create** (#276, found while
+  implementing #274, which deliberately left this check alone). The first half
+  is #274's reading unchanged: the check only *looked up* a `draft` or
+  `in_queue` mailing, so on a fresh install, a catch-up database or the local
+  add-on's own it recorded `NOT-RUN` and measured nothing. The second half is
+  worse here than it was there. This check does not merely overwrite a borrowed
+  `body_arch` over RPC: it types in the mail designer and **clicks save**,
+  because #238's whole subject *is* the save seam -- `body_arch` through
+  `getEditingValue`, and `body_html`, which `commitChanges` inlines separately
+  and which is the field that leaves the installation with the mail. So a run
+  stored this run's marker body in **both** fields of somebody's campaign, and
+  while `--cleanup` and the handler's error path write them back, neither covers
+  a run killed between the save and the restore or taken without the flag, which
+  is optional. What is left then is a real campaign whose body is
+  `WOOW-MARKUP hand check <run id>` plus a company logo.
+- **The decision is not the same as #274's: this check builds its own mailing
+  and borrows nothing** unless `--mailing-id` names one. Nothing measured is
+  lost -- the designer, `getEditingValue` and `commitChanges` do not care which
+  record they are on -- and a run that never touches a real campaign needs no
+  restore to be correct. #274 kept the find-first order for
+  `media-document-mailing` because that check does not save (it *discards* the
+  form and reads the record back to prove it); here that order is what created
+  the risk. The two checks now share one seam, `fixture_mailing`, whose `borrow`
+  parameter is where each of them answers the question, and the answer is
+  reported in `extra["mailing_source"]` as before (`given` / `found` /
+  `reclaimed` / `created`).
+- A scratch mailing an earlier surface or run left behind is still **reclaimed**
+  rather than left to accumulate -- `--cleanup` is optional and `--surface both`
+  runs this check twice -- but a check that borrows nothing cannot find it with
+  `editable_mailing_id`, which would hand it a campaign. `scratch_mailing_id`
+  searches for the subject prefix with `=like`, anchored, so a real campaign
+  that merely *mentions* the words is not a match, and bounded by
+  `EDITABLE_MAILING_STATES`, because a reclaimed row the designer renders
+  readonly reads exactly like a fixture that did not survive its field.
+- Two things fixed on the way, both in the same window. **Every exit from the
+  check now undoes its seed**: the body is written over RPC *before* the first
+  navigation and three of the browser half's four exits are give-up paths, while
+  the restore used to sit only on the path that had saved -- so a `--cleanup` run
+  that gave up at the iframe left this run's marker body in a borrowed
+  `body_arch`. And the check now **leaves the form clean**, through the discard
+  `media-document-mailing` already used: an Odoo form persists a dirty editor on
+  `beforeunload` and on an ungated `visibilitychange` (#263 is the same mechanism
+  on the To-do form), and `run_check` closes the session *after* the handler has
+  returned, so a save made there would fall outside every reading the check took
+  and would undo the restore it had just made.
+- **The discard was on the wrong half of three checks** (#276 review). It sat on
+  the exits that go through a leaving function and on none of the handlers'
+  recovery paths -- which are the paths that matter *more*, because the typing is
+  already done by the time a later step can fail, so the form is certainly dirty.
+  Concretely: `mailing-editable --mailing-id 42` whose `save.click()` times out
+  restored the operator's campaign, returned, and then had `run_check`'s own
+  `side.close()` fire `beforeunload` on the still-dirty form and write this run's
+  marker body straight back -- while the record said `body_restored: true`. Both
+  mailing handlers and `do_codeview` now discard first on both recovery paths.
+- **`do_codeview` had the same window on its success path, over a record it can
+  neither delete nor rebuild**: a real `ir.actions.act_window.help`. It recorded
+  `unsaved_after_save` and acted on it nowhere, so a `--cleanup` run whose save
+  left the form dirty put this run's marked help text back on that action
+  permanently, with `help_restored: true` beside it. The discard now sits between
+  the read-back (which is the reading) and the restore. Found by the same review;
+  the rule it breaks is the one #276 states generally, so it is fixed here rather
+  than filed.
+- **A `body_html` the save never inlined no longer reads as a pass.** Building the
+  row makes `False` the baseline for that field, and an empty field is `CLEAN`
+  -- correctly, since there is no prefix in it -- so a save that stored
+  `body_arch` and never ran `commitChanges` would have scored `PARITY` for rule
+  8's field, the one that leaves the installation with the mail. The new
+  `extra["body_html_inlined"]` reading is the marker the designer **typed**,
+  which is in no RPC-seeded value; it is recorded and not judged, because a
+  verdict there would make this check's `PARITY` turn on a mechanism that is not
+  its subject. Presence alone turns out not to be that reading on a *reclaimed*
+  row, whose `body_html` already holds this run's marker -- filed as #279 and
+  fixed in the entry below.
+- One thing the review found that is not fixed in #276 itself: a *reclaimed*
+  scratch mailing's body links the public `ir.attachment` an **earlier** run
+  created, and that attachment is in no fixture dict the reclaiming run holds, so
+  nothing removes it. It predates #276 -- #274's reclaim is where it starts --
+  and the two mailing checks now sharing one scratch-subject prefix only adds a
+  second way to reach it. Filed as #277 and fixed in the entry below.
+- **A reclaim deleted the mailing and stranded the attachment its body linked**
+  (#277). `--cleanup` removed two things: `fixture["attachment"]`, the attachment
+  *this* run created, and the scratch `mailing.mailing`, whoever made it. So a
+  run of `media-document-mailing` taken without `--cleanup` left scratch mailing
+  M carrying `<a href="/web/content/<A>" ...>` for the public attachment A it
+  had created; a later run reclaimed M, deleted it, and A survived -- reachable
+  from nothing, because a fixture attachment is only ever named in the `fixture`
+  block of the run that made it. The one-check case is #274's; #276 added the
+  second way to reach it, since both mailing checks now write the same
+  `SCRATCH_NAME_PREFIX` subject and so `mailing-editable` can reclaim a row
+  `media-document-mailing` left.
+- The litter is host hygiene and not a misreading: a stranded `public=True`
+  attachment named `woow-document-fixture-<run id>.txt` is listed **first** by
+  the media dialog's own `order: 'id desc'` -- exactly the property
+  `create_fixture_attachment` relies on -- so an old run's leftover is what the
+  next run's tile list shows until that run creates its own. Nothing is
+  misjudged either way, because every media check reads the tile it built *by
+  name*.
+- The fix reads the ids out of the body it is about to overwrite.
+  `reclaimable_scratch_mailing` now reads `body_arch` in the same call as the
+  subject test -- the last moment that value says anything, because the seeder's
+  own body write replaces the href and the delete takes the row -- and
+  `reclaim_stranded_attachments` takes `/web/content/(\d+)` out of it and unlinks
+  those rows. **The bound is `scratch_mailing`'s own `body_arch`, and it is what
+  makes reading ids out of markup sound**: only a row whose subject carried
+  `SCRATCH_NAME_PREFIX` has that key, so the body is this driver's own fixture
+  body and the ids in it are this driver's. A row this run created carries no
+  body, and a row it borrowed -- `found`, or named by `--mailing-id` -- has no
+  `scratch_mailing` dict at all, so neither a real campaign's attachments nor a
+  real company's can reach the list.
+- **The removal goes with the reclaim and not with `--cleanup`**, which is the
+  asymmetry the fix turns on and the second half of the leak. `--cleanup` asks
+  "leave the host as this run found it", and for a row this run made that is the
+  whole question; these attachments are an *earlier* run's, already abandoned,
+  and the seeding destroys the only handle on them whatever the flag says. A
+  reclaim without `--cleanup` therefore left a mailing that no longer named the
+  attachment, and the next `--cleanup` run read a body naming nothing and deleted
+  the row -- stranding it exactly as before. It is also the first step inside the
+  seeder's guard, ahead of the attachment this run builds, because every step
+  below it can fail and the compensation that follows deletes the reclaimed row
+  the ids are read from.
+- Two details are deliberate. The pattern is **unanchored**, because the litter
+  was left by a check that *saves* and #238's whole subject is that a save may
+  store the href prefixed. And the ids are filtered through a `search` before the
+  `unlink`, because unlinking an id that is already gone is a `MissingError` and
+  a body naming a deleted attachment is reachable -- it is what a run whose
+  mailing unlink failed leaves behind, and failing a reclaim over litter that is
+  already gone would keep the live litter alive.
+- Scoping the subject prefix per check was the alternative and is **not** the
+  fix: it addresses only the cross-check half and leaves the one-check case,
+  which is the one that already existed. The ids and the outcome are recorded in
+  `extra["fixture"]` (`reclaimed_attachment_ids`,
+  `reclaimed_attachments_removed`) and the seeders' compensation path prints both
+  when the removal came back `false` -- `run_check` discards a handler's return
+  value on a raise, so that console line is the only place they can appear from
+  there, and the reclaim's outcome cannot ride in `fixture_removed` because the
+  reclaim ran before anything in the seeder could fail. The module's
+  "`--cleanup` removes all five" no longer declares a gap beside it.
+- **A generic literal rewrite reached an ORM *search pattern*, so the media
+  dialog's Documents tab listed every generated asset bundle** (#271, found by
+  #266's run beside #239's document line and filed separately because it is not
+  #239's rule). `DocumentSelector.attachmentsDomain` excludes those bundles with
+  `!['url', '=like', '/web/assets/%']`, naming the reason in its own comment --
+  and that is a string literal in an ORM domain, living in the same bundle as
+  the URL literals the Ingress asset location has prefixed since #166. nginx's
+  `sub_filter` is a byte-level substring search with no idea what a literal is
+  *for*, so it prefixed this one too; the exclusion then read
+  `NOT (url =like '<prefix>/web/assets/%')`, which matches no stored `url`
+  because every bundle attachment is `/web/assets/...` in the database, and the
+  `'|' ['url', '=', null]` beside it let all of them through. Under Ingress the
+  first page of 30 tiles filled with `mass_mailing.assets_wysiwyg.min.js` and
+  its siblings while the Public origin listed the one document; on a database
+  with more than 30 bundles a user's own files were unreachable without a
+  search. Nothing was stored -- a search domain travels in a request body.
+- The fix is **two counter-rules, one per quote style**, each its own pattern
+  spelled as its own replacement: the job is to claim those bytes before a
+  generic rule can. `sub_filter` tracks one match attempt at a time, so the
+  pattern starting at the earlier byte wins and the inner `"/web/` never gets a
+  turn; the rules are also written *ahead* of the generic ones, which is the
+  other half of the same rule (#158: two patterns starting at the same byte go
+  by written order). Identity rather than a cleverer spelling, because the Live
+  probe's reading is `domain.includes("/web/assets/")` -- the evidence that this
+  is fixed is "the literal is present and carries no prefix", and a split
+  spelling would make that field read `false`.
+- Why not a narrower generic rule, which is the other option ADR 0004's
+  2026-10-02 postscript had to choose between: the measurement says the class
+  has **two** sites today, and `/web/assets/...` is also a genuine address the
+  generic rule is there to prefix (`loadBundle` asks for one by that path), so
+  narrowing would have to distinguish operand positions -- which is exactly
+  what a substring filter cannot do.
+- **Six pattern literals measured, not the four the issue named, and a third
+  selector found.** Quote style turns out to be per *site*, not per file -- the
+  legacy `web_editor` image selector writes its two shape literals
+  *double*-quoted while writing `/%/static/%` single-quoted -- and
+  `html_editor`'s `FileDocumentsSelector`, the compatibility override for the
+  `/file` command, carries three of the six, which is why a bundle holds a shape
+  literal three times and not twice. Only the two `/web/assets/%` are reached by
+  any shipped rule: `/html_editor/shape/%` and `/%/static/%` are reached by
+  nothing, and `/web_editor/shape/%` survives because the rule needs `/web/` and
+  `/web_editor/` has `_` where the rule has `/`. Every count is per bundle in
+  `odoo18ce/tests/fixtures/bundles/README.md`, derived from the pinned package
+  through Odoo's own serve path and checked by reproducing #239's and #240's
+  tables row for row first.
+- **Measured on the test host through a local build, with no Release**
+  (2026-10-03, `local_odoo18ce` `0.4.10-202610031232`, database `catchup164b`,
+  Ingress only, run `WOOW-MARKUP-20261003T124016Z`;
+  `docs/testing/evidence/2026-10-03-issue-271/`). The fix only moves the Ingress
+  side and the Public reading was already taken by #266 the day before, so the
+  local build is the whole verification and no version was bumped.
+  `media-document-mailing` read `served_domain_asset_exclusion_prefixed`
+  **`false`** with `served_domain_has_web_assets_literal` still `true`, the
+  getter **320** bytes against the **383** the Released 0.4.10 served, and the
+  Documents tab listing **1** tile and selecting it. 320 is also the captured
+  fixture's length and the number #266 read on the Public origin, so the Static
+  and Live tiers agree on one figure; the add-on's own prefix length came back
+  from the Supervisor as **63**, so 383 minus 320 was exactly one insertion.
+  `stored_verdict` `CLEAN` on `body_arch` and `body_html`, 0 prefixes each, the
+  designer discarded and the fields read back; ambient `website.track` and
+  `website.visitor` deltas **0** over 1 navigation.
+- The other half is measured over that database's own rows rather than inferred:
+  **18** `ir.attachment` bundles, **all 18** excluded by the unprefixed clause
+  and **none** by the prefixed one, and no stored `url` carrying a prefix at
+  all. That is why the tab would have held 19 tiles there and held 1.
+- One gap the run found in the driver, recorded rather than fixed because #271's
+  brief puts driver changes out of scope: `media-document-mailing` builds its
+  own attachment but **looks up** the mailing, so it returns `NOT-RUN` on any
+  database with no draft mailing -- invisible on `odoo_parity`, where one
+  happens to exist. It is the only thing that stopped this run being unattended.
+- `test_ingress_media_dialog_domain.py` serves all five captured getters through
+  a **real nginx** carrying this location's own rule set, in both directions:
+  with the fix every one of the six literals must leave the gateway
+  byte-identical, and with this issue's own rules removed the two document
+  literals must be shown gaining a prefix. So a future generic rule that starts
+  claiming one of the three left alone turns that test red instead of silently
+  changing which attachments a picker lists. The consequence is executed rather
+  than asserted -- each getter is run, the domain it built is read against
+  stored `ir.attachment` rows through a port of Odoo's own `normalize_domain`
+  and the two `_condition_to_sql` NULL rules, and the tab must list the document
+  alone as served and the document plus every bundle when the literal is
+  prefixed. A sixth test serves a pattern literal and two real addresses side by
+  side and requires exactly the two addresses to gain a prefix.
+- **The peer snapshot never focused its receiving session, which is why nothing had
+  ever been delivered to it** (#265, the third defect #243's run exposed in this
+  driver). No view that shows `project.task.description` sets
+  `collaborative_trigger`, so the collaboration plugin joins the peer network on the
+  editable's `focus` event and nowhere else, and a session that has not joined
+  discards every signalling notification it receives — the other session's
+  `ptp_join` included, with no log and nothing in the DOM
+  (`collaboration_odoo_plugin.js:91-99`, `:156-158`). The sending session joined by
+  accident, because typing needs focus; the receiving one was first focused *after*
+  the 30-second wait expired. `stage` now focuses it, with `focus()` and not
+  `click()` — a click lands in the middle of the onboarding to-do, whose middle is a
+  checklist that toggles through `/web_editor/checklist`, a write on the command
+  that claims to make none.
+- A `delivered: false` is now attributed by the run that reads it. #243's two
+  records carried the bare boolean and the account that went into ADR 0004, the
+  parity plan and that run's own README — "the two sessions never became
+  collaboration peers" — was an inference from a timeout. Both commands now read
+  each session's own state (is the field collaborative, is the bus worker connected,
+  which channel, did it join, how many connected peers) and count the signalling
+  each posted to `/html_editor/bus_broadcast` off the wire, and
+  `transport_diagnosis` names the first rung that holds. The three questions #265
+  asked are each a value in the record.
+- `do_run` has the two-step healing read ADR 0004 asked for on `ingress-public` and
+  #243 could not take: the Ingress session discards its leftover, **reloads the
+  record** so its editor holds what the Public peer stored, and saves once; the
+  record carries `loaded_prefixes` (the reading that says the heal had a subject),
+  the second verdict, and a reason when it could not be taken. The escalation rule
+  reads **every** value the run read, because #234's criterion is a *confirmed*
+  stored foreign token: a prefix the heal removed was still confirmed in the record,
+  and the first spelling of this -- which read only the value the record ends with
+  -- answered `false` on the run that had just watched a Supervisor token reach the
+  field. The heal is reported beside it as `foreign_prefix_healed`, with
+  `foreign_prefix_still_stored` for what is in the field now, and neither is folded
+  into the clean count. `report` also splits `CLEAN` into `with_a_delivered_transport` and
+  `with_no_delivery` with a sentence beside it, so the two things #243's run was
+  quoted as having said cannot be written as one again.
+- A marker now carries the **pair** as well as the run id. One run is one
+  `--run-id` across both pairs and `run` stores its marker, so the second pair
+  opened a record that already held the first pair's `<run-id>-A`: the baseline
+  guard #263 added refused the match and returned without waiting, which made that
+  transport reading **void** rather than negative. Found by #265's own first
+  attempt, whose records are kept beside the final ones, and
+  `transport_diagnosis` grew a `marker-collision` rung so the shape is named
+  instead of reading as `unattributed` beside two plainly connected sessions.
+- The peer snapshot's `probe` no longer writes the field it reports it does not,
+  and no longer reports a delivery that never happened (#263, both found by
+  #243's run). It wrote on **every** run: it typed a marker into
+  `project.task.description` and navigated away without saving, and a dirty To-do
+  form persists the editor's content on that navigation -- so "only a save writes
+  the field", which the step's own comment gave as the reason it was safe, is not
+  true of this form. It now clicks the form's own **Discard** on both sessions
+  before it leaves and then reads `description` back and reports `wrote_nothing`,
+  so the claim is measured rather than asserted; a `probe` that did write exits
+  non-zero. `run` discards the sending session's leftover for the same reason,
+  leaving the stored value exactly what the receiving session saved. The
+  mechanism is read from the pinned package rather than guessed: every form
+  controller registers `beforeunload` unconditionally, the handler calls
+  `record.urgentSave()`, the html field answers `WILL_SAVE_URGENTLY` by
+  committing the editor's uncommitted content, and the urgent path writes with
+  `navigator.sendBeacon` -- which no request interception sees and nothing
+  cancels. Waiting for the form to report itself clean before leaving is
+  load-bearing for the same reason: `discard()` is async and `click()` returns
+  long before it resolves.
+- **The read-back is the guarantee, and the discard is only the means.** Odoo
+  saves a form on `visibilitychange` as well, that handler is **not** gated on the
+  record being dirty, and the sending session is necessarily dirty while the
+  receiving one opens -- so a backgrounded page can write with no navigation at
+  all. This measurement cannot remove that and no longer claims to: the field is
+  read back on every `probe`, so a write that happens anyway is detected and
+  named instead of assumed away. Recorded in the module, in
+  `docs/agents/live-tier.md`, and pinned.
+- The second defect compounded the first and is the one that produced a wrong
+  reading. `probe` staged the **constant** `WOOW-PEER-PROBE`, so once it had
+  stored that string the next probe found it in the receiving editable on its
+  first poll and recorded `{"delivered": true, "waited_seconds": 0.0}` on
+  `ingress-public` -- while the same-surface pair had just waited the full 30 s
+  and correctly failed. A constant marker makes `delivered` unfalsifiable once
+  the field has ever held it, which is exactly the step's own argument ("nothing
+  has stored that marker, so its presence is the transport") turned off. Two
+  halves, both pinned: every marker now comes from one `marker(run_id, label)`
+  helper that `probe` and `run` share, with `probe` minting a
+  `WOOW-PEER-PROBE-<UTC timestamp>` when `--run-id` is not given; and the wait
+  takes a **baseline** -- the sending session's editable read *before* it typed --
+  and refuses to read a match already in it as a delivery
+  (`marker_pre_existing: true`), without waiting. A `waited_seconds` of 0.0 stays
+  a legitimate reading, because the receiver joins after the sender typed and its
+  snapshot can carry the marker on the first poll; it is recorded as the shape to
+  distrust rather than reduced to a boolean (parity plan §12). A record's `notes`
+  now carries *which* way the transport failed instead of one fixed sentence: the
+  old wording said the receiver "never saw the sender's unsaved marker" either
+  way, which would have been a false account of a pre-existing marker -- that
+  case says the run id collided, which makes the whole record suspect rather than
+  only its transport half.
+- Four things the review caught, each one a way the fix could still mislead a
+  reader. A form the driver **could not** discard now fails the probe even when
+  the field reads back clean, because the read-back only sees writes that already
+  happened and a still-dirty session gets written afterwards -- `wrote_nothing:
+  true` with an armed write was the one outcome left that said "safe" and meant
+  "not yet". Discarding goes through a wrapper that cannot throw, so one session's
+  failed cleanup no longer costs the other its discard or the run its whole
+  report, and `run` appends and prints its record **before** cleaning up, so a
+  cleanup timeout cannot throw away a measurement that needed a deploy and a host.
+  `probe` reports the labels of the prefixes in the field and deliberately **no**
+  verdict: `classify` is relative to the session that saved, nothing saved here,
+  and asking it anyway read every prefix as `FOREIGN-PREFIX-STORED` on
+  `ingress-ingress` -- the verdict that escalates #234 to `blocker` -- because that
+  pair's two sessions share one prefix and so one label. And the discard button is
+  matched with `>> visible=true`, this repository's existing idiom for it, rather
+  than `.first`, which takes the first DOM match whatever its state and would
+  silently skip the real button behind a hidden earlier one.
+- The three documents that stated the old behaviour are corrected and pinned to
+  the code, since a reader acted on them: the module and `do_probe` docstrings,
+  `docs/agents/live-tier.md`, and the parity plan's §12 and #234 row. The pure
+  parts -- the marker helper, the wait's refusal and the probe's verdict -- are
+  driven at the Static tier, and the steps a host is needed to watch are held
+  there by shape, including that the navigation which did the writing is gone.
+  `docs/testing/evidence/2026-10-02-issue-243/README.md` is **annotated** rather
+  than rewritten: its Writes row is what that run left, and what changes is the
+  attribution.
+- **`body_html_inlined` could read `true` from a reclaimed row's earlier marker**
+  (#279, found by the review of #277 and not introduced by it -- the reading is
+  #276's). That reading asks whether rule 8 ran at all, and it asked it as
+  "`marker_for(run_id)` is in the `body_html` read back". `--run-id` is one value
+  for the whole invocation and `--surface both` drives the check on both surfaces
+  against one database, so without `--cleanup` the ingress surface left scratch
+  mailing M with its marker inlined in `body_html`, the public surface's
+  `scratch_mailing_id` reclaimed that same M -- by design, the subject is this
+  run's -- and a second save that stored `body_arch` and never ran
+  `commitChanges` read as inlined off the first surface's value. The same thing
+  happened on a re-run of one surface under one run id.
+- The fix judges the marker **newly** present: in the value read back and not in
+  `fixture["before"]["body_html"]`, which the seeder already reads before it
+  writes `body_arch`, so it costs no further RPC. Scoping the typed marker per
+  surface was the alternative and is **not** the fix -- it closes the
+  cross-surface case only, leaves the one-surface re-run, and changes the value
+  other readings compare against. Nothing else about the reading changes: it
+  stays **recorded and not judged**, for `_media_verdict`'s reason, so no verdict
+  moves either way. What it protects is the evidence a reader uses to tell
+  "inlined, and root-relative" from "never inlined", since `stored_verdict(False)`
+  is `CLEAN` and an empty `body_html` already scores a pass on its own.
+- **#279 left the reading `false` on a reclaimed row whichever way that save
+  went** -- read #286 below for where that ends up, since both land in this
+  release -- and the record says so rather than leaving it to be worked out: the
+  new `extra["body_html_marker_before"]` is read where the `before` read happens,
+  so the two `false`s -- "the save never inlined" and "the marker was already in
+  the field, so this row cannot say" -- are told apart from the record itself.
+  That is the direction to fail in for a reading whose job is to refuse a false
+  pass, and under #279 alone a positive reading on that row wanted `--cleanup` or
+  a run id of its own.
+  Clearing `body_html` beside the `body_arch` seed would make both readings
+  possible on it and was deliberately not done in #279, though gated on
+  `fixture["scratch_mailing"]` it could be: what it changes is the **write**, and
+  through it the `stored["mailing.mailing.body_html"]` that `stored_verdict`
+  *judges* -- the judged half of the same stale value, which #279 puts out of
+  scope and which is real rather than hypothetical, since on a reclaimed row the
+  public surface's `PREFIX-STORED` or `CLEAN` can be the ingress surface's
+  leftover value. That half is #286 below, which makes the clear -- so the
+  reading is two-way on a reclaimed row after all.
+- **`_discard_unsaved_form` could not report a discard that failed, and its
+  click was unbounded** (#280, with #281 folded into it -- both defects are in
+  that one function, and the timeout belongs on the very click whose reporting
+  the other half restructures; found by the review of #277, and the code is
+  #276's and its review commit's). The function swallowed every exception and
+  only ever wrote `extra["discarded"] = True`, while its docstring made the
+  **absence** of the key mean "a page with nothing to discard". So `UNSAVED`
+  matching and `discard.click()` timing out -- a modal over the button, a page
+  that stopped responding -- recorded exactly what an already-clean form does.
+  That reading matters most on the recovery paths #276's review added the call
+  to: the typing is already done when a later step fails, so the form is
+  *certainly* dirty, and the step after the discard is the restore, which still
+  stamps `body_restored: true` (`help_restored: true` in `do_codeview`) even
+  though `run_check`'s own `side.close()` can fire `beforeunload` on the
+  still-dirty form and write this run's marker body straight back over it.
+- There are now three readings rather than two: no key for a page with nothing
+  to discard, `true` for a discard that came off, and `false` once `UNSAVED` has
+  matched and the form did not come clean -- a click that failed, no visible
+  discard button to click, or an unsaved indicator still up afterwards. The
+  restore's own reading is then checkable against it. The `settle` that followed
+  was not one of those causes: it ran *after* the indicator had gone hidden, so
+  the question this key answers was already answered, and a page that closed
+  during that sleep may not turn a confirmed `true` back into the reading that
+  says the form was left dirty. (That sleep was "there for the restore's RPC";
+  #288 below establishes that no caller wanted it and removes it, so the order
+  this paragraph is about is now simply the end of the function.) This is the
+  trap `_remove_mailing_fixture` already reports each removal to avoid, and the
+  pair `discard_quietly` in `e2e_collab_peer_snapshot_live` has always reported.
+  A page that cannot be read at all (a frame that navigated away, a context that
+  closed) still adds no key: there "was there anything to discard" is unknown,
+  which is not the same reading as a discard that failed.
+- **`true` means the form came clean, not that the click did not raise.** The
+  discard is confirmed by waiting for `UNSAVED` to go hidden -- the indicator
+  carries `invisible` again once the record is clean, and a locator with no
+  element counts as hidden, which is how `discard_form` has always read the same
+  outcome. Without it a discard that did not take (a dialog raised over it, an
+  invalid record the form will not leave) recorded `true` while `side.close()`
+  still had a dirty form to save, which is the reading this issue is about with a
+  different cause. The button is matched `>> visible=true` for the same reason
+  `discard_form` matches it that way rather than with `.first`: `.first` takes
+  the first DOM match whatever its state, so one hidden earlier button -- a
+  dialog's, a sub-form's -- passes `count()`, spends the new bound on an element
+  that can never be clicked, and leaves the real button unclicked.
+- The two waits are now bounded explicitly: `DISCARD_TIMEOUT` (2 s) on the
+  click, which needs nothing but an actionable button and has just matched one
+  `visible=true`, and `DISCARD_CLEAN_TIMEOUT` (15 s) on the indicator clearing,
+  which waits on much more. `_discard` is purely local -- it resets `_changes`
+  from the save point and re-renders, with no RPC, so there is no reload to wait
+  on (`web/static/src/model/relational_model/record.js:565`). What the indicator
+  waits on is the line above it: `discard()` (`:183`) does
+  `await this.model._askChanges()` first, which raises `NEED_LOCAL_CHANGES`, and
+  the html field answers that by pushing `commitChanges()` into the promise list
+  (`html_editor/static/src/fields/html_field.js:78`). On the mail designer that
+  override clones the editable into an `srcdoc` iframe, awaits that iframe's
+  `load`, runs `toInline` and writes the result back
+  (`mass_mailing/static/src/js/mass_mailing_html_field.js:147-186`) -- the same
+  inlining pipeline the **save** path budgets `side.settle(6000)` for, and
+  `extra["save_incomplete"]` exists because that is sometimes still not enough.
+  A bound tighter than the save's would therefore record `discarded: false` for
+  a discard that did come off, so this one sits above it, with a Static-tier test
+  pinning the relation. No `set_default_timeout` is applied anywhere in this
+  driver -- `TIMEOUT` is only ever passed explicitly to `wait_for` -- so each
+  wait would otherwise take Playwright's 30 s default, and `do_codeview`'s
+  `except BaseException` runs the discard *ahead* of the RPC that puts a real
+  `ir.actions.act_window.help` back. On Ctrl+C mid-check those 30 s sat between
+  the interrupt and the only restore that record was going to get, and a second
+  Ctrl+C inside the window raises `KeyboardInterrupt`, which neither the
+  discard's `except Exception` nor the handler's own catches -- leaving the marker
+  text on that action with nothing restoring it. The other two handlers' recovery
+  paths share the same function and so the same bounds.
+- **The bounds shorten this seam's contribution to that window and not the
+  window.** Two larger costs sat in it and were outside this one function:
+  `side.root` is a property that re-resolves through `_find_frame(wait_s=60)`
+  whenever the Ingress iframe is detached -- which is the interrupt scenario
+  itself -- and the `side.settle(2000)` after a successful discard spent an 8 s
+  `networkidle` that Odoo's open bus normally runs out before sleeping. Both are
+  out of that window as of #288 below, which says what the window now is -- and
+  where the resolve the seam reaches for stops being `side.root` at all. What
+  *this* change takes out is the triple exposure: the seam resolved `side.root`
+  once and worked through the frame it got, instead of reaching for the property at
+  each of its three steps, so the old seam's three *chances* to pay a minute became
+  one. (One minute, not three: `_find_frame` returns as soon as a matching
+  frame exists and raises after a single 60 s sweep when none appears, so a
+  persistently detached frame cost the old code 60 s once too -- three sweeps
+  needed two re-resolves each landing at the end of its own window.)
+- **And the hold is a correctness fix, not only a latency one.** `IngressSide`
+  already caches the frame and re-resolves only when it is detached, so the three
+  reads returned the same object in every case but one: a panel that re-mounted
+  its Ingress iframe between the first read and the confirmation wait. There the
+  old code re-resolved to the **replacement** frame, whose freshly loaded
+  document has no `.o_form_status_indicator_buttons:not(.invisible)` -- so
+  `wait_for(state="hidden")` on a zero-match locator returned at once, raised
+  nothing, and recorded `discarded: true` while the dirty form sat in the frame
+  that had just gone, whose detach is exactly when `beforeunload` fires. That is
+  this issue's own misreading, by a third door. Held, the detached frame raises
+  and the reading stays `false`. Nothing after the seam wanted the incidental
+  re-resolve either: `Side.rpc` posts through the request context rather than a
+  frame, so the restore does not need a resolvable frame at all. An interrupt that does land leaves
+  `discarded: false` in `extra` on its way out rather than nothing -- not in an
+  evidence line, since `run_check` catches `Exception` only and so writes no
+  record at all for a surface a `KeyboardInterrupt` left; the reading is there
+  for every other path that does write one. A global `set_default_timeout` is
+  **not** the fix -- it would change every wait in the driver -- and neither is
+  skipping the restore after a failed discard: it is still the record's only
+  chance, so what changes here is the reading and not the order.
+- **A reclaimed row's stored `body_html` was judged as this save's** (#286, the
+  judged half of the stale value #279 fixed the recorded half of, and the issue
+  that bullet asks for; raised by the review of #277 and still on `main` after
+  #279). `mailing-editable` means that field's **Stored reading** to be
+  *write-bounding*: a prefix in it is this save's `commitChanges` leaking (#238
+  rule 8). On a **Reclaimed row** whose save stored only `body_arch` it was not --
+  the value read back was the earlier surface's inlined body -- and
+  `stored_verdict` judges every field it is handed, with a `PREFIX-STORED`
+  promoted to the check's whole verdict ahead of every other branch (#237 check
+  4). So the *ingress* surface's save could be reported as `PREFIX STORED by
+  mailing-editable/public`, exit 1 -- on the surface where a stored prefix means
+  a `sub_filter` leaked out of the Ingress asset location, which is a different
+  and more serious claim. The clean direction landed too: a clean leftover scored
+  `CLEAN` for a `body_html` that save never wrote.
+- **The fix is at the write, and `docs/adr/0014-a-stored-prefix-is-never-suppressed.md`
+  is why it is not at the verdict.** Teaching `stored_verdict` to skip a field
+  known to be stale is indistinguishable, in the code and in the evidence, from
+  erasing a stored prefix -- the finding this module exists to surface, and what
+  #237 check 4 exists to forbid. So the seeder now clears `body_html` in the same
+  `write` that seeds `body_arch`, and what the save leaves in that field is this
+  save's own output. `stored_verdict`, `evidence_record` and `do_report` are
+  untouched.
+- **The clear is gated on the fixture carrying a scratch row, which is
+  `_restore_borrowed_mailing_body`'s own guard inverted.** The two are exact
+  inverses, so the clear can never blank a value the restore would have put back:
+  `created` is a no-op (the field is already `False`), `reclaimed` is the case
+  this fixes -- this driver's own litter -- `given` is the row `--mailing-id`
+  named and is left exactly as it was found, with the restore still running under
+  `--cleanup` only, and `found` is unreachable because this check passes
+  `borrow=False`. `fixture["before"]` keeps the **true pre-run value**: it is both
+  the restore source and the evidence of what was on the row, and the same fixture
+  shape is shared with the document-mailing seeder, so the clear gets a reading of
+  its own (`fixture["seeded"]`, read by the new `body_html_baseline`) rather than
+  overwriting one. `extra["body_html_marker_before"]` is unchanged in meaning and
+  in position -- the marker was on the row before this run touched it -- and is
+  still read before the write.
+- **`body_html_inlined` can now read `true` on a reclaimed row**, which #279 could
+  not give it: the clear turns #279's deliberate one-way reading there -- `false`
+  whichever way the save went -- back into a two-way one, measured against what
+  the seed left the field as rather than against the pre-run value. It stays
+  **recorded and not judged**, for `_media_verdict`'s reason, so no verdict moves
+  on that account either. Nothing is cleared in the **document**-mailing seeder:
+  that check never saves, its read-back exists to prove the discard worked, and
+  clearing the field would destroy the baseline it compares against. The readings
+  that take a **State-bounding reading** and have it judged as if it were
+  write-bounding are the same family by the other admissible correction,
+  attribution, and are #289 -- which found that the clear's own gate leaves this
+  check's `body_html` in that family too, under `--mailing-id`.
+- **Five read-back sites had a State-bounding reading judged as the reading
+  check's own write** (#289,
+  filed out of #286's triage round, which settled one instance and found the
+  class while checking whether the defect was local). `stored_verdict` judges
+  every field a check hands it and `evidence_record` promotes a `PREFIX-STORED`
+  to that check's whole verdict ahead of every other branch -- #237 check 4's
+  rule, and not in question. What the record could not say is **which kind of
+  reading** it had just judged. A **Write-bounding reading** is on a field the
+  check itself wrote, so a prefix there is that check's own save leaking; a
+  **State-bounding reading** is on a field it did not, so a prefix is a leak
+  whoever caused it and the check is the witness rather than the author
+  (`CONTEXT.md` carries both terms). Both were reported identically, as a
+  `PREFIX-STORED` attributed to the check and surface that merely looked --
+  which for `readonly-plain` and `mailing-readonly` means the evidence
+  contradicted itself, since the register declares both of them `writes: False`
+  and the report named them as the author of a write. It was never a false
+  *finding*: the prefix really is in the database. It was a false
+  **attribution**, and the direction matters -- on the Public origin a stored
+  prefix is the leaked-`sub_filter` finding, a different and more serious claim
+  than "this row has held a prefix since before the run".
+- **The fix is attribution, which ADR 0014 named and #286 could not use.** A flow
+  declares, per field, which kind of reading it took, in a `readings` mapping
+  beside `stored`; `evidence_record` pairs the two and the per-field entry gains
+  a `reading` key. Per *field* and not per check, because the register's `writes`
+  flag is not the discriminator: `media-document-mailing` is one check with one
+  field of each kind. The five are `readonly-plain`, `mailing-readonly`,
+  `media-document-mailing`'s `body_html`, `readonly-iframe` under `--task-id` and
+  `mailing-editable`'s `body_html` under `--mailing-id` -- the last being the row
+  #286's clear is gated away from, so the two corrections close the family
+  between them and neither subsumes the other. ADR 0014 carries a postscript with
+  the corrected count and the two decisions below.
+- **Both kinds still fail the run, and no verdict moves.** `screen_verdict`,
+  `summarise` and the exit code are untouched: a State-bounding prefix is
+  reported, counted and still exits non-zero, because a per-check "judge but do
+  not fail" policy is the valve ADR 0014 refuses one layer out -- the finding
+  would still vanish from the exit code, the tally and the sweep gate. What
+  changes is the sentence: `report` now prints `PREFIX STORED by
+  readonly-plain/public in project.task.description (state-bounding)`, and names
+  only the fields that carry the prefix rather than every field read back. The
+  schema stays `woow.ingress-markup/v1` -- the key is additive, every record in
+  this repo's three markup evidence files is `CLEAN`, and a record written before
+  the key existed reports as `kind not recorded` rather than being rejected.
+- **Not folded into the verdict string**, which is where this differs from the
+  peer snapshot driver's `classify`. There the kind *is* the verdict --
+  `OWN-`/`FOREIGN-`/`UNKNOWN-PREFIX-STORED` are three findings with a severity
+  order between them -- so `classify` is the precedent for the shape and not for
+  the mechanism: it attributes by session, this attributes by whether the flow
+  wrote the field at all. And `--task-id`/`--mailing-id` do not make a third
+  kind: they reach the second one by a different road, which is a *reading*, and
+  each of those sites already records it.
+- **One declaration is derived rather than declared**, and it is the site where a
+  flat one would have thrown the reading away. `media-document-mailing` never
+  writes `body_html`, so on a borrowed draft the value is the campaign's own --
+  but if the discard did not hold, the save that got through is exactly what
+  inlines that field, and a prefix in what *it* wrote is the check's own leak.
+  Which of the two happened is not declarable in advance and not guessable from
+  the value; it is **the change** that separates them, measured against the
+  pre-run `fixture["before"]` that is already in hand as the restore source. A
+  fixture that never reached that read declares state-bounding, and not as the
+  cautious answer: a handler that got no further than its seed never navigated.
+- **No default kind, because the site a default is wrong at is the one nobody
+  looked at.** `evidence_record` raises for a field in `stored` with no
+  declaration, for a declaration naming a field that was not read back, for a
+  kind this module does not name, and for a `write-bounding` declaration from a
+  check the register says writes nothing -- that last pairing being #289's own
+  false claim, made by the flow instead of inferred by a reader. Like the
+  `RESERVED_RECORD_KEYS` collision, these land in `run_check`'s outer `except`
+  and cost a surface its record rather than stopping a run, so the guard that
+  keeps the six read-back sites honest is a Static-tier test that enumerates them
+  from the source and pins what each declares. Static tier only: no handler's
+  browser behaviour changed, no verdict moved, and nothing here is falsifiable by
+  a host -- the declarations get their first live exercise on #282's run, which
+  this does not gate.
+- **The Ctrl+C-to-restore window was bounded by `side.root` and `side.settle`, not
+  by the discard's own waits** (#288, raised by review round 3 of #280 and
+  confirmed against the pinned package rather than inferred). #280 bounded the two
+  waits *inside* `_discard_unsaved_form` -- 2 s on the click, 15 s on the
+  confirmation -- and said so, that the window those bounds sit in was not
+  shortened. The two costs in it were measured and not estimated, with fake pages
+  driving the real `IngressSide._find_frame` and `Side.settle`: an Ingress frame
+  that cannot be resolved costs **exactly 120 iterations of a 500 ms wait = 60 s**
+  and then raises, which the seam's outer `except Exception` swallows into no
+  reading at all; and `settle(2000)` is an 8 s `networkidle` Odoo's open bus always
+  runs out, *then* the 2 s sleep -- **about 10 s on every successful discard**. So
+  `do_codeview`'s `except BaseException` spent up to ~87 s, and ~10 s even when
+  everything went right, between an operator's Ctrl+C and the only write that puts
+  a real `ir.actions.act_window.help` back -- with a second Ctrl+C anywhere inside
+  it raising through both catches and leaving this run's marker text on the action.
+- **`Side.root_now`: a resolve that never waits for a panel to load.** The default
+  is on the base class and is `root` itself, so the public side and the other four
+  Live drivers on this layer are byte-for-byte unchanged; `IngressSide` is the one
+  override, and it hands back the frame the side is already holding **without**
+  consulting `is_detached()` and without ever entering the waiting frame search. A
+  side that has not resolved a frame yet falls back to the waiting resolve -- a
+  panel still loading is a legitimate thing to wait for, which is why `root`, its
+  cache and `_find_frame`'s 60 s default are untouched, and why this is a second
+  property rather than a smaller `wait_s`. `_discard_unsaved_form` takes this
+  resolve for its single read, so a detached frame raises on the first locator call
+  and the existing `except` keeps the reading negative.
+- **And that is a correctness fix at the *entry* read, which is #280's misreading
+  by a third door.** With a detached held frame and a panel that has re-mounted,
+  `root` returns the **replacement** frame in no time at all; its freshly loaded
+  document has no unsaved-indicator match, so the seam returned with **no
+  `discarded` key** -- the "already clean" reading -- while the dirty form sat in
+  the frame that went, whose detach is exactly when `beforeunload` fires. Holding
+  the frame the side already has turns that into the honest "could not be read"
+  reading, which is the same absent key finally meaning what it says.
+- **The seam no longer settles on a caller's behalf.** The `side.settle(2000)` was
+  there for the step *after* the discard -- the restore's RPC, "which wants the
+  page quiet". It does not: `read_field`/`write_field`, the borrowed-body restore,
+  the fixture removal and the document check's record read-back all go through
+  `Side.rpc`, which posts through the browser context's request API and touches
+  neither a page nor a frame. The quiet page had no beneficiary.
+- **Nor did that sleep protect the restore from a page-initiated save**, which is
+  worth being exact about because it is the seam's whole subject -- and the first
+  draft of this entry was not. There are two such saves. The confirmation covers
+  the ones that go through `model.mutex`, because `Record.discard` awaits
+  `_askChanges`, which resolves `this.mutex.getUnlockedDef()` as well as the field
+  commits (`relational_model.js:209-213`) -- and that includes the **ungated
+  `visibilitychange`** save of #263, which is `root.save()`
+  (`form_controller.js:483-496`), itself `mutex.exec` (`record.js:226-229`). The
+  one it does not cover is `urgentSave`, which calls `_save` **outside** the mutex
+  (`record.js:267-272`). But `urgentSave` is wired to `beforeunload` only
+  (`form_controller.js:507`), and the form view sets
+  `useSendBeaconToSaveUrgently: true` (`:383`), so it leaves over
+  `navigator.sendBeacon` and is fire-and-forget (`record.js:1014-1033`): no wait
+  on this side ever bounded it, and 10 s of sleep only made losing that race less
+  likely. Its window is `run_check`'s own `side.close()` -- which is what the
+  discard exists to find nothing to save in. The document check's read-back is not
+  given a `settle` of its own for the same reasons, and
+  `_document_mailing_leaving` now records that judgement.
+- **So those two bounds are now the only waits the seam asks for: `<= 2 s` +
+  `<= 15 s`, and about nothing when the discard comes off at once.** Not a bound in
+  every case, and the comment says so rather than implying one again (#280's own
+  lesson): the seam's two `Locator.count()` calls take no `timeout=` because
+  `count()` does not wait for anything, but they do need the renderer to answer, so
+  on one of the conditions this function reports `false` for -- "a page that stopped
+  responding" -- nothing here is bounded, as nothing was before. The seam's three
+  readings are unchanged in shape and in cause --
+  no key for a clean page or a page that cannot be read, `true` once the indicator
+  has gone hidden, `false` for a failed click, no visible button, or an indicator
+  that never cleared, with a `KeyboardInterrupt` still propagating and still
+  leaving `discarded: false` behind -- and `true` is still written where nothing
+  after it can fail, which is now the end of the function. `DISCARD_TIMEOUT` and
+  `DISCARD_CLEAN_TIMEOUT` keep their values, and the Static-tier test pinning the
+  second at or above the save path's budget for the same inlining pipeline is
+  untouched. Not re-tuned here, and still a watch item: that bound can only ever be
+  calibrated, never proven, so a mutating Live run watches for `discarded: false`
+  recorded **together with** `body_html_inlined: true` -- a discard reported as
+  failed on a surface whose save demonstrably completed the inlining would mean the
+  15 s is short. Also left standing and filed rather than folded in: the sibling
+  seam `discard_form` in `e2e_collab_peer_snapshot_live` read `side.root`
+  three times and so had both halves of this issue, the latency one and the
+  detached-frame misreading that reports `dirty: false` for a form that went with
+  its frame. `Side.root_now` is on the shared layer and is what that seam
+  needs; it is a different driver's reading and got its own issue, #292 below.
+- **`discard_form` resolves its frame once, through `root_now`, so a re-mounted
+  Ingress panel can no longer make a dirty form report `dirty: false`** (#292,
+  raised by the review of #288 and confirmed without a host). The sibling seam
+  reached for `side.root` at each of its three steps -- the dirty read, the button,
+  the confirmation wait -- and on `IngressSide` that is a *search*: it re-enters
+  `_find_frame(wait_s=60)` whenever the held frame reports detached. An add-on
+  panel that has re-mounted its Ingress iframe makes that resolve answer with the
+  **replacement** frame, whose freshly loaded document has no `UNSAVED` match, so
+  the entry read counted zero and the function returned `{"dirty": False,
+  "discarded": False}` -- "the form was never dirty" -- for a form that went with
+  its frame, at the moment `beforeunload` fires the `sendBeacon` save this function
+  exists to head off. `probe` then reported a run whose forms were never dirty,
+  which its own docstring defines as having exercised nothing: the reading hides
+  the write instead of naming it. The same door was open at the confirmation wait,
+  where a replacement frame has no indicator to go hidden and so records a discard
+  that never happened as `true`. One `side.root_now`, held and worked through,
+  shuts both: a frame that has gone raises at the first locator call, and
+  `discard_quietly`'s `except Exception` already turns that into `{"dirty": True,
+  "discarded": False, "error": ...}` -- unknown reported as dirty, the direction
+  the verdict must fail in. The three readings are unchanged on every ordinary
+  path, and `>> visible=true` stays for the reason the function gives.
+- **The latency half is real here and smaller, and the two waits are deliberately
+  left alone.** This module has no `except BaseException` and its discard sits
+  ahead of no restore, so none of it is in a Ctrl+C-to-restore window -- which is
+  why the misreading and not the minute is what motivated the change. The
+  confirmation deliberately waits on the whole asynchronous
+  `FormController.discard()`, and this driver's budget is not the markup driver's,
+  so the click keeps Playwright's default and the confirmation keeps `TIMEOUT`.
+  `root`, its cache and `_find_frame`'s 60 s default are untouched, as in #288.
+- **The seam is now driven and not only pinned at its shape.** It had one
+  executing double -- a side whose `root` raises -- and source assertions for
+  everything else, and a reading taken from the wrong frame is exactly what those
+  cannot see. Seven Static-tier tests, and all seven enumerated because this entry
+  is the audit trail for them: the two resolves counted on every path (`root_now`
+  exactly once, `root` never); a side holding a detached frame whose waiting
+  resolve hands back a clean replacement -- the old code reads
+  `{"dirty": False, "discarded": False}` there, which is the defect itself; one
+  each for the four ordinary paths (a clean form, a discard that came off, a dirty
+  form with no visible button, and a confirmation that never arrives); and one
+  holding the explanation of why the resolve is `root_now`, since that is what the
+  next reader of this seam has to not undo. Static tier only, no Live run and no
+  Release: 1781 passed, 1 skipped, this driver's module 124 -> 131.
+- **One trap worth recording, because it is not confined to this file.**
+  `test_a_discard_is_only_clicked_on_a_form_that_shows_the_button` asserted that
+  `is_visible()` appears in `inspect.getsource(discard_form)`, and the function has
+  never called it -- it uses `count()`. The test was green only because
+  `is_visible()` appeared inside one of the comments this change rewrites.
+  `getsource` returns comments and docstrings as well as code, so an assertion of
+  that shape can be satisfied by prose: it can go red on a comment-only edit, and
+  it can stay green over code that never does the thing. The assertion is now
+  re-pointed at the mechanism the code actually uses -- the `button.count()` check
+  ahead of the click -- rather than keeping a comment phrase to feed the grep; and
+  the unreadable-side double gained a `root_now` mirroring the base class's default
+  so it keeps modelling `Side` instead of pinning an `AttributeError`.
+- **What #263-#292 left unverified is measured on the host** (#282, no Release, no
+  add-on build and no Deploy -- every fix in that block is in a driver, and the
+  drivers run locally against the add-ons already installed). The eight driver
+  fixes of 2026-10-02/04 had all shipped Static-tier only, two of them saying in
+  their own commit bodies that the host proof was this run's. Evidence:
+  `docs/testing/evidence/2026-10-04-issue-282/`, Release 0.4.10 on `odoo_parity`
+  (both surfaces, run `WOOW-MARKUP-20261004T104350Z`) and the local build
+  `0.4.10-202610031232` on `catchup164b` (Ingress only, run
+  `WOOW-MARKUP-20261004T111302Z`).
+- The readings that were only ever asserted: `mailing-editable` records
+  `mailing_source: created` on the first surface and `reclaimed` on the second,
+  with `body_html_marker_before: true` **and** `body_html_inlined: true` on the
+  reclaimed row -- the two-way reading #279 alone could not give, which #286's
+  clear is what makes possible -- and `reading: write-bounding` on both of its
+  stored fields. `media-document-mailing` records `discarded: true` on the mail
+  designer on all four of its records, so 15 s of `DISCARD_CLEAN_TIMEOUT` is
+  enough for the whole `commitChanges` pipeline on a loaded host (#280), and
+  #288's `root_now` seam read back `CLEAN` with every mailing restored to its own
+  body and 0 `hassio_ingress` occurrences in any of them. #277's two-run sequence
+  stranded attachment 362 and then reclaimed it:
+  `reclaimed_attachment_ids: [362]`, `reclaimed_attachments_removed: true`, and
+  the host read afterwards finds it gone. All 18 read-back records carry a
+  per-field `reading` kind, 28 declarations in total, including
+  `media-document-mailing`'s derived `state-bounding` (#289).
+- The two drivers #264 had not reached: the hand checks wrote their **first**
+  `.ambient.json` (`visit`: `website.track` +1 over one navigation -- the figure
+  that is the measurement rather than the accounting; `editbtn` +2 over six, which
+  is the contrast a subcommand that writes no business rows still leaves), and the
+  peer snapshot's `discard_form` reports `dirty: true` with `discarded: true` on
+  the session that typed, with no `WOOW-PEER-PROBE-` marker on the host afterwards
+  (#292, #263's shape of confirmation).
+- **`mailing-readonly` ran, which the issue did not expect**, because
+  `odoo_parity` carries two mailings in state `done` -- so #289's second
+  declaration site is exercised for the first time. Its screen verdict is `ABSENT`
+  on both surfaces and the cause is the fixture, not the prefix: those bodies are
+  166 bytes with `<img` appearing zero times.
+- **Two findings, neither of them in the eight fixes.** `readonly-plain` reads
+  `ESCAPED` on the Public origin because two of `project.task(5)`'s 17 html-field
+  history revisions carry an Ingress prefix, while the `description` those records
+  judge is `CLEAN`. Registered as `G-10` in the parity plan's section 11, with the
+  mechanism #296's triage established against the pinned package rather than the
+  one first written down here: `html.field.history.mixin.write` stores
+  `generate_patch(new_content, old_content)` and `_patch_generator` embeds
+  `old_content_lines`, so a revision is a **reverse** patch carrying the value as
+  it was *before* that write -- which makes the Ingress save that **heals** the
+  field the author of the prefixed revision, and the Public peer's own store the
+  author of a clean one. It therefore recurs once per `G-08` store-and-heal cycle,
+  and `_html_field_history_size_limit = 300` evicts it after 300 further revisions
+  of `project.task.description`, the only versioned field in the package. And `do_codeview`'s success-path restore is gated on
+  `--cleanup` while its error and interrupt paths restore unconditionally, so the
+  first invocation of this run left a real `ir.actions.act_window.help` holding the
+  run's marker until it was written back by hand; both the unrestored and the
+  restored records are kept, because they are what was read.
+- What the run does **not** say, recorded rather than implied: #289's `report`
+  sentence is unexercised (`stored_prefix_found=no` on both record files -- no
+  field carried a prefix, so the line naming the kind never printed, and
+  manufacturing one would mean writing a prefix into the database on purpose); and
+  the interrupt path of #280/#288 stays unmeasured, deliberately, because
+  measuring it means arranging the outcome that leaves a marker on a real action
+  with nothing to restore it. The 76-item conservation tally does not move:
+  `woow.ingress-markup/v1` and `woow.peer-snapshot.v1` do not feed `conservation`,
+  and `G-10` is a gap registration rather than a plan item.
+- `probe`'s reading order in `e2e_collab_peer_snapshot_live` is now **driven**
+  rather than pinned at its shape. A behavioural test drives `do_probe` through
+  doubles where the editable answers `DELIVERED-...` while the form is dirty and
+  `STORED-...` once a discard has reset it, so a `do_probe` that discards before
+  it reads records the second and fails. The source assertion beside it now
+  matches the whole call line rather than the bare name `discard_quietly`, and
+  the reason is narrower than #292's `is_visible()` case: a plain reorder was
+  already caught, because the call text contains the name and carries the first
+  match with it. What the bare name does not survive is the call leaving the call
+  site -- renamed, or extracted into a helper -- while the comment above it still
+  names `discard_quietly`; then `index()` resolves in prose and the ordering
+  claim is satisfied by a sentence. Matching the whole line turns that into a red
+  `assertIn` somebody has to re-point on purpose. This is the instance #292 left
+  unfiled, and the first claim about it -- that the old pin held over a
+  discard-first `do_probe` -- was wrong and is corrected here.
+- **A borrowed record goes back whatever `--cleanup` says** (#297, Static tier
+  only -- this is driver behaviour and no Live run can show it that #282's did
+  not already pay for). Three success paths gated the restore of a record the
+  driver had only *borrowed* on the flag whose job is deleting what a check
+  **created**, so a successful run taken without it left that record holding this
+  run's marker, with the absence of a key as the only sign. #282's run found the
+  first of the three on `odoo_parity`: see its evidence README, "Host state this
+  run leaves". The three are now restore-always, remove-under-the-flag.
+- `do_codeview` is the one the ticket names and the worst-shaped of the three:
+  `pick_help_action` creates nothing, it borrows the lowest-id
+  `ir.actions.act_window` and seeds a record the installation owns. The restore
+  moves into `_restore_borrowed_help`, which all three of its paths call -- the
+  success path included -- and which keeps the reading three-valued: `true` when
+  the write took, `false` when it did not, **absent** when the handler never got
+  as far as seeding. It reports a failed write rather than raising it, because
+  raising would drop the success path into the handler's `except Exception` and
+  rewrite a measured record as `NOT-RUN`. The discard still goes first (#276,
+  #280, #288); that order is not in question.
+- **`--cleanup` now means nothing for `codeview`, and the signature says so.**
+  Neither `do_codeview` nor `_codeview_after_seeding` takes the parameter any
+  more -- `run_check` passes it to every handler and `**_` absorbs it -- because
+  a flag threaded through to no reader reads as a gate somebody forgot. Its
+  meaning is unchanged for every other check: delete what this check created.
+- The audit the ticket asked for found the same gate on **both** mailing checks,
+  and both are fixed with it. `media-document-mailing` borrows on its `found`
+  branch, which is every run on a database carrying a draft; `mailing-editable`
+  borrows only the row `--mailing-id` names, and that is the costliest of the
+  three because it is the check that *saves* -- a real campaign in `draft` or
+  `in_queue`, a row that can still be sent, kept this run's marker in `body_arch`
+  and in the inlined `body_html` that leaves the installation with the mail.
+  `_restore_borrowed_mailing_body` is a no-op on a scratch or Reclaimed row, so
+  calling it on every path cannot restore what the run owns -- the flag was never
+  what protected that, the function's own first line is.
+- Left alone deliberately: every `--cleanup` gate on a **created** fixture
+  (`readonly-iframe`'s scratch `mail.template`, the two media to-dos, the website
+  page and view, the scratch mailings, the fixture attachments) -- leaving those
+  named after the run is the legible choice #183's and #265's evidence make on
+  purpose. `readonly-iframe` under `--task-id` needs no restore at all: it seeds
+  nothing there and only reads the named template back, which is why #289 calls
+  that reading state-bounding.
+- Guards: four behavioural tests drive `_restore_borrowed_help` (the value back,
+  an empty `help` back as `False` rather than the seed, the `false` reading on a
+  write that failed, and the key written in exactly one place), three drive the
+  two mailing sites without the flag, and one parametrized source check holds all
+  three restores at their function's own indentation -- nested under a gate they
+  would be four spaces deeper. Mutation-checked, each against the assertion named:
+  the gate back on `codeview` (the indentation check and the signature check),
+  on `mailing-editable` (the indentation check and the `--mailing-id` behavioural
+  test), on `media-document-mailing` (the indentation check and the `found`
+  behavioural test), a raising restore (the `false` reading and the one-writer
+  check), a second inline writer (the one-writer check), and the restore moved
+  ahead of the discard (the ordering check, re-pointed off `if cleanup:` and onto
+  the call with its arguments, for the reason #282 item 5 records).
+
 ## 0.4.10 — 2026-10-01
 
 ### Added

@@ -239,6 +239,20 @@ class Side:
     def root(self):
         raise NotImplementedError
 
+    @property
+    def root_now(self):
+        """`root`, but never waiting for a panel that has not finished loading.
+
+        The same object as `root` on every surface whose root is the page
+        itself, which is why the default lives here: `IngressSide` is the only
+        override, because there `root` is a *search* that waits up to 60 s
+        (`_find_frame`). A caller reaches for this one when being slow is worse
+        than being wrong -- a recovery path running ahead of a record's only
+        restore (#288) -- and for `root` whenever a panel still loading is a
+        legitimate thing to wait for, which is every check.
+        """
+        return self.root
+
     def goto(self, route: str, *, wait: str = "load") -> None:
         self.root.goto(self.base + route, wait_until=wait, timeout=TIMEOUT)
 
@@ -328,6 +342,29 @@ class IngressSide(Side):
         if self._frame is None or self._frame.is_detached():
             self._frame = self._find_frame()
         return self._frame
+
+    @property
+    def root_now(self):
+        """The frame this side is already holding, detached or not (#288).
+
+        `root` re-enters `_find_frame`'s 60 s sweep the moment the held frame
+        reports detached. That is right for the case it was written for, a panel
+        still loading, and wrong on a recovery path: there the frame going is
+        *why* the caller is in the recovery path, and the replacement the sweep
+        eventually finds is a freshly loaded document answering a different
+        question -- it has none of the form the caller was reading. So this hands
+        the held frame back without asking whether it is detached. The first
+        locator call on it then raises, the caller's own `except` keeps its
+        reading negative, and that is both faster and truer than spending a
+        minute to resolve a frame that cannot answer.
+
+        A side nothing has run through yet holds no frame at all; there the only
+        resolve there is is the waiting one, and this is not the path #288 is
+        about.
+        """
+        if self._frame is not None:
+            return self._frame
+        return self.root
 
     def _find_frame(self, wait_s: int = 60):
         for _ in range(wait_s * 2):

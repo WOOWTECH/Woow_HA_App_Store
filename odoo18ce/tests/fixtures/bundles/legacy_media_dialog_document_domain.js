@@ -1,0 +1,1 @@
+get attachmentsDomain(){const domain=super.attachmentsDomain;domain.push(['mimetype','not in',IMAGE_MIMETYPES],'!',['mimetype','=like','font/%'],['description','not like','CSS font face for'],['name','!=','googleFontMetadata']);domain.unshift('&','|',['url','=',null],'!',['url','=like','/web/assets/%']);return domain;}

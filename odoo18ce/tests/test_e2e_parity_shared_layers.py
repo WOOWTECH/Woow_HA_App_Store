@@ -697,5 +697,135 @@ class ArtifactDirTests(unittest.TestCase):
             self.assertEqual(e2e_parity_outbound_live.mail_plan_path("R1"), "/tmp/elsewhere/R1-mail-plan.json")
 
 
+class NoWaitRootTests(unittest.TestCase):
+    """#288: `Side.root_now`, the resolve that never waits for a panel to load.
+
+    `root` on `IngressSide` is a *search*: the moment the held frame reports
+    detached it re-enters `_find_frame(wait_s=60)`, which is 120 iterations of a
+    500 ms wait before it raises. That is right for the case it was written for,
+    an add-on panel still loading, and wrong on a recovery path running ahead of
+    a record's only restore -- there the frame going is why the caller is in the
+    recovery path at all. So the waits are what these tests count.
+    """
+
+    class FakeFrame:
+        def __init__(self, url: str, parent=None, detached: bool = False) -> None:
+            self.url = url
+            self.parent_frame = parent
+            self._detached = detached
+
+        def is_detached(self) -> bool:
+            return self._detached
+
+    class FakePage:
+        """A Home Assistant page with an add-on panel, and a wait that counts.
+
+        `frames` is a property for the same reason: entering the frame search at
+        all is the cost this issue is about, so reading the list is counted too.
+        """
+
+        def __init__(self, ingress_frames=()) -> None:
+            self.main_frame = NoWaitRootTests.FakeFrame("http://ha.test/slug")
+            self._frames = [self.main_frame, *ingress_frames]
+            self.waits = 0
+            self.frame_reads = 0
+
+        @property
+        def frames(self):
+            self.frame_reads += 1
+            return self._frames
+
+        def wait_for_timeout(self, ms: int) -> None:
+            self.waits += 1
+
+    def ingress_side(self, page, held=None):
+        """An `IngressSide` with no browser behind it: only `page` and `_frame`.
+
+        Built without `__init__`, which opens a browser context. Everything the
+        two resolves touch is set here, and nothing else is reachable from them.
+        """
+        side = e2e_parity_shared_layers_live.IngressSide.__new__(
+            e2e_parity_shared_layers_live.IngressSide)
+        side.page = page
+        side._frame = held
+        return side
+
+    def test_a_detached_held_frame_comes_back_with_no_wait_at_all(self) -> None:
+        """The interrupt scenario: the panel navigated, the Ingress iframe went,
+        the Home Assistant page is still alive. `root_now` hands back the frame
+        the side is holding without asking whether it is detached and without
+        entering the search, so the caller's first locator call raises at once
+        instead of a minute later."""
+        page = self.FakePage()
+        held = self.FakeFrame("http://ha.test/api/hassio_ingress/tok/odoo",
+                              parent=page.main_frame, detached=True)
+        side = self.ingress_side(page, held=held)
+        self.assertIs(side.root_now, held)
+        self.assertEqual(page.waits, 0)
+        self.assertEqual(page.frame_reads, 0)
+
+    def test_the_waiting_resolve_on_the_same_side_spends_the_whole_sweep(self) -> None:
+        """What `root_now` is measured against, and why it is a second property
+        rather than a change to the first: with the held frame detached and no
+        replacement to find, `root` is 120 iterations of a 500 ms wait -- 60 s --
+        and then raises, which the discard seam's outer `except` swallows into no
+        reading at all."""
+        page = self.FakePage()
+        held = self.FakeFrame("http://ha.test/api/hassio_ingress/tok/odoo",
+                              parent=page.main_frame, detached=True)
+        side = self.ingress_side(page, held=held)
+        with self.assertRaises(RuntimeError):
+            side.root
+        self.assertEqual(page.waits, 120)
+
+    def test_a_detached_held_frame_is_not_swapped_for_the_replacement(self) -> None:
+        """The reading, not only the wait. A panel that re-mounted has a *new*
+        Ingress iframe, and `root` resolves to it with no wait at all -- a
+        freshly loaded document that answers a different question than the one
+        the caller was asking of the form that went. `root_now` keeps the frame
+        whose answer is "unreadable"."""
+        page = self.FakePage()
+        replacement = self.FakeFrame("http://ha.test/api/hassio_ingress/tok/odoo",
+                                     parent=page.main_frame)
+        page._frames.append(replacement)
+        held = self.FakeFrame("http://ha.test/api/hassio_ingress/tok/odoo",
+                              parent=page.main_frame, detached=True)
+        side = self.ingress_side(page, held=held)
+        self.assertIs(side.root, replacement)
+        self.assertIs(self.ingress_side(page, held=held).root_now, held)
+
+    def test_a_side_nothing_has_run_through_yet_falls_back_to_the_search(self) -> None:
+        """Holding no frame is not the path #288 is about: there the waiting
+        resolve is the only resolve there is, and it is the right one -- the
+        panel may still be loading."""
+        page = self.FakePage()
+        frame = self.FakeFrame("http://ha.test/api/hassio_ingress/tok/odoo", parent=page.main_frame)
+        page._frames.append(frame)
+        side = self.ingress_side(page, held=None)
+        self.assertIs(side.root_now, frame)
+        self.assertEqual(page.waits, 0)
+
+    def test_the_base_class_resolve_is_the_very_same_root(self) -> None:
+        """The default sits on `Side` so the four other Live drivers on this layer
+        are provably untouched: on a surface whose root is the page itself the two
+        properties are the same object, and `PublicSide` does not override either.
+        """
+        side = e2e_parity_shared_layers_live.PublicSide.__new__(
+            e2e_parity_shared_layers_live.PublicSide)
+        side.page = object()
+        self.assertIs(side.root_now, side.root)
+        self.assertIs(side.root_now, side.page)
+        self.assertNotIn("root_now", vars(e2e_parity_shared_layers_live.PublicSide))
+
+    def test_only_the_ingress_side_overrides_it(self) -> None:
+        """`root`, its cache and `_find_frame`'s 60 s default are unchanged -- the
+        other callers legitimately want a panel that is still loading -- so the
+        one override is the whole of this change on the shared layer."""
+        self.assertIn("root_now", vars(e2e_parity_shared_layers_live.IngressSide))
+        self.assertIn("root_now", vars(e2e_parity_shared_layers_live.Side))
+        self.assertEqual(
+            e2e_parity_shared_layers_live.IngressSide._find_frame.__defaults__, (60,))
+
+
 if __name__ == "__main__":
     unittest.main()

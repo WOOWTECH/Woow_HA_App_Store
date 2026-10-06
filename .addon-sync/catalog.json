@@ -2848,7 +2848,138 @@
       "publisher_run_id": "37410582924",
       "channel": "stable",
       "store_path": "headscale"
+    },
+    "odoo18ce": {
+      "id": "odoo18ce",
+      "name": "Woow Odoo 18",
+      "version": "0.4.11",
+      "repository": "WOOWTECH/Woow_ha_odoo",
+      "source_sha": "77f248e4deae67d24e481e6fa5ba93fdc5892538",
+      "source_path": "odoo18ce",
+      "config_file": "config.yaml",
+      "config_sha256": "sha256:8a0e67722fd07a706c0859f94181cc942c621019dede781e9fd8963bbb9ed251",
+      "archive_sha256": "sha256:9417231b46af7279f355f057e9b7f02bcfea63d7e153f990eaf43e07f9a17146",
+      "context_fingerprint": "sha256:b12bed94a9e52cfcf597c0c695531f9b6c434b104003028d278cd028d71b7e75",
+      "material_fingerprint": "sha256:927406af5850e161117eb4db175b710981061ca8ff26256f029a5858d928172e",
+      "architectures": [
+        "amd64",
+        "aarch64"
+      ],
+      "config": {
+        "name": "Woow Odoo 18",
+        "description": "Odoo 18 Community Edition + PostgreSQL 16 — bundled all-in-one add-on for SME",
+        "version": "0.4.11",
+        "slug": "odoo18ce",
+        "url": "https://github.com/WOOWTECH/Woow_ha_odoo",
+        "image": "ghcr.io/woowtech/woow-ha-odoo-{arch}",
+        "init": false,
+        "hassio_api": true,
+        "homeassistant_api": true,
+        "ingress": true,
+        "ingress_port": 5691,
+        "ingress_entry": "odoo",
+        "ingress_stream": true,
+        "panel_icon": "mdi:domain",
+        "panel_title": "Odoo",
+        "arch": [
+          "amd64",
+          "aarch64"
+        ],
+        "ports": {
+          "8069/tcp": 8069,
+          "8072/tcp": 8072
+        },
+        "ports_description": {
+          "8069/tcp": "Odoo origin — LAN clients get full access, the Cloudflare tunnel stays restricted (see lan_networks)",
+          "8072/tcp": "gevent WebSocket — only listens while workers > 0"
+        },
+        "map": [
+          "share:rw",
+          "app_config:rw"
+        ],
+        "backup": "cold",
+        "backup_exclude": [
+          "**/cache",
+          "**/logs",
+          "**/sessions"
+        ],
+        "schema": {
+          "admin_passwd": "password",
+          "db_password": "password",
+          "TZ": "str?",
+          "default_db": "str?",
+          "list_db": "bool?",
+          "workers": "int(0,16)?",
+          "max_cron_threads": "int(0,4)?",
+          "limit_memory_hard": "int?",
+          "limit_memory_soft": "int?",
+          "limit_time_cpu": "int?",
+          "limit_time_real": "int?",
+          "public_url": "url?",
+          "proxy_mode": "bool?",
+          "lan_networks": "str?",
+          "literal_rewrite_auto": "bool?",
+          "odoo_extra_addons": "str?",
+          "auto_update_module": "str?",
+          "without_demo": "bool?",
+          "dev_mode": "bool?",
+          "log_level": "list(info|debug|warn|error|critical)?",
+          "email_from": "str?",
+          "smtp_server": "str?",
+          "smtp_port": "int?",
+          "smtp_user": "str?",
+          "smtp_password": "password?",
+          "smtp_ssl": "bool?"
+        },
+        "options": {
+          "admin_passwd": null,
+          "db_password": null,
+          "TZ": "Asia/Taipei",
+          "list_db": true,
+          "workers": 2,
+          "max_cron_threads": 1,
+          "limit_memory_hard": 2684354560,
+          "limit_memory_soft": 2147483648,
+          "limit_time_cpu": 60,
+          "limit_time_real": 120,
+          "proxy_mode": true,
+          "lan_networks": "192.168.0.0/16 10.0.0.0/8 172.16.0.0/12",
+          "literal_rewrite_auto": true,
+          "dev_mode": false,
+          "log_level": "info",
+          "without_demo": true,
+          "odoo_extra_addons": "",
+          "auto_update_module": "",
+          "default_db": "",
+          "email_from": "",
+          "smtp_server": "",
+          "smtp_port": 465,
+          "smtp_user": "",
+          "smtp_password": "",
+          "smtp_ssl": true
+        }
+      },
+      "source_build_supported": true,
+      "images": {
+        "amd64": {
+          "reference": "ghcr.io/woowtech/woow-ha-odoo-amd64:0.4.11",
+          "index_digest": "sha256:996f4e2a06da3a175ca2fb0c851816a01a40db2ebc87307c06b886d07a07d1e4",
+          "digest": "sha256:996f4e2a06da3a175ca2fb0c851816a01a40db2ebc87307c06b886d07a07d1e4",
+          "source_revision": "77f248e4deae67d24e481e6fa5ba93fdc5892538"
+        },
+        "aarch64": {
+          "reference": "ghcr.io/woowtech/woow-ha-odoo-aarch64:0.4.11",
+          "index_digest": "sha256:d2c296a6bf30849158e32da4f20e86730ee3d09fd7c86ef8a2f2dbb67f1775b1",
+          "digest": "sha256:d2c296a6bf30849158e32da4f20e86730ee3d09fd7c86ef8a2f2dbb67f1775b1",
+          "source_revision": "77f248e4deae67d24e481e6fa5ba93fdc5892538"
+        }
+      },
+      "delivery": "published-image",
+      "validation": "manifest+architecture-images+configured-CI",
+      "publisher_run_id": "37412201837",
+      "channel": "stable",
+      "store_path": "odoo18ce"
     }
   },
-  "catalog_id": "sha256:06db54568d381c078710011a768029b768d95d5341b900dd12d1a107f1d51b48"
+  "catalog_id": "sha256:84fcf1d5f10a9f2a20662d85f9aca55a306439ef353cef5a08f51e0742484091"
 }
