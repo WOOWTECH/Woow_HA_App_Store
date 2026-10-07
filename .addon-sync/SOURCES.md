@@ -80,7 +80,7 @@
 ## 維運
 
 - **新增來源**
-  1. 確認 repo 是 public、未 archived、manifest 合法，且 slug 不和既有項目撞名。
+  1. 確認 repo 是 public、未 archived、manifest 合法，且 slug 不和既有項目撞名。預設分支**不能被 force push**：Store 只接受從上一版延續下來的 commit，鏡像同步也必須一般 commit 疊在上一版上（Frigate／Jellyfin／Matter Hub／Music Assistant 的 `mirror-sync.yml` 已於 2026-10-07 改成這樣）。
   2. 決定 `ref_policy`（`main` 或 `release`）與 `required_workflows`。
   3. 在 `registry.json` 加入映射並跑 `test_addon_sync.py`。
   4. 在來源 repo 加入 `woow-addon-sync.yml`（可參考 `Woow_ha_vpn_tailscale_package`），釘選到含該 registry 變更的 Store commit。
