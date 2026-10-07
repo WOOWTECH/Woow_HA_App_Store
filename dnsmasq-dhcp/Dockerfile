@@ -9,7 +9,7 @@
 # About base image: we need to use a musl-based docker image since the actual HomeAssistant addon
 # base image will be musl-based as well. This is required since we depend from "github.com/mattn/go-sqlite3"
 # which is a CGO library; so that's why we select the -alpine variant
-FROM golang:1.26-alpine AS builder
+FROM golang:1.27-alpine AS builder
 
 # build go backend
 WORKDIR /app/backend
@@ -34,7 +34,7 @@ RUN apk add yarn bash && \
 
 # --- Actual ADDON layer
 
-FROM ghcr.io/home-assistant/base:3.23
+FROM ghcr.io/home-assistant/base:3.24
 
 # Add env
 ENV LANG=C.UTF-8
@@ -45,10 +45,10 @@ RUN apk add --no-cache nginx-debug sqlite socat && mv /etc/nginx /etc/nginx-orig
 # Install dnsmasq
 # A specific version is installed so it's clear what we ship in this HomeAssistant App.
 # Check which version is available using:
-#  docker run -ti --entrypoint=/bin/sh   ghcr.io/home-assistant/base:3.22
-#  apk search dnsmasq
+#  docker run -ti --entrypoint=/bin/sh   ghcr.io/home-assistant/base:3.24
+#  apk update && apk search dnsmasq
 # See also https://thekelleys.org.uk/dnsmasq/CHANGELOG
-RUN apk add --no-cache dnsmasq=2.91-r1
+RUN apk add --no-cache dnsmasq=2.92_p2-r0
 
 # Copy data
 COPY rootfs /
