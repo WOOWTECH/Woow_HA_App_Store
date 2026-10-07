@@ -1835,22 +1835,22 @@
     "jellyfin": {
       "id": "jellyfin",
       "name": "Jellyfin",
-      "version": "0.2.1",
+      "version": "0.2.2",
       "repository": "WOOWTECH/Woow_ha_jellyfin_add_on",
-      "source_sha": "b089bdf4276a6016100b3745a57e152b5d19e34a",
+      "source_sha": "6a8b93997f8c83442e604a0374bb83aa87e0b047",
       "source_path": "jellyfin",
       "config_file": "config.yaml",
-      "config_sha256": "sha256:f8f6019e21254320e95da37ee98d810d86bf6aec7658ba07816eca2c907cb5c7",
-      "archive_sha256": "sha256:275a23a1a9afc50e5f7c916645a616c8b04c603c9bfb550a07919689c1896e57",
-      "context_fingerprint": "sha256:4f261decef2203495bac44be91558a51e09ae96f8255a4b9dba74af9fd08ac52",
-      "material_fingerprint": "sha256:90d04d90549506b6cc9f15679c5e032a640c9aa9248d37b7a1a5d256be4cfeea",
+      "config_sha256": "sha256:f64f613fe123fe6371200ba0ecc78b8fadde508f982131598f167175e53efc8e",
+      "archive_sha256": "sha256:eb372b0bfb958b1c242160ca7e99de99202f0c61a398fc377e2ef504ad099482",
+      "context_fingerprint": "sha256:ef2eb44f73d48eade5bec15c38edbbc38db34688650b7984b8c527d951981db3",
+      "material_fingerprint": "sha256:40e6a8aed5bf34770a98fbf1057e5cf19a9908ad8d8e09c0ae92ec615dd617e4",
       "architectures": [
         "aarch64",
         "amd64"
       ],
       "config": {
         "name": "Jellyfin",
-        "version": "0.2.1",
+        "version": "0.2.2",
         "slug": "jellyfin",
         "description": "The free software media system for your movies, shows and music",
         "url": "https://github.com/hassio-addons/app-jellyfin",
@@ -1912,21 +1912,21 @@
       "source_build_supported": false,
       "images": {
         "aarch64": {
-          "reference": "ghcr.io/woowtech/ha-mirror-ghcr-io-hassio-addons-jellyfin:0.2.1",
-          "index_digest": "sha256:755450bc3aa9d75eb3144af7c164cc8a800bee87bfcbfa980b2176ecdfbca424",
-          "digest": "sha256:628f45dcc86468b187db6a7498e22a99ad25835ef2b7eb19ccc0ee5411158a95",
-          "source_revision": "a4a71176081125e7f341baf1f18d1a389df9d8e1"
+          "reference": "ghcr.io/woowtech/ha-mirror-ghcr-io-hassio-addons-jellyfin:0.2.2",
+          "index_digest": "sha256:8f898a2541537cb1738e09d8fcec07b83d62161387ef796bf394b4ba0594e2d4",
+          "digest": "sha256:c21521ce18fb66b387c05810601473d8ab72eaf811cdfc9891a49c66c281fa03",
+          "source_revision": "2743c75b150f9d9ea9871f3db51948de39080d79"
         },
         "amd64": {
-          "reference": "ghcr.io/woowtech/ha-mirror-ghcr-io-hassio-addons-jellyfin:0.2.1",
-          "index_digest": "sha256:755450bc3aa9d75eb3144af7c164cc8a800bee87bfcbfa980b2176ecdfbca424",
-          "digest": "sha256:51d52be86f9a886376154d905fc63f605e54d9af7738465e69cf9e76000deed0",
-          "source_revision": "a4a71176081125e7f341baf1f18d1a389df9d8e1"
+          "reference": "ghcr.io/woowtech/ha-mirror-ghcr-io-hassio-addons-jellyfin:0.2.2",
+          "index_digest": "sha256:8f898a2541537cb1738e09d8fcec07b83d62161387ef796bf394b4ba0594e2d4",
+          "digest": "sha256:e4ef222e11ba0ba2e5cc05f680da5c89359dee1bb18f84061fee1ddb5bb829f6",
+          "source_revision": "2743c75b150f9d9ea9871f3db51948de39080d79"
         }
       },
       "delivery": "published-image",
       "validation": "manifest+architecture-images+configured-CI",
-      "publisher_run_id": "37410273438",
+      "publisher_run_id": "37583077738",
       "channel": "stable",
       "store_path": "jellyfin"
     },
@@ -3195,5 +3195,5 @@
       "store_path": "woow-tailscale"
     }
   },
-  "catalog_id": "sha256:ae2bff96e948d4fe02070da86161f1cbc7b59bc00de55908258665ab4e1e6cee"
+  "catalog_id": "sha256:93bb3dbdcb5d49888775d52f41f5d162b97c8611382dd827a87d8ae6ebcacdac"
 }
