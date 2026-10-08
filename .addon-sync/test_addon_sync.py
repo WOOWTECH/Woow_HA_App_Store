@@ -232,6 +232,16 @@ class Tests(unittest.TestCase):
             failed=[{'id':1,'head_sha':'b'*40,'event':'push','status':'completed','conclusion':'failure'}]
             report,outbox=s.publish(self.publish_gh(failed),registry,'WOOWTECH/test')
             self.assertEqual(report[0]['state'],'blocked');self.assertEqual(outbox['components'],{})
+    def test_publish_moves_unchanged_context_to_the_release_commit(self):
+        # Switching a source to ref_policy release must not leave a main snapshot in the outbox just because the files match.
+        raw=archive();component={'id':'test','source_path':'pkg','config_file':'config.yaml'}
+        gh=self.publish_gh();gh.fingerprint=lambda *args,**kwargs:'same'
+        gh.outbox=lambda repo:{'schema':1,'repository':repo,'components':{'test':{**entry(raw),'source_sha':'b'*40,'context_fingerprint':'same','material_fingerprint':'same'}}}
+        with patch.object(s,'source_archive',return_value=raw),patch.object(s,'image_ready',return_value={'digest':'sha256:'+'a'*64}):
+            report,outbox=s.publish(gh,{'providers':{'WOOWTECH/test':{'ref_policy':'release','components':[component]}}},'WOOWTECH/test')
+            self.assertEqual(report[0]['state'],'ready');self.assertEqual(outbox['components']['test']['source_sha'],'a'*40)
+            report,outbox=s.publish(gh,{'providers':{'WOOWTECH/test':{'ref_policy':'main','components':[component]}}},'WOOWTECH/test')
+            self.assertEqual(report[0]['state'],'unchanged')
     def test_publisher_workflow_reads_current_store_registry(self):
         # Source repos call this workflow at @main, so a registry change reaches every publisher without touching a source repo.
         path=pathlib.Path(__file__).resolve().parent.parent/'.github/workflows/woow-addon-publish.yml'

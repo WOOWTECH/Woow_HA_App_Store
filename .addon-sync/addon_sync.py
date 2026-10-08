@@ -277,7 +277,8 @@ def publish(gh, registry, repo, apply=False, only=None):
         try:
             fp=gh.fingerprint(repo,sha,comp['source_path'])
             previous=old['components'].get(cid)
-            if previous and previous.get('context_fingerprint')==fp:
+            # Under release, the outbox must name the Release commit even when its files match an earlier main snapshot.
+            if previous and previous.get('context_fingerprint')==fp and (provider.get('ref_policy')!='release' or previous.get('source_sha')==sha):
                 report.append({'id':cid,'state':'unchanged'});continue
             material=ci_gate(gh,repo,sha,comp,provider.get('required_workflows',[]))
             raw=source_archive(repo,sha);files=context_files(raw,comp['source_path']);cfg=config_from_files(files,comp['config_file'])
