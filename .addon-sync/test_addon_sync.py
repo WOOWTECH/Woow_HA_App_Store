@@ -209,5 +209,40 @@ class Tests(unittest.TestCase):
             root=pathlib.Path(tmp);target=root/'test';target.mkdir();(target/'config.yaml').write_text('slug: test\nversion: 0.9.0\n')
             policy=root/'.github/scripts/sidebar_titles.py';policy.parent.mkdir(parents=True);policy.write_text('TITLES={"test":"Test"}\ndef normalize(*args):raise ValueError("broken policy")\n')
             report,catalog=s.consume(GH(),registry,tmp);self.assertEqual(report[0]['state'],'blocked');self.assertIn('0.9.0',(target/'config.yaml').read_text());self.assertEqual(catalog['components'],{})
+    def publish_gh(self,runs=()):
+        class GH:
+            def head(self,repo):return 'main','b'*40
+            def api(self,repo,path):
+                if path=='releases/latest':return {'tag_name':'v1.0.0'}
+                if path=='commits/v1.0.0':return {'sha':'a'*40}
+                if '/runs' in path:return {'workflow_runs':[r for r in runs if 'head_sha=' not in path or r['head_sha'] in path]}
+                raise AssertionError(path)
+            def outbox(self,repo):return {'schema':1,'repository':repo,'components':{}}
+            def fingerprint(self,repo,sha,*args,**kwargs):return 'fp-'+sha
+        return GH()
+    def test_publish_follows_the_given_registry_policy(self):
+        raw=archive();component={'id':'test','source_path':'pkg','config_file':'config.yaml'}
+        with patch.object(s,'source_archive',return_value=raw),patch.object(s,'image_ready',return_value={'digest':'sha256:'+'a'*64}):
+            for policy,sha in [('main','b'*40),('release','a'*40)]:
+                with self.subTest(policy=policy):
+                    registry={'providers':{'WOOWTECH/test':{'ref_policy':policy,'components':[component]}}}
+                    report,outbox=s.publish(self.publish_gh(),registry,'WOOWTECH/test')
+                    self.assertEqual(report[0]['state'],'ready');self.assertEqual(outbox['components']['test']['source_sha'],sha)
+            registry={'providers':{'WOOWTECH/test':{'ref_policy':'main','required_workflows':['.github/workflows/ci.yml'],'components':[component]}}}
+            failed=[{'id':1,'head_sha':'b'*40,'event':'push','status':'completed','conclusion':'failure'}]
+            report,outbox=s.publish(self.publish_gh(failed),registry,'WOOWTECH/test')
+            self.assertEqual(report[0]['state'],'blocked');self.assertEqual(outbox['components'],{})
+    def test_publisher_workflow_reads_current_store_registry(self):
+        # Source repos call this workflow at @main, so a registry change reaches every publisher without touching a source repo.
+        path=pathlib.Path(__file__).resolve().parent.parent/'.github/workflows/woow-addon-publish.yml'
+        workflow=s.yaml.safe_load(path.read_text(encoding='utf-8'))
+        self.assertIn('workflow_call',workflow.get('on',workflow.get(True)))
+        (job,)=workflow['jobs'].values()
+        self.assertEqual(job['permissions'],{'contents':'write','actions':'read'})
+        steps=job['steps'];tooling=next(x for x in steps if x.get('with',{}).get('repository')=='WOOWTECH/Woow_HA_App_Store')
+        self.assertEqual(tooling['with']['ref'],'main');self.assertIs(tooling['with']['persist-credentials'],False)
+        root=tooling['with']['path'];commands='\n'.join(x.get('run','') for x in steps)
+        self.assertIn('addon_sync.py publish --registry '+root+'/.addon-sync/registry.json --apply',commands)
+        self.assertNotIn('secrets.',path.read_text(encoding='utf-8').replace('secrets.GITHUB_TOKEN',''))
 
 if __name__=='__main__':unittest.main()

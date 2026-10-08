@@ -1,0 +1,40 @@
+# Reusable publisher for source repositories. Each source repository calls it
+# from its own .github/workflows/woow-addon-sync.yml:
+#
+#   jobs:
+#     publish:
+#       if: ...
+#       uses: WOOWTECH/Woow_HA_App_Store/.github/workflows/woow-addon-publish.yml@main
+#
+# It always runs the tooling and registry on this Store's main, so a registry
+# change (ref_policy, required_workflows) needs no source repository change.
+# The token is the caller's own GITHUB_TOKEN: it writes only the caller's
+# woow-addon-sync branch, and the Store consumer re-validates everything.
+name: WOOW addon source notification (reusable)
+'on':
+  workflow_call: {}
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: write
+      actions: read
+    steps:
+    - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      with:
+        repository: WOOWTECH/Woow_HA_App_Store
+        ref: main
+        path: tooling
+        sparse-checkout: |
+          .addon-sync
+          .github/workflows
+        persist-credentials: false
+    - name: Install validation dependencies
+      run: python3 -m pip install -r tooling/.addon-sync/requirements.txt
+    - name: Validate synchronization guards
+      run: python3 tooling/.addon-sync/test_addon_sync.py -v
+    - name: Publish immutable source notification
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: python3 tooling/.addon-sync/addon_sync.py publish --registry tooling/.addon-sync/registry.json --apply

@@ -4,7 +4,7 @@ Source repositories publish validated snapshots to their own `woow-addon-sync/no
 
 The Store workflow reads these public notifications, validates source identity, immutable commit/context/archive/config checksums, successful publisher workflow receipts, configured CI and per-architecture published images. It refuses downgrades and out-of-order snapshots. Store sidebar metadata policy is retained. Stable catalog: `.addon-sync/catalog.json`.
 
-The consumer re-applies this Store's checked-in registry policy itself, because a producer's pinned tooling carries an older copy of the registry: a `release` source must name a published, non-prerelease Release commit; a `main` source must name a commit on the registered default branch; every `required_workflows` entry must have succeeded for that commit (or for an unchanged runtime); and the publisher receipt must be a run of the default branch's `woow-addon-sync.yml`.
+Every source repository's `woow-addon-sync.yml` calls the reusable [`woow-addon-publish.yml`](../.github/workflows/woow-addon-publish.yml) at `@main`, which checks out this Store's `main` tooling and registry at run time; a registry change (`ref_policy`, `required_workflows`) therefore reaches every publisher without editing a source repository. The consumer still re-applies this Store's checked-in registry policy itself, so a publisher run that started before a registry change cannot relax it: a `release` source must name a published, non-prerelease Release commit; a `main` source must name a commit on the registered default branch; every `required_workflows` entry must have succeeded for that commit (or for an unchanged runtime); and the publisher receipt must be a run of the default branch's `woow-addon-sync.yml`.
 
 After a successful Store update, the same workflow uses the **ha-rebrand-only write deploy key** in `REBRAND_SYNC_SSH_KEY` to update **only `release/addons/`**. The private repository is sparse-checked out; its application sources are not copied into the Store or uploaded as artifacts. This avoids a separate frequent private-repository Actions workflow. Deploy key permissions are repo-wide; the directory restriction is enforced by the synchronizer, not by GitHub's key permissions. Protect Store workflow write access accordingly. Revoke/rotate the key through ha-rebrand Settings → Deploy keys and replace the corresponding Store Actions secret.
 
@@ -26,10 +26,10 @@ After a successful Store update, the same workflow uses the **ha-rebrand-only wr
 
 Run **Synchronize validated WOOW addons and Local Download** manually; optional `only` input selects an addon ID for a pilot. Empty input selects every enabled stable mapping. Scheduled runs (every 5 minutes, offset from the top of the hour, best effort) and repository dispatches always process every enabled stable mapping. Repository dispatch payloads do not choose arbitrary repositories or files; the checked-in registry is the allowlist.
 
-Source inventory, inclusion/exclusion reasons and the runbook (onboarding, pins, failures, key rotation): [`SOURCES.md`](SOURCES.md).
+Source inventory, inclusion/exclusion reasons and the runbook (onboarding, publisher, failures, key rotation): [`SOURCES.md`](SOURCES.md).
 
-To onboard a new source, review `registry.json`, add its publisher workflow pinned to a reviewed Store tooling commit, run the publisher, then verify both Store catalog and rebrand `sync-state.json` report the same catalog ID. New repositories are not granted cross-repository write credentials automatically.
+To onboard a new source, review `registry.json`, add its `woow-addon-sync.yml` calling the reusable publisher at `@main`, run the publisher, then verify both Store catalog and rebrand `sync-state.json` report the same catalog ID. New repositories are not granted cross-repository write credentials automatically.
 
-Shared tooling is commit-pinned in source workflows; tool changes require a reviewed pin update. Producer notification branches must not be mistaken for application release branches.
+Shared tooling is not pinned in source workflows: Store `main` changes to `.addon-sync/` or `woow-addon-publish.yml` take effect in every source repository's next publisher run, under that repository's own `contents: write` token. Review them like the Store workflow itself and protect Store `main` write access accordingly. Producer notification branches must not be mistaken for application release branches.
 
 Tests: `python3 -m pip install -r .addon-sync/requirements.txt && python3 .addon-sync/test_addon_sync.py -v`.

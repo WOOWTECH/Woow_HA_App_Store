@@ -83,10 +83,10 @@
   1. 確認 repo 是 public、未 archived、manifest 合法，且 slug 不和既有項目撞名。預設分支**不能被 force push**：Store 只接受從上一版延續下來的 commit，鏡像同步也必須一般 commit 疊在上一版上（Frigate／Jellyfin／Matter Hub／Music Assistant 的 `mirror-sync.yml` 已於 2026-10-07 改成這樣）。
   2. 決定 `ref_policy`（`main` 或 `release`）與 `required_workflows`。
   3. 在 `registry.json` 加入映射並跑 `test_addon_sync.py`。
-  4. 在來源 repo 加入 `woow-addon-sync.yml`（可參考 `Woow_ha_vpn_tailscale_package`），釘選到含該 registry 變更的 Store commit。
+  4. 在來源 repo 加入 `woow-addon-sync.yml`（可參考 `Woow_ha_vpn_tailscale_package`），job 以 `uses: WOOWTECH/Woow_HA_App_Store/.github/workflows/woow-addon-publish.yml@main` 呼叫共用的發布 workflow；registry 變更須先合併到 Store `main`。
   5. 確認來源的 `woow-addon-sync/notification.json` 已產生後，以 `only=<id>` 手動執行 Store 同步。
   6. 核對 Store 目錄、`catalog.json` 與 ha-rebrand `sync-state.json` 的 catalog ID 一致。
-- **tooling pin**：consumer 一律用 Store `main` 的 registry 重新檢查，所以 pin 落後不會放寬政策。只有在 publisher 程式或該來源的 registry 項目改變時才需要更新 pin。有 ruleset 的 repo（例如 `Woow_ha_odoo`）要走 PR。推到 fork `Woow_ha_ai_mcp` 的 master 會觸發上游的 dev 發布流程，非必要不要推。
+- **發布工具**：來源 repo 不再釘選 Store commit，一律呼叫 `woow-addon-publish.yml@main`，每次執行都用 Store `main` 的程式與 registry；改 `ref_policy` 或 `required_workflows` 只要改 Store 的 `registry.json`，不必動來源 repo。consumer 照舊用 Store `main` 的 registry 重新檢查。代價是 Store `main` 對 `.addon-sync/` 或 `woow-addon-publish.yml` 的變更會在各來源 repo 下一次發布時、以該 repo 自己的 `contents: write` token 執行，所以要和 Store workflow 一樣審查。來源 repo 的 `woow-addon-sync.yml` 本身（觸發條件、`if` 條件）改動時，有 ruleset 的 repo（例如 `Woow_ha_odoo`）要走 PR；推到 fork `Woow_ha_ai_mcp` 的 master 會觸發上游的 dev 發布流程，非必要不要推。
 - **失敗處理**：看 Store run 頁面的 `WOOW addon blocked／waiting` 註記。修正來源後，先重跑來源的通知 workflow，再重跑 Store 同步。被擋的項目保留舊版，不會清空。映像 tag 在驗證後被改寫時會被擋下，這時要發新版本，不要覆寫 tag。
 - **排程被停用**：public repo 若 60 天沒有活動，GitHub 會自動停用其排程（來源的通知 workflow 平常很少 commit，最容易遇到）。push 與 workflow_run 觸發不受影響；在 Actions 頁面按 Enable workflow，或用 `PUT /repos/{owner}/{repo}/actions/workflows/{id}/enable` 重新啟用。
 - **停止同步**：停用 `sync-upstreams.yml`（必要時再停用來源通知）。要回復時，針對特定同步 commit 做 revert，不要 force push。
