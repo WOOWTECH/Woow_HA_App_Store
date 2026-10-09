@@ -3265,7 +3265,439 @@
       "publisher_run_id": "37885850159",
       "channel": "stable",
       "store_path": "woow_mcp_n8n"
+    },
+    "woow_mcp_odoo": {
+      "id": "woow_mcp_odoo",
+      "name": "Woow Odoo MCP Server",
+      "version": "0.1.7",
+      "repository": "WOOWTECH/Woow_ha_mcp_addons",
+      "source_sha": "26e0f299699d978df9c6d4111509313cb56fdf88",
+      "source_path": "addons/odoo",
+      "config_file": "config.yaml",
+      "config_sha256": "sha256:b5d89c9caa321955f59150a94e05b3ebb3af28eb88dc4b38a87466c796bae369",
+      "archive_sha256": "sha256:dba90f2e77f9ed79a6b78f1c9beb7959c4d67c699b96a5b8d12899ace349aa8f",
+      "context_fingerprint": "sha256:dc9cba0a57f785f0cb04cd3659c6215cbf3650fd0e3b0e1b7056cd94235d3691",
+      "material_fingerprint": "sha256:ab1805aed7e4f77ae0768ab666f813f329202e05032e9ff9395da57bad65b265",
+      "architectures": [
+        "amd64"
+      ],
+      "config": {
+        "name": "Woow Odoo MCP Server",
+        "version": "0.1.7",
+        "slug": "woow_mcp_odoo",
+        "description": "Experimental; HA admin-role management; partial tools, read-only by default.",
+        "url": "https://github.com/WOOWTECH/Woow_ha_mcp_addons",
+        "arch": [
+          "amd64"
+        ],
+        "startup": "application",
+        "boot": "manual",
+        "init": true,
+        "stage": "experimental",
+        "image": "ghcr.io/woowtech/{arch}-mcp-odoo",
+        "ingress": true,
+        "ingress_port": 8099,
+        "ingress_entry": "/",
+        "ingress_stream": true,
+        "panel_admin": true,
+        "panel_icon": "mdi:connection",
+        "ports": {
+          "8081/tcp": null
+        },
+        "ports_description": {
+          "8081/tcp": "Optional LAN MCP; Bearer required. Never administration."
+        },
+        "timeout": 30,
+        "backup": "cold",
+        "apparmor": true,
+        "host_network": false,
+        "host_pid": false,
+        "host_ipc": false,
+        "host_uts": false,
+        "host_dbus": false,
+        "full_access": false,
+        "docker_api": false,
+        "hassio_api": false,
+        "homeassistant_api": true,
+        "auth_api": false,
+        "options": {},
+        "schema": {}
+      },
+      "source_build_supported": false,
+      "images": {
+        "amd64": {
+          "reference": "ghcr.io/woowtech/amd64-mcp-odoo:0.1.7",
+          "index_digest": "sha256:4a98095dd8f73dd65382ec81a0768b1cf883176f10f4c5487dc132d981e5c6bc",
+          "digest": "sha256:4a98095dd8f73dd65382ec81a0768b1cf883176f10f4c5487dc132d981e5c6bc",
+          "source_revision": "7cc8bcb69c05ef156a0b0e1cee93e3967244007e"
+        }
+      },
+      "delivery": "published-image",
+      "validation": "manifest+architecture-images+configured-CI",
+      "publisher_run_id": "37885850159",
+      "channel": "stable",
+      "store_path": "woow_mcp_odoo"
+    },
+    "woow_mcp_hermes": {
+      "id": "woow_mcp_hermes",
+      "name": "Woow Hermes MCP Server",
+      "version": "0.1.7",
+      "repository": "WOOWTECH/Woow_ha_mcp_addons",
+      "source_sha": "26e0f299699d978df9c6d4111509313cb56fdf88",
+      "source_path": "addons/hermes",
+      "config_file": "config.yaml",
+      "config_sha256": "sha256:81d995b269e67722b20778325762d4217e857f4635b66cfd8f2dc053d672176d",
+      "archive_sha256": "sha256:dba90f2e77f9ed79a6b78f1c9beb7959c4d67c699b96a5b8d12899ace349aa8f",
+      "context_fingerprint": "sha256:aac45577d344f541b6cc9d55dc17b34d9ebbc84a2b3b5d81b3d91be427dbadec",
+      "material_fingerprint": "sha256:332b39d076ae0beb655e6d4e806be66fcdeabe23f217a3046336741842410bf8",
+      "architectures": [
+        "amd64"
+      ],
+      "config": {
+        "name": "Woow Hermes MCP Server",
+        "version": "0.1.7",
+        "slug": "woow_mcp_hermes",
+        "description": "Experimental; HA admin-role management; partial tools, read-only by default.",
+        "url": "https://github.com/WOOWTECH/Woow_ha_mcp_addons",
+        "arch": [
+          "amd64"
+        ],
+        "startup": "application",
+        "boot": "manual",
+        "init": true,
+        "stage": "experimental",
+        "image": "ghcr.io/woowtech/{arch}-mcp-hermes",
+        "ingress": true,
+        "ingress_port": 8099,
+        "ingress_entry": "/",
+        "ingress_stream": true,
+        "panel_admin": true,
+        "panel_icon": "mdi:connection",
+        "ports": {
+          "8081/tcp": null
+        },
+        "ports_description": {
+          "8081/tcp": "Optional LAN MCP; Bearer required. Never administration."
+        },
+        "timeout": 30,
+        "backup": "cold",
+        "apparmor": true,
+        "host_network": false,
+        "host_pid": false,
+        "host_ipc": false,
+        "host_uts": false,
+        "host_dbus": false,
+        "full_access": false,
+        "docker_api": false,
+        "hassio_api": false,
+        "homeassistant_api": true,
+        "auth_api": false,
+        "options": {},
+        "schema": {}
+      },
+      "source_build_supported": false,
+      "images": {
+        "amd64": {
+          "reference": "ghcr.io/woowtech/amd64-mcp-hermes:0.1.7",
+          "index_digest": "sha256:6769208f635d55e5ddf10ea0f8af038cb47af5f23703d0a70a495f5c00de032b",
+          "digest": "sha256:6769208f635d55e5ddf10ea0f8af038cb47af5f23703d0a70a495f5c00de032b",
+          "source_revision": "7cc8bcb69c05ef156a0b0e1cee93e3967244007e"
+        }
+      },
+      "delivery": "published-image",
+      "validation": "manifest+architecture-images+configured-CI",
+      "publisher_run_id": "37885850159",
+      "channel": "stable",
+      "store_path": "woow_mcp_hermes"
+    },
+    "woow_mcp_opendesign": {
+      "id": "woow_mcp_opendesign",
+      "name": "Woow OpenDesign MCP Server",
+      "version": "0.1.7",
+      "repository": "WOOWTECH/Woow_ha_mcp_addons",
+      "source_sha": "26e0f299699d978df9c6d4111509313cb56fdf88",
+      "source_path": "addons/opendesign",
+      "config_file": "config.yaml",
+      "config_sha256": "sha256:09b59cf906d07395f53518e0a99769b090c252b652e4c704482b79e0ae486bcf",
+      "archive_sha256": "sha256:dba90f2e77f9ed79a6b78f1c9beb7959c4d67c699b96a5b8d12899ace349aa8f",
+      "context_fingerprint": "sha256:2162dd2c1aa530b9937ce7d2c598bec2cf4d8befc9f7f8331526d90404ec6ad8",
+      "material_fingerprint": "sha256:293c0517025d8422e72c61991ca301ed695a5861a709749ad045b4d4189164b0",
+      "architectures": [
+        "amd64"
+      ],
+      "config": {
+        "name": "Woow OpenDesign MCP Server",
+        "version": "0.1.7",
+        "slug": "woow_mcp_opendesign",
+        "description": "Experimental; HA admin-role management; partial tools, read-only by default.",
+        "url": "https://github.com/WOOWTECH/Woow_ha_mcp_addons",
+        "arch": [
+          "amd64"
+        ],
+        "startup": "application",
+        "boot": "manual",
+        "init": true,
+        "stage": "experimental",
+        "image": "ghcr.io/woowtech/{arch}-mcp-opendesign",
+        "ingress": true,
+        "ingress_port": 8099,
+        "ingress_entry": "/",
+        "ingress_stream": true,
+        "panel_admin": true,
+        "panel_icon": "mdi:connection",
+        "ports": {
+          "8081/tcp": null
+        },
+        "ports_description": {
+          "8081/tcp": "Optional LAN MCP; Bearer required. Never administration."
+        },
+        "timeout": 30,
+        "backup": "cold",
+        "apparmor": true,
+        "host_network": false,
+        "host_pid": false,
+        "host_ipc": false,
+        "host_uts": false,
+        "host_dbus": false,
+        "full_access": false,
+        "docker_api": false,
+        "hassio_api": false,
+        "homeassistant_api": true,
+        "auth_api": false,
+        "options": {},
+        "schema": {}
+      },
+      "source_build_supported": false,
+      "images": {
+        "amd64": {
+          "reference": "ghcr.io/woowtech/amd64-mcp-opendesign:0.1.7",
+          "index_digest": "sha256:1575353632e5d1ed7c9cea3bb7d800901346ed9bfa5433defa6c07c630052f56",
+          "digest": "sha256:1575353632e5d1ed7c9cea3bb7d800901346ed9bfa5433defa6c07c630052f56",
+          "source_revision": "7cc8bcb69c05ef156a0b0e1cee93e3967244007e"
+        }
+      },
+      "delivery": "published-image",
+      "validation": "manifest+architecture-images+configured-CI",
+      "publisher_run_id": "37885850159",
+      "channel": "stable",
+      "store_path": "woow_mcp_opendesign"
+    },
+    "woow_mcp_emqx": {
+      "id": "woow_mcp_emqx",
+      "name": "Woow EMQX MCP Server",
+      "version": "0.1.7",
+      "repository": "WOOWTECH/Woow_ha_mcp_addons",
+      "source_sha": "26e0f299699d978df9c6d4111509313cb56fdf88",
+      "source_path": "addons/emqx",
+      "config_file": "config.yaml",
+      "config_sha256": "sha256:be3ad8d6c790f2170f1c32139e01409ed5de7167ea94153daf81b36a4a752229",
+      "archive_sha256": "sha256:dba90f2e77f9ed79a6b78f1c9beb7959c4d67c699b96a5b8d12899ace349aa8f",
+      "context_fingerprint": "sha256:f90359df2e2d37a2597a5a3c7d3b2f0030a46d4b1328826ae563063be005aaaa",
+      "material_fingerprint": "sha256:497bc7ba63198e3b9bf73a5b978b7079f8d187462a4e651fbfc57b26de6d8bc5",
+      "architectures": [
+        "amd64"
+      ],
+      "config": {
+        "name": "Woow EMQX MCP Server",
+        "version": "0.1.7",
+        "slug": "woow_mcp_emqx",
+        "description": "Experimental; HA admin-role management; partial tools, read-only by default.",
+        "url": "https://github.com/WOOWTECH/Woow_ha_mcp_addons",
+        "arch": [
+          "amd64"
+        ],
+        "startup": "application",
+        "boot": "manual",
+        "init": true,
+        "stage": "experimental",
+        "image": "ghcr.io/woowtech/{arch}-mcp-emqx",
+        "ingress": true,
+        "ingress_port": 8099,
+        "ingress_entry": "/",
+        "ingress_stream": true,
+        "panel_admin": true,
+        "panel_icon": "mdi:connection",
+        "ports": {
+          "8081/tcp": null
+        },
+        "ports_description": {
+          "8081/tcp": "Optional LAN MCP; Bearer required. Never administration."
+        },
+        "timeout": 30,
+        "backup": "cold",
+        "apparmor": true,
+        "host_network": false,
+        "host_pid": false,
+        "host_ipc": false,
+        "host_uts": false,
+        "host_dbus": false,
+        "full_access": false,
+        "docker_api": false,
+        "hassio_api": false,
+        "homeassistant_api": true,
+        "auth_api": false,
+        "options": {},
+        "schema": {}
+      },
+      "source_build_supported": false,
+      "images": {
+        "amd64": {
+          "reference": "ghcr.io/woowtech/amd64-mcp-emqx:0.1.7",
+          "index_digest": "sha256:c8ab850cd6e5e3a8032b57fb672e11d787758f30f86fe076f7a3e36402a216a5",
+          "digest": "sha256:c8ab850cd6e5e3a8032b57fb672e11d787758f30f86fe076f7a3e36402a216a5",
+          "source_revision": "7cc8bcb69c05ef156a0b0e1cee93e3967244007e"
+        }
+      },
+      "delivery": "published-image",
+      "validation": "manifest+architecture-images+configured-CI",
+      "publisher_run_id": "37885850159",
+      "channel": "stable",
+      "store_path": "woow_mcp_emqx"
+    },
+    "woow_mcp_litellm": {
+      "id": "woow_mcp_litellm",
+      "name": "Woow LiteLLM MCP Server",
+      "version": "0.1.7",
+      "repository": "WOOWTECH/Woow_ha_mcp_addons",
+      "source_sha": "26e0f299699d978df9c6d4111509313cb56fdf88",
+      "source_path": "addons/litellm",
+      "config_file": "config.yaml",
+      "config_sha256": "sha256:bfa491f23eed1f0c1d7a43b25a07307d6c2ae987b6c0652828cf053d1a515cc2",
+      "archive_sha256": "sha256:dba90f2e77f9ed79a6b78f1c9beb7959c4d67c699b96a5b8d12899ace349aa8f",
+      "context_fingerprint": "sha256:9a6fb4f2912821ad1923cb781e97b01d6dcc1550984c7be2a0f83a8a7396edc3",
+      "material_fingerprint": "sha256:ca4e1ff1e388534e14c4255b946677757bd03c70cc459cff58f404f606446a06",
+      "architectures": [
+        "amd64"
+      ],
+      "config": {
+        "name": "Woow LiteLLM MCP Server",
+        "version": "0.1.7",
+        "slug": "woow_mcp_litellm",
+        "description": "Experimental; HA admin-role management; partial tools, read-only by default.",
+        "url": "https://github.com/WOOWTECH/Woow_ha_mcp_addons",
+        "arch": [
+          "amd64"
+        ],
+        "startup": "application",
+        "boot": "manual",
+        "init": true,
+        "stage": "experimental",
+        "image": "ghcr.io/woowtech/{arch}-mcp-litellm",
+        "ingress": true,
+        "ingress_port": 8099,
+        "ingress_entry": "/",
+        "ingress_stream": true,
+        "panel_admin": true,
+        "panel_icon": "mdi:connection",
+        "ports": {
+          "8081/tcp": null
+        },
+        "ports_description": {
+          "8081/tcp": "Optional LAN MCP; Bearer required. Never administration."
+        },
+        "timeout": 30,
+        "backup": "cold",
+        "apparmor": true,
+        "host_network": false,
+        "host_pid": false,
+        "host_ipc": false,
+        "host_uts": false,
+        "host_dbus": false,
+        "full_access": false,
+        "docker_api": false,
+        "hassio_api": false,
+        "homeassistant_api": true,
+        "auth_api": false,
+        "options": {},
+        "schema": {}
+      },
+      "source_build_supported": false,
+      "images": {
+        "amd64": {
+          "reference": "ghcr.io/woowtech/amd64-mcp-litellm:0.1.7",
+          "index_digest": "sha256:ebfb1630d3b1be299b3d5189b4211ba3770e8c75134a2c2a057424eb0c485d34",
+          "digest": "sha256:ebfb1630d3b1be299b3d5189b4211ba3770e8c75134a2c2a057424eb0c485d34",
+          "source_revision": "7cc8bcb69c05ef156a0b0e1cee93e3967244007e"
+        }
+      },
+      "delivery": "published-image",
+      "validation": "manifest+architecture-images+configured-CI",
+      "publisher_run_id": "37885850159",
+      "channel": "stable",
+      "store_path": "woow_mcp_litellm"
+    },
+    "woow_mcp_nextcloud": {
+      "id": "woow_mcp_nextcloud",
+      "name": "Woow Nextcloud MCP Server",
+      "version": "0.1.7",
+      "repository": "WOOWTECH/Woow_ha_mcp_addons",
+      "source_sha": "26e0f299699d978df9c6d4111509313cb56fdf88",
+      "source_path": "addons/nextcloud",
+      "config_file": "config.yaml",
+      "config_sha256": "sha256:fa83b25b11d16089fbe4eb670a41bf8ca1b06ad05de4622bf59b9716dfccca9d",
+      "archive_sha256": "sha256:dba90f2e77f9ed79a6b78f1c9beb7959c4d67c699b96a5b8d12899ace349aa8f",
+      "context_fingerprint": "sha256:c8ff50f2032fa2d60cffe5739fb2fbb6648c74555a40b47ce64fa0cba03a59aa",
+      "material_fingerprint": "sha256:5798ec9c83fa958ffca9c1079594a985add3f95a96df8b5e38c646ad0799afb4",
+      "architectures": [
+        "amd64"
+      ],
+      "config": {
+        "name": "Woow Nextcloud MCP Server",
+        "version": "0.1.7",
+        "slug": "woow_mcp_nextcloud",
+        "description": "Experimental; HA admin-role management; one Nextcloud account (files, calendars, tasks), read-only by default.",
+        "url": "https://github.com/WOOWTECH/Woow_ha_mcp_addons",
+        "arch": [
+          "amd64"
+        ],
+        "startup": "application",
+        "boot": "manual",
+        "init": true,
+        "stage": "experimental",
+        "image": "ghcr.io/woowtech/{arch}-mcp-nextcloud",
+        "ingress": true,
+        "ingress_port": 8099,
+        "ingress_entry": "/",
+        "ingress_stream": true,
+        "panel_admin": true,
+        "panel_icon": "mdi:connection",
+        "ports": {
+          "8081/tcp": null
+        },
+        "ports_description": {
+          "8081/tcp": "Optional LAN MCP; Bearer required. Never administration."
+        },
+        "timeout": 30,
+        "backup": "cold",
+        "apparmor": true,
+        "host_network": false,
+        "host_pid": false,
+        "host_ipc": false,
+        "host_uts": false,
+        "host_dbus": false,
+        "full_access": false,
+        "docker_api": false,
+        "hassio_api": false,
+        "homeassistant_api": true,
+        "auth_api": false,
+        "options": {},
+        "schema": {}
+      },
+      "source_build_supported": false,
+      "images": {
+        "amd64": {
+          "reference": "ghcr.io/woowtech/amd64-mcp-nextcloud:0.1.7",
+          "index_digest": "sha256:4d8002435da66809f53d0f7b6f4fd7e7e0a34f1c958c348f18ace3c2ff57aef3",
+          "digest": "sha256:4d8002435da66809f53d0f7b6f4fd7e7e0a34f1c958c348f18ace3c2ff57aef3",
+          "source_revision": "7cc8bcb69c05ef156a0b0e1cee93e3967244007e"
+        }
+      },
+      "delivery": "published-image",
+      "validation": "manifest+architecture-images+configured-CI",
+      "publisher_run_id": "37885850159",
+      "channel": "stable",
+      "store_path": "woow_mcp_nextcloud"
     }
   },
-  "catalog_id": "sha256:1f643ad7f3d98f19e5620c16425e8e7f690178972df6b475b55c6f1a2b3943c4"
+  "catalog_id": "sha256:a95d78a5baec03fa8fc62a94b96f7b551d4fe0fde49336872381b071f7660dcb"
 }

@@ -1,0 +1,37 @@
+name: Woow Odoo MCP Server
+version: 0.1.7
+slug: woow_mcp_odoo
+description: Experimental; HA admin-role management; partial tools, read-only by default.
+url: https://github.com/WOOWTECH/Woow_ha_mcp_addons
+arch:
+- amd64
+startup: application
+boot: manual
+init: true
+stage: experimental
+image: ghcr.io/woowtech/{arch}-mcp-odoo
+ingress: true
+ingress_port: 8099
+ingress_entry: /
+ingress_stream: true
+panel_admin: true
+panel_icon: mdi:connection
+ports:
+  8081/tcp: null
+ports_description:
+  8081/tcp: Optional LAN MCP; Bearer required. Never administration.
+timeout: 30
+backup: cold
+apparmor: true
+host_network: false
+host_pid: false
+host_ipc: false
+host_uts: false
+host_dbus: false
+full_access: false
+docker_api: false
+hassio_api: false
+homeassistant_api: true
+auth_api: false
+options: {}
+schema: {}
