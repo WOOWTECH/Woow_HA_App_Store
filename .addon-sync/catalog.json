@@ -3193,7 +3193,79 @@
       "publisher_run_id": "37437027663",
       "channel": "stable",
       "store_path": "woow-tailscale"
+    },
+    "woow_mcp_n8n": {
+      "id": "woow_mcp_n8n",
+      "name": "Woow n8n MCP Server",
+      "version": "0.1.7",
+      "repository": "WOOWTECH/Woow_ha_mcp_addons",
+      "source_sha": "26e0f299699d978df9c6d4111509313cb56fdf88",
+      "source_path": "addons/n8n",
+      "config_file": "config.yaml",
+      "config_sha256": "sha256:c510a9fbb679920a1ee1f2cb3d49d26247e340543f36e10b28327dd7a632017a",
+      "archive_sha256": "sha256:dba90f2e77f9ed79a6b78f1c9beb7959c4d67c699b96a5b8d12899ace349aa8f",
+      "context_fingerprint": "sha256:252c8a0ab95fa9c6ae1a0637e0b8c1d71ae3dfee06fb0fed3d28c5ecc8766957",
+      "material_fingerprint": "sha256:42e16e7b7b74167f93146e896ea1eb1e9e21abaeb8da37d0a2594905a4f2abc4",
+      "architectures": [
+        "amd64"
+      ],
+      "config": {
+        "name": "Woow n8n MCP Server",
+        "version": "0.1.7",
+        "slug": "woow_mcp_n8n",
+        "description": "Experimental; HA admin-role management; partial tools, read-only by default.",
+        "url": "https://github.com/WOOWTECH/Woow_ha_mcp_addons",
+        "arch": [
+          "amd64"
+        ],
+        "startup": "application",
+        "boot": "manual",
+        "init": true,
+        "stage": "experimental",
+        "image": "ghcr.io/woowtech/{arch}-mcp-n8n",
+        "ingress": true,
+        "ingress_port": 8099,
+        "ingress_entry": "/",
+        "ingress_stream": true,
+        "panel_admin": true,
+        "panel_icon": "mdi:connection",
+        "ports": {
+          "8081/tcp": null
+        },
+        "ports_description": {
+          "8081/tcp": "Optional LAN MCP; Bearer required. Never administration."
+        },
+        "timeout": 30,
+        "backup": "cold",
+        "apparmor": true,
+        "host_network": false,
+        "host_pid": false,
+        "host_ipc": false,
+        "host_uts": false,
+        "host_dbus": false,
+        "full_access": false,
+        "docker_api": false,
+        "hassio_api": false,
+        "homeassistant_api": true,
+        "auth_api": false,
+        "options": {},
+        "schema": {}
+      },
+      "source_build_supported": false,
+      "images": {
+        "amd64": {
+          "reference": "ghcr.io/woowtech/amd64-mcp-n8n:0.1.7",
+          "index_digest": "sha256:2b70f836433220e7c63a94a4c993787dc62d66750002cfb3ec0a6878f7476956",
+          "digest": "sha256:2b70f836433220e7c63a94a4c993787dc62d66750002cfb3ec0a6878f7476956",
+          "source_revision": "7cc8bcb69c05ef156a0b0e1cee93e3967244007e"
+        }
+      },
+      "delivery": "published-image",
+      "validation": "manifest+architecture-images+configured-CI",
+      "publisher_run_id": "37885850159",
+      "channel": "stable",
+      "store_path": "woow_mcp_n8n"
     }
   },
-  "catalog_id": "sha256:31a59b6f36576b6a8ec552df491703b22e514b7ef6de83eeb0db5a40079b040f"
+  "catalog_id": "sha256:1f643ad7f3d98f19e5620c16425e8e7f690178972df6b475b55c6f1a2b3943c4"
 }
