@@ -414,6 +414,72 @@
         }
       ]
     },
+    "WOOWTECH/Woow_ha_mcp_addons": {
+      "default_branch": "claude-delivery",
+      "required_workflows": [],
+      "observe_workflow_names": [
+        "WOOW addon source notification"
+      ],
+      "ref_policy": "main",
+      "components": [
+        {
+          "id": "woow_mcp_n8n",
+          "source_path": "addons/n8n",
+          "config_file": "config.yaml",
+          "store_path": "woow_mcp_n8n",
+          "channel": "stable",
+          "enabled": true
+        },
+        {
+          "id": "woow_mcp_odoo",
+          "source_path": "addons/odoo",
+          "config_file": "config.yaml",
+          "store_path": "woow_mcp_odoo",
+          "channel": "stable",
+          "enabled": true
+        },
+        {
+          "id": "woow_mcp_hermes",
+          "source_path": "addons/hermes",
+          "config_file": "config.yaml",
+          "store_path": "woow_mcp_hermes",
+          "channel": "stable",
+          "enabled": true
+        },
+        {
+          "id": "woow_mcp_opendesign",
+          "source_path": "addons/opendesign",
+          "config_file": "config.yaml",
+          "store_path": "woow_mcp_opendesign",
+          "channel": "stable",
+          "enabled": true
+        },
+        {
+          "id": "woow_mcp_emqx",
+          "source_path": "addons/emqx",
+          "config_file": "config.yaml",
+          "store_path": "woow_mcp_emqx",
+          "channel": "stable",
+          "enabled": true
+        },
+        {
+          "id": "woow_mcp_litellm",
+          "source_path": "addons/litellm",
+          "config_file": "config.yaml",
+          "store_path": "woow_mcp_litellm",
+          "channel": "stable",
+          "enabled": true
+        },
+        {
+          "id": "woow_mcp_nextcloud",
+          "source_path": "addons/nextcloud",
+          "config_file": "config.yaml",
+          "store_path": "woow_mcp_nextcloud",
+          "channel": "stable",
+          "enabled": true
+        }
+      ]
+    },
     "WOOWTECH/Woow_ha_music_assistant_add_on": {
       "default_branch": "main",
       "required_workflows": [],

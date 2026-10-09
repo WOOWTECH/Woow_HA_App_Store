@@ -2,7 +2,7 @@
 
 [![Open your Home Assistant instance and show the add add-on repository dialog with a specific repository URL pre-filled.](https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg)](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2FWOOWTECH%2FWoow_HA_App_Store)
 
-一鍵加入 37 個 WOOWTECH 自製／鏡像維護 Home Assistant App 的統一 store repo。
+一鍵加入 44 個 WOOWTECH 自製／鏡像維護 Home Assistant App 的統一 store repo。
 
 ## 使用方式
 
@@ -16,14 +16,14 @@
    ```
    https://github.com/WOOWTECH/Woow_HA_App_Store
    ```
-4. 按 **Add** → 關閉 → 頁面下拉即可看到 37 個 App
+4. 按 **Add** → 關閉 → 頁面下拉即可看到 44 個 App
 
 ### 方法三：CLI (HAOS SSH)
 ```bash
 ha store add https://github.com/WOOWTECH/Woow_HA_App_Store
 ```
 
-## 內含 Apps（37 個）
+## 內含 Apps（44 個）
 
 > 版本為 2026-10-06 的 catalog；即時版本以各目錄的 `config.yaml` 與 `.addon-sync/catalog.json` 為準。
 > 「本機建置」= 沒有預建映像，安裝時由 Supervisor 在裝置上 build，耗時且吃記憶體，小機器請留意。
@@ -46,6 +46,21 @@ ha store add https://github.com/WOOWTECH/Woow_HA_App_Store
 | `woow_ha_pi_agent` | Woow HA Pi Agent | 0.14.3 | 預建映像 | pi-web + coding agent SDK + 影音管線 |
 | `woow_ha_opendesign` | Woow HA OpenDesign | 0.1.8 | 預建映像 | Ingress-only BYOK 設計工作台 + PDF／圖片／PPTX 匯出 |
 | `woow-omnigent` | Woow Omnigent | 0.1.15 | 預建映像 | Omnigent 編排伺服器 + 內建 Postgres（外部 runner 註冊制） |
+
+### 🤖 MCP Server（WOOWTECH 自主開發，experimental）
+
+把對應軟體的部分工具以 MCP（Streamable HTTP，Bearer token）提供給 AI client；預設只開讀取工具，寫入要由 HA 管理員在 add-on 面板逐支授權。圖示與所連接的軟體相同。來源與完整文件：[WOOWTECH/Woow_ha_mcp_addons](https://github.com/WOOWTECH/Woow_ha_mcp_addons)。
+同一套 add-on 也在該 repo 自己的 store；兩個 store 的同名 add-on 在 HA 裡是不同的 add-on（slug 前綴不同，設定不互通），同一台 HA 只裝其中一個來源的。
+
+| Slug | 名稱 | Ver | 安裝 | 用途 |
+|---|---|---|---|---|
+| `woow_mcp_n8n` | Woow n8n MCP Server | 0.1.7 | 預建映像（amd64） | n8n 的 MCP server |
+| `woow_mcp_odoo` | Woow Odoo MCP Server | 0.1.7 | 預建映像（amd64） | Odoo 的 MCP server |
+| `woow_mcp_hermes` | Woow Hermes MCP Server | 0.1.7 | 預建映像（amd64） | Hermes Agent 的 MCP server |
+| `woow_mcp_opendesign` | Woow OpenDesign MCP Server | 0.1.7 | 預建映像（amd64） | OpenDesign 的 MCP server |
+| `woow_mcp_emqx` | Woow EMQX MCP Server | 0.1.7 | 預建映像（amd64） | EMQX 的 MCP server |
+| `woow_mcp_litellm` | Woow LiteLLM MCP Server | 0.1.7 | 預建映像（amd64） | LiteLLM（本 store 沒有 LiteLLM add-on，需自備） 的 MCP server |
+| `woow_mcp_nextcloud` | Woow Nextcloud MCP Server | 0.1.7 | 預建映像（amd64） | Nextcloud（一個帳號的檔案、行事曆與任務） 的 MCP server |
 
 ### 🧩 HA Core 實例
 | Slug | 名稱 | Ver | 安裝 | 用途 |

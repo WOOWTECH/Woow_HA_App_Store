@@ -3,7 +3,7 @@
 由 `WOOWTECH` 帳號的 315 個 repo 實際掃描產生（2026-10-06，掃描到第 3 層的 `config.yaml|yml|json`，並以 manifest 內容判斷，不靠 repo 名稱）。
 **即時的版本、來源 SHA 與映像 digest 以 [`catalog.json`](catalog.json) 為準；映射與政策以 [`registry.json`](registry.json) 為準。** 本表只說明各來源為什麼納入或排除。
 
-## 已登錄來源（26 個 repo、45 個 context）
+## 已登錄來源（27 個 repo、52 個 context）
 
 「rebrand」欄＝是否已出現在 `catalog.json`（ha-rebrand 的 `release/addons/catalog.json` 與它逐位元組相同）。
 「CI／映像要求」是 Store consumer 會重新檢查的條件；沒有 required workflow 的本機建置項目只做結構檢查，**不代表 Docker 建置或實機健康已驗證**（Tailscale 例外：它的 `Build` 在 CI 實際建置 amd64＋aarch64）。
@@ -38,6 +38,13 @@
 | [Woow_ha_matter_hub_add_on](https://github.com/WOOWTECH/Woow_ha_matter_hub_add_on) | 預設分支（`main`） | `hamh-alpha` | `hamh-alpha`／prerelease | `hamh-alpha` | — | — | — | 開發通道，不進 stable |
 | [Woow_ha_matter_hub_add_on](https://github.com/WOOWTECH/Woow_ha_matter_hub_add_on) | 預設分支（`main`） | `hamh-testing` | `hamh-testing`／prerelease | `hamh-testing` | — | — | — | 開發通道，不進 stable |
 | [Woow_ha_matter_hub_add_on](https://github.com/WOOWTECH/Woow_ha_matter_hub_add_on) | 預設分支（`main`） | `hamh` | `hamh`／stable | `hamh` | ✓ | —各架構映像 digest | 預建映像（aarch64、amd64） | 已同步 |
+| [Woow_ha_mcp_addons](https://github.com/WOOWTECH/Woow_ha_mcp_addons) | 預設分支（`claude-delivery`） | `addons/n8n` | `woow_mcp_n8n`／stable | `woow_mcp_n8n` | — | — | — | 尚未同步 |
+| [Woow_ha_mcp_addons](https://github.com/WOOWTECH/Woow_ha_mcp_addons) | 預設分支（`claude-delivery`） | `addons/odoo` | `woow_mcp_odoo`／stable | `woow_mcp_odoo` | — | — | — | 尚未同步 |
+| [Woow_ha_mcp_addons](https://github.com/WOOWTECH/Woow_ha_mcp_addons) | 預設分支（`claude-delivery`） | `addons/hermes` | `woow_mcp_hermes`／stable | `woow_mcp_hermes` | — | — | — | 尚未同步 |
+| [Woow_ha_mcp_addons](https://github.com/WOOWTECH/Woow_ha_mcp_addons) | 預設分支（`claude-delivery`） | `addons/opendesign` | `woow_mcp_opendesign`／stable | `woow_mcp_opendesign` | — | — | — | 尚未同步 |
+| [Woow_ha_mcp_addons](https://github.com/WOOWTECH/Woow_ha_mcp_addons) | 預設分支（`claude-delivery`） | `addons/emqx` | `woow_mcp_emqx`／stable | `woow_mcp_emqx` | — | — | — | 尚未同步 |
+| [Woow_ha_mcp_addons](https://github.com/WOOWTECH/Woow_ha_mcp_addons) | 預設分支（`claude-delivery`） | `addons/litellm` | `woow_mcp_litellm`／stable | `woow_mcp_litellm` | — | — | — | 尚未同步 |
+| [Woow_ha_mcp_addons](https://github.com/WOOWTECH/Woow_ha_mcp_addons) | 預設分支（`claude-delivery`） | `addons/nextcloud` | `woow_mcp_nextcloud`／stable | `woow_mcp_nextcloud` | — | — | — | 尚未同步 |
 | [Woow_ha_music_assistant_add_on](https://github.com/WOOWTECH/Woow_ha_music_assistant_add_on) | 預設分支（`main`） | `local_audio` | `local_audio`／stable | `local_audio` | ✓ | —各架構映像 digest | 預建映像（amd64、aarch64） | 已同步 |
 | [Woow_ha_music_assistant_add_on](https://github.com/WOOWTECH/Woow_ha_music_assistant_add_on) | 預設分支（`main`） | `music_assistant` | `music_assistant`／stable | `music_assistant` | ✓ | —各架構映像 digest | 預建映像（amd64、aarch64） | 已同步 |
 | [Woow_ha_music_assistant_add_on](https://github.com/WOOWTECH/Woow_ha_music_assistant_add_on) | 預設分支（`main`） | `music_assistant_beta` | `music_assistant_beta`／prerelease | `music_assistant_beta` | — | — | — | 開發通道，不進 stable |
@@ -69,12 +76,11 @@
 | [Woow_ha_multi_ha_core_5](https://github.com/WOOWTECH/Woow_ha_multi_ha_core_5) | 已 archived；不重新上架（1 個 context） |
 | [Woow_immich_docker_compose_all](https://github.com/WOOWTECH/Woow_immich_docker_compose_all) | 已 archived；不重新上架（1 個 context） |
 | [Odoo_pos_self_checkout_enhance](https://github.com/WOOWTECH/Odoo_pos_self_checkout_enhance) | `ha-addon-escpos-print-proxy` 只有原始碼、未上架、沒有 CI；列為候選，需負責人確認權威與相容性後才登錄 |
-| [Woow_ha_mcp_addons](https://github.com/WOOWTECH/Woow_ha_mcp_addons) | 獨立的 HA addon 商店（default branch `claude-delivery`、manifest 全為 experimental），有自己的發布線；要併入需另行決定 |
 | private repo（3 個） | 公開 Store 不得輸出 private 內容；consumer 也會拒絕 private 來源 |
 | `Woow_ha_ai_mcp` 的 `tests/haos_image_build/screenshot_engine_mock` | 測試夾具（slug `puppet`），不是 addon |
 
 開發／測試通道（`ha_mcp_dev`、`ha_mcp_webhook_proxy_dev`、`hamh-alpha`、`hamh-testing`、`music_assistant_beta`、`music_assistant_dev`、`music_assistant_nightly`）會出現在來源通知裡，但 consumer 只取 stable，不會進入 Store 或 Local Download。
-`woow_ha_core` 與 `local_audio` 的 manifest 自己標為 `stage: experimental`，經負責人決定保留在 stable catalog。
+`woow_ha_core` 與 `local_audio` 的 manifest 自己標為 `stage: experimental`，經負責人決定保留在 stable catalog；`Woow_ha_mcp_addons` 的七支 MCP Server 也是 `stage: experimental`，負責人 2026-10-09 決定上架 stable catalog（該 repo 同時保留自己的 store；發佈把關在它自己的建置 VM 與映像驗證，GitHub 上沒有 required workflow，Store 仍逐架構驗證已公開映像）。
 `vscode`（`Woow_ha_vscode_add_on`）已退役並由不同的 `woow_ha_code_server` 取代，不會重新上架。
 
 ## 維運
