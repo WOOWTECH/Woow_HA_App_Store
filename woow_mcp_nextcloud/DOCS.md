@@ -2,9 +2,9 @@
 
 ## 現況與範圍
 
-**0.1.7（experimental，本產品第一個版本）**：映像 `ghcr.io/woowtech/amd64-mcp-nextcloud:0.1.7` 由候選 7cc8bcb 建置，第一次送 gate
-就通過 container/mock 與 supply-chain gate（2026-10-08），以測過的 image ID 推送、匿名拉取驗證通過，可從本 repository 的 HA 商店安裝；
-先前版本號沒有 Nextcloud 映像。內容見 [CHANGELOG](CHANGELOG.md)。2026-10-08 第一次在測試 HA 實測（[0.1.7 回歸紀錄](https://github.com/WOOWTECH/Woow_ha_mcp_addons/blob/claude-delivery/docs/operations/ha-test-0.1.7.md)）：讀取 6/6、寫入與未知工具 5/5 拒絕、
+**0.1.8（experimental）**：映像 `ghcr.io/woowtech/amd64-mcp-nextcloud:0.1.8` 由候選 04ae485 建置，通過 container/mock 與
+supply-chain gate（2026-10-11），以測過的 image ID 推送、匿名拉取驗證通過，可從本 repository 的 HA 商店安裝；變更見 [CHANGELOG](CHANGELOG.md)，
+測試 HA 回歸進行中。0.1.7 是本產品第一個版本（先前版本號沒有 Nextcloud 映像）；2026-10-08 第一次在測試 HA 實測（[0.1.7 回歸紀錄](https://github.com/WOOWTECH/Woow_ha_mcp_addons/blob/claude-delivery/docs/operations/ha-test-0.1.7.md)）：讀取 6/6、寫入與未知工具 5/5 拒絕、
 後端斷線、重啟、child 恢復、權杖輪替、一般使用者 403 皆通過；後端是同一台 HA 的 Nextcloud 35.0.1（專屬測試使用者，只讀它自己的檔案）。
 寫入工具尚未在實機授權實測。
 [發佈關卡](https://github.com/WOOWTECH/Woow_ha_mcp_addons/blob/claude-delivery/docs/operations/release.md) 的人工 gates 和其他產品一樣維持關閉。
@@ -14,7 +14,7 @@
 此 token 具**廣泛 Core 管理能力**（`homeassistant_api: true`），負責人已於 2026-10-08 核准本 Add-on 使用（與其他六支相同，
 只用於管理面板確認 HA owner／管理員）。`panel_admin` 不是角色授權。
 
-**支援的 Core 版本**：管理面板只在本版審查過的 HA Core 版本運作（0.1.7：2026.7.2–2026.9.4 與 2026.10.0，和其他六支共用同一個驗證器）。
+**支援的 Core 版本**：管理面板只在本版審查過的 HA Core 版本運作（0.1.7、0.1.8：2026.7.2–2026.9.4 與 2026.10.0，和其他六支共用同一個驗證器）。
 其他版本（含之後的 patch 與 beta）整個管理面板都回 403，看起來和「不是管理員」完全一樣（add-on 紀錄也沒有訊息）；
 MCP 端點（Bearer token）不受影響。新的 Core 版本要等 add-on 發新版才支援，升級 Core 前請先對照這份清單。
 
@@ -89,6 +89,7 @@ MCP 端點（Bearer token）不受影響。新的 Core 版本要等 add-on 發�
 - `8099`：Ingress-only，無主機 mapping；不是 MCP endpoint。
 - `8081/mcp`：Bearer Streamable HTTP；`8081/tcp: null` 預設不公開 LAN mapping。
 - `3000`：child loopback-only，永不暴露；子程序的 Host/Origin 檢查只接受 localhost／127.0.0.1。
+- Session：先 initialize，之後每個請求都帶 `Mcp-Session-Id`。initialize 以外沒帶 `Mcp-Session-Id` 的請求一律回 400，不會開 session（0.1.8 起；這個檢查排在 Bearer 401、方法 405、Origin 403 與 policy 403 之後）。client 用完要送 `DELETE /mcp`（帶 `Mcp-Session-Id`）；沒送的 session 閒置 30 分鐘後由子程序結束（0.1.8 起；以前要等子程序重啟），之後用它的請求回 404（有 id 的請求與 GET 是 JSON-RPC 錯誤，通知與 DELETE 沒有內容），client 要重新 initialize。MCP child 重啟（含 Add-on 重啟）後舊 session 也會失效。詳見 [client 文件](https://github.com/WOOWTECH/Woow_ha_mcp_addons/blob/claude-delivery/docs/operations/clients.md)。
 
 後端健康檢查用子程序私有的 `woow_backend_probe`（不在工具清單，gateway 不列出也不授權）：每 15 秒用一個新的連線
 讀一次 OCS `cloud/user`，只回 ok 與使用者 id，不佔用工具的連線，也不讀任何檔案；公開工具全部停用時照樣運作。

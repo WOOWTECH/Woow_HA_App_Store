@@ -1,5 +1,12 @@
 # OpenDesign Changelog
 
+## 0.1.8 — 2026-10-11 公開（experimental）
+
+- gateway（0.1.6 發佈候選審查 GATEWAY-2）：除了 initialize，沒帶 `Mcp-Session-Id` 的請求（ping、tools/list、tools/call、通知、GET、DELETE）改由 gateway 直接回 HTTP 400，不再轉給子程序。原本五支 Python 子程序（Odoo、Hermes、OpenDesign、EMQX、LiteLLM；Nextcloud 也一樣）會先為這種請求開一個新 session 再拒絕，而且不會回收：每分鐘一次就一天留下約 1,440 個，直到子程序重啟；n8n 子程序對這種請求、GET、DELETE 本來就回 400、不開 session，但沒有 session 的通知它回 202，現在一樣改回 400。回覆的形狀和以前 gateway 轉出子程序拒絕時相同（有 id 的請求與 GET 是 JSON-RPC 錯誤 -32000「Bad Request」，通知與 DELETE 是沒有內容的 400），只是不再帶子程序新開的 session id。照規範先 initialize 的 client 不受影響；Bearer 與 policy 檢查仍在前面（沒帶或帶錯 token 401、被拒的工具 403）。
+- gateway（0.1.6 審查 R1 F6）：initialize 的回覆改由 gateway 自己組成，只保留子程序的 protocolVersion，而且必須是審查過的 MCP 版本（2024-11-05、2025-03-26、2025-06-18、2025-11-25；以前任何日期格式都接受，其他值一律回 502）；capabilities 一律是 `{"tools": {}}`，serverInfo 改成這支 add-on 的名稱與版本（`woow-mcp-opendesign`、add-on 版號），不再是子程序自己的名稱與版本；子程序的 instructions 不再轉送（Claude Code 會把 instructions 放進模型的 system prompt；EMQX、LiteLLM 子程序的說明寫的是上游全部的工具，包括本 add-on 隱藏或拒絕的工具）。OpenDesign 子程序原本沒有送 instructions。
+- 子程序（0.1.6 發佈候選審查 GATEWAY-3）：client 用完不送 DELETE 留下的 session，原本要等子程序重啟才結束（本機量測每個約 50–70 KiB，每分鐘留一個就一天多 70–140 MiB）。現在 30 分鐘沒有任何請求的 session 會被結束，client 下一個請求收到 404，依 MCP 規範重新 initialize 即可；使用中的 session 不受影響（gateway 對每個請求最多等 35 秒、每個 stream 最多 120 秒）。
+- 映像 `ghcr.io/woowtech/amd64-mcp-opendesign:0.1.8`（候選 04ae485，build／container／supply-chain gate 全過；0.1.8 的審查、複審與 RR-03 審查都沒有 High／Medium）；0.1.0–0.1.7 tag 不覆寫。
+
 ## 0.1.7 — 2026-10-08 公開（experimental）
 
 - 2026-10-09 補充（映像與功能不變，不需要更新）：顯示名稱改為「Woow OpenDesign MCP Server」，圖示改用 OpenDesign 的圖示（[來源](https://github.com/WOOWTECH/Woow_ha_mcp_addons/blob/claude-delivery/docs/provenance/icons.md)）；同時上架 [WOOW HA App Store](https://github.com/WOOWTECH/Woow_HA_App_Store) 與 ha-rebrand 的 Local Download。兩個商店的同名 add-on 在 HA 裡是不同的 add-on，同一台 HA 只裝其中一個來源的。

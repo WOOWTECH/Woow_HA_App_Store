@@ -2,13 +2,13 @@
 
 ## 現況與範圍
 
-**0.1.7（experimental）**：映像 `ghcr.io/woowtech/amd64-mcp-emqx:0.1.7` 由候選 7cc8bcb 建置，通過 container/mock 與 supply-chain gate（2026-10-08）；本產品功能與 0.1.6 相同（所有 add-on 共用版號，隨新增的 Nextcloud 一起重建），見 [CHANGELOG](CHANGELOG.md)。2026-10-08 已在測試 HA 回歸（[0.1.7 回歸紀錄](https://github.com/WOOWTECH/Woow_ha_mcp_addons/blob/claude-delivery/docs/operations/ha-test-0.1.7.md)；0.1.6 見 [0.1.6 回歸紀錄](https://github.com/WOOWTECH/Woow_ha_mcp_addons/blob/claude-delivery/docs/operations/ha-test-0.1.6.md)；0.1.5 見 [0.1.5 回歸紀錄](https://github.com/WOOWTECH/Woow_ha_mcp_addons/blob/claude-delivery/docs/operations/ha-test-0.1.5.md)；0.1.4 見 [0.1.4 回歸紀錄](https://github.com/WOOWTECH/Woow_ha_mcp_addons/blob/claude-delivery/docs/operations/ha-test-0.1.4.md)）。管理面板經 HA 管理角色驗證後可設定後端。0.1.1 於 2026-10-05 已在測試 HA 以真 Woow EMQX 5.8.9 實測（[HA 實測紀錄](https://github.com/WOOWTECH/Woow_ha_mcp_addons/blob/claude-delivery/docs/operations/ha-test-0.1.1.md)）：讀取 8 個、寫入與不支援工具 32 個全部拒絕、後端斷線回結構化錯誤，皆通過。0.1.0 的面板 fail closed，請使用 0.1.1。
+**0.1.8（experimental）**：映像 `ghcr.io/woowtech/amd64-mcp-emqx:0.1.8` 由候選 04ae485 建置，通過 container/mock 與 supply-chain gate（2026-10-11）；變更見 [CHANGELOG](CHANGELOG.md)。測試 HA 回歸進行中；0.1.7 已在測試 HA 回歸（[0.1.7 回歸紀錄](https://github.com/WOOWTECH/Woow_ha_mcp_addons/blob/claude-delivery/docs/operations/ha-test-0.1.7.md)；0.1.6 見 [0.1.6 回歸紀錄](https://github.com/WOOWTECH/Woow_ha_mcp_addons/blob/claude-delivery/docs/operations/ha-test-0.1.6.md)；0.1.5 見 [0.1.5 回歸紀錄](https://github.com/WOOWTECH/Woow_ha_mcp_addons/blob/claude-delivery/docs/operations/ha-test-0.1.5.md)；0.1.4 見 [0.1.4 回歸紀錄](https://github.com/WOOWTECH/Woow_ha_mcp_addons/blob/claude-delivery/docs/operations/ha-test-0.1.4.md)）。管理面板經 HA 管理角色驗證後可設定後端。0.1.1 於 2026-10-05 已在測試 HA 以真 Woow EMQX 5.8.9 實測（[HA 實測紀錄](https://github.com/WOOWTECH/Woow_ha_mcp_addons/blob/claude-delivery/docs/operations/ha-test-0.1.1.md)）：讀取 8 個、寫入與不支援工具 32 個全部拒絕、後端斷線回結構化錯誤，皆通過。0.1.0 的面板 fail closed，請使用 0.1.1。
 0.1.1 起與 n8n 相同（負責人 2026-10-05 核准 `homeassistant_api`）：管理程序以 runtime `SUPERVISOR_TOKEN`
 連固定 `ws://supervisor/core/websocket`，只查 `config/auth/list`，確認 Ingress 使用者是 active 的 owner 或
 system-admin 才放行；token 只給管理程序，child 不繼承。此 token 具**廣泛 Core 管理能力**，負責人已知情核准。
 不得注入 test verifier 或直接編輯 state 解鎖；`panel_admin` 不是角色授權。
 
-**支援的 Core 版本**：管理面板只在本版審查過的 HA Core 版本運作（0.1.6、0.1.7：2026.7.2–2026.9.4 與 2026.10.0）。
+**支援的 Core 版本**：管理面板只在本版審查過的 HA Core 版本運作（0.1.6–0.1.8：2026.7.2–2026.9.4 與 2026.10.0）。
 其他版本（含之後的 patch 與 beta）整個管理面板都回 403，看起來和「不是管理員」完全一樣（add-on 紀錄也沒有訊息）；
 MCP 端點（Bearer token）不受影響。新的 Core 版本要等 add-on 發新版才支援，升級 Core 前請先對照這份清單。
 
@@ -35,7 +35,7 @@ cluster/stats/metrics、clients/topics/subscriptions/history/alarms；kick/subsc
 - `8099`：Ingress-only，無主機 mapping；不是 MCP endpoint。
 - `8081/mcp`：Bearer Streamable HTTP；`8081/tcp: null` 預設不公開 LAN mapping。
 - `3000`：child loopback-only，永不暴露。各容器內部 ports 可相同，LAN host ports 必須各異。
-- Session：client 用完要送 `DELETE /mcp`（帶 `Mcp-Session-Id`）。子程序沒有閒置回收，沒結束的 session 會留到 MCP child 重啟（含 Add-on 重啟）；詳見 [client 文件](https://github.com/WOOWTECH/Woow_ha_mcp_addons/blob/claude-delivery/docs/operations/clients.md)。
+- Session：先 initialize，之後每個請求都帶 `Mcp-Session-Id`。initialize 以外沒帶 `Mcp-Session-Id` 的請求一律回 400，不會開 session（0.1.8 起；這個檢查排在 Bearer 401、方法 405、Origin 403 與 policy 403 之後）。client 用完要送 `DELETE /mcp`（帶 `Mcp-Session-Id`）；沒送的 session 閒置 30 分鐘後由子程序結束（0.1.8 起；以前要等子程序重啟），之後用它的請求回 404（有 id 的請求與 GET 是 JSON-RPC 錯誤，通知與 DELETE 沒有內容），client 要重新 initialize。MCP child 重啟（含 Add-on 重啟）後舊 session 也會失效。詳見 [client 文件](https://github.com/WOOWTECH/Woow_ha_mcp_addons/blob/claude-delivery/docs/operations/clients.md)。
 - 使用實際安裝後 DNS placeholder，不能猜 repository hash 或從 iframe origin 推導。
   [client 範例](https://github.com/WOOWTECH/Woow_ha_mcp_addons/blob/claude-delivery/docs/operations/clients.md) 不含真實秘密。
 

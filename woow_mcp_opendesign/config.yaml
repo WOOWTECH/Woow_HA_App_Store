@@ -1,5 +1,5 @@
 name: Woow OpenDesign MCP Server
-version: 0.1.7
+version: 0.1.8
 slug: woow_mcp_opendesign
 description: Experimental; HA admin-role management; partial tools, read-only by default.
 url: https://github.com/WOOWTECH/Woow_ha_mcp_addons

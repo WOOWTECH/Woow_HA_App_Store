@@ -2,14 +2,14 @@
 
 ## 現況與範圍
 
-**0.1.7（experimental）**：映像 `ghcr.io/woowtech/amd64-mcp-n8n:0.1.7` 由候選 7cc8bcb 建置，通過 container/mock 與 supply-chain gate（2026-10-08），可從本 repository 的 HA 商店安裝；本產品功能與 0.1.6 相同（所有 add-on 共用版號，隨新增的 Nextcloud 一起重建），見 [CHANGELOG](CHANGELOG.md)。2026-10-08 已在測試 HA 回歸（[0.1.7 回歸紀錄](https://github.com/WOOWTECH/Woow_ha_mcp_addons/blob/claude-delivery/docs/operations/ha-test-0.1.7.md)；0.1.6 見 [0.1.6 回歸紀錄](https://github.com/WOOWTECH/Woow_ha_mcp_addons/blob/claude-delivery/docs/operations/ha-test-0.1.6.md)；0.1.5 見 [0.1.5 回歸紀錄](https://github.com/WOOWTECH/Woow_ha_mcp_addons/blob/claude-delivery/docs/operations/ha-test-0.1.5.md)；0.1.4 見 [0.1.4 回歸紀錄](https://github.com/WOOWTECH/Woow_ha_mcp_addons/blob/claude-delivery/docs/operations/ha-test-0.1.4.md)）。2026-10-05 已在測試 HA 實測 0.1.1（[HA 實測紀錄](https://github.com/WOOWTECH/Woow_ha_mcp_addons/blob/claude-delivery/docs/operations/ha-test-0.1.1.md)）：0.1.0 升版、HA 備份還原、真 n8n 讀取 11 個中 10 個通過（資料夾工具在 n8n 2.12 回 NOT_FOUND，該版沒有資料夾 API）、寫入與不支援工具 24 個全部拒絕、後端斷線。以下試點段落是 0.1.0 的結果。**HA 試點**（2026-10-05，一台 HA 實機、真 n8n 2.12.3 後端）通過：管理員 Ingress 面板、後端設定與重啟後保留、Bearer 拒絕與 token 輪替／撤銷、MCP E2E（11 個可見工具讀到真 n8n 資料；未授權的讀取模式與 6 種寫入直接呼叫皆 403，n8n 端前後一致）、後端斷線（結構化錯誤、readiness 503、恢復後可用）、Add-on 重啟與 MCP child 異常重啟、資源量測。**未通過**：HA 還原（見下方已知問題）。**未測**：non-admin、LAN client、升版。
+**0.1.8（experimental）**：映像 `ghcr.io/woowtech/amd64-mcp-n8n:0.1.8` 由候選 04ae485 建置，通過 container/mock 與 supply-chain gate（2026-10-11），可從本 repository 的 HA 商店安裝；變更見 [CHANGELOG](CHANGELOG.md)。測試 HA 回歸進行中；0.1.7 已在測試 HA 回歸（[0.1.7 回歸紀錄](https://github.com/WOOWTECH/Woow_ha_mcp_addons/blob/claude-delivery/docs/operations/ha-test-0.1.7.md)；0.1.6 見 [0.1.6 回歸紀錄](https://github.com/WOOWTECH/Woow_ha_mcp_addons/blob/claude-delivery/docs/operations/ha-test-0.1.6.md)；0.1.5 見 [0.1.5 回歸紀錄](https://github.com/WOOWTECH/Woow_ha_mcp_addons/blob/claude-delivery/docs/operations/ha-test-0.1.5.md)；0.1.4 見 [0.1.4 回歸紀錄](https://github.com/WOOWTECH/Woow_ha_mcp_addons/blob/claude-delivery/docs/operations/ha-test-0.1.4.md)）。2026-10-05 已在測試 HA 實測 0.1.1（[HA 實測紀錄](https://github.com/WOOWTECH/Woow_ha_mcp_addons/blob/claude-delivery/docs/operations/ha-test-0.1.1.md)）：0.1.0 升版、HA 備份還原、真 n8n 讀取 11 個中 10 個通過（資料夾工具在 n8n 2.12 回 NOT_FOUND，該版沒有資料夾 API）、寫入與不支援工具 24 個全部拒絕、後端斷線。以下試點段落是 0.1.0 的結果。**HA 試點**（2026-10-05，一台 HA 實機、真 n8n 2.12.3 後端）通過：管理員 Ingress 面板、後端設定與重啟後保留、Bearer 拒絕與 token 輪替／撤銷、MCP E2E（11 個可見工具讀到真 n8n 資料；未授權的讀取模式與 6 種寫入直接呼叫皆 403，n8n 端前後一致）、後端斷線（結構化錯誤、readiness 503、恢復後可用）、Add-on 重啟與 MCP child 異常重啟、資源量測。**未通過**：HA 還原（見下方已知問題）。**未測**：non-admin、LAN client、升版。
 **HA 管理權限**：商店各支都有 `homeassistant_api: true`（n8n 自 0.1.0、其他五支自 0.1.1 起、Nextcloud 自 0.1.7 起），用來驗證管理面板的使用者是 HA owner 或系統管理員；這個 token 具廣泛的 Core 存取能力。
 正式 fixed-WS verifier 已實作並經 component review；管理 HTML/assets/API 與 UI 已本地整合。
 本地真 bootstrap→guard→n8n→provider fake WS／Chromium 已覆蓋設定與 token 操作；
 真 HA 上管理員 Ingress 與 token 操作已通過（見上）；整合獨立規格及新安全審查仍待完成。
 不得注入 test verifier 或直接編輯 state 解鎖；`panel_admin` 不是角色授權。
 
-**支援的 Core 版本**：管理面板只在本版審查過的 HA Core 版本運作（0.1.6、0.1.7：2026.7.2–2026.9.4 與 2026.10.0）。
+**支援的 Core 版本**：管理面板只在本版審查過的 HA Core 版本運作（0.1.6–0.1.8：2026.7.2–2026.9.4 與 2026.10.0）。
 其他版本（含之後的 patch 與 beta）整個管理面板都回 403，看起來和「不是管理員」完全一樣（add-on 紀錄也沒有訊息）；
 MCP 端點（Bearer token）不受影響。新的 Core 版本要等 add-on 發新版才支援，升級 Core 前請先對照這份清單。
 
@@ -51,7 +51,8 @@ B3 新增 tags catalog（只掃第一頁最多250、本地query/limit）、execu
 - `8099`：Ingress-only，無主機 mapping；不是 MCP endpoint。
 - `8081/mcp`：Bearer Streamable HTTP；`8081/tcp: null` 預設不公開 LAN mapping。
 - `3000`：child loopback-only，永不暴露。各容器內部 ports 可相同，LAN host ports 必須各異。
-- Session：所有 client **共用 20 個**同時 session，閒置 10 分鐘回收。client 用完要送 `DELETE /mcp`（帶 `Mcp-Session-Id`）。額滿時 initialize 回 HTTP 429，body 是 JSON-RPC 錯誤 -32000「Too Many Requests」（0.1.4 起 gateway 不轉送子程序的錯誤原文，看不到「Session limit reached」）。被 policy 拒絕的 tools/call 也可能耗盡名額：Python MCP SDK 1.x client 收到 403 會整段斷線、不送 DELETE，每次留下一個 session（見 [CHANGELOG](CHANGELOG.md) 0.1.6 已知問題）。MCP child 重啟（含 Add-on 重啟）後舊 session 失效，client 需重新 initialize；token 不變。
+- Session：所有 client **共用 20 個**同時 session，閒置 10 分鐘回收。先 initialize，之後每個請求都帶 `Mcp-Session-Id`；initialize 以外沒帶 `Mcp-Session-Id` 的請求一律回 400（0.1.8 起；沒有 session 的通知以前回 202；這個檢查排在 Bearer 401、方法 405、Origin 403 與 policy 403 之後）。client 用完要送 `DELETE /mcp`（帶 `Mcp-Session-Id`）。額滿時 initialize 回 HTTP 429，body 是 JSON-RPC 錯誤 -32000「Too Many Requests」（0.1.4 起 gateway 不轉送子程序的錯誤原文，看不到「Session limit reached」）。被 policy 拒絕的 tools/call 也可能耗盡名額：Python MCP SDK 1.x client 收到 403 會整段斷線、不送 DELETE，每次留下一個 session（見 [CHANGELOG](CHANGELOG.md) 0.1.6 已知問題）。MCP child 重啟（含 Add-on 重啟）後舊 session 失效，client 需重新 initialize；token 不變。
+- initialize 的 protocolVersion：0.1.8 起只接受 2024-11-05、2025-03-26、2025-06-18、2025-11-25。n8n 子程序對要求 2024-06-25 的 client 會照回這個版本，這時 initialize 回 502，請改要求上面任一版本（n8n／langchain client 一律拿到 2024-11-05）。
 - 使用實際安裝後 DNS placeholder，不能猜 repository hash 或從 iframe origin 推導。
   [client 範例](https://github.com/WOOWTECH/Woow_ha_mcp_addons/blob/claude-delivery/docs/operations/clients.md) 不含真實秘密。
 
