@@ -2189,22 +2189,22 @@
     "music_assistant": {
       "id": "music_assistant",
       "name": "Music Assistant",
-      "version": "2.10.5",
+      "version": "2.10.6",
       "repository": "WOOWTECH/Woow_ha_music_assistant_add_on",
-      "source_sha": "21ca94aeca16f46d31101ad543096763644ea1f7",
+      "source_sha": "79be06fe8353dd645c6228e690623382e8504656",
       "source_path": "music_assistant",
       "config_file": "config.yaml",
-      "config_sha256": "sha256:a0e7609e7c616439f3bf7f3b55635bb3fb930761e346388447f949c3ad6bc441",
-      "archive_sha256": "sha256:f651b23ed159fc9988ebed1dda0e3c64d9cbc047bed1468c725f77b8c0d0f350",
-      "context_fingerprint": "sha256:36ac84a9af86283e17720f8af1086c49c523f676278a29a807abd46f5bac5836",
-      "material_fingerprint": "sha256:c06157da4a0df04775e810e963b37bfc4d4530a07749c6519f8d2ba607da186a",
+      "config_sha256": "sha256:395249a844654498e1ee24055ba5172d4fb68fc37b36198df5350bfaf0beb931",
+      "archive_sha256": "sha256:9b075bb1463d79c1712f28bad8340502020d99c2a4535ed0f8f468f65dc0555c",
+      "context_fingerprint": "sha256:87e80a37e0424272a483373cd14156ef92c53343a0f35d05a4891d7094d11e25",
+      "material_fingerprint": "sha256:914d1b33a0be9aa18262f68e78c82705dddc00f21fb29976635f5b952b527124",
       "architectures": [
         "amd64",
         "aarch64"
       ],
       "config": {
         "name": "Music Assistant",
-        "version": "2.10.5",
+        "version": "2.10.6",
         "slug": "music_assistant",
         "description": "The Music Assistant server is a free, opensource Media library manager that connects to your streaming services and a wide range of connected speakers.",
         "url": "https://music-assistant.io",
@@ -2236,7 +2236,8 @@
         "backup_exclude": [
           "cache.db",
           "collage_images/*",
-          ".cache/*"
+          ".cache/*",
+          "library.db.backup"
         ],
         "stage": "stable",
         "image": "ghcr.io/woowtech/ha-mirror-ghcr-io-music-assistant-server",
@@ -2257,21 +2258,21 @@
       "source_build_supported": false,
       "images": {
         "amd64": {
-          "reference": "ghcr.io/woowtech/ha-mirror-ghcr-io-music-assistant-server:2.10.5",
-          "index_digest": "sha256:28023f8c0d96ca2496391f3218a6d70d7ef3ba84db846b3a3f3cd9ce7ef8aedc",
-          "digest": "sha256:8bd47e7d7915cfd9b5a679fc39d88f84f18e25b5b686b3af54b1fb46faec6b39",
-          "source_revision": "452e23745588f01e734298e0a10e556fc140db45"
+          "reference": "ghcr.io/woowtech/ha-mirror-ghcr-io-music-assistant-server:2.10.6",
+          "index_digest": "sha256:45fdb050e06962097a07feeb092606ad119fac17965c8228a57146448d5fa772",
+          "digest": "sha256:f56bc2e4466a17081c9cab6a75a35135b512dc50d2fc77a3d4f4d4312ef28949",
+          "source_revision": "c24866405bd2068c25a60e1014e5ef8c3f6445bb"
         },
         "aarch64": {
-          "reference": "ghcr.io/woowtech/ha-mirror-ghcr-io-music-assistant-server:2.10.5",
-          "index_digest": "sha256:28023f8c0d96ca2496391f3218a6d70d7ef3ba84db846b3a3f3cd9ce7ef8aedc",
-          "digest": "sha256:6102026d481c70d2a2fea1a154d4d1890403ee3e4d61d0248f036d62be36d80b",
-          "source_revision": "452e23745588f01e734298e0a10e556fc140db45"
+          "reference": "ghcr.io/woowtech/ha-mirror-ghcr-io-music-assistant-server:2.10.6",
+          "index_digest": "sha256:45fdb050e06962097a07feeb092606ad119fac17965c8228a57146448d5fa772",
+          "digest": "sha256:f96e5feaca760dbce34ee7ca79b5ae56a8d636b9af73985240a4f59322b0b5dc",
+          "source_revision": "c24866405bd2068c25a60e1014e5ef8c3f6445bb"
         }
       },
       "delivery": "published-image",
       "validation": "manifest+architecture-images+configured-CI",
-      "publisher_run_id": "37410335353",
+      "publisher_run_id": "38046340342",
       "channel": "stable",
       "store_path": "music_assistant"
     },
@@ -3699,5 +3700,5 @@
       "store_path": "woow_mcp_nextcloud"
     }
   },
-  "catalog_id": "sha256:a95d78a5baec03fa8fc62a94b96f7b551d4fe0fde49336872381b071f7660dcb"
+  "catalog_id": "sha256:e97fa115c5d71b8d5cc87e2bf6cae1dc78db01d1be4cd831ca9c5d1c866a3704"
 }
