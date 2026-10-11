@@ -2,9 +2,9 @@
 
 ## 現況與範圍
 
-**0.1.8（experimental）**：映像 `ghcr.io/woowtech/amd64-mcp-nextcloud:0.1.8` 由候選 04ae485 建置，通過 container/mock 與
-supply-chain gate（2026-10-11），以測過的 image ID 推送、匿名拉取驗證通過，可從本 repository 的 HA 商店安裝；變更見 [CHANGELOG](CHANGELOG.md)，
-測試 HA 回歸進行中。0.1.7 是本產品第一個版本（先前版本號沒有 Nextcloud 映像）；2026-10-08 第一次在測試 HA 實測（[0.1.7 回歸紀錄](https://github.com/WOOWTECH/Woow_ha_mcp_addons/blob/claude-delivery/docs/operations/ha-test-0.1.7.md)）：讀取 6/6、寫入與未知工具 5/5 拒絕、
+**0.1.9（experimental）**：映像 `ghcr.io/woowtech/amd64-mcp-nextcloud:0.1.9` 由候選 57c96f2 建置，通過 container/mock 與
+supply-chain gate（2026-10-11），以測過的 image ID 推送、匿名拉取驗證通過，可從本 repository 的 HA 商店安裝；只加上 Core 2026.10.1 支援，見 [CHANGELOG](CHANGELOG.md)，
+2026-10-11 已在測試 HA 回歸（[0.1.9 回歸紀錄](https://github.com/WOOWTECH/Woow_ha_mcp_addons/blob/claude-delivery/docs/operations/ha-test-0.1.9.md)）；0.1.8 已在測試 HA 回歸（[0.1.8 回歸紀錄](https://github.com/WOOWTECH/Woow_ha_mcp_addons/blob/claude-delivery/docs/operations/ha-test-0.1.8.md)）。0.1.7 是本產品第一個版本（先前版本號沒有 Nextcloud 映像）；2026-10-08 第一次在測試 HA 實測（[0.1.7 回歸紀錄](https://github.com/WOOWTECH/Woow_ha_mcp_addons/blob/claude-delivery/docs/operations/ha-test-0.1.7.md)）：讀取 6/6、寫入與未知工具 5/5 拒絕、
 後端斷線、重啟、child 恢復、權杖輪替、一般使用者 403 皆通過；後端是同一台 HA 的 Nextcloud 35.0.1（專屬測試使用者，只讀它自己的檔案）。
 寫入工具尚未在實機授權實測。
 [發佈關卡](https://github.com/WOOWTECH/Woow_ha_mcp_addons/blob/claude-delivery/docs/operations/release.md) 的人工 gates 和其他產品一樣維持關閉。
@@ -14,7 +14,7 @@ supply-chain gate（2026-10-11），以測過的 image ID 推送、匿名拉取�
 此 token 具**廣泛 Core 管理能力**（`homeassistant_api: true`），負責人已於 2026-10-08 核准本 Add-on 使用（與其他六支相同，
 只用於管理面板確認 HA owner／管理員）。`panel_admin` 不是角色授權。
 
-**支援的 Core 版本**：管理面板只在本版審查過的 HA Core 版本運作（0.1.7、0.1.8：2026.7.2–2026.9.4 與 2026.10.0，和其他六支共用同一個驗證器）。
+**支援的 Core 版本**：管理面板只在本版審查過的 HA Core 版本運作（0.1.7、0.1.8：2026.7.2–2026.9.4 與 2026.10.0；0.1.9 起再加 2026.10.1；和其他六支共用同一個驗證器）。
 其他版本（含之後的 patch 與 beta）整個管理面板都回 403，看起來和「不是管理員」完全一樣（add-on 紀錄也沒有訊息）；
 MCP 端點（Bearer token）不受影響。新的 Core 版本要等 add-on 發新版才支援，升級 Core 前請先對照這份清單。
 

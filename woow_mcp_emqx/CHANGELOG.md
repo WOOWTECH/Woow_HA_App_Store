@@ -1,5 +1,10 @@
 # EMQX Changelog
 
+## 0.1.9 — 2026-10-11 公開（experimental）
+
+- 管理面板（HA 角色驗證）：支援的 Core 版本加上 2026.10.1（2026-10-10 發佈）。驗證器用到的 21 個 Core 檔案與 2026.10.0 完全相同（[審查紀錄](https://github.com/WOOWTECH/Woow_ha_mcp_addons/blob/claude-delivery/docs/ha-role-core-contract.md)）。0.1.8 及更早的版本在 Core 2026.10.1 上整個管理面板回 403（MCP 端點不受影響），升 Core 前先更新本 add-on。
+- 映像 `ghcr.io/woowtech/amd64-mcp-emqx:0.1.9`（候選 57c96f2，build／container／supply-chain gate 全過；審查沒有 High／Medium）；0.1.0–0.1.8 tag 不覆寫。
+
 ## 0.1.8 — 2026-10-11 公開（experimental）
 
 - gateway（0.1.6 發佈候選審查 GATEWAY-2）：除了 initialize，沒帶 `Mcp-Session-Id` 的請求（ping、tools/list、tools/call、通知、GET、DELETE）改由 gateway 直接回 HTTP 400，不再轉給子程序。原本五支 Python 子程序（Odoo、Hermes、OpenDesign、EMQX、LiteLLM；Nextcloud 也一樣）會先為這種請求開一個新 session 再拒絕，而且不會回收：每分鐘一次就一天留下約 1,440 個，直到子程序重啟；n8n 子程序對這種請求、GET、DELETE 本來就回 400、不開 session，但沒有 session 的通知它回 202，現在一樣改回 400。回覆的形狀和以前 gateway 轉出子程序拒絕時相同（有 id 的請求與 GET 是 JSON-RPC 錯誤 -32000「Bad Request」，通知與 DELETE 是沒有內容的 400），只是不再帶子程序新開的 session id。照規範先 initialize 的 client 不受影響；Bearer 與 policy 檢查仍在前面（沒帶或帶錯 token 401、被拒的工具 403）。
