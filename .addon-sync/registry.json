@@ -58,7 +58,7 @@
       "observe_workflow_names": [
         "Test"
       ],
-      "ref_policy": "main",
+      "ref_policy": "release",
       "components": [
         {
           "id": "woow_lan_gateway",

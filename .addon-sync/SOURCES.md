@@ -15,7 +15,7 @@
 | [apporo_ha_multi_ha_core](https://github.com/WOOWTECH/apporo_ha_multi_ha_core) | 預設分支（`main`） | `apporo_ha_core_3` | `apporo_ha_core_3`／stable | `apporo_ha_core_3` | ✓ | — | 本機建置（aarch64、amd64、armhf、armv7、i386） | 已同步 |
 | [apporo_ha_multi_ha_core](https://github.com/WOOWTECH/apporo_ha_multi_ha_core) | 預設分支（`main`） | `apporo_ha_core_4` | `apporo_ha_core_4`／stable | `apporo_ha_core_4` | ✓ | — | 本機建置（aarch64、amd64、armhf、armv7、i386） | 已同步 |
 | [apporo_ha_multi_ha_core](https://github.com/WOOWTECH/apporo_ha_multi_ha_core) | 預設分支（`main`） | `apporo_ha_core_5` | `apporo_ha_core_5`／stable | `apporo_ha_core_5` | ✓ | — | 本機建置（aarch64、amd64、armhf、armv7、i386） | 已同步 |
-| [woow-lan-gateway](https://github.com/WOOWTECH/woow-lan-gateway) | 預設分支（`main`） | `app` | `woow_lan_gateway`／stable | `woow-lan-gateway` | ✓ | `test.yml` | 本機建置（amd64） | 已同步 |
+| [woow-lan-gateway](https://github.com/WOOWTECH/woow-lan-gateway) | 正式 Release（`main`） | `app` | `woow_lan_gateway`／stable | `woow-lan-gateway` | ✓ | `test.yml` | 本機建置（amd64） | 已同步 |
 | [woowtech_ha_multi_ha_core](https://github.com/WOOWTECH/woowtech_ha_multi_ha_core) | 正式 Release（`main`） | `woow_ha_core_1` | `woow_ha_core_1`／stable | `woow_ha_core_1` | ✓ | `release.yml`（amd64 建置） | 本機建置（aarch64、amd64、armhf、armv7、i386） | 已同步 |
 | [woowtech_ha_multi_ha_core](https://github.com/WOOWTECH/woowtech_ha_multi_ha_core) | 正式 Release（`main`） | `woow_ha_core_2` | `woow_ha_core_2`／stable | `woow_ha_core_2` | ✓ | `release.yml`（amd64 建置） | 本機建置（aarch64、amd64、armhf、armv7、i386） | 已同步 |
 | [woowtech_ha_multi_ha_core](https://github.com/WOOWTECH/woowtech_ha_multi_ha_core) | 正式 Release（`main`） | `woow_ha_core_3` | `woow_ha_core_3`／stable | `woow_ha_core_3` | ✓ | `release.yml`（amd64 建置） | 本機建置（aarch64、amd64、armhf、armv7、i386） | 已同步 |
