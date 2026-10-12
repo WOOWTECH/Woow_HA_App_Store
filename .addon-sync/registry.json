@@ -240,7 +240,7 @@
       "observe_workflow_names": [
         "Build & Publish add-on image"
       ],
-      "ref_policy": "main",
+      "ref_policy": "release",
       "components": [
         {
           "id": "woow_ha_code_server",

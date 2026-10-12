@@ -10,7 +10,7 @@ After a successful Store update, the same workflow uses the **ha-rebrand-only wr
 
 ## Contract and limitations
 
-- Main/default-branch updates are eligible after configured tests/builds succeed. Existing release-pinned Odoo and Hermes publication policies are retained.
+- `release` sources ship only published, non-prerelease Releases. Sources create them after their own CI through the reusable [`woow-addon-release.yml`](../.github/workflows/woow-addon-release.yml) (`addon_sync.py release`), which tags each new stable addon version from this Store's registry: `v<version>` for a single-addon repository, `<slug>-v<version>` per addon otherwise. `main` sources (still being switched over) are eligible after configured tests/builds succeed.
 - Source notification and distribution are eventually consistent. GitHub schedules may be delayed; this is not instantaneous cross-repository atomic publication. On this account scheduled runs have been observed 2–7 hours late, so the cron interval is an upper bound on frequency, not a latency guarantee. Prompt propagation needs a manual run or an existing upstream `repository_dispatch`.
 - Private push failure is a failed workflow, not a silently successful delivery. A later run reconciles it without reinstalling anything.
 - Notifications are trusted through GitHub repository permissions and HTTPS, with immutable source/digest checks. Independent cryptographic signing/attestation is not implemented.

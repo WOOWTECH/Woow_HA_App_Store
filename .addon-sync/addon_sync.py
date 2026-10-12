@@ -306,6 +306,40 @@ def publish(gh, registry, repo, apply=False, only=None):
     if apply and canonical(old)!=canonical(new):gh.put_outbox(repo,new)
     return report,new
 
+def release_tag(provider, component, version):
+    """v<version> for a single-addon repository; <slug>-v<version> when addons version independently."""
+    return ('v' if len(provider['components'])==1 else component['id']+'-v')+version
+
+def found(gh, repo, path):
+    try:gh.api(repo,path);return True
+    except Blocked as e:
+        if 'HTTP 404' in str(e):return False
+        raise
+
+def release(gh, registry, repo, sha, apply=False):
+    """Publish a stable Release for each stable addon whose config.yaml version at sha has none yet.
+    Runs in the source repository after its CI, on a default-branch commit; reads the manifest at
+    sha itself, so the version and the tagged commit cannot disagree."""
+    provider=registry['providers'][repo];branch,_=gh.head(repo)
+    if not SHA.fullmatch(sha or ''):raise Blocked('Release must target an immutable commit SHA')
+    if gh.api(repo,'compare/'+sha+'...'+urllib.parse.quote(branch,safe=''))['status'] not in ['ahead','identical']:raise Blocked('Commit is not on the default branch')
+    report=[]
+    for comp in provider['components']:
+        cid=comp['id']
+        if not comp.get('enabled',True) or comp.get('channel','stable')!='stable':report.append({'id':cid,'state':'excluded'});continue
+        try:
+            manifest=comp['config_file'] if comp['source_path']=='.' else str(safe_path(comp['source_path'])/safe_path(comp['config_file']))
+            cfg=yaml.safe_load(gh.content(repo,manifest,sha))
+            if not isinstance(cfg,dict) or cfg.get('slug')!=cid:raise Blocked('Unexpected addon slug')
+            version=str(cfg['version']);tag=release_tag(provider,comp,version)
+            if found(gh,repo,'releases/tags/'+urllib.parse.quote(tag,safe='')):report.append({'id':cid,'state':'already-released','tag':tag,'version':version});continue
+            if found(gh,repo,'git/ref/tags/'+urllib.parse.quote(tag,safe='')):raise Blocked('Tag '+tag+' exists without a Release; release or delete it by hand')
+            if apply:gh.api(repo,'releases',{'tag_name':tag,'target_commitish':sha,'name':f"{cfg.get('name',cid)} {version}",'generate_release_notes':True,'make_latest':'true'})
+            report.append({'id':cid,'state':'released' if apply else 'would-release','tag':tag,'version':version})
+        except Exception as e:
+            report.append({'id':cid,'state':'blocked','reason':str(e) if isinstance(e,Blocked) else type(e).__name__})
+    return report
+
 def validate_entry(gh, repo, component, entry, default_branch=None):
     if entry.get('repository')!=repo or entry.get('id')!=component['id']:raise Blocked('Notification identity mismatch')
     if entry.get('source_path')!=component['source_path'] or entry.get('config_file')!=component['config_file']:raise Blocked('Notification context mismatch')
@@ -425,8 +459,12 @@ def summary(report):
         with open(os.environ['GITHUB_STEP_SUMMARY'],'a') as f:f.write(text)
 
 def main():
-    p=argparse.ArgumentParser();p.add_argument('command',choices=['publish','consume']);p.add_argument('--registry',default='.addon-sync/registry.json');p.add_argument('--repo',default=os.environ.get('GITHUB_REPOSITORY'));p.add_argument('--workspace',default='.');p.add_argument('--apply',action='store_true');p.add_argument('--only',action='append');p.add_argument('--result')
-    a=p.parse_args();registry=json.loads(pathlib.Path(a.registry).read_text());gh=GitHub()
+    p=argparse.ArgumentParser();p.add_argument('command',choices=['publish','consume','release']);p.add_argument('--registry',default='.addon-sync/registry.json');p.add_argument('--repo',default=os.environ.get('GITHUB_REPOSITORY'));p.add_argument('--workspace',default='.');p.add_argument('--apply',action='store_true');p.add_argument('--only',action='append');p.add_argument('--result');p.add_argument('--sha',default=os.environ.get('GITHUB_SHA'))
+    a=p.parse_args();registry=json.loads(pathlib.Path(a.registry).read_text(encoding='utf-8'));gh=GitHub()
+    if a.command=='release':
+        report=release(gh,registry,a.repo,a.sha,a.apply);summary(report)
+        if any(r['state']=='blocked' for r in report):raise SystemExit(1)
+        return
     if a.command=='publish':report,data=publish(gh,registry,a.repo,a.apply,a.only)
     else:report,data=consume(gh,registry,a.workspace,a.only)
     summary(report)

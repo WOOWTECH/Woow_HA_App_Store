@@ -1,0 +1,52 @@
+# Reusable Release step for source repositories (ADR-0002 in the pipeline
+# workspace: only a stable Release ships). Each source repository calls it
+# from its own CI on the default branch, after the checks that gate a release:
+#
+#   jobs:
+#     release:
+#       needs: [build]
+#       if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+#       permissions:
+#         contents: write
+#       uses: WOOWTECH/Woow_HA_App_Store/.github/workflows/woow-addon-release.yml@main
+#
+# It reads this Store's current registry, so the tag scheme lives here:
+# v<version> for a single-addon repository, <slug>-v<version> per addon when a
+# repository carries several. A version that already has a Release is left
+# alone, so re-running is harmless. The manifest is read at that commit through
+# the API, so the version and the tagged commit cannot disagree. The token is the caller's own GITHUB_TOKEN;
+# a Release created with it does not trigger the caller's other workflows, so
+# callers run woow-addon-sync.yml on `workflow_run` of the calling workflow.
+name: WOOW addon release (reusable)
+'on':
+  workflow_call:
+    inputs:
+      sha:
+        description: Commit to release; defaults to the commit that triggered the caller. Set it when the caller pushed a new commit itself (mirror-sync).
+        type: string
+        default: ''
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+    - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      with:
+        repository: WOOWTECH/Woow_HA_App_Store
+        ref: main
+        path: tooling
+        sparse-checkout: |
+          .addon-sync
+          .github/workflows
+        persist-credentials: false
+    - name: Install validation dependencies
+      run: python3 -m pip install -r tooling/.addon-sync/requirements.txt
+    - name: Validate synchronization guards
+      run: python3 tooling/.addon-sync/test_addon_sync.py -v
+    - name: Release new addon versions
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        RELEASE_SHA: ${{ inputs.sha || github.sha }}
+      run: python3 tooling/.addon-sync/addon_sync.py release --registry tooling/.addon-sync/registry.json --sha "$RELEASE_SHA" --apply
