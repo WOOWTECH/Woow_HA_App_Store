@@ -263,7 +263,8 @@ class Tests(unittest.TestCase):
         self.assertEqual(job['environment'],'store-sync');self.assertNotIn('permissions',job)
         checkout=next(x for x in job['steps'] if x.get('uses','').startswith('actions/checkout@'))
         self.assertEqual(checkout['with']['ssh-key'],'${{ secrets.STORE_SYNC_DEPLOY_KEY }}')
-    def release_gh(self,configs,released=(),tags=(),compare='ahead'):
+    def release_gh(self,configs,released=(),tags={},compare='ahead'):
+        # tags: name -> (object type, commit); an annotated tag object points at the commit.
         class GH:
             def __init__(self):self.created=[]
             def head(self,repo):return 'main','c'*40
@@ -279,8 +280,11 @@ class Tests(unittest.TestCase):
                     if path.split('/',2)[2] in released:return {'tag_name':path.split('/',2)[2]}
                     raise s.Blocked('GitHub '+repo+'/'+path+' HTTP 404')
                 if path.startswith('git/ref/tags/'):
-                    if path.split('/',3)[3] in tags:return {'object':{'sha':'d'*40}}
-                    raise s.Blocked('GitHub '+repo+'/'+path+' HTTP 404')
+                    name=path.split('/',3)[3]
+                    if name not in tags:raise s.Blocked('GitHub '+repo+'/'+path+' HTTP 404')
+                    kind,commit=tags[name]
+                    return {'object':{'type':kind,'sha':commit if kind=='commit' else 't'*40}}
+                if path=='git/tags/'+'t'*40:return {'object':{'type':'commit','sha':next(c for k,c in tags.values() if k=='tag')}}
                 raise AssertionError(path)
         return GH()
     def release_component(self,cid,path,**extra):
@@ -314,9 +318,17 @@ class Tests(unittest.TestCase):
         gh=self.release_gh({'config.yaml':'name: Test\nslug: test\nversion: 1.2.0\n'},compare='diverged')
         with self.assertRaisesRegex(s.Blocked,'default branch'):s.release(gh,self.single(),'WOOWTECH/test','a'*40,apply=True)
         self.assertEqual(gh.created,[])
-    def test_release_blocks_a_foreign_slug_or_a_bare_tag(self):
+    def test_release_publishes_an_existing_tag_on_the_same_commit(self):
+        # A maintainer-pushed tag (OpenDesign publishes its images from the tag run) gets its Release.
+        for kind in ['commit','tag']:
+            with self.subTest(kind):
+                gh=self.release_gh({'config.yaml':'name: Test\nslug: test\nversion: 1.2.0\n'},tags={'v1.2.0':(kind,'a'*40)})
+                report=s.release(gh,self.single(),'WOOWTECH/test','a'*40,apply=True)
+                self.assertEqual(report[0]['state'],'released');self.assertEqual([c['tag_name'] for c in gh.created],['v1.2.0'])
+    def test_release_blocks_a_foreign_slug_or_a_tag_on_another_commit(self):
         for name,gh,reason in [('foreign slug',self.release_gh({'config.yaml':'name: Other\nslug: other\nversion: 1.2.0\n'}),'slug'),
-                ('bare tag',self.release_gh({'config.yaml':'name: Test\nslug: test\nversion: 1.2.0\n'},tags={'v1.2.0'}),'without a Release')]:
+                ('tag elsewhere',self.release_gh({'config.yaml':'name: Test\nslug: test\nversion: 1.2.0\n'},tags={'v1.2.0':('commit','d'*40)}),'another commit'),
+                ('annotated tag elsewhere',self.release_gh({'config.yaml':'name: Test\nslug: test\nversion: 1.2.0\n'},tags={'v1.2.0':('tag','d'*40)}),'another commit')]:
             with self.subTest(name):
                 report=s.release(gh,self.single(),'WOOWTECH/test','a'*40,apply=True)
                 self.assertEqual(report[0]['state'],'blocked');self.assertIn(reason,report[0]['reason']);self.assertEqual(gh.created,[])

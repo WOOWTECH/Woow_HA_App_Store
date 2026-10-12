@@ -316,6 +316,15 @@ def found(gh, repo, path):
         if 'HTTP 404' in str(e):return False
         raise
 
+def tagged_commit(gh, repo, tag):
+    """Commit a tag names (annotated tags dereferenced); None when the tag does not exist."""
+    try:target=gh.api(repo,'git/ref/tags/'+urllib.parse.quote(tag,safe=''))['object']
+    except Blocked as e:
+        if 'HTTP 404' in str(e):return None
+        raise
+    if target['type']=='tag':target=gh.api(repo,'git/tags/'+target['sha'])['object']
+    return target['sha']
+
 def release(gh, registry, repo, sha, apply=False):
     """Publish a stable Release for each stable addon whose config.yaml version at sha has none yet.
     Runs in the source repository after its CI, on a default-branch commit; reads the manifest at
@@ -333,7 +342,7 @@ def release(gh, registry, repo, sha, apply=False):
             if not isinstance(cfg,dict) or cfg.get('slug')!=cid:raise Blocked('Unexpected addon slug')
             version=str(cfg['version']);tag=release_tag(provider,comp,version)
             if found(gh,repo,'releases/tags/'+urllib.parse.quote(tag,safe='')):report.append({'id':cid,'state':'already-released','tag':tag,'version':version});continue
-            if found(gh,repo,'git/ref/tags/'+urllib.parse.quote(tag,safe='')):raise Blocked('Tag '+tag+' exists without a Release; release or delete it by hand')
+            if tagged_commit(gh,repo,tag) not in [None,sha]:raise Blocked('Tag '+tag+' points at another commit; release or delete it by hand')
             if apply:gh.api(repo,'releases',{'tag_name':tag,'target_commitish':sha,'name':f"{cfg.get('name',cid)} {version}",'generate_release_notes':True,'make_latest':'true'})
             report.append({'id':cid,'state':'released' if apply else 'would-release','tag':tag,'version':version})
         except Exception as e:
