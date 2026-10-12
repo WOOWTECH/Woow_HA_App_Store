@@ -31,7 +31,7 @@ with (ROOT / ".github/workflows/build.yml").open() as handle:
 check(isinstance(workflow, dict) and "jobs" in workflow, "GitHub Actions workflow YAML is invalid")
 check(set(repository) == {"name", "url", "maintainer"}, "repository.yaml must have the repository contract keys")
 check(repository.get("url") == "https://github.com/WOOWTECH/Woow_ha_opendesign_add_on", "repository URL mismatch")
-check(config.get("version") == "0.1.8", "release version must be 0.1.8")
+check(config.get("version") == "0.1.9", "release version must be 0.1.9")
 check("browser-local API BYOK" in config.get("description", ""), "add-on description must describe browser-local BYOK")
 check(config.get("arch") == ["amd64", "aarch64"], "only amd64 and aarch64 are allowed")
 check(config.get("ingress") is True, "ingress must be enabled")
@@ -70,7 +70,6 @@ export_bridge = (ROOT / "rootfs/opt/ha-opendesign/ha-export-bridge.js").read_tex
 nginx = (ROOT / "rootfs/etc/nginx/nginx.conf").read_text()
 workflow_text = (ROOT / ".github/workflows/build.yml").read_text()
 runtime_sources = "\n".join([
-    dockerfile,
     launcher,
     entry,
     renderer,
@@ -87,16 +86,30 @@ check("OD_DATA_DIR=/data/opendesign" in dockerfile, "OD_DATA_DIR persistence is 
 check("OD_BIND_HOST=127.0.0.1" in dockerfile, "Dockerfile must set loopback bind")
 check(re.search(r"^USER root$", dockerfile, re.M), "PID 1 must start as root to prepare HA's root-owned /data mount")
 check("su-exec open-design:open-design" in launcher, "launcher must drop OpenDesign and nginx to UID/GID 1001")
+check("npm" not in launcher.lower(), "launcher must not download/install CLI packages at startup")
+check("paseo" not in dockerfile.lower() and "paseo" not in launcher.lower(), "retired Paseo runtime must not be installed or injected")
 check("prepare_owned_dir" in launcher and "chown -h" in launcher, "privileged /data preparation must reject/fail closed on symlinks")
 check("/usr/sbin/nginx -e stderr" in launcher, "unprivileged nginx must use its inherited stderr descriptor under HA procfs")
-for expected in ["bash", "chromium", "font-noto-cjk", "font-noto-emoji", "fontconfig", "nginx", "su-exec"]:
+for expected in ["bash", "chromium", "font-noto-cjk", "font-noto-emoji", "fontconfig", "gcompat", "libgcc", "libstdc++", "nginx", "python3", "ripgrep", "su-exec"]:
     check(expected in dockerfile, f"expected image package missing: {expected}")
 check("/usr/local/bin/npm ci --omit=dev" in dockerfile, "locked production npm install must use the upstream absolute npm path for HA BuildKit")
 check("test -x /usr/local/bin/npm" in dockerfile, "image build must verify the absolute npm executable")
 check("COPY runtime/opencode/package.json runtime/opencode/package-lock.json /opt/ha-opendesign/opencode/" in dockerfile, "OpenCode lockfiles must be copied independently")
 check("/usr/local/bin/npm ci --omit=dev --prefix /opt/ha-opendesign/opencode" in dockerfile, "OpenCode install must use the locked production package prefix")
 check('test "$(su-exec open-design:open-design opencode --version)" = "1.18.29"' in dockerfile, "image build must assert the exact OpenCode version as UID 1001")
-check("PATH=/opt/ha-opendesign/opencode/node_modules/.bin:${PATH}" in dockerfile, "OpenCode binary must be on PATH")
+check("PATH=/usr/local/bin:/opt/ha-opendesign/opencode/node_modules/.bin:${PATH}" in dockerfile, "OpenDesign and bundled CLI binaries must be on PATH")
+for package in [
+    "@anthropic-ai/claude-code@2.1.296",
+    "@openai/codex@0.162.1",
+    "@earendil-works/pi-coding-agent@1.1.0",
+]:
+    check(package in dockerfile, f"image must pin and preinstall {package}")
+for assertion in [
+    "claude --version | grep -Fq '2.1.296'",
+    "codex --version | grep -Fq '0.162.1'",
+    "pi --version | grep -Fq '1.1.0'",
+]:
+    check(assertion in dockerfile, f"image build must verify CLI as UID 1001: {assertion}")
 for removed_path in [
     "runtime/pi",
     "rootfs/usr/local/bin/pi",
@@ -138,7 +151,7 @@ for pattern, label in [
     (r"(?:^|[\s=:/])docker\.sock(?:$|[\s])", "container socket"),
     (r"(?:^|\s)--privileged(?:\s|$)", "privileged mode"),
     (r"(?:^|\s)--network[= ]host(?:\s|$)", "host networking"),
-    (r"(?:^|\s)(?:claude|codex|aider|gemini|cursor-agent|qwen|copilot|amp)(?:@|\s|$)", "unapproved local AI CLI package"),
+    (r"(?:^|\s)(?:aider|gemini|cursor-agent|qwen|copilot|amp)(?:@|\s|$)", "unapproved local AI CLI package"),
     (r"/(?:mnt|media|share|config)(?:/|\s|$)", "host path coupling"),
 ]:
     check(not re.search(pattern, runtime_sources, re.I | re.M), f"forbidden runtime coupling detected: {label}")

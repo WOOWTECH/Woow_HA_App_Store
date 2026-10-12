@@ -106,7 +106,7 @@ docker exec "$container" sh -ceu '
   test -r /opt/ha-opendesign/headless-entry.mjs
   test -r /opt/ha-opendesign/headless-renderer.mjs
   test -r /opt/ha-opendesign/ha-export-bridge.js
-  for executable in claude codex pi opencode-cli aider gemini cursor-agent qwen copilot amp; do
+  for executable in opencode-cli aider gemini cursor-agent qwen copilot amp; do
     if command -v "$executable" >/dev/null 2>&1 \
       || test -e "/app/node_modules/.bin/$executable" \
       || test -e "/usr/local/lib/node_modules/.bin/$executable"; then
@@ -116,15 +116,19 @@ docker exec "$container" sh -ceu '
   done
 '
 # OpenDesign's native API mode discovers `opencode` through PATH. Verify the
-# real locked Alpine binary as its runtime UID, and ensure withdrawn Pi cannot
-# be selected as a local fallback.
+# real locked Alpine binaries as their runtime UID. OpenDesign can discover
+# these executables through PATH without a plugin installer or first-run download.
 docker exec -u 1001:1001 "$container" sh -ceu '
   test "$(id -u)" = 1001
   test "$(opencode --version)" = 1.18.29
   test "$(command -v opencode)" = /opt/ha-opendesign/opencode/node_modules/.bin/opencode
+  claude --version | grep -Fq 2.1.296
+  codex --version | grep -Fq 0.162.1
+  pi --version | grep -Fq 1.1.0
+  command -v claude >/dev/null
+  command -v codex >/dev/null
+  command -v pi >/dev/null
   ! command -v opencode-cli >/dev/null 2>&1
-  ! command -v pi >/dev/null 2>&1
-  test ! -e /usr/local/bin/pi
   test ! -e /opt/ha-opendesign/ha-pi-wrapper.mjs
   test -w /data/opendesign
   printf persisted > /data/opendesign/container-smoke-sentinel

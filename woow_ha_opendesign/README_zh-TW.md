@@ -9,6 +9,7 @@
 - 系統 Chromium、Playwright 與 Noto CJK／emoji 字型提供無頭匯出。
 - 支援獨立 HTML、ZIP、截圖式 PDF、PNG/JPEG，以及每張投影片為圖片的 PPTX。**不支援可編輯 PPTX**，要求此模式時會明確失敗。
 - 映像以精確鎖定版本內建 OpenCode `1.18.29`，供 OpenDesign 原生 `byok-opencode` API runtime 使用。
+- 映像預裝 Claude Code `2.1.296`、Codex CLI `0.162.1` 與 Pi Coding Agent `1.1.0`，供 OpenDesign Local AI 掃描使用；不需要 Paseo 插件，也不會在首次使用時下載 CLI。
 
 [English](README.md) · [附加元件說明](DOCS.md)
 
@@ -18,6 +19,7 @@
 2. 加入 `https://github.com/WOOWTECH/Woow_ha_opendesign_add_on`。
 3. 安裝並啟動 **Woow HA OpenDesign**，再從側邊欄開啟。
 4. 在 **設定** 設定 API BYOK 的供應商、模型與金鑰；設定只會保留在該瀏覽器。
+5. 開啟 **Local AI → Rescan** 重新掃描映像內建的 Claude Code、Codex 與 Pi，再依各供應商流程登入。
 
 本附加元件沒有設定選項，也沒有主機目錄掛載。
 

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.9
+
+- Bundle Claude Code `2.1.296`, Codex CLI `0.162.1`, and Pi Coding Agent `1.1.0` in the Home Assistant image so OpenDesign can discover them at startup without a plugin or first-use download.
+- Verify all three CLIs as the unprivileged OpenDesign user during image build and container smoke tests.
+
 ## 0.1.8
 
 - **Pages taller than the capture viewport can be exported to PDF again.** They

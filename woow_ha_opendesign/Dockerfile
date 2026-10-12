@@ -10,7 +10,7 @@ ENV NODE_ENV=production \
     PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 \
     PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium-browser \
     HOME=/data/opendesign/home \
-    PATH=/opt/ha-opendesign/opencode/node_modules/.bin:${PATH}
+    PATH=/usr/local/bin:/opt/ha-opendesign/opencode/node_modules/.bin:${PATH}
 
 # The browser comes from Alpine rather than being downloaded on first boot.
 # playwright-core is locked independently in /opt/ha-opendesign/package-lock.json.
@@ -20,12 +20,17 @@ RUN apk add --no-cache \
       font-noto-cjk \
       font-noto-emoji \
       fontconfig \
+      gcompat \
+      libgcc \
+      libstdc++ \
       nginx \
+      python3 \
+      ripgrep \
       su-exec \
     && rm -rf /etc/nginx/http.d/* /var/cache/apk/*
 
 # OpenCode resolves the passwd-home directory when it starts as UID 1001.
-RUN mkdir -p /data/opendesign /home/open-design \
+RUN mkdir -p /data/opendesign/home /home/open-design \
     && chown -R open-design:open-design /data /home/open-design
 
 COPY runtime/package.json runtime/package-lock.json /opt/ha-opendesign/
@@ -35,7 +40,12 @@ COPY runtime/opencode/package.json runtime/opencode/package-lock.json /opt/ha-op
 # Use the absolute npm path so local Supervisor builds match ordinary Docker.
 RUN /usr/local/bin/npm ci --omit=dev --prefix /opt/ha-opendesign \
     && /usr/local/bin/npm ci --omit=dev --prefix /opt/ha-opendesign/opencode \
+    && /usr/local/bin/npm install --global @anthropic-ai/claude-code@2.1.296 @openai/codex@0.162.1 \
+    && /usr/local/bin/npm install --global --ignore-scripts @earendil-works/pi-coding-agent@1.1.0 \
     && test "$(su-exec open-design:open-design opencode --version)" = "1.18.29" \
+    && su-exec open-design:open-design claude --version | grep -Fq '2.1.296' \
+    && su-exec open-design:open-design codex --version | grep -Fq '0.162.1' \
+    && su-exec open-design:open-design pi --version | grep -Fq '1.1.0' \
     && /usr/local/bin/npm cache clean --force \
     && test "$(id -u open-design)" = "1001" \
     && test -x /usr/local/bin/node \
@@ -56,7 +66,7 @@ RUN mkdir -p /data/opendesign \
     && chown -R open-design:open-design /opt/ha-opendesign
 
 ARG BUILD_ARCH=amd64
-ARG BUILD_VERSION=0.1.4
+ARG BUILD_VERSION=0.1.9
 ARG BUILD_DATE
 ARG BUILD_DESCRIPTION="OpenDesign for Home Assistant"
 ARG BUILD_NAME="Woow HA OpenDesign"

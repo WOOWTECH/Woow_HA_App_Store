@@ -9,6 +9,7 @@ OpenDesign **0.21.1**, packaged as a standalone Home Assistant add-on for `amd64
 - System Chromium, Playwright and Noto CJK/emoji fonts provide headless HTML rendering.
 - Downloads supported by the pinned upstream application: standalone HTML, ZIP, screenshot PDF, PNG/JPEG, and screenshot-based PPTX. **Editable PPTX is unsupported** and returns a clear error.
 - OpenCode `1.18.29` is bundled at an exact locked version for OpenDesign's native `byok-opencode` API runtime.
+- Claude Code `2.1.296`, Codex CLI `0.162.1`, and Pi Coding Agent `1.1.0` are preinstalled in the image and available to OpenDesign's Local AI discovery; no Paseo plugin or first-use CLI download is required.
 
 [繁體中文](README_zh-TW.md) · [Add-on documentation](DOCS.md)
 
@@ -18,6 +19,7 @@ OpenDesign **0.21.1**, packaged as a standalone Home Assistant add-on for `amd64
 2. Add `https://github.com/WOOWTECH/Woow_ha_opendesign_add_on`.
 3. Install **Woow HA OpenDesign**, start it, and open **OpenDesign** from the sidebar.
 4. In **Settings**, configure API BYOK with your provider, model, and key. Those settings remain local to that browser.
+5. Open **Local AI → Rescan** to refresh the bundled Claude Code, Codex, and Pi entries, then sign in to each provider when you first use it.
 
 There are no add-on configuration options and no host directory mappings.
 
