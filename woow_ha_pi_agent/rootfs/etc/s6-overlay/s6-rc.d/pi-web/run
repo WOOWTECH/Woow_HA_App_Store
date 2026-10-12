@@ -148,6 +148,7 @@ export PORT=30141
 # worktrees would vanish on every image bump. Redirect $HOME into /data (which
 # is persistent per-addon and covered by HA snapshots) so user work survives.
 export HOME="${DATA_DIR}/home"
+export PATH="${HOME}/.local/bin:/usr/local/bin:${PATH}"
 cd "${HOME}"
 
 # Video pipeline (v0.11.0). The pi coding agent spawns shell subprocesses to

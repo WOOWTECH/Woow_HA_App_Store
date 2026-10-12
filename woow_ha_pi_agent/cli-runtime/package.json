@@ -1,0 +1,9 @@
+{
+  "name": "woow-paas-pi-agent-clis",
+  "version": "1.0.0",
+  "private": true,
+  "dependencies": {
+    "@anthropic-ai/claude-code": "2.1.296",
+    "@openai/codex": "0.162.1"
+  }
+}

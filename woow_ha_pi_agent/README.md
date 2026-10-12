@@ -15,7 +15,7 @@
   <img src="https://img.shields.io/badge/arch-amd64%20%7C%20aarch64-lightgrey" alt="Architectures"/>
   <img src="https://img.shields.io/badge/base-debian--base%209.1.0-red?logo=debian&logoColor=white" alt="Base image"/>
   <img src="https://img.shields.io/badge/node-22.x-339933?logo=node.js&logoColor=white" alt="Node 22"/>
-  <img src="https://img.shields.io/badge/pi--web-0.9.0-8A2BE2" alt="pi-web version"/>
+  <img src="https://img.shields.io/badge/pi--web-0.12.0-8A2BE2" alt="pi-web version"/>
   <img src="https://img.shields.io/badge/license-MIT-green" alt="MIT"/>
 </p>
 
@@ -75,9 +75,12 @@ The addon no longer pins a provider list — everything is added from the pi-web
 Use the Models panel's **Test** button to verify each new provider — the addon no longer runs a boot-time self-check (removed in v0.13.0 along with the api_key options).
 
 ### Runtime & operations
+- ChatGPT subscription OAuth receives a persistent per-installation device UUID; users still complete account authorization themselves.
+- Claude Code 2.1.296 and Codex 0.162.1 are included in new images. User-local versions under `$HOME/.local/bin` take precedence.
+
 
 - **In-process SDK.** `pi-web` imports `@earendil-works/pi-coding-agent` — one Node process, no separate agent daemon.
-- **Browser terminal (v0.14.0).** pi-web 0.9.0 serves a real PTY in the UI (`/api/terminal`, output over SSE) with the same `$HOME`, volume and `PATH` as the agent — so `pi install`, `pi config` and an interactive TUI session are reachable from the HA sidebar with no SSH. Requires a native module; see the note under [Container image](#container-image).
+- **Browser terminal (v0.14.0).** pi-web 0.12.0 serves a real PTY in the UI (`/api/terminal`, output over SSE) with the same `$HOME`, volume and `PATH` as the agent — so `pi install`, `pi config` and an interactive TUI session are reachable from the HA sidebar with no SSH. Requires a native module; see the note under [Container image](#container-image).
 - **CJK-safe file paths (v0.14.0).** Upstream folds U+3000 and other Unicode spaces to ASCII on every read/write/edit, which makes a write to `台灣　報告.txt` land at `台灣 報告.txt` while reporting success. Patched at build time.
 - **HA Ingress + sidebar auto-enable.** No published ports; sidebar tile shows on first boot via Supervisor API POST (fixed in v0.8.0).
 - **s6-overlay supervisor.** `nginx` (front) + `pi-web` (upstream) + `video-tools-init` (oneshot).
@@ -223,8 +226,8 @@ The runtime is composed from the following packages (all bundled in the image):
 
 | Package | Version | Role |
 |---|---|---|
-| [`@agegr/pi-web`](https://www.npmjs.com/package/@agegr/pi-web) | `0.9.0` (pinned) | Next.js 16 browser workspace — served behind nginx on port 30141 |
-| [`@earendil-works/pi-coding-agent`](https://www.npmjs.com/package/@earendil-works/pi-coding-agent) | `0.85.1`, transitive | The pi SDK — imported in-process by pi-web, no separate daemon |
+| [`@agegr/pi-web`](https://www.npmjs.com/package/@agegr/pi-web) | `0.12.0` (pinned) | Next.js 16 browser workspace — served behind nginx on port 30141 |
+| [`@earendil-works/pi-coding-agent`](https://www.npmjs.com/package/@earendil-works/pi-coding-agent) | `1.0.0`, transitive | The pi SDK — imported in-process by pi-web, no separate daemon |
 | [`node-pty`](https://www.npmjs.com/package/node-pty) | `1.1.0`, transitive | Native PTY behind the browser terminal. **Compiled at image build time** — upstream ships no linux prebuild |
 | [`skills`](https://www.npmjs.com/package/skills) | `1.5.21` | CLI for the Add-skill flow; shells out to `git` / `ssh` / `gh` |
 | `simple-git` | via `skills` | Wraps `git clone` for repo-backed installs |
@@ -259,7 +262,7 @@ Base: `ghcr.io/hassio-addons/debian-base:9.1.0`.
 | `X-Ingress-Path` | Whitelist-validated (`^/api/hassio_ingress/[A-Za-z0-9_-]{16,128}$`) before body-rewrite | Defense-in-depth vs. misconfigured upstream proxy |
 | API keys | Stored **inside pi-web** under `/data/pi-agent/` (persistent, backed up by HA snapshots). Addon `options.json` no longer holds any AI keys since v0.13.0 | HA host filesystem |
 | `env_vars` escape hatch | Values are exported verbatim into the pi-web process — unvalidated content. `name` is regex-validated only | Treat as `/data/options.json` — do not paste secrets you wouldn't otherwise trust there |
-| pi-web app auth | **None**, deliberately — access control is delegated to HA. pi-web 0.9.0 added `PI_WEB_PASSWORD` (built-in Basic Auth), which this add-on does not set: HA's own login already sits in front of Ingress and a second password would be friction without a matching gain. | Anyone with HA admin login = full pi-web access |
+| pi-web app auth | **None**, deliberately — access control is delegated to HA. pi-web 0.12.0 includes the upstream password-bypass fix; this add-on does not set `PI_WEB_PASSWORD` (built-in Basic Auth), which this add-on does not set: HA's own login already sits in front of Ingress and a second password would be friction without a matching gain. | Anyone with HA admin login = full pi-web access |
 | Browser terminal (v0.14.0) | A real root shell in the add-on container, reachable at `POST /api/terminal`. It is **not** a new trust boundary here — the agent's `bash` tool already ran arbitrary commands in the same container, so anyone who could chat could already do this. What changed is that it is now direct rather than model-mediated. | Same as above: HA admin login |
 | `rclone.conf` | Inside HA snapshots (unlike caches) so Drive tokens survive restore | HA backup encryption |
 
@@ -337,7 +340,7 @@ docker buildx build \
 Edit `Dockerfile`:
 
 ```dockerfile
-ARG PI_WEB_VERSION=0.9.0   # ← bump here
+ARG PI_WEB_VERSION=0.12.0   # ← bump here
 ```
 
 Then run the full end-to-end suite before tagging a release — the shim depends on upstream's exact asset shape.

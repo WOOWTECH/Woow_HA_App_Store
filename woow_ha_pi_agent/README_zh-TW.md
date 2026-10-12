@@ -15,7 +15,7 @@
   <img src="https://img.shields.io/badge/arch-amd64%20%7C%20aarch64-lightgrey" alt="Architectures"/>
   <img src="https://img.shields.io/badge/base-debian--base%209.1.0-red?logo=debian&logoColor=white" alt="Base image"/>
   <img src="https://img.shields.io/badge/node-22.x-339933?logo=node.js&logoColor=white" alt="Node 22"/>
-  <img src="https://img.shields.io/badge/pi--web-0.9.0-8A2BE2" alt="pi-web version"/>
+  <img src="https://img.shields.io/badge/pi--web-0.12.0-8A2BE2" alt="pi-web version"/>
   <img src="https://img.shields.io/badge/license-MIT-green" alt="MIT"/>
 </p>
 
@@ -75,6 +75,9 @@
 用 Models 面板的 **Test** 按鈕驗證每家新加的 provider —— v0.13.0 起附加元件已移除開機自檢（連 api_key 選項一起拿掉）。
 
 ### 執行與運維
+- ChatGPT 訂閱 OAuth 會使用持久的安裝 UUID；帳號授權仍由使用者自行完成。
+- 新映像內建 Claude Code 2.1.296 和 Codex 0.162.1；`$HOME/.local/bin` 中的個人版本優先使用。
+
 
 - **In-process SDK。** `pi-web` 直接 import `@earendil-works/pi-coding-agent`，單一 Node 行程處理 UI + 推理。
 - **HA Ingress + 側欄自動啟用。** 不公開任何 port；首次開機自動 POST Supervisor API 開啟側欄圖示（v0.8.0 修正）。
@@ -221,7 +224,7 @@ Skill 預設為 user-scope —— `PI_CODING_AGENT_DIR/skills/` 下每個資料�
 
 | 套件 | 版本 | 角色 |
 |---|---|---|
-| [`@agegr/pi-web`](https://www.npmjs.com/package/@agegr/pi-web) | `0.9.0`（釘死） | Next.js 16 瀏覽器工作區 —— 走 nginx 從 port 30141 對外 |
+| [`@agegr/pi-web`](https://www.npmjs.com/package/@agegr/pi-web) | `0.12.0`（釘死） | Next.js 16 瀏覽器工作區 —— 走 nginx 從 port 30141 對外 |
 | [`@earendil-works/pi-coding-agent`](https://www.npmjs.com/package/@earendil-works/pi-coding-agent) | transitive | pi SDK —— pi-web 直接 in-process import，沒有獨立 daemon |
 | [`skills`](https://www.npmjs.com/package/skills) | `1.5.21` | Add-skill 用的 CLI；會 shell 出 `git` / `ssh` / `gh` |
 | `simple-git` | 隨 `skills` | 包裝 `git clone` 給 repo 型安裝 |
@@ -330,7 +333,7 @@ docker buildx build \
 編輯 `Dockerfile`：
 
 ```dockerfile
-ARG PI_WEB_VERSION=0.9.0   # ← 改這行
+ARG PI_WEB_VERSION=0.12.0   # ← 改這行
 ```
 
 然後跑完整 e2e 再打 tag —— shim 依賴上游確切的 asset 形狀。

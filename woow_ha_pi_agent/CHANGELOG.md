@@ -1,3 +1,9 @@
+## 0.14.4
+
+- Upgrade pi-web to 0.12.0, which includes the upstream security fix for the pre-0.11.0 password bypass and Pi 1.0/MCP support.
+- Fix ChatGPT subscription login by creating a durable installation UUID through the Pi SDK and passing it to the OAuth provider. The image build tests the actual SDK and OAuth provider, stopping before account approval.
+- Preinstall Claude Code 2.1.296 and Codex 0.162.1 from a lockfile in the image. Existing user-local CLI binaries remain first on PATH and are not overwritten.
+
 # Changelog
 
 ## 0.14.3

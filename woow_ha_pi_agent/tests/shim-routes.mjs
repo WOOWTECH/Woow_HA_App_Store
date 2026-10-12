@@ -19,7 +19,7 @@
 // The shim source is not duplicated here — it is extracted from nginx.conf at
 // run time, so this test cannot drift from what is actually served.
 //
-// Verified against pi-web 0.9.0: 19/19.
+// Verified against pi-web 0.12.0; includes its MCP/OAuth routes.
 
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -76,18 +76,29 @@ const js = extractShim().replace(
 );
 new Function(js)();
 
-// Routes pi-web 0.9.0 actually calls from the browser, incl. everything new.
+// Routes pi-web 0.12.0 calls from the browser, including MCP management and OAuth.
 const ROUTES = [
   ["/api/home",                          true,  "0.8.4 baseline"],
   ["/api/sessions",                      true,  "0.8.4 baseline"],
   ["/api/models-config",                 true,  "0.8.4 baseline"],
-  ["/api/terminal",                      true,  "0.9.0 NEW — terminal create"],
-  ["/api/terminal/abc123/events",        true,  "0.9.0 NEW — terminal SSE"],
-  ["/api/subagents/profiles",            true,  "0.9.0 NEW"],
-  ["/api/sessions/search",               true,  "0.9.0 NEW"],
-  ["/api/tools/settings",                true,  "0.9.0 NEW"],
-  ["/api/push/subscribe",                true,  "0.9.0 NEW — web-push"],
-  ["/api/app-update",                    true,  "0.9.0 NEW"],
+  ["/api/terminal",                      true,  "0.12.0 NEW — terminal create"],
+  ["/api/terminal/abc123/events",        true,  "0.12.0 NEW — terminal SSE"],
+  ["/api/subagents/profiles",            true,  "0.12.0 NEW"],
+  ["/api/sessions/search",               true,  "0.12.0 NEW"],
+  ["/api/tools/settings",                true,  "0.12.0 NEW"],
+  ["/api/push/subscribe",                true,  "0.12.0 NEW — web-push"],
+  ["/api/app-update",                    true,  "0.12.0 NEW"],
+  ["/api/mcp",                            true,  "0.10.0 MCP management"],
+  ["/api/mcp/test",                       true,  "0.10.0 MCP connection test"],
+  ["/api/mcp/sign-in",                    true,  "0.10.0 MCP OAuth start"],
+  ["/api/mcp/sign-in/flow-123",           true,  "0.10.0 MCP OAuth flow"],
+  ["/api/project-trust",                 true,  "0.10.0 project MCP trust"],
+  ["/api/web-auth",                       true,  "0.11.0 web authentication"],
+  ["/api/models-config/catalog",          true,  "0.12.0 model catalog"],
+  ["/api/models-config/discover",         true,  "0.12.0 model discovery"],
+  ["/api/provider-usage/query",           true,  "0.12.0 provider usage"],
+  ["/api/sessions/ui-state",              true,  "0.12.0 session UI state"],
+  ["/api/agent/running",                  true,  "0.12.0 running agents"],
   ["/_next/static/chunks/main.js",       true,  "asset"],
   ["/favicon.ico",                       true,  "asset"],
   ["/manifest.webmanifest",              true,  "asset"],
@@ -110,7 +121,7 @@ for (const [url, shouldPrefix, note] of ROUTES) {
   if (!ok) console.log(`        expected ${expected}\n        got      ${got}   (${note})`);
 }
 
-console.log("\n=== EventSource() — this is how 0.9.0 streams terminal output ===");
+console.log("\n=== EventSource() — this is how 0.12.0 streams terminal output ===");
 for (const url of ["/api/terminal/abc123/events", "/api/sessions/x/events"]) {
   calls.eventsource.length = 0;
   new g.EventSource(url);
@@ -173,7 +184,7 @@ for (const [name, make] of shapeCases) {
 }
 
 console.log("\n=== service worker neutralisation ===");
-// Regression guard for the v0.14.1 fix. pi-web 0.9.0 added push code that calls
+// Regression guard for the v0.14.1 fix. pi-web 0.12.0 retains push code that calls
 // navigator.serviceWorker.getRegistration(); the v0.14.0 shim only replaced
 // register(), so that call returned Home Assistant's own service worker and
 // pi-web subscribed its VAPID key to it. Every accessor that can hand out a

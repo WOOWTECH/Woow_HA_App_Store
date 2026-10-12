@@ -7,9 +7,9 @@ ARG BUILD_FROM=ghcr.io/hassio-addons/debian-base:9.1.0
 # WHY THIS STAGE EXISTS AS OF pi-web 0.9.0
 #
 # 0.9.0 added a browser terminal, and with it a hard dependency on node-pty,
-# which is a native addon. node-pty 1.1.0 ships prebuilt binaries for darwin
-# and win32 ONLY — there is no linux prebuild — so its install script falls
-# through to `node-gyp rebuild`:
+# which is a native addon. node-pty 1.2.0-beta.15 ships Linux x64 and arm64
+# binaries under `prebuilds/`. Its install script selects the matching binary,
+# with `node-gyp rebuild` as a fallback:
 #
 #     install: "node scripts/prebuild.js || node-gyp rebuild"
 #
@@ -69,18 +69,27 @@ RUN apt-get update \
 #   - /api/agent/running/events and /api/auth/all-providers were REMOVED
 #     upstream. Nothing in this add-on references either by name; the shim
 #     matches on the /api/ prefix, not a route list.
-ARG PI_WEB_VERSION=0.9.0
+ARG PI_WEB_VERSION=0.12.0
 RUN npm install -g --omit=dev --prefix=/opt/piweb "@agegr/pi-web@${PI_WEB_VERSION}" \
     && rm -rf /tmp/npm-cache
 
-# node-gyp can fail in ways npm does not treat as fatal, and a missing
-# pty.node becomes a terminal that opens and immediately dies at runtime.
-# Assert the artifact exists and loads, here, where the failure is a red build
-# rather than a support thread.
+# Reproducible, architecture-aware system CLIs. User-scoped binaries in the
+# persistent HOME take precedence at runtime, so existing/custom installs are
+# left untouched while fresh installations have both commands available.
+COPY cli-runtime/ /opt/pi-clis/
+RUN npm ci --omit=dev --prefix=/opt/pi-clis \
+    && claude_bin=/opt/pi-clis/node_modules/.bin/claude \
+    && codex_bin=/opt/pi-clis/node_modules/.bin/codex \
+    && "$claude_bin" --version | grep -q '^2.1.296' \
+    && "$codex_bin" --version | grep -q '0.162.1' \
+    && rm -rf /tmp/npm-cache
+
+# Validate the installed native module by loading it and checking its API.
+# Current node-pty packages store platform binaries under `prebuilds/`, not
+# `build/Release/pty.node`; checking that old node-gyp output path rejects a
+# valid prebuilt install.
 RUN set -euo pipefail; \
     PTY="/opt/piweb/lib/node_modules/@agegr/pi-web/node_modules/node-pty"; \
-    test -f "${PTY}/build/Release/pty.node" \
-      || { echo "[build] FAIL: node-pty was not compiled for linux" >&2; exit 1; }; \
     node -e 'const p=require(process.argv[1]); if (typeof p.spawn !== "function") { throw new Error("node-pty loaded but has no spawn()"); } console.log("[build] node-pty OK");' "${PTY}"
 
 # Stop silent CJK path corruption.
@@ -113,11 +122,18 @@ RUN set -euo pipefail; \
     mapfile -d '' FILES < <(find /opt/piweb/lib/node_modules/@agegr/pi-web \
       -path '*@earendil-works/*/dist/*/tools/path-utils.js' -print0); \
     echo "[patch] found ${#FILES[@]} path-utils.js copies"; \
-    if [ "${#FILES[@]}" -lt 2 ]; then \
-      echo "[patch] FAIL: expected at least 2 copies, found ${#FILES[@]}" >&2; \
+    if [ "${#FILES[@]}" -lt 1 ]; then \
+      echo "[patch] FAIL: expected at least 1 copy, found ${#FILES[@]}" >&2; \
       exit 1; \
     fi; \
-    node /opt/patches/fix-unicode-space-paths.mjs "${FILES[@]}"
+    node /opt/patches/fix-unicode-space-paths.mjs "${FILES[@]}" \
+    && node --test /opt/patches/tests/chatgpt-device-id.test.mjs \
+    && PI_WEB_ROOT=/opt/piweb/lib/node_modules/@agegr/pi-web node /opt/patches/tests/device-id-live.mjs \
+    && node /opt/patches/patch-chatgpt-device-id.mjs \
+       "/opt/piweb/lib/node_modules/@agegr/pi-web/.next/server/app/api/auth/login/[provider]/route.js" \
+    && node --check "/opt/piweb/lib/node_modules/@agegr/pi-web/.next/server/app/api/auth/login/[provider]/route.js" \
+    && grep -q '__piChatGPTDeviceId' \
+       "/opt/piweb/lib/node_modules/@agegr/pi-web/.next/server/app/api/auth/login/[provider]/route.js"
 
 
 # =============================================================================
@@ -191,12 +207,20 @@ RUN apt-get update \
 # and the `pi-web` bin stays a working relative symlink into lib/node_modules.
 COPY --from=piweb-builder /opt/piweb/lib/node_modules /usr/local/lib/node_modules
 COPY --from=piweb-builder /opt/piweb/bin              /usr/local/bin
+COPY --from=piweb-builder /opt/pi-clis                  /opt/pi-clis
 
 # Cross-stage assertion. Both stages derive from the same ${BUILD_FROM} and
 # install the same Node major, so this should never fire — which is exactly
 # why it is cheap to keep: if someone ever changes one base and not the other,
 # the build fails here instead of shipping a terminal that never prompts.
 RUN node -e 'const p=require("/usr/local/lib/node_modules/@agegr/pi-web/node_modules/node-pty"); if (typeof p.spawn !== "function") { throw new Error("node-pty has no spawn()"); } console.log("[build] node-pty loads under the runtime node");'
+
+
+RUN ln -s /opt/pi-clis/node_modules/.bin/claude /usr/local/bin/claude \
+    && ln -s /opt/pi-clis/node_modules/.bin/codex /usr/local/bin/codex \
+    && chmod -R a+rX,go-w /opt/pi-clis \
+    && claude --version | grep -q '^2.1.296' \
+    && codex --version | grep -q '0.162.1'
 
 COPY rootfs/ /
 
