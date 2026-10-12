@@ -1,4 +1,4 @@
-version: 0.1.4
+version: 0.1.5
 slug: woow_lan_gateway
 name: Woow LAN Gateway
 description: Fail-closed Internet-only NAT gateway for the fixed WOOWTECH enrollment LAN.
