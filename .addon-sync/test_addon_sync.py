@@ -263,5 +263,75 @@ class Tests(unittest.TestCase):
         self.assertEqual(job['environment'],'store-sync');self.assertNotIn('permissions',job)
         checkout=next(x for x in job['steps'] if x.get('uses','').startswith('actions/checkout@'))
         self.assertEqual(checkout['with']['ssh-key'],'${{ secrets.STORE_SYNC_DEPLOY_KEY }}')
+    def release_gh(self,configs,released=(),tags=(),compare='ahead'):
+        class GH:
+            def __init__(self):self.created=[]
+            def head(self,repo):return 'main','c'*40
+            def content(self,repo,path,ref):
+                assert ref=='a'*40
+                if path not in configs:raise s.Blocked('GitHub '+repo+'/contents HTTP 404')
+                return configs[path].encode()
+            def api(self,repo,path,data=None,method=None):
+                if data is not None:
+                    self.created.append(data);return {'tag_name':data['tag_name']}
+                if path.startswith('compare/'):return {'status':compare}
+                if path.startswith('releases/tags/'):
+                    if path.split('/',2)[2] in released:return {'tag_name':path.split('/',2)[2]}
+                    raise s.Blocked('GitHub '+repo+'/'+path+' HTTP 404')
+                if path.startswith('git/ref/tags/'):
+                    if path.split('/',3)[3] in tags:return {'object':{'sha':'d'*40}}
+                    raise s.Blocked('GitHub '+repo+'/'+path+' HTTP 404')
+                raise AssertionError(path)
+        return GH()
+    def release_component(self,cid,path,**extra):
+        return {'id':cid,'source_path':path,'config_file':'config.yaml','store_path':cid,'channel':'stable','enabled':True,**extra}
+    def single(self):return {'providers':{'WOOWTECH/test':{'components':[self.release_component('test','.')]}}}
+    def test_release_tags_a_single_addon_with_its_version(self):
+        gh=self.release_gh({'config.yaml':'name: Test\nslug: test\nversion: 1.2.0\n'})
+        report=s.release(gh,self.single(),'WOOWTECH/test','a'*40,apply=True)
+        self.assertEqual(report,[{'id':'test','state':'released','tag':'v1.2.0','version':'1.2.0'}])
+        (created,)=gh.created
+        self.assertEqual((created['tag_name'],created['target_commitish'],created['make_latest']),('v1.2.0','a'*40,'true'))
+        self.assertFalse(created.get('prerelease') or created.get('draft'))
+    def test_release_leaves_an_already_released_version_alone(self):
+        gh=self.release_gh({'config.yaml':'name: Test\nslug: test\nversion: 1.2.0\n'},released={'v1.2.0'})
+        report=s.release(gh,self.single(),'WOOWTECH/test','a'*40,apply=True)
+        self.assertEqual(report[0]['state'],'already-released');self.assertEqual(gh.created,[])
+    def test_release_tags_each_bumped_addon_of_a_multi_addon_repository(self):
+        # Addons with independent versions: one Release per bumped stable addon, all on the same commit.
+        gh=self.release_gh({'one/config.yaml':'name: One\nslug: one\nversion: 1.0.0\n','two/config.yaml':'name: Two\nslug: two\nversion: 2.1.0\n'},released={'one-v1.0.0'})
+        components=[self.release_component('one','one'),self.release_component('two','two'),
+            self.release_component('beta','beta',channel='prerelease'),self.release_component('off','off',enabled=False,reason='retired')]
+        report=s.release(gh,{'providers':{'WOOWTECH/test':{'components':components}}},'WOOWTECH/test','a'*40,apply=True)
+        self.assertEqual([(r['id'],r['state'],r.get('tag')) for r in report],
+            [('one','already-released','one-v1.0.0'),('two','released','two-v2.1.0'),('beta','excluded',None),('off','excluded',None)])
+        self.assertEqual([c['tag_name'] for c in gh.created],['two-v2.1.0'])
+    def test_release_dry_run_creates_nothing(self):
+        gh=self.release_gh({'config.yaml':'name: Test\nslug: test\nversion: 1.2.0\n'})
+        report=s.release(gh,self.single(),'WOOWTECH/test','a'*40)
+        self.assertEqual(report[0]['state'],'would-release');self.assertEqual(gh.created,[])
+    def test_release_refuses_a_commit_off_the_default_branch(self):
+        gh=self.release_gh({'config.yaml':'name: Test\nslug: test\nversion: 1.2.0\n'},compare='diverged')
+        with self.assertRaisesRegex(s.Blocked,'default branch'):s.release(gh,self.single(),'WOOWTECH/test','a'*40,apply=True)
+        self.assertEqual(gh.created,[])
+    def test_release_blocks_a_foreign_slug_or_a_bare_tag(self):
+        for name,gh,reason in [('foreign slug',self.release_gh({'config.yaml':'name: Other\nslug: other\nversion: 1.2.0\n'}),'slug'),
+                ('bare tag',self.release_gh({'config.yaml':'name: Test\nslug: test\nversion: 1.2.0\n'},tags={'v1.2.0'}),'without a Release')]:
+            with self.subTest(name):
+                report=s.release(gh,self.single(),'WOOWTECH/test','a'*40,apply=True)
+                self.assertEqual(report[0]['state'],'blocked');self.assertIn(reason,report[0]['reason']);self.assertEqual(gh.created,[])
+    def test_release_workflow_reads_current_store_registry(self):
+        # Source repos call it at @main after their own CI; it releases the caller's commit with the caller's token.
+        path=pathlib.Path(__file__).resolve().parent.parent/'.github/workflows/woow-addon-release.yml'
+        workflow=s.yaml.safe_load(path.read_text(encoding='utf-8'))
+        self.assertIn('workflow_call',workflow.get('on',workflow.get(True)))
+        (job,)=workflow['jobs'].values()
+        self.assertEqual(job['permissions'],{'contents':'write'})
+        steps=job['steps'];tooling=next(x for x in steps if x.get('with',{}).get('repository')=='WOOWTECH/Woow_HA_App_Store')
+        self.assertEqual(tooling['with']['ref'],'main');self.assertIs(tooling['with']['persist-credentials'],False)
+        commands='\n'.join(x.get('run','') for x in steps)
+        self.assertIn('addon_sync.py release --registry '+tooling['with']['path']+'/.addon-sync/registry.json',commands)
+        self.assertIn('--apply',commands)
+        self.assertNotIn('secrets.',path.read_text(encoding='utf-8').replace('secrets.GITHUB_TOKEN',''))
 
 if __name__=='__main__':unittest.main()
