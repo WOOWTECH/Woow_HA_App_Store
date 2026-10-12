@@ -263,8 +263,9 @@ class Tests(unittest.TestCase):
         self.assertEqual(job['environment'],'store-sync');self.assertNotIn('permissions',job)
         checkout=next(x for x in job['steps'] if x.get('uses','').startswith('actions/checkout@'))
         self.assertEqual(checkout['with']['ssh-key'],'${{ secrets.STORE_SYNC_DEPLOY_KEY }}')
-    def release_gh(self,configs,released=(),tags={},compare='ahead'):
+    def release_gh(self,configs,released=(),tags=None,compare='ahead'):
         # tags: name -> (object type, commit); an annotated tag object points at the commit.
+        tags=tags or {}
         class GH:
             def __init__(self):self.created=[]
             def head(self,repo):return 'main','c'*40
