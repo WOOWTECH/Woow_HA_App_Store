@@ -74,14 +74,19 @@ RUN npm install -g --omit=dev --prefix=/opt/piweb "@agegr/pi-web@${PI_WEB_VERSIO
     && rm -rf /tmp/npm-cache
 
 # Reproducible, architecture-aware system CLIs. User-scoped binaries in the
-# persistent HOME take precedence at runtime, so existing/custom installs are
-# left untouched while fresh installations have both commands available.
-COPY cli-runtime/ /opt/pi-clis/
-RUN npm ci --omit=dev --prefix=/opt/pi-clis \
-    && claude_bin=/opt/pi-clis/node_modules/.bin/claude \
-    && codex_bin=/opt/pi-clis/node_modules/.bin/codex \
-    && "$claude_bin" --version | grep -q '^2.1.296' \
-    && "$codex_bin" --version | grep -q '0.162.1' \
+# persistent HOME still take precedence. Separate package locks, builder runs,
+# and final COPY instructions keep each registry layer under the host transfer
+# ceiling; the previous combined layer was 377 MiB and repeatedly ended in EOF.
+COPY cli-runtime/claude/ /opt/pi-clis/claude/
+RUN npm ci --omit=dev --prefix=/opt/pi-clis/claude \
+    && /opt/pi-clis/claude/node_modules/.bin/claude --version | grep -q '^2.1.296' \
+    && chmod -R a+rX,go-w /opt/pi-clis/claude \
+    && rm -rf /tmp/npm-cache
+
+COPY cli-runtime/codex/ /opt/pi-clis/codex/
+RUN npm ci --omit=dev --prefix=/opt/pi-clis/codex \
+    && /opt/pi-clis/codex/node_modules/.bin/codex --version | grep -q '0.162.1' \
+    && chmod -R a+rX,go-w /opt/pi-clis/codex \
     && rm -rf /tmp/npm-cache
 
 # Validate the installed native module by loading it and checking its API.
@@ -161,31 +166,35 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 # here today), but a runtime apt install would disappear on every Supervisor
 # restart anyway, so it has to be image-baked before it can matter.
 #
-# Video pipeline dependencies (v0.11.0):
-#   - python3 + venv/pip: TTS scripts, Playwright bindings, srt/verify helpers.
-#   - ffmpeg (+ libass, libx264, aac bundled by Debian): segment build, xfade
-#     concat, subtitle burn, verify (ffprobe).
-#   - fonts-noto-cjk + fonts-noto-color-emoji: subtitle burn under CJK/emoji
-#     scripts (~7MB but nothing else covers 中/日/韓 in libass).
-#   - Chromium runtime .so set (libnss3, libatk-bridge, libcups, libxcomposite,
-#     libxdamage, libxrandr, libgbm, libpango, libcairo, libasound, libatspi):
-#     required by the Playwright-downloaded browser at capture time. The
-#     browser binary itself lands in /data/pi-agent/playwright-cache at first
-#     boot (see video-tools-init) so image size stays flat across upgrades.
-#   - rclone: Google Drive upload step. .deb from downloads.rclone.org because
-#     Debian bookworm's rclone is a year behind current.
-# Base image bump: ~300MB gzipped. Trade-off vs runtime download: apt cache
-# is faster than pip on every fresh install, and puts ffmpeg/rclone under
-# apt security updates.
+# Runtime and video dependencies are installed in small independent layers.
+# A single 384 MiB apt layer changed between releases as Debian package
+# metadata advanced, causing the Elmohome host's GHCR pull to stall. Separate
+# layers keep each new transfer bounded while retaining apt-managed packages.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
        ca-certificates curl git gnupg jq nginx openssh-client tmux \
        python3 python3-venv python3-pip \
-       ffmpeg \
-       fonts-noto-cjk fonts-noto-color-emoji fontconfig \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ffmpeg \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends fonts-noto-cjk fonts-noto-color-emoji fontconfig \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
        libnss3 libatk-bridge2.0-0 libcups2 libxcomposite1 libxdamage1 \
        libxrandr2 libgbm1 libpango-1.0-0 libcairo2 libasound2 libatspi2.0-0 \
-    && mkdir -p /etc/apt/keyrings \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN mkdir -p /etc/apt/keyrings \
     && curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key \
        | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg \
     && echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_22.x nodistro main" \
@@ -207,7 +216,8 @@ RUN apt-get update \
 # and the `pi-web` bin stays a working relative symlink into lib/node_modules.
 COPY --from=piweb-builder /opt/piweb/lib/node_modules /usr/local/lib/node_modules
 COPY --from=piweb-builder /opt/piweb/bin              /usr/local/bin
-COPY --from=piweb-builder /opt/pi-clis                  /opt/pi-clis
+COPY --from=piweb-builder /opt/pi-clis/claude /opt/pi-clis/claude
+COPY --from=piweb-builder /opt/pi-clis/codex /opt/pi-clis/codex
 
 # Cross-stage assertion. Both stages derive from the same ${BUILD_FROM} and
 # install the same Node major, so this should never fire — which is exactly
@@ -216,9 +226,8 @@ COPY --from=piweb-builder /opt/pi-clis                  /opt/pi-clis
 RUN node -e 'const p=require("/usr/local/lib/node_modules/@agegr/pi-web/node_modules/node-pty"); if (typeof p.spawn !== "function") { throw new Error("node-pty has no spawn()"); } console.log("[build] node-pty loads under the runtime node");'
 
 
-RUN ln -s /opt/pi-clis/node_modules/.bin/claude /usr/local/bin/claude \
-    && ln -s /opt/pi-clis/node_modules/.bin/codex /usr/local/bin/codex \
-    && chmod -R a+rX,go-w /opt/pi-clis \
+RUN ln -s /opt/pi-clis/claude/node_modules/.bin/claude /usr/local/bin/claude \
+    && ln -s /opt/pi-clis/codex/node_modules/.bin/codex /usr/local/bin/codex \
     && claude --version | grep -q '^2.1.296' \
     && codex --version | grep -q '0.162.1'
 

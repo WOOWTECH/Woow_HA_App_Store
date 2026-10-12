@@ -1,3 +1,7 @@
+## 0.14.5
+
+- Split runtime package groups and the Claude/Codex installs into bounded OCI layers. The combined CLI layer in 0.14.4 was 377 MiB and failed with `unexpected EOF` on a slow Home Assistant image pull.
+
 ## 0.14.4
 
 - Upgrade pi-web to 0.12.0, which includes the upstream security fix for the pre-0.11.0 password bypass and Pi 1.0/MCP support.

@@ -1,0 +1,8 @@
+{
+  "name": "woow-pi-codex-image-cli",
+  "version": "1.0.0",
+  "private": true,
+  "dependencies": {
+    "@openai/codex": "0.162.1"
+  }
+}
