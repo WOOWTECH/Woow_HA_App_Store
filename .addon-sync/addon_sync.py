@@ -310,11 +310,19 @@ def release_tag(provider, component, version):
     """v<version> for a single-addon repository; <slug>-v<version> when addons version independently."""
     return ('v' if len(provider['components'])==1 else component['id']+'-v')+version
 
-def found(gh, repo, path):
-    try:gh.api(repo,path);return True
+def get_or_none(gh, repo, path):
+    try:return gh.api(repo,path)
     except Blocked as e:
-        if 'HTTP 404' in str(e):return False
+        if 'HTTP 404' in str(e):return None
         raise
+
+def tagged_commit(gh, repo, tag):
+    """Commit a tag names (annotated tags dereferenced); None when the tag does not exist."""
+    ref=get_or_none(gh,repo,'git/ref/tags/'+urllib.parse.quote(tag,safe=''))
+    if ref is None:return None
+    target=ref['object']
+    if target['type']=='tag':target=gh.api(repo,'git/tags/'+target['sha'])['object']
+    return target['sha']
 
 def release(gh, registry, repo, sha, apply=False):
     """Publish a stable Release for each stable addon whose config.yaml version at sha has none yet.
@@ -332,8 +340,8 @@ def release(gh, registry, repo, sha, apply=False):
             cfg=yaml.safe_load(gh.content(repo,manifest,sha))
             if not isinstance(cfg,dict) or cfg.get('slug')!=cid:raise Blocked('Unexpected addon slug')
             version=str(cfg['version']);tag=release_tag(provider,comp,version)
-            if found(gh,repo,'releases/tags/'+urllib.parse.quote(tag,safe='')):report.append({'id':cid,'state':'already-released','tag':tag,'version':version});continue
-            if found(gh,repo,'git/ref/tags/'+urllib.parse.quote(tag,safe='')):raise Blocked('Tag '+tag+' exists without a Release; release or delete it by hand')
+            if get_or_none(gh,repo,'releases/tags/'+urllib.parse.quote(tag,safe='')) is not None:report.append({'id':cid,'state':'already-released','tag':tag,'version':version});continue
+            if tagged_commit(gh,repo,tag) not in [None,sha]:raise Blocked('Tag '+tag+' points at another commit; release or delete it by hand')
             if apply:gh.api(repo,'releases',{'tag_name':tag,'target_commitish':sha,'name':f"{cfg.get('name',cid)} {version}",'generate_release_notes':True,'make_latest':'true'})
             report.append({'id':cid,'state':'released' if apply else 'would-release','tag':tag,'version':version})
         except Exception as e:

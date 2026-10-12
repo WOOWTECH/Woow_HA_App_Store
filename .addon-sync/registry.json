@@ -72,9 +72,13 @@
     },
     "WOOWTECH/woowtech_ha_multi_ha_core": {
       "default_branch": "main",
-      "required_workflows": [],
-      "observe_workflow_names": [],
-      "ref_policy": "main",
+      "required_workflows": [
+        ".github/workflows/release.yml"
+      ],
+      "observe_workflow_names": [
+        "Release"
+      ],
+      "ref_policy": "release",
       "components": [
         {
           "id": "woow_ha_core_1",
@@ -220,7 +224,7 @@
       "observe_workflow_names": [
         "Build"
       ],
-      "ref_policy": "main",
+      "ref_policy": "release",
       "components": [
         {
           "id": "cloudflared",
@@ -259,7 +263,7 @@
         "image-mirror",
         "mirror-sync"
       ],
-      "ref_policy": "main",
+      "ref_policy": "release",
       "components": [
         {
           "id": "dnsmasq-dhcp",
@@ -273,9 +277,13 @@
     },
     "WOOWTECH/Woow_ha_emqx": {
       "default_branch": "main",
-      "required_workflows": [],
-      "observe_workflow_names": [],
-      "ref_policy": "main",
+      "required_workflows": [
+        ".github/workflows/release.yml"
+      ],
+      "observe_workflow_names": [
+        "Release"
+      ],
+      "ref_policy": "release",
       "components": [
         {
           "id": "woow-emqx",
@@ -328,9 +336,13 @@
     },
     "WOOWTECH/Woow_ha_immich": {
       "default_branch": "main",
-      "required_workflows": [],
-      "observe_workflow_names": [],
-      "ref_policy": "main",
+      "required_workflows": [
+        ".github/workflows/release.yml"
+      ],
+      "observe_workflow_names": [
+        "Release"
+      ],
+      "ref_policy": "release",
       "components": [
         {
           "id": "woow-immich",
@@ -363,9 +375,13 @@
     },
     "WOOWTECH/Woow_ha_knxd_add_on": {
       "default_branch": "main",
-      "required_workflows": [],
-      "observe_workflow_names": [],
-      "ref_policy": "main",
+      "required_workflows": [
+        ".github/workflows/release.yml"
+      ],
+      "observe_workflow_names": [
+        "Release"
+      ],
+      "ref_policy": "release",
       "components": [
         {
           "id": "knxd",
@@ -386,7 +402,7 @@
         "mirror-sync",
         "Release Home-Assistant-Matter-Hub"
       ],
-      "ref_policy": "main",
+      "ref_policy": "release",
       "components": [
         {
           "id": "hamh-alpha",
@@ -487,7 +503,7 @@
         "image-mirror",
         "mirror-sync"
       ],
-      "ref_policy": "main",
+      "ref_policy": "release",
       "components": [
         {
           "id": "local_audio",
@@ -555,7 +571,7 @@
       "observe_workflow_names": [
         "Publish n8n add-on images"
       ],
-      "ref_policy": "main",
+      "ref_policy": "release",
       "components": [
         {
           "id": "woow-n8n",
@@ -636,7 +652,7 @@
       "observe_workflow_names": [
         "Publish omnigent add-on images"
       ],
-      "ref_policy": "main",
+      "ref_policy": "release",
       "components": [
         {
           "id": "woow-omnigent",
@@ -656,7 +672,7 @@
       "observe_workflow_names": [
         "Validate, build, and publish"
       ],
-      "ref_policy": "main",
+      "ref_policy": "release",
       "components": [
         {
           "id": "woow_ha_opendesign",
@@ -676,7 +692,7 @@
       "observe_workflow_names": [
         "Build & Publish add-on image"
       ],
-      "ref_policy": "main",
+      "ref_policy": "release",
       "components": [
         {
           "id": "woow_ha_pi_agent",
@@ -690,9 +706,13 @@
     },
     "WOOWTECH/Woow_ha_vpn_headscale_package": {
       "default_branch": "main",
-      "required_workflows": [],
-      "observe_workflow_names": [],
-      "ref_policy": "main",
+      "required_workflows": [
+        ".github/workflows/release.yml"
+      ],
+      "observe_workflow_names": [
+        "Release"
+      ],
+      "ref_policy": "release",
       "components": [
         {
           "id": "woow-headscale",
@@ -712,7 +732,7 @@
       "observe_workflow_names": [
         "Build"
       ],
-      "ref_policy": "main",
+      "ref_policy": "release",
       "components": [
         {
           "id": "woow-tailscale",
