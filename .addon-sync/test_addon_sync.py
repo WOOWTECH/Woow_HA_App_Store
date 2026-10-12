@@ -254,5 +254,14 @@ class Tests(unittest.TestCase):
         root=tooling['with']['path'];commands='\n'.join(x.get('run','') for x in steps)
         self.assertIn('addon_sync.py publish --registry '+root+'/.addon-sync/registry.json --apply',commands)
         self.assertNotIn('secrets.',path.read_text(encoding='utf-8').replace('secrets.GITHUB_TOKEN',''))
+    def test_store_sync_pushes_main_only_with_the_environment_deploy_key(self):
+        # Store main requires a reviewed PR; only this deploy key bypasses it, and only main runs can read it from store-sync.
+        path=pathlib.Path(__file__).resolve().parent.parent/'.github/workflows/sync-upstreams.yml'
+        workflow=s.yaml.safe_load(path.read_text(encoding='utf-8'))
+        self.assertEqual(workflow['permissions'],{'contents':'read','actions':'read'})
+        (job,)=workflow['jobs'].values()
+        self.assertEqual(job['environment'],'store-sync');self.assertNotIn('permissions',job)
+        checkout=next(x for x in job['steps'] if x.get('uses','').startswith('actions/checkout@'))
+        self.assertEqual(checkout['with']['ssh-key'],'${{ secrets.STORE_SYNC_DEPLOY_KEY }}')
 
 if __name__=='__main__':unittest.main()

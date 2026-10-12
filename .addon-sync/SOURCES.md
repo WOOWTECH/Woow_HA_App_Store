@@ -89,16 +89,23 @@
   1. 確認 repo 是 public、未 archived、manifest 合法，且 slug 不和既有項目撞名。預設分支**不能被 force push**：Store 只接受從上一版延續下來的 commit，鏡像同步也必須一般 commit 疊在上一版上（Frigate／Jellyfin／Matter Hub／Music Assistant 的 `mirror-sync.yml` 已於 2026-10-07 改成這樣）。
   2. 決定 `ref_policy`（`main` 或 `release`）與 `required_workflows`。
   3. 在 `registry.json` 加入映射並跑 `test_addon_sync.py`。
-  4. 在來源 repo 加入 `woow-addon-sync.yml`（可參考 `Woow_ha_vpn_tailscale_package`），job 以 `uses: WOOWTECH/Woow_HA_App_Store/.github/workflows/woow-addon-publish.yml@main` 呼叫共用的發布 workflow；registry 變更須先合併到 Store `main`。
+  4. 在來源 repo 加入 `woow-addon-sync.yml`（可參考 `Woow_ha_vpn_tailscale_package`），job 以 `uses: WOOWTECH/Woow_HA_App_Store/.github/workflows/woow-addon-publish.yml@main` 呼叫共用的發布 workflow；registry 變更須先經 PR 合併到 Store `main`。
   5. 確認來源的 `woow-addon-sync/notification.json` 已產生後，以 `only=<id>` 手動執行 Store 同步。
   6. 核對 Store 目錄、`catalog.json` 與 ha-rebrand `sync-state.json` 的 catalog ID 一致。
-- **發布工具**：來源 repo 不再釘選 Store commit，一律呼叫 `woow-addon-publish.yml@main`，每次執行都用 Store `main` 的程式與 registry；改 `ref_policy` 或 `required_workflows` 只要改 Store 的 `registry.json`，不必動來源 repo。consumer 照舊用 Store `main` 的 registry 重新檢查。代價是 Store `main` 對 `.addon-sync/` 或 `woow-addon-publish.yml` 的變更會在各來源 repo 下一次發布時、以該 repo 自己的 `contents: write` token 執行，所以要和 Store workflow 一樣審查。來源 repo 的 `woow-addon-sync.yml` 本身（觸發條件、`if` 條件）改動時，有 ruleset 的 repo（例如 `Woow_ha_odoo`）要走 PR；推到 fork `Woow_ha_ai_mcp` 的 master 會觸發上游的 dev 發布流程，非必要不要推。
+- **發布工具**：來源 repo 不再釘選 Store commit，一律呼叫 `woow-addon-publish.yml@main`，每次執行都用 Store `main` 的程式與 registry；改 `ref_policy` 或 `required_workflows` 只要改 Store 的 `registry.json`，不必動來源 repo。consumer 照舊用 Store `main` 的 registry 重新檢查。代價是 Store `main` 對 `.addon-sync/` 或 `woow-addon-publish.yml` 的變更會在各來源 repo 下一次發布時、以該 repo 自己的 `contents: write` token 執行，所以 Store `main` 有保護規則，這些變更一律要經過審查（見下方「Store `main` 保護」）。來源 repo 的 `woow-addon-sync.yml` 本身（觸發條件、`if` 條件）改動時，有 ruleset 的 repo（例如 `Woow_ha_odoo`）要走 PR；推到 fork `Woow_ha_ai_mcp` 的 master 會觸發上游的 dev 發布流程，非必要不要推。
 - **失敗處理**：看 Store run 頁面的 `WOOW addon blocked／waiting` 註記。修正來源後，先重跑來源的通知 workflow，再重跑 Store 同步。被擋的項目保留舊版，不會清空。映像 tag 在驗證後被改寫時會被擋下，這時要發新版本，不要覆寫 tag。
 - **排程被停用**：public repo 若 60 天沒有活動，GitHub 會自動停用其排程（來源的通知 workflow 平常很少 commit，最容易遇到）。push 與 workflow_run 觸發不受影響；在 Actions 頁面按 Enable workflow，或用 `PUT /repos/{owner}/{repo}/actions/workflows/{id}/enable` 重新啟用。
-- **停止同步**：停用 `sync-upstreams.yml`（必要時再停用來源通知）。要回復時，針對特定同步 commit 做 revert，不要 force push。
+- **停止同步**：停用 `sync-upstreams.yml`（必要時再停用來源通知）。要回復時，針對特定同步 commit 做 revert 並開 PR 合併，不要 force push（規則也會擋）。
 - **輪替 rebrand deploy key**
   1. 產生新的 ed25519 金鑰。
   2. 在 ha-rebrand 的 Deploy keys 新增它（write）。
-  3. 用 `gh secret set REBRAND_SYNC_SSH_KEY -R WOOWTECH/Woow_HA_App_Store` 經 stdin 寫入私鑰。
+  3. 用 `gh secret set REBRAND_SYNC_SSH_KEY --env store-sync -R WOOWTECH/Woow_HA_App_Store` 經 stdin 寫入私鑰。
   4. 手動跑一次 Store 同步，確認 rebrand 推送成功。
   5. 刪除舊 key，並刪除本機私鑰。
+- **輪替 Store 同步 deploy key**：同上，但在 Store 的 Deploy keys 新增（write），寫入 `gh secret set STORE_SYNC_DEPLOY_KEY --env store-sync -R WOOWTECH/Woow_HA_App_Store`，手動跑同步確認 Store commit 推送成功後再刪舊 key。ruleset 的 bypass 是「所有 deploy key」，所以換 key 不必改 ruleset。也因此 Store **不要再新增其他 write deploy key**，否則它也能跳過審查。
+- **Store `main` 保護**（負責人 2026-10-12 決定）
+  - ruleset 擋刪除與 force push，並要求 PR＋1 個 approval（推新 commit 後舊 approval 失效）。
+  - **唯一例外是 deploy key**：同步機器人用 `STORE_SYNC_DEPLOY_KEY` 直接寫 `catalog.json` 與 addon 目錄。管理員（`WOOWTECH`）也不能跳過。
+  - 兩把 deploy key 都放在 `store-sync` environment，只有 `main` 上的 run 拿得到；workflow 自己的 `GITHUB_TOKEN` 是唯讀。**不要把 GitHub Actions 或任何角色加進 bypass**，否則任何分支上的 workflow 都能不經審查改 `main`。
+  - 負責人用兩個帳號作業：一個開 PR、另一個 approve。
+  - ha-rebrand 是免費個人帳號下的 private repo，GitHub 不提供分支保護；已接受此風險，靠「rebrand key 只有 Store `main` 拿得到」補償。

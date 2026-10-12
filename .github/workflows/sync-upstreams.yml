@@ -13,8 +13,12 @@ name: Synchronize validated WOOW addons and Local Download
     - woow-addon-ready
   schedule:
   - cron: '3,8,13,18,23,28,33,38,43,48,53,58 * * * *'
+# Store main is protected by a ruleset (pull request + 1 approval) that only the
+# STORE_SYNC_DEPLOY_KEY deploy key bypasses. Both deploy keys live in the
+# store-sync environment, which only main runs can use, so a workflow pushed on
+# another branch can neither push main nor read the ha-rebrand key.
 permissions:
-  contents: write
+  contents: read
   actions: read
 concurrency:
   group: woow-addon-distribution
@@ -24,8 +28,15 @@ jobs:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 35
+    environment: store-sync
     steps:
+    - name: Require the Store deploy key
+      env:
+        STORE_KEY: ${{ secrets.STORE_SYNC_DEPLOY_KEY }}
+      run: test -n "$STORE_KEY" || { echo '::error::Missing Store sync deploy key in the store-sync environment'; exit 1; }
     - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      with:
+        ssh-key: ${{ secrets.STORE_SYNC_DEPLOY_KEY }}
     - run: python3 -m pip install -r .addon-sync/requirements.txt
     - name: Test synchronization and downloader guards
       run: python3 .addon-sync/test_addon_sync.py -v
