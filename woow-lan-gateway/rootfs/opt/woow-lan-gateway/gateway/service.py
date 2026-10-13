@@ -15,7 +15,7 @@ class GatewayConfig:
 
     @classmethod
     def fixed_topology(cls) -> "GatewayConfig":
-        return cls("enp4s0", "enp2s0", "192.168.50.0/24", 15, 45)
+        return cls("enp2s0", "enp1s0", "192.168.50.0/24", 15, 45)
 
     def validate(self) -> None:
         if self.lease_timeout <= 2 * self.heartbeat_interval:

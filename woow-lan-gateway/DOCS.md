@@ -6,8 +6,8 @@
 
 - Enrollment LAN: `192.168.50.0/24`
 - Gateway address: `192.168.50.1`
-- LAN interface: `enp4s0`
-- WAN interface: `enp2s0`
+- LAN interface: `enp2s0` (second port)
+- WAN interface: `enp1s0` (port cabled to the router)
 
 ## Configuration
 

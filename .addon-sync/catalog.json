@@ -341,20 +341,20 @@
     "woow_lan_gateway": {
       "id": "woow_lan_gateway",
       "name": "Woow LAN Gateway",
-      "version": "0.1.5",
+      "version": "0.1.6",
       "repository": "WOOWTECH/woow-lan-gateway",
-      "source_sha": "342ddd823951782cffc3dc9c208f93acace6984f",
+      "source_sha": "c927eb1dae5d5c70e49b760a8be7550bb3b12815",
       "source_path": "app",
       "config_file": "config.yaml",
-      "config_sha256": "sha256:aadeb1b79af2f0e2a8a1abe57631485608f3f3ead6c265c0e21881e602338e4a",
-      "archive_sha256": "sha256:3356aeb46fa03926525598281e27a4c0d637936d8e9b0bcf0b219f707ff85764",
-      "context_fingerprint": "sha256:20960150b7716eed6843a4dd4730a0b0d62dd798027bbe707f0f0fef7fe35010",
-      "material_fingerprint": "sha256:acc0b0fb23779ed8b03ddca4a444a1f705ad83b693f996d2f36e6d28d801cfc2",
+      "config_sha256": "sha256:622e2e0e4800a7c05dda3e890a7e27725cb88271870f112727185025e336c22f",
+      "archive_sha256": "sha256:ccd83c9b3419720bbf0a2181b9e4cfc3ad70def029b05f0beacd05fbf188916b",
+      "context_fingerprint": "sha256:ffe989a3a8a917d6e77e3bfccac113109f39bf227ae9958c7b0804f21fef3557",
+      "material_fingerprint": "sha256:08dc3565d714136513d7f4946bfe56bc7b1b81ea07f965990a1cd44625397441",
       "architectures": [
         "amd64"
       ],
       "config": {
-        "version": "0.1.5",
+        "version": "0.1.6",
         "slug": "woow_lan_gateway",
         "name": "Woow LAN Gateway",
         "description": "Fail-closed Internet-only NAT gateway for the fixed WOOWTECH enrollment LAN.",
@@ -377,8 +377,8 @@
           "NET_ADMIN"
         ],
         "options": {
-          "lan_interface": "enp4s0",
-          "wan_interface": "enp2s0",
+          "lan_interface": "enp2s0",
+          "wan_interface": "enp1s0",
           "source_cidr": "192.168.50.0/24",
           "heartbeat_interval": 15,
           "lease_timeout": 45
@@ -396,7 +396,7 @@
       "images": {},
       "delivery": "local-source-build",
       "validation": "manifest+source-context+configured-CI (runtime build not certified)",
-      "publisher_run_id": "38210625010",
+      "publisher_run_id": "38338312849",
       "channel": "stable",
       "store_path": "woow-lan-gateway"
     },
@@ -3700,5 +3700,5 @@
       "store_path": "woow_mcp_nextcloud"
     }
   },
-  "catalog_id": "sha256:81656f5d29496f49b3c1750d445e4dfca4cacfe3a50b1dad1430927133941477"
+  "catalog_id": "sha256:d767a60159f3422f42bbf32c35f06e4a53668b183abbb1f5c9447f89d950f87f"
 }

@@ -1,4 +1,4 @@
-version: 0.1.5
+version: 0.1.6
 slug: woow_lan_gateway
 name: Woow LAN Gateway
 description: Fail-closed Internet-only NAT gateway for the fixed WOOWTECH enrollment LAN.
@@ -19,8 +19,8 @@ watchdog: http://[HOST]:[PORT:45987]/health
 privileged:
   - NET_ADMIN
 options:
-  lan_interface: enp4s0
-  wan_interface: enp2s0
+  lan_interface: enp2s0
+  wan_interface: enp1s0
   source_cidr: 192.168.50.0/24
   heartbeat_interval: 15
   lease_timeout: 45
