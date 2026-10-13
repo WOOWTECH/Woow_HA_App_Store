@@ -1,5 +1,7 @@
 # Woow Tailscale Control-Server Migration Implementation Plan
 
+> **Status: done, superseded (2026-10-13).** This plan shipped in eee9d57 (`woow-tailscale` 0.1.0–0.1.1). Since 2026-10-06 (0.1.2) the canonical source is [`Woow_ha_vpn_tailscale_package`](https://github.com/WOOWTECH/Woow_ha_vpn_tailscale_package), and the Store's `woow-tailscale/` directory is synchronized from it. Do not follow this plan to edit the Store directory; change the source repository. Kept as a historical record.
+
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** Ship a WoowTech-maintained Home Assistant Tailscale add-on whose `login_server` can be changed in the HAOS Configuration UI without the upstream `can't change --login-server without --force-reauth` crash-loop.

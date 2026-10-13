@@ -25,7 +25,7 @@ ha store add https://github.com/WOOWTECH/Woow_HA_App_Store
 
 ## 內含 Apps（44 個）
 
-> 版本為 2026-10-06 的 catalog；即時版本以各目錄的 `config.yaml` 與 `.addon-sync/catalog.json` 為準。
+> 版本為 2026-10-13 的 catalog；即時版本以各目錄的 `config.yaml` 與 `.addon-sync/catalog.json` 為準。
 > 「本機建置」= 沒有預建映像，安裝時由 Supervisor 在裝置上 build，耗時且吃記憶體，小機器請留意。
 
 ### 🏢 WOOWTECH 自主開發
@@ -37,14 +37,14 @@ ha store add https://github.com/WOOWTECH/Woow_HA_App_Store
 | `woow-headscale` | Woow Headscale VPN | 0.1.0 | 本機建置 | 自架 Headscale + Headplane GUI |
 | `woow-tailscale` | Woow Tailscale | 0.1.2 | 本機建置 | Tailscale / Headscale VPN 用戶端 |
 | `woow-immich` | Woow Immich | 2.5.7 | 本機建置 | 自架相簿（Google Photos 替代） |
-| `woow_lan_gateway` | Woow LAN Gateway | 0.1.4 | 本機建置（amd64） | 工廠註冊 LAN 的 fail-closed 公網 IPv4 閘道 |
+| `woow_lan_gateway` | Woow LAN Gateway | 0.1.6 | 本機建置（amd64） | 工廠註冊 LAN 的 fail-closed 公網 IPv4 閘道 |
 | `woow-n8n` | Woow n8n | 2.12.17 | 預建映像 | AI/自動化 workflow |
 | `woow-hermes` | Woow Hermes Agent | 0.1.6 | 預建映像（amd64） | Hermes Agent（NousResearch）：HA 側邊欄 dashboard + 聊天終端機，OpenAI 相容 API 與 Webhook 可經 Cloudflare Tunnel 對外 |
 | `woow-nextcloud-office` | Woow Nextcloud Office | 0.2.3 | 預建映像（amd64） | Nextcloud + 內建 PostgreSQL／Redis／Collabora Online |
 | `woow-nginxproxymanager` | Woow Nginx Proxy Manager | 2.12.4-v2 | 本機建置 | Nginx Proxy Manager 的 WOOWTECH 版（與社群版 slug 不同） |
 | `woow_ha_code_server` | Woow Code Server | 0.1.6 | 預建映像 | code-server + pi coding agent + Claude Code + ACP 側邊欄（取代原 `vscode` 鏡像） |
-| `woow_ha_pi_agent` | Woow HA Pi Agent | 0.14.3 | 預建映像 | pi-web + coding agent SDK + 影音管線 |
-| `woow_ha_opendesign` | Woow HA OpenDesign | 0.1.8 | 預建映像 | Ingress-only BYOK 設計工作台 + PDF／圖片／PPTX 匯出 |
+| `woow_ha_pi_agent` | Woow HA Pi Agent | 0.14.5 | 預建映像 | pi-web + coding agent SDK + 影音管線 |
+| `woow_ha_opendesign` | Woow HA OpenDesign | 0.1.9 | 預建映像 | Ingress-only BYOK 設計工作台 + PDF／圖片／PPTX 匯出 |
 | `woow-omnigent` | Woow Omnigent | 0.1.15 | 預建映像 | Omnigent 編排伺服器 + 內建 Postgres（外部 runner 註冊制） |
 
 ### 🤖 MCP Server（WOOWTECH 自主開發，experimental）
@@ -54,13 +54,13 @@ ha store add https://github.com/WOOWTECH/Woow_HA_App_Store
 
 | Slug | 名稱 | Ver | 安裝 | 用途 |
 |---|---|---|---|---|
-| `woow_mcp_n8n` | Woow n8n MCP Server | 0.1.7 | 預建映像（amd64） | n8n 的 MCP server |
-| `woow_mcp_odoo` | Woow Odoo MCP Server | 0.1.7 | 預建映像（amd64） | Odoo 的 MCP server |
-| `woow_mcp_hermes` | Woow Hermes MCP Server | 0.1.7 | 預建映像（amd64） | Hermes Agent 的 MCP server |
-| `woow_mcp_opendesign` | Woow OpenDesign MCP Server | 0.1.7 | 預建映像（amd64） | OpenDesign 的 MCP server |
-| `woow_mcp_emqx` | Woow EMQX MCP Server | 0.1.7 | 預建映像（amd64） | EMQX 的 MCP server |
-| `woow_mcp_litellm` | Woow LiteLLM MCP Server | 0.1.7 | 預建映像（amd64） | LiteLLM（本 store 沒有 LiteLLM add-on，需自備） 的 MCP server |
-| `woow_mcp_nextcloud` | Woow Nextcloud MCP Server | 0.1.7 | 預建映像（amd64） | Nextcloud（一個帳號的檔案、行事曆與任務） 的 MCP server |
+| `woow_mcp_n8n` | Woow n8n MCP Server | 0.1.9 | 預建映像（amd64） | n8n 的 MCP server |
+| `woow_mcp_odoo` | Woow Odoo MCP Server | 0.1.9 | 預建映像（amd64） | Odoo 的 MCP server |
+| `woow_mcp_hermes` | Woow Hermes MCP Server | 0.1.9 | 預建映像（amd64） | Hermes Agent 的 MCP server |
+| `woow_mcp_opendesign` | Woow OpenDesign MCP Server | 0.1.9 | 預建映像（amd64） | OpenDesign 的 MCP server |
+| `woow_mcp_emqx` | Woow EMQX MCP Server | 0.1.9 | 預建映像（amd64） | EMQX 的 MCP server |
+| `woow_mcp_litellm` | Woow LiteLLM MCP Server | 0.1.9 | 預建映像（amd64） | LiteLLM（本 store 沒有 LiteLLM add-on，需自備） 的 MCP server |
+| `woow_mcp_nextcloud` | Woow Nextcloud MCP Server | 0.1.9 | 預建映像（amd64） | Nextcloud（一個帳號的檔案、行事曆與任務） 的 MCP server |
 
 ### 🧩 HA Core 實例
 | Slug | 名稱 | Ver | 安裝 | 用途 |
@@ -72,11 +72,11 @@ ha store add https://github.com/WOOWTECH/Woow_HA_App_Store
 ### 🪞 WOOWTECH 鏡像維護（防上游失聯）
 | Slug | 名稱 | Ver | 安裝 | 上游 |
 |---|---|---|---|---|
-| `dnsmasq-dhcp` | Dnsmasq-DHCP | 5.1.0 | 預建映像 | [f18m/ha-addon-dnsmasq-dhcp](https://github.com/f18m/ha-addon-dnsmasq-dhcp) |
+| `dnsmasq-dhcp` | Dnsmasq-DHCP | 5.1.1 | 預建映像 | [f18m/ha-addon-dnsmasq-dhcp](https://github.com/f18m/ha-addon-dnsmasq-dhcp) |
 | `hamh` | Home-Assistant-Matter-Hub | 2.0.58 | 預建映像 | [riddix/home-assistant-matter-hub](https://github.com/riddix/home-assistant-matter-hub) |
 | `frigate` | Frigate | 0.18.0 | 預建映像 | [blakeblackshear/frigate-hass-addons](https://github.com/blakeblackshear/frigate-hass-addons) |
-| `jellyfin` | Jellyfin | 0.2.1 | 預建映像 | [hassio-addons/app-jellyfin](https://github.com/hassio-addons/app-jellyfin) |
-| `music_assistant` | Music Assistant | 2.10.5 | 預建映像 | [music-assistant.io](https://music-assistant.io) |
+| `jellyfin` | Jellyfin | 0.2.2 | 預建映像 | [hassio-addons/app-jellyfin](https://github.com/hassio-addons/app-jellyfin) |
+| `music_assistant` | Music Assistant | 2.10.6 | 預建映像 | [music-assistant.io](https://music-assistant.io) |
 | `local_audio` | Local Audio | 0.1.13 | 預建映像 | [music-assistant/local-audio-addon](https://github.com/music-assistant/local-audio-addon)；manifest 標為 **experimental** |
 | `netease_cloud_music_api` | NetEase Cloud Music API | 0.1.1 | 本機建置 | [NeteaseCloudMusicApiEnhanced/api-enhanced](https://github.com/NeteaseCloudMusicApiEnhanced/api-enhanced)（Music Assistant 用） |
 | `ytm_po_token_generator` | YT Music PO Token Generator | 2.0.1 | 預建映像 | [Brainicism/bgutil-ytdlp-pot-provider](https://github.com/Brainicism/bgutil-ytdlp-pot-provider) |
@@ -102,15 +102,16 @@ ha store add https://github.com/WOOWTECH/Woow_HA_App_Store
 
 - 每個 App 目錄都從**對應的 WOOWTECH 個別 repo 單向同步**，不在本 repo 直接修改。唯一例外是側欄標題政策 `.github/scripts/sidebar_titles.py`。來源、路徑與政策的對照表在 [`.addon-sync/registry.json`](.addon-sync/registry.json)。
 - 流程：
+  0. 來源 repo 的 CI 通過後，由共用的 [`woow-addon-release.yml`](.github/workflows/woow-addon-release.yml) 替新的 addon 版本發正式 Release（單一 addon 的 repo tag 為 `v<版本>`，多個 addon 的 repo 為 `<slug>-v<版本>`）。
   1. 個別 repo 的 `woow-addon-sync.yml` 確認必要 CI 與各架構映像都通過，再把固定 commit、雜湊與映像 digest 寫進該 repo 的 `woow-addon-sync` 分支。
   2. 本 repo 的 `sync-upstreams.yml` 依 registry 重新驗證：正式 Release、CI、預設分支、各架構映像、防降版、防亂序。
   3. 全部通過後才更新 App 目錄與 [`.addon-sync/catalog.json`](.addon-sync/catalog.json)。
   
   細節見 [`.addon-sync/README.md`](.addon-sync/README.md)。
-- **只同步正式 Release**：`odoo18ce`、`woow-hermes`、`woow-nextcloud-office`。其餘跟隨來源 repo 的預設分支。
+- **只同步正式 Release**（ADR-0002）：44 個 App 裡 26 個。以下 18 個仍跟隨來源 repo 的預設分支，正在逐步切換：`apporo_ha_core_1..5`、`woow_ha_core`、`ha_mcp`、`ha_mcp_webhook_proxy`、`frigate`、`jellyfin`、7 個 `woow_mcp_*`（來源分支 `claude-delivery`）、`woow-nginxproxymanager`。每個來源的設定以 [`registry.json`](.addon-sync/registry.json) 的 `ref_policy` 為準。
 - 觸發方式（盡力而為，不是即時）：
   - 排程每 5 分鐘一次，錯開整點。此帳號的 GitHub 排程實測常延遲 2–7 小時。
-  - 來源 repo 寫出新的通知後，由該 repo 的 `woow-addon-sync.yml` 送 `repository_dispatch`（`woow-addon-ready`），幾分鐘內同步。來源 repo 要設 `APP_STORE_DISPATCH_TOKEN`，沒設時等排程。
+  - 來源 repo 寫出新的通知後（共用發布 workflow 的 output `ready` 為 `true`），由該 repo `woow-addon-sync.yml` 的 `notify-store` job 送 `repository_dispatch`（`woow-addon-ready`），幾分鐘內同步。來源 repo 要設 `APP_STORE_DISPATCH_TOKEN`，沒設時等排程。目前只有 `Woow_ha_odoo` 設了，其他來源 repo 的設定待處理。
   - 手動執行 workflow。
 - 驗證失敗或來源版本較舊時保留現有版本，並在 workflow 頁面以 warning 標示；不會清空目錄。
 - 開發／beta／nightly 通道（例如 `music_assistant_beta`、`hamh-alpha`、`ha_mcp_dev`）不會進入本 store。
