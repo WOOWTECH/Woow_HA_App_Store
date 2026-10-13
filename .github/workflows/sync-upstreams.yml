@@ -7,9 +7,10 @@ name: Synchronize validated WOOW addons and Local Download
         required: false
         type: string
         default: ''
+  # Sent by each source repository's woow-addon-sync.yml notify job when its
+  # publish run wrote a new notification. The payload is ignored.
   repository_dispatch:
     types:
-    - upstream-release
     - woow-addon-ready
   schedule:
   - cron: '3,8,13,18,23,28,33,38,43,48,53,58 * * * *'

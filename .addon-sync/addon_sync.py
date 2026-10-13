@@ -476,6 +476,9 @@ def main():
     if a.command=='publish':report,data=publish(gh,registry,a.repo,a.apply,a.only)
     else:report,data=consume(gh,registry,a.workspace,a.only)
     summary(report)
+    if a.command=='publish' and os.environ.get('GITHUB_OUTPUT'):
+        # The caller's notify job dispatches woow-addon-ready to the Store only when this run wrote a new notification.
+        with open(os.environ['GITHUB_OUTPUT'],'a') as f:f.write('ready='+str(any(r['state']=='ready' for r in report)).lower()+'\n')
     if a.result:pathlib.Path(a.result).write_text(json.dumps({'report':report,'data':data},ensure_ascii=False,indent=2))
     if report and all(r['state'] in ATTENTION+['excluded'] for r in report) and any(r['state']=='blocked' for r in report):raise SystemExit(1)
 

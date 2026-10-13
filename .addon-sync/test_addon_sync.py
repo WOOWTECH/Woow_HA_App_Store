@@ -254,6 +254,19 @@ class Tests(unittest.TestCase):
         root=tooling['with']['path'];commands='\n'.join(x.get('run','') for x in steps)
         self.assertIn('addon_sync.py publish --registry '+root+'/.addon-sync/registry.json --apply',commands)
         self.assertNotIn('secrets.',path.read_text(encoding='utf-8').replace('secrets.GITHUB_TOKEN',''))
+        # The caller's own notify job dispatches to the Store; it reads this output, never a secret passed in here.
+        publish=next(x for x in steps if 'addon_sync.py publish' in x.get('run',''))
+        self.assertEqual(job['outputs'],{'ready':'${{ steps.'+publish['id']+'.outputs.ready }}'})
+        self.assertEqual(workflow['on']['workflow_call']['outputs']['ready']['value'],'${{ jobs.publish.outputs.ready }}')
+    def test_publish_reports_ready_only_for_a_new_notification(self):
+        for states,expected in [(['ready','unchanged'],'true'),(['unchanged','waiting','blocked','excluded'],'false'),([],'false')]:
+            with self.subTest(states=states),tempfile.TemporaryDirectory() as t:
+                out=pathlib.Path(t)/'out';registry=pathlib.Path(t)/'registry.json';registry.write_text('{}')
+                with patch.object(s,'publish',return_value=([{'id':str(i),'state':x,'reason':'r'} for i,x in enumerate(states)],{})),patch.object(s,'GitHub'),\
+                    patch.dict('os.environ',{'GITHUB_OUTPUT':str(out)}),patch('sys.argv',['addon_sync.py','publish','--registry',str(registry)]),patch('builtins.print'):
+                    try:s.main()
+                    except SystemExit:pass
+                self.assertEqual(out.read_text(),'ready='+expected+'\n')
     def test_store_sync_pushes_main_only_with_the_environment_deploy_key(self):
         # Store main requires a reviewed PR; only this deploy key bypasses it, and only main runs can read it from store-sync.
         path=pathlib.Path(__file__).resolve().parent.parent/'.github/workflows/sync-upstreams.yml'

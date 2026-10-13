@@ -11,7 +11,7 @@ After a successful Store update, the same workflow uses the **ha-rebrand-only wr
 ## Contract and limitations
 
 - `release` sources ship only published, non-prerelease Releases. Sources create them after their own CI through the reusable [`woow-addon-release.yml`](../.github/workflows/woow-addon-release.yml) (`addon_sync.py release`), which tags each new stable addon version from this Store's registry: `v<version>` for a single-addon repository, `<slug>-v<version>` per addon otherwise. `main` sources (still being switched over) are eligible after configured tests/builds succeed.
-- Source notification and distribution are eventually consistent. GitHub schedules may be delayed; this is not instantaneous cross-repository atomic publication. On this account scheduled runs have been observed 2–7 hours late, so the cron interval is an upper bound on frequency, not a latency guarantee. Prompt propagation needs a manual run or an existing upstream `repository_dispatch`.
+- Source notification and distribution are eventually consistent. GitHub schedules may be delayed; this is not instantaneous cross-repository atomic publication. On this account scheduled runs have been observed 2–7 hours late, so the cron interval is an upper bound on frequency, not a latency guarantee. Prompt propagation comes from the sources: when a source's publish run writes a new notification, its `woow-addon-sync.yml` notify job sends `repository_dispatch` `woow-addon-ready` here with the source's `APP_STORE_DISPATCH_TOKEN` secret. A source without that secret only logs a warning, and its release waits for the next scheduled run (or a manual one).
 - Private push failure is a failed workflow, not a silently successful delivery. A later run reconciles it without reinstalling anything.
 - Notifications are trusted through GitHub repository permissions and HTTPS, with immutable source/digest checks. Independent cryptographic signing/attestation is not implemented.
 - Published runtime availability/platform/digests are verified. Source-only packages are structurally validated; actual local Docker build and runtime health are **not certified**.
@@ -24,7 +24,7 @@ After a successful Store update, the same workflow uses the **ha-rebrand-only wr
 
 ## Operations
 
-Run **Synchronize validated WOOW addons and Local Download** manually; optional `only` input selects an addon ID for a pilot. Empty input selects every enabled stable mapping. Scheduled runs (every 5 minutes, offset from the top of the hour, best effort) and repository dispatches always process every enabled stable mapping. Repository dispatch payloads do not choose arbitrary repositories or files; the checked-in registry is the allowlist.
+Run **Synchronize validated WOOW addons and Local Download** manually; optional `only` input selects an addon ID for a pilot. Empty input selects every enabled stable mapping. Scheduled runs (every 5 minutes, offset from the top of the hour, best effort) and `woow-addon-ready` repository dispatches always process every enabled stable mapping. Repository dispatch payloads do not choose arbitrary repositories or files; the checked-in registry is the allowlist.
 
 Source inventory, inclusion/exclusion reasons and the runbook (onboarding, publisher, failures, key rotation): [`SOURCES.md`](SOURCES.md).
 
