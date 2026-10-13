@@ -89,7 +89,7 @@
   1. 確認 repo 是 public、未 archived、manifest 合法，且 slug 不和既有項目撞名。預設分支**不能被 force push**：Store 只接受從上一版延續下來的 commit，鏡像同步也必須一般 commit 疊在上一版上（Dnsmasq 的 `mirror-sync.yml` 自 2026-09-03 起、Frigate／Jellyfin／Matter Hub／Music Assistant 的自 2026-10-07 起都是這樣；已停用的 `Woow_ha_vscode_add_on` 鏡像仍會 force push，重新啟用前要先改）。
   2. 決定 `ref_policy`（`main` 或 `release`）與 `required_workflows`。
   3. 在 `registry.json` 加入映射並跑 `test_addon_sync.py`。
-  4. 在來源 repo 加入 `woow-addon-sync.yml`（可參考 `Woow_ha_vpn_tailscale_package`），job 以 `uses: WOOWTECH/Woow_HA_App_Store/.github/workflows/woow-addon-publish.yml@main` 呼叫共用的發布 workflow，並加第二個 job `notify-store`（照抄 `Woow_ha_vpn_tailscale_package` 的）：`needs: publish`，只在 `needs.publish.outputs.ready == 'true'` 時執行，`permissions: {}`，用 secret `APP_STORE_DISPATCH_TOKEN` 對 Store 送 `repository_dispatch`（`event_type: woow-addon-ready`），讓 Store 幾分鐘內同步，不必等排程。來源 repo 要設這個 secret；沒設時 job 只顯示警告、不失敗，新版本等下一次排程同步。目前（2026-10-13）只有 `Woow_ha_odoo` 設了，其他來源 repo 的 token 待建立與分發。registry 變更須先經 PR 合併到 Store `main`。
+  4. 在來源 repo 加入 `woow-addon-sync.yml`（可參考 `Woow_ha_vpn_tailscale_package`），job 以 `uses: WOOWTECH/Woow_HA_App_Store/.github/workflows/woow-addon-publish.yml@main` 呼叫共用的發布 workflow，並加第二個 job `notify-store`（照抄 `Woow_ha_vpn_tailscale_package` 的）：`needs: publish`，只在 `needs.publish.outputs.ready == 'true'` 時執行，`permissions: {}`，用 secret `APP_STORE_DISPATCH_TOKEN` 對 Store 送 `repository_dispatch`（`event_type: woow-addon-ready`），讓 Store 幾分鐘內同步，不必等排程。來源 repo 要設這個 secret；沒設時 job 只顯示警告、不失敗，新版本等下一次排程同步。新來源用 `gh secret set APP_STORE_DISPATCH_TOKEN -R WOOWTECH/<repo>` 經 stdin 寫入同一把 token（見下方「Store dispatch token」）。registry 變更須先經 PR 合併到 Store `main`。
   5. 確認來源的 `woow-addon-sync/notification.json` 已產生後，以 `only=<id>` 手動執行 Store 同步。
   6. 核對 Store 目錄、`catalog.json` 與 ha-rebrand `sync-state.json` 的 catalog ID 一致。
 - **發布工具**：來源 repo 不再釘選 Store commit，一律呼叫 `woow-addon-publish.yml@main`，每次執行都用 Store `main` 的程式與 registry；改 `ref_policy` 或 `required_workflows` 只要改 Store 的 `registry.json`，不必動來源 repo。consumer 照舊用 Store `main` 的 registry 重新檢查。代價是 Store `main` 對 `.addon-sync/` 或 `woow-addon-publish.yml` 的變更會在各來源 repo 下一次發布時、以該 repo 自己的 `contents: write` token 執行，所以 Store `main` 有保護規則，這些變更一律要經過審查（見下方「Store `main` 保護」）。共用 workflow 只用呼叫端的 `GITHUB_TOKEN`，不接收其他 secret（`test_addon_sync.py` 檢查）；送 `woow-addon-ready` 的 token 只在來源 repo 自己的 `notify-store` job 裡用，靠共用 workflow 的 output `ready` 決定要不要送。來源 repo 的 `woow-addon-sync.yml` 本身（觸發條件、`if` 條件）改動時，有 ruleset 的 repo（例如 `Woow_ha_odoo`）要走 PR；fork `Woow_ha_ai_mcp` 從上游帶來的 dev 發布 workflow 會在 push 到 master 時執行：`Publish Dev Channel`（`publish-dev.yml`）已於 2026-10-13 手動停用，所以只改 `.github/workflows/` 的 push 只會跑 `woow-addon-sync.yml`；改到 `src/**`、`homeassistant-addon*/**` 或 `pyproject.toml` 的 push 仍會觸發 `addon-publish-dev.yml`（建 dev 映像並推一個改版號的 commit）與 `notify-dev-channel.yml`。
@@ -105,6 +105,12 @@
   4. 手動跑一次 Store 同步，確認 rebrand 推送成功。
   5. 刪除舊 key，並刪除本機私鑰。
 - **輪替 Store 同步 deploy key**：同上，但在 Store 的 Deploy keys 新增（write），寫入 `gh secret set STORE_SYNC_DEPLOY_KEY --env store-sync -R WOOWTECH/Woow_HA_App_Store`，手動跑同步確認 Store commit 推送成功後再刪舊 key。ruleset 的 bypass 是「所有 deploy key」，所以換 key 不必改 ruleset。也因此 Store **不要再新增其他 write deploy key**，否則它也能跳過審查。
+- **Store dispatch token**（`APP_STORE_DISPATCH_TOKEN`，2026-10-13 建立）
+  - fine-grained PAT，resource owner `WOOWTECH`，只選 `Woow_HA_App_Store` 一個 repo；權限 Contents: read and write（送 `repository_dispatch` 需要）與自動附帶的 Metadata: read。**不會過期**（負責人決定），不需要輪替排程。
+  - 存在 registry 每個來源 repo 的 repository secret。`WOOWTECH` 是個人帳號，沒有 org secret 可用。
+  - 範圍：除了送 dispatch，這把 token 也能推 Store 的非 `main` 分支。`main` 有 ruleset，兩把 deploy key 在只給 `main` 的 `store-sync` environment，所以它碰不到 `main` 與 ha-rebrand。
+  - token 失效時，`notify-store` 送 dispatch 會失敗，job 變紅；沒設 secret 才只是警告。
+  - 輪替（懷疑外洩或要改權限時）：建立新 token → 寫入每個來源 repo（管線工作區的 `scripts/store_dispatch_secret.py --test-dispatch` 會從 Store `main` 的 registry 取清單一次寫完，再用新 token 送一次 `woow-addon-ready`）→ 確認 Store 出現 `repository_dispatch` 觸發的同步 → 撤銷舊 token。
 - **Store `main` 保護**（負責人 2026-10-12 決定）
   - ruleset 擋刪除與 force push，並要求 PR＋1 個 approval（推新 commit 後舊 approval 失效）。
   - **唯一例外是 deploy key**：同步機器人用 `STORE_SYNC_DEPLOY_KEY` 直接寫 `catalog.json` 與 addon 目錄。管理員（`WOOWTECH`）也不能跳過。
