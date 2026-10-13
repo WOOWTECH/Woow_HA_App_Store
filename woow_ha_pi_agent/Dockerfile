@@ -241,6 +241,7 @@ RUN chmod +x \
       /etc/s6-overlay/s6-rc.d/nginx/run \
       /etc/s6-overlay/scripts/video-tools-init \
       /usr/local/bin/pi \
+      /usr/local/bin/pi-agent-share-state.mjs \
     # Fail the build rather than ship an image where `pi` resolves to nothing.
     # Upstream installs the coding agent only as a TRANSITIVE dependency of
     # pi-web, so npm never links its `pi` bin — without this launcher the CLI

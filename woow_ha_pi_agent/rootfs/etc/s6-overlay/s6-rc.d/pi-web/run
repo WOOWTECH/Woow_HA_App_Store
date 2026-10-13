@@ -149,6 +149,7 @@ export PORT=30141
 # is persistent per-addon and covered by HA snapshots) so user work survives.
 export HOME="${DATA_DIR}/home"
 export PATH="${HOME}/.local/bin:/usr/local/bin:${PATH}"
+PI_AGENT_DATA_DIR="${DATA_DIR}" node /usr/local/bin/pi-agent-share-state.mjs
 cd "${HOME}"
 
 # Video pipeline (v0.11.0). The pi coding agent spawns shell subprocesses to
