@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 """WOOW addon outbox + Store consumer. No cross-repository write credential.
 
-Publish uses only its own repository GITHUB_TOKEN. Consumers use their own
-GITHUB_TOKEN and poll immutable source snapshots advertised in public outboxes.
+Publish and release run in a source repository with only its own GITHUB_TOKEN:
+publish writes the outbox, release creates stable Releases. The Store consumer
+uses its own GITHUB_TOKEN to read the immutable source snapshots advertised in
+public outboxes. It runs on the woow-addon-ready dispatch a source sends after a
+new notification, with its schedule as the fallback.
 """
 from __future__ import annotations
 import argparse, base64, hashlib, io, json, os, pathlib, re, shutil, subprocess, tarfile, tempfile, urllib.error, urllib.parse, urllib.request
@@ -325,7 +328,7 @@ def tagged_commit(gh, repo, tag):
     return target['sha']
 
 def release(gh, registry, repo, sha, apply=False):
-    """Publish a stable Release for each stable addon whose config.yaml version at sha has none yet.
+    """Publish a stable Release for each stable addon whose manifest version at sha has none yet.
     Runs in the source repository after its CI, on a default-branch commit; reads the manifest at
     sha itself, so the version and the tagged commit cannot disagree."""
     provider=registry['providers'][repo];branch,_=gh.head(repo)
@@ -370,8 +373,8 @@ def stable_release(gh, repo, sha):
     return None
 
 def enforce_source_policy(gh, repo, provider, component, entry):
-    """The Store's checked-in registry is authoritative, even when a producer's
-    pinned tooling (and therefore its copy of the registry) lags behind it."""
+    """The Store's checked-in registry is authoritative: a producer's notification
+    may predate a registry change, so its policy is re-checked here."""
     sha=entry['source_sha']
     if provider.get('ref_policy')=='release':
         if not stable_release(gh,repo,sha):raise Blocked('Registry requires a published stable Release commit')

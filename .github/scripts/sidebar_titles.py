@@ -1,9 +1,10 @@
 """Store sidebar-only policy; never rename apps or change their identifiers.
 
-Apply after upstream rsync, including release-pinned sources. This lets a sidebar
-metadata correction ship without retagging an application image or modifying an
-existing upstream Release. Run with --check in CI, or with directory names after
-sync. No arguments applies all entries.
+`addon_sync.py consume` applies it to each staged context before that context
+replaces the Store directory, release-pinned sources included. This lets a
+sidebar metadata correction ship without retagging an application image or
+modifying an existing upstream Release. CLI: --check in CI; directory names (or
+no arguments, for all entries) rewrite in place for a manual repair.
 """
 import argparse
 from pathlib import Path
