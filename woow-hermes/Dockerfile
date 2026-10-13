@@ -54,6 +54,8 @@ RUN npm install -g "agent-browser@${AGENT_BROWSER_VERSION}" \
 # Own patches to upstream code. They exit 1 when an anchor is missing.
 COPY patches/ /tmp/woow-own-patches/
 RUN python3 /tmp/woow-own-patches/approval-unattended.py \
+ && python3 /tmp/woow-own-patches/scoped-prompt-gc.py \
+ && python3 /tmp/woow-own-patches/scoped-prompt-gc.py --check \
  && python3 /tmp/woow-own-patches/ha-exec-boundary.py --installed-shim /opt/hermes/bin/hermes \
  && python3 /tmp/woow-own-patches/ha-exec-boundary.py --check --installed-shim /opt/hermes/bin/hermes \
  && cmp /opt/hermes/bin/hermes /opt/hermes/docker/hermes-exec-shim.sh \
@@ -61,6 +63,7 @@ RUN python3 /tmp/woow-own-patches/approval-unattended.py \
  && /bin/sh -n /opt/hermes/bin/hermes \
  && /bin/sh -n /opt/hermes/docker/hermes-exec-shim.sh \
  && /bin/sh -n /opt/hermes/docker/main-wrapper.sh \
+ && rm -rf /opt/hermes/__pycache__ \
  && find /opt/hermes/tools -type d -name __pycache__ -prune -exec rm -rf {} + \
  && rm -rf /tmp/woow-own-patches
 

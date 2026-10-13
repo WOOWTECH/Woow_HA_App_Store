@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.8
+
+- Fix: deleting a session or an exact batch now reclaims only prompt records
+  referenced by those deleted sessions and their existing delegate cascade.
+  Shared prompts and unrelated unreferenced prompts remain intact.
+- Keep existing deletion counts, branch handling and transaction rollback
+  behavior. Add regressions for shared references, absent sessions and failures.
+- Keep the pinned Hermes base and existing add-on configuration contract.
+
 ## 0.1.7
 
 - Security: clear Supervisor token variables at the Hermes exec shim and main-wrapper
