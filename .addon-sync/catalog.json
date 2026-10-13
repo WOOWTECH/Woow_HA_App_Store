@@ -2617,12 +2617,12 @@
       "name": "Woow Nginx Proxy Manager",
       "version": "2.12.4-v2",
       "repository": "WOOWTECH/Woow_ha_nginxpm",
-      "source_sha": "869e38647863d8efa800e036efdba417adae448e",
+      "source_sha": "4a50fb35dda3c6067fbb2fe96f5ee5ff0a10377b",
       "source_path": "nginxpm",
       "config_file": "config.yaml",
       "config_sha256": "sha256:dce7a0ea626118eaa0b84543d10e288e1bc1a1e875d416ff50bf3ac75728a48a",
-      "archive_sha256": "sha256:acab76fa2e528272fe463c5be76f355c8036a28431dc3c73a86edf9d9fce2ce7",
-      "context_fingerprint": "sha256:8370ea98977771ab511be33e129f583ca9749b644b8084e7bc5ce77ee0fe9f81",
+      "archive_sha256": "sha256:a977c99350857d28e15634b7748f23e0b37eb280f5f17b716601f7e1337cba14",
+      "context_fingerprint": "sha256:a2a194b9a4ca0e22396f8cbdaec47fb6bc784dc6b7515ac4750333ed84f3a604",
       "material_fingerprint": "sha256:8102929dcb898ea8f5cd00de849fc7fc0a46ad748aadc56c54b08d06005d96d7",
       "architectures": [
         "aarch64",
@@ -2658,7 +2658,7 @@
       "images": {},
       "delivery": "local-source-build",
       "validation": "manifest+source-context+configured-CI (runtime build not certified)",
-      "publisher_run_id": "37410457066",
+      "publisher_run_id": "38366695484",
       "channel": "stable",
       "store_path": "woow-nginxproxymanager"
     },
@@ -3700,5 +3700,5 @@
       "store_path": "woow_mcp_nextcloud"
     }
   },
-  "catalog_id": "sha256:2a63a6df4d0cc052d4b0247099157434a85854025a2e771feefae7cc86435f4b"
+  "catalog_id": "sha256:af337cf22e9aa28e90aeb13d933647e2ece70e583e07848bd81399a170ad118c"
 }

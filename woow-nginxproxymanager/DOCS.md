@@ -55,13 +55,16 @@
 
 ## 資料存儲
 
-所有設定資料存儲在 `/config` 目錄：
+所有設定資料存儲在 Add-on 內的 `/config` 目錄。在主機上它是 `addon_configs/` 下名稱以
+`woow-nginxproxymanager` 結尾的資料夾，可以用 Samba 或 File editor 等 Add-on 存取：
 - `database.sqlite` — 設定資料庫
 - `nginx/` — 生成的 Nginx 設定檔
 - `letsencrypt/` — SSL 憑證
 - `custom_ssl/` — 自訂 SSL 憑證
 - `access/` — 存取控制清單
 - `logs/` — 存取與錯誤記錄檔
+
+Home Assistant 備份這個 Add-on 時會包含上述資料，但不含 `logs/`。
 
 ## 搭配 Cloudflare Tunnel
 
