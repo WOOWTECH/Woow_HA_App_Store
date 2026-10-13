@@ -1,3 +1,9 @@
+## 0.14.7
+
+- Share Pi Web skills and global MCP only. Stop importing skills or MCP servers from portable plugin manifests; native Pi plugins/extensions remain Pi-only.
+- Remove previously managed portable-plugin skill links and MCP entries safely, while preserving user-owned settings.
+- Add lifecycle coverage for skill and global MCP add/update/remove through the persistent shared directory.
+
 ## 0.14.5
 
 - Split runtime package groups and the Claude/Codex installs into bounded OCI layers. The combined CLI layer in 0.14.4 was 377 MiB and failed with `unexpected EOF` on a slow Home Assistant image pull.
