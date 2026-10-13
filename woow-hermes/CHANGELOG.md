@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.7
+
+- Security: clear Supervisor token variables at the Hermes exec shim and main-wrapper
+  handoff, including after s6 environment rehydration. Normal add-on initialization
+  still uses the Supervisor API before removing its token environment files.
+- CI: gate releases on synthetic real-image/s6 boot and exec UID/token smoke tests.
+  This is environment hardening, not isolation from arbitrary root execution or a
+  change to provider routing, model access, or tool policy.
+
 ## 0.1.6
 
 - Security: dangerous commands from scheduled jobs, the OpenAI-compatible API and webhooks are
