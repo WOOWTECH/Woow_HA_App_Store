@@ -10,12 +10,23 @@
 # change (ref_policy, required_workflows) needs no source repository change.
 # The token is the caller's own GITHUB_TOKEN: it writes only the caller's
 # woow-addon-sync branch, and the Store consumer re-validates everything.
+#
+# Output `ready` is 'true' when this run wrote a new notification. The caller's
+# own notify job then sends repository_dispatch `woow-addon-ready` to the Store
+# with its APP_STORE_DISPATCH_TOKEN; this workflow runs Store main's code in the
+# caller's repository, so it never receives any secret but GITHUB_TOKEN.
 name: WOOW addon source notification (reusable)
 'on':
-  workflow_call: {}
+  workflow_call:
+    outputs:
+      ready:
+        description: "'true' when this run wrote a new source notification for at least one addon."
+        value: ${{ jobs.publish.outputs.ready }}
 jobs:
   publish:
     runs-on: ubuntu-latest
+    outputs:
+      ready: ${{ steps.publish.outputs.ready }}
     timeout-minutes: 25
     permissions:
       contents: write
@@ -35,6 +46,7 @@ jobs:
     - name: Validate synchronization guards
       run: python3 tooling/.addon-sync/test_addon_sync.py -v
     - name: Publish immutable source notification
+      id: publish
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: python3 tooling/.addon-sync/addon_sync.py publish --registry tooling/.addon-sync/registry.json --apply

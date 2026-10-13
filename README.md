@@ -110,7 +110,7 @@ ha store add https://github.com/WOOWTECH/Woow_HA_App_Store
 - **只同步正式 Release**：`odoo18ce`、`woow-hermes`、`woow-nextcloud-office`。其餘跟隨來源 repo 的預設分支。
 - 觸發方式（盡力而為，不是即時）：
   - 排程每 5 分鐘一次，錯開整點。此帳號的 GitHub 排程實測常延遲 2–7 小時。
-  - 來源 repo 的 `repository_dispatch`，目前 Odoo 發 Release 時會送。
+  - 來源 repo 寫出新的通知後，由該 repo 的 `woow-addon-sync.yml` 送 `repository_dispatch`（`woow-addon-ready`），幾分鐘內同步。來源 repo 要設 `APP_STORE_DISPATCH_TOKEN`，沒設時等排程。
   - 手動執行 workflow。
 - 驗證失敗或來源版本較舊時保留現有版本，並在 workflow 頁面以 warning 標示；不會清空目錄。
 - 開發／beta／nightly 通道（例如 `music_assistant_beta`、`hamh-alpha`、`ha_mcp_dev`）不會進入本 store。
