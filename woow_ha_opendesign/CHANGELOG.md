@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.10
+
+- Synchronize Agent Skills, MCP server definitions, portable plugin manifests, and a default working directory across Claude Code, Codex, Pi, and OpenCode.
+- Preserve existing agent configs, migrate existing skills into the shared persistent directory with backups, and report plugin adapters without treating native plugin formats as interchangeable.
+- Add `ha-opendesign-agents` status, workspace, and sync commands.
+
 ## 0.1.9
 
 - Bundle Claude Code `2.1.296`, Codex CLI `0.162.1`, and Pi Coding Agent `1.1.0` in the Home Assistant image so OpenDesign can discover them at startup without a plugin or first-use download.

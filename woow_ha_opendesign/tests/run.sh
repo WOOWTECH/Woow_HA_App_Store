@@ -9,7 +9,7 @@ for file in rootfs/opt/ha-opendesign/*.js rootfs/opt/ha-opendesign/*.mjs tests/*
   node --check "$file"
 done
 
-bash -n rootfs/usr/local/bin/ha-opendesign .github/scripts/release-preflight.sh tests/run.sh tests/container-smoke.sh
+bash -n rootfs/usr/local/bin/ha-opendesign rootfs/usr/local/bin/ha-opendesign-agents .github/scripts/release-preflight.sh tests/run.sh tests/container-smoke.sh
 node --test tests/*.test.mjs
 
 if command -v shellcheck >/dev/null 2>&1; then

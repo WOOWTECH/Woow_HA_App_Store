@@ -134,6 +134,26 @@ docker exec -u 1001:1001 "$container" sh -ceu '
   printf persisted > /data/opendesign/container-smoke-sentinel
 '
 
+# Verify all four native skill discovery paths resolve to the same persistent
+# store, then verify a skill written through one runtime is visible through all.
+docker exec -u 1001:1001 "$container" sh -ceu '
+  status=$(ha-opendesign-agents status)
+  printf "%s" "$status" | python3 -c "import json,sys; s=json.load(sys.stdin); assert all(v is True for v in s[\"skills\"].values()), s[\"skills\"]; assert s[\"mcpServerCount\"] == 0, s[\"mcpServerCount\"]"
+  mkdir /data/opendesign/shared/skills/container-smoke
+  printf "---\\nname: container-smoke\\ndescription: shared test\\n---\\n" > /data/opendesign/shared/skills/container-smoke/SKILL.md
+  for directory in \
+    /data/opendesign/home/.claude/skills \
+    /data/opendesign/home/.agents/skills \
+    /data/opendesign/home/.pi/agent/skills \
+    /data/opendesign/home/.config/opencode/skills; do
+    test -f "$directory/container-smoke/SKILL.md"
+  done
+  test "$(realpath /data/opendesign/home/.claude/skills)" = /data/opendesign/shared/skills
+  test "$(realpath /data/opendesign/home/.agents/skills)" = /data/opendesign/shared/skills
+  test "$(realpath /data/opendesign/home/.pi/agent/skills)" = /data/opendesign/shared/skills
+  test "$(realpath /data/opendesign/home/.config/opencode/skills)" = /data/opendesign/shared/skills
+'
+
 # Exercise the upstream native browser API request contract end-to-end: the
 # daemon selects byok-opencode, invokes the bundled CLI, and streams from a
 # loopback OpenAI-compatible mock. The test script itself never writes its key.
@@ -176,6 +196,10 @@ assert json.load(open(sys.argv[1], encoding='utf-8')).get('ok') is True
 PY
 docker exec "$container" sh -ceu '
   grep -qx persisted /data/opendesign/container-smoke-sentinel
+  test -f /data/opendesign/home/.claude/skills/container-smoke/SKILL.md
+  test -f /data/opendesign/home/.agents/skills/container-smoke/SKILL.md
+  test -f /data/opendesign/home/.pi/agent/skills/container-smoke/SKILL.md
+  test -f /data/opendesign/home/.config/opencode/skills/container-smoke/SKILL.md
   test ! -e /data/opendesign/credentials
   test ! -L /data/opendesign/credentials
   grep -qx retained /data/opendesign/legacy-credentials-target/sentinel

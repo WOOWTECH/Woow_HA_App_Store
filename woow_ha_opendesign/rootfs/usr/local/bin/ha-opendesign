@@ -95,6 +95,11 @@ fi
 owned_dirs=(
   "$DATA_DIR"
   "$DATA_DIR/home"
+  "$DATA_DIR/shared"
+  "$DATA_DIR/shared/skills"
+  "$DATA_DIR/shared/mcp"
+  "$DATA_DIR/shared/plugins"
+  "$DATA_DIR/shared/workspaces"
   "$DATA_DIR/export-render"
   "$DATA_DIR/export-pdf"
   "$NGINX_TMP"
@@ -120,6 +125,15 @@ export OD_DATA_DIR="$DATA_DIR"
 export OD_BIND_HOST=127.0.0.1
 export OD_PORT=7456
 export HOME="$DATA_DIR/home"
+export HA_OPENDESIGN_HOME="$DATA_DIR/home"
+export CLAUDE_CONFIG_DIR="$HOME/.claude"
+export CODEX_HOME="$HOME/.codex"
+export PI_CODING_AGENT_DIR="$HOME/.pi/agent"
+export XDG_CONFIG_HOME="$HOME/.config"
+
+if ! su-exec open-design:open-design /usr/local/bin/node /opt/ha-opendesign/shared-agents.mjs; then
+  echo '[ha-opendesign] shared-agent synchronization failed; OpenDesign will start and the error is available via ha-opendesign-agents sync' >&2
+fi
 
 su-exec open-design:open-design /usr/local/bin/node /opt/ha-opendesign/headless-entry.mjs &
 od_pid=$!

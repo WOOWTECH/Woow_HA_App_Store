@@ -10,6 +10,7 @@ OpenDesign **0.21.1**, packaged as a standalone Home Assistant add-on for `amd64
 - Downloads supported by the pinned upstream application: standalone HTML, ZIP, screenshot PDF, PNG/JPEG, and screenshot-based PPTX. **Editable PPTX is unsupported** and returns a clear error.
 - OpenCode `1.18.29` is bundled at an exact locked version for OpenDesign's native `byok-opencode` API runtime.
 - Claude Code `2.1.296`, Codex CLI `0.162.1`, and Pi Coding Agent `1.1.0` are preinstalled in the image and available to OpenDesign's Local AI discovery; no Paseo plugin or first-use CLI download is required.
+- Claude Code, Codex, Pi, and OpenCode share Agent Skills, a translated MCP catalog, and a persistent default workspace under `/data/opendesign/shared`; native plugin code remains runtime-specific.
 
 [繁體中文](README_zh-TW.md) · [Add-on documentation](DOCS.md)
 
@@ -20,8 +21,11 @@ OpenDesign **0.21.1**, packaged as a standalone Home Assistant add-on for `amd64
 3. Install **Woow HA OpenDesign**, start it, and open **OpenDesign** from the sidebar.
 4. In **Settings**, configure API BYOK with your provider, model, and key. Those settings remain local to that browser.
 5. Open **Local AI → Rescan** to refresh the bundled Claude Code, Codex, and Pi entries, then sign in to each provider when you first use it.
+Shared skills live in `/data/opendesign/shared/skills`, and the MCP catalog is `/data/opendesign/shared/mcp/servers.json`; synchronization runs automatically at startup. If you have a shell in the container, `ha-opendesign-agents status` reports its state.
 
 There are no add-on configuration options and no host directory mappings.
+
+See [shared agent capabilities](docs/shared-agent-capabilities.md) for compatibility, migration, MCP catalog, and plugin adapter details.
 
 ## Architecture
 

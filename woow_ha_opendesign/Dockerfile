@@ -61,12 +61,14 @@ RUN mkdir -p /data/opendesign \
     && chown -R open-design:open-design /data \
     && chmod 0755 \
       /usr/local/bin/ha-opendesign \
+      /usr/local/bin/ha-opendesign-agents \
+      /opt/ha-opendesign/shared-agents.mjs \
       /opt/ha-opendesign/headless-entry.mjs \
       /opt/ha-opendesign/headless-renderer.mjs \
     && chown -R open-design:open-design /opt/ha-opendesign
 
 ARG BUILD_ARCH=amd64
-ARG BUILD_VERSION=0.1.9
+ARG BUILD_VERSION=0.1.10
 ARG BUILD_DATE
 ARG BUILD_DESCRIPTION="OpenDesign for Home Assistant"
 ARG BUILD_NAME="Woow HA OpenDesign"

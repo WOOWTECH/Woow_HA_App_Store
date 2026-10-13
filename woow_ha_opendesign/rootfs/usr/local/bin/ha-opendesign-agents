@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+export HOME=/data/opendesign/home
+export HA_OPENDESIGN_HOME="$HOME"
+export CLAUDE_CONFIG_DIR="$HOME/.claude"
+export CODEX_HOME="$HOME/.codex"
+export PI_CODING_AGENT_DIR="$HOME/.pi/agent"
+export XDG_CONFIG_HOME="$HOME/.config"
+case "${1:-status}" in
+  status) exec /usr/local/bin/node /opt/ha-opendesign/shared-agents.mjs --status ;;
+  workspace) printf '%s\n' /data/opendesign/shared/workspaces ;;
+  sync) exec /usr/local/bin/node /opt/ha-opendesign/shared-agents.mjs ;;
+  *)
+    printf 'Usage: ha-opendesign-agents [status|workspace|sync]\n' >&2
+    exit 2
+    ;;
+esac

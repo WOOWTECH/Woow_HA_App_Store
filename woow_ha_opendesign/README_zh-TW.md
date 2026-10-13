@@ -10,6 +10,7 @@
 - 支援獨立 HTML、ZIP、截圖式 PDF、PNG/JPEG，以及每張投影片為圖片的 PPTX。**不支援可編輯 PPTX**，要求此模式時會明確失敗。
 - 映像以精確鎖定版本內建 OpenCode `1.18.29`，供 OpenDesign 原生 `byok-opencode` API runtime 使用。
 - 映像預裝 Claude Code `2.1.296`、Codex CLI `0.162.1` 與 Pi Coding Agent `1.1.0`，供 OpenDesign Local AI 掃描使用；不需要 Paseo 插件，也不會在首次使用時下載 CLI。
+- 四個 CLI 的 Agent Skills、MCP server 清單與工作檔案透過 `/data/opendesign/shared` 持久化共用；原生插件仍需各代理專用 adapter。
 
 [English](README.md) · [附加元件說明](DOCS.md)
 
@@ -20,8 +21,11 @@
 3. 安裝並啟動 **Woow HA OpenDesign**，再從側邊欄開啟。
 4. 在 **設定** 設定 API BYOK 的供應商、模型與金鑰；設定只會保留在該瀏覽器。
 5. 開啟 **Local AI → Rescan** 重新掃描映像內建的 Claude Code、Codex 與 Pi，再依各供應商流程登入。
+共用技能放在 `/data/opendesign/shared/skills`，共用 MCP 清單放在 `/data/opendesign/shared/mcp/servers.json`；服務啟動時會自動同步。若有容器 shell，可用 `ha-opendesign-agents status` 檢查狀態。
 
 本附加元件沒有設定選項，也沒有主機目錄掛載。
+
+四個 CLI 的共用範圍、MCP 設定格式、外掛相容界線與操作方式請見[共用代理能力說明](docs/shared-agent-capabilities.md)。
 
 ## 架構
 

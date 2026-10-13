@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "OpenDesign shared plugin manifest",
+  "type": "object",
+  "required": ["schemaVersion", "name", "components"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "name": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$" },
+    "components": {
+      "type": "object",
+      "properties": {
+        "skills": { "type": "array", "items": { "type": "string" } },
+        "mcpServers": { "type": "array", "items": { "type": "string" } }
+      },
+      "additionalProperties": false
+    },
+    "nativeAdapters": {
+      "type": "object",
+      "description": "Explicit agent-native plugin adapters. Each listed adapter is code for that specific runtime and is never copied to another runtime.",
+      "properties": {
+        "claude": { "type": "string" },
+        "codex": { "type": "string" },
+        "pi": { "type": "string" },
+        "opencode": { "type": "string" }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}
