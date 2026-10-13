@@ -111,7 +111,7 @@ ha store add https://github.com/WOOWTECH/Woow_HA_App_Store
 - **只同步正式 Release**（ADR-0002）：44 個 App 裡 26 個。以下 18 個仍跟隨來源 repo 的預設分支，正在逐步切換：`apporo_ha_core_1..5`、`woow_ha_core`、`ha_mcp`、`ha_mcp_webhook_proxy`、`frigate`、`jellyfin`、7 個 `woow_mcp_*`（來源分支 `claude-delivery`）、`woow-nginxproxymanager`。每個來源的設定以 [`registry.json`](.addon-sync/registry.json) 的 `ref_policy` 為準。
 - 觸發方式（盡力而為，不是即時）：
   - 排程每 5 分鐘一次，錯開整點。此帳號的 GitHub 排程實測常延遲 2–7 小時。
-  - 來源 repo 寫出新的通知後（共用發布 workflow 的 output `ready` 為 `true`），由該 repo `woow-addon-sync.yml` 的 `notify-store` job 送 `repository_dispatch`（`woow-addon-ready`），幾分鐘內同步。來源 repo 要設 `APP_STORE_DISPATCH_TOKEN`，沒設時等排程。目前只有 `Woow_ha_odoo` 設了，其他來源 repo 的設定待處理。
+  - 來源 repo 寫出新的通知後（共用發布 workflow 的 output `ready` 為 `true`），由該 repo `woow-addon-sync.yml` 的 `notify-store` job 送 `repository_dispatch`（`woow-addon-ready`），幾分鐘內同步。來源 repo 要設 `APP_STORE_DISPATCH_TOKEN`，沒設時等排程。27 個來源 repo 都已設（2026-10-13）；token 的權限與輪替見 `.addon-sync/SOURCES.md` 的「Store dispatch token」。
   - 手動執行 workflow。
 - 驗證失敗或來源版本較舊時保留現有版本，並在 workflow 頁面以 warning 標示；不會清空目錄。
 - 開發／beta／nightly 通道（例如 `music_assistant_beta`、`hamh-alpha`、`ha_mcp_dev`）不會進入本 store。
