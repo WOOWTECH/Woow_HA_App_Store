@@ -1,3 +1,9 @@
+## 0.14.8
+
+- Fix public HTTPS from the add-on when HAOS runs in the PaaS KubeVirt overlay. The VM uplink is MTU 1450 while HAOS's default `hassio` Docker bridge is MTU 1500, which let DNS work but black-holed TLS traffic such as the Skills installer cloning GitHub repositories.
+- Run the add-on on HAOS host networking for the egress path, while nginx binds only `172.30.32.1:30142` and accepts only the Supervisor ingress peer `172.30.32.2`. pi-web remains loopback-only. This preserves Home Assistant Ingress authentication and avoids exposing a LAN listener.
+- Add a static regression contract for the host-network, Supervisor-only nginx listener, and loopback pi-web binding.
+
 ## 0.14.7
 
 - Share Pi Web skills and global MCP only. Stop importing skills or MCP servers from portable plugin manifests; native Pi plugins/extensions remain Pi-only.

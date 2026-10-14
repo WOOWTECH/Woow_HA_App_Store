@@ -139,7 +139,9 @@ fi
 
 # --- Runtime env for pi-web ---
 export PI_CODING_AGENT_DIR="${DATA_DIR}"
-export PI_WEB_HOSTNAME="0.0.0.0"
+# nginx is the sole ingress listener. The add-on runs on HAOS host networking
+# for the VM-overlay MTU workaround, so pi-web itself must remain loopback-only.
+export PI_WEB_HOSTNAME="127.0.0.1"
 export PI_WEB_NO_OPEN=1
 export PORT=30141
 
@@ -165,5 +167,5 @@ fi
 export PLAYWRIGHT_BROWSERS_PATH=/data/pi-agent/playwright-cache
 export RCLONE_CONFIG=/data/pi-agent/rclone/rclone.conf
 
-bashio::log.info "Starting pi-web on 0.0.0.0:30141 (data: ${PI_CODING_AGENT_DIR}, home: ${HOME})"
+bashio::log.info "Starting pi-web on 127.0.0.1:30141 (data: ${PI_CODING_AGENT_DIR}, home: ${HOME})"
 exec pi-web

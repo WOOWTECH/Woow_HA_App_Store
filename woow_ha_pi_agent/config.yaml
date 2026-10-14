@@ -1,5 +1,5 @@
 name: Woow HA Pi Agent
-version: "0.14.7"
+version: "0.14.8"
 slug: woow_ha_pi_agent
 description: pi-web 0.12.0 + pi coding agent SDK, with a browser terminal, AI providers configured inside the pi-web UI, and a video pipeline (ffmpeg / Playwright / edge-tts / rclone)
 url: https://github.com/WOOWTECH/Woow_ha_pi_agent_add_on
@@ -10,6 +10,11 @@ arch:
 startup: application
 boot: auto
 init: false
+# HAOS guests inside the PaaS KubeVirt overlay receive a 1450-byte uplink,
+# while the Supervisor-managed hassio bridge remains 1500. Using that bridge
+# makes public HTTPS TLS traffic black-hole through nested NAT. nginx stays
+# bound to the Supervisor-only bridge gateway; see its listener contract.
+host_network: true
 map:
   - type: addon_config
     read_only: false

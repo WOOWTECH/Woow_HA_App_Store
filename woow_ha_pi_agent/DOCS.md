@@ -39,6 +39,10 @@ pi-web is served through **HA Supervisor Ingress** at `/hassio/ingress/woow_ha_p
 
 Because the URL rides on your existing Home Assistant hostname/port, it works transparently over HA's local network, Nabu Casa remote UI, or any reverse proxy already fronting HA. No `extra_allowed_hosts` / whitelist config is required — nginx rewrites the upstream `Host` header to `localhost` so pi-web's `isApiRequestAllowed()` always passes.
 
+### HAOS virtual-machine networking
+
+On the PaaS KubeVirt deployment, the HAOS VM uplink has MTU 1450 while HAOS's default `hassio` Docker bridge has MTU 1500. That mismatch can let DNS resolve while HTTPS traffic from an add-on stalls. The add-on therefore uses HAOS host networking for outbound traffic. Its nginx listener binds only the Supervisor bridge gateway `172.30.32.1:30142`, accepts only the Supervisor ingress peer `172.30.32.2`, and proxies to loopback-only pi-web on `127.0.0.1:30141`. Browser traffic still enters through authenticated Home Assistant Ingress; no LAN listener is opened.
+
 The sidebar entry is enabled automatically on every boot via a Supervisor API POST — fresh installs get the sidebar tile without hunting for the "Show in sidebar" toggle.
 
 ## Watchdog
