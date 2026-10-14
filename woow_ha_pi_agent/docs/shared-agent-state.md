@@ -12,9 +12,12 @@ tree, one workspace and one Pi Web global MCP source:
 
 Native Pi plugins/extensions stay within Pi Web and are not imported or translated for Claude Code or Codex. Skills distributed through the Pi Web Skills UI are shared because they are stored in the canonical skills tree; MCP servers configured in Pi Web are shared because its global `mcp.json` is the source of truth.
 
-Claude and Codex launchers in `$HOME/.local/bin` refresh their translated MCP
-settings before starting. They preserve Claude credentials and unrelated
-settings. Codex's generated MCP block is marked in `~/.codex/config.toml`; other
+`/usr/local/bin/claude` and `/usr/local/bin/codex` are wrappers that refresh
+the translated MCP settings and skills links before every launch, for any
+caller and any PATH, then run the pinned CLI. A server added in Pi Web is
+therefore visible the next time Claude Code or Codex starts; restart a CLI
+session that was already running. The refresh preserves Claude credentials and
+unrelated settings. Codex's generated MCP block is marked in `~/.codex/config.toml`; other
 Codex settings remain intact. New Pi sessions read the canonical MCP file;
 use Pi's `/reload` after editing it in a running session.
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { chmodSync, cpSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, readlinkSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, lstatSync, mkdirSync, readFileSync, readlinkSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 const data = process.env.PI_AGENT_DATA_DIR || process.env.PI_CODING_AGENT_DIR || "/data/pi-agent";
@@ -29,7 +29,12 @@ function linkDir(target, link) {
     if (stat.isDirectory() && !stat.isSymbolicLink()) cpSync(link, target, { recursive: true, force: false, errorOnExist: false });
     rmSync(link, { recursive: true, force: true });
   } catch (error) { if (error.code !== "ENOENT") throw error; }
-  symlinkSync(target, link, "dir");
+  try {
+    symlinkSync(target, link, "dir");
+  } catch (error) {
+    // Two CLI launches can refresh at once; keep the other run's identical link.
+    if (error.code !== "EEXIST" || path.resolve(path.dirname(link), readlinkSync(link)) !== path.resolve(target)) throw error;
+  }
 }
 function tomlString(value) { return JSON.stringify(String(value)); }
 function tomlValue(value) {
@@ -79,17 +84,15 @@ for (const target of [path.join(home, ".pi/agent/skills"), path.join(home, ".cla
 linkDir(piExtensions, path.join(home, ".pi/agent/extensions"));
 linkDir(workspace, path.join(home, "workspace"));
 
-// CLI launchers refresh translated MCP settings immediately before the agent
-// starts. This makes edits to the Pi-native mcp.json visible on the next launch
-// while leaving each CLI's credential and unrelated settings files in place.
-const binDir = path.join(home, ".local/bin");
-ensureDir(binDir);
+// /usr/local/bin/claude and /usr/local/bin/codex run this script before every
+// launch. 0.14.8 and earlier wrote refresh launchers into ~/.local/bin instead,
+// which the browser terminal's login shell never reached. Retire only the
+// launchers this script wrote; a user's own binaries there keep precedence.
 for (const name of ["claude", "codex"]) {
-  const launcher = path.join(binDir, name);
-  const body = `#!/bin/sh\n# pi-agent shared MCP launcher\nnode /usr/local/bin/pi-agent-share-state.mjs || exit $?\nexec /usr/local/bin/${name} "$@"\n`;
-  if (existsSync(launcher) && !readFileSync(launcher, "utf8").includes("# pi-agent shared MCP launcher")) continue;
-  writeFileSync(launcher, body, { mode: 0o700 });
-  chmodSync(launcher, 0o700);
+  const launcher = path.join(home, ".local/bin", name);
+  try {
+    if (lstatSync(launcher).isFile() && readFileSync(launcher, "utf8").includes("# pi-agent shared MCP launcher")) rmSync(launcher);
+  } catch (error) { if (error.code !== "ENOENT") throw error; }
 }
 
 // Claude stores user MCP servers beside its auth state. Preserve all unrelated

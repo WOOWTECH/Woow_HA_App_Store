@@ -1,0 +1,15 @@
+#!/bin/sh
+# `codex` — entry point for every caller (browser terminal, Pi's bash tool,
+# scripts using the absolute path).
+#
+# Refreshes the shared Pi Web state before each launch: global MCP servers from
+# /data/pi-agent/mcp.json and the shared skills links. 0.14.8 and earlier did
+# this from a launcher in ~/.local/bin, but the browser terminal is a login
+# shell whose rebuilt PATH skipped that directory, so MCP servers added in Pi
+# Web never reached the CLI until the add-on restarted.
+#
+# The sync summary goes to /dev/null so `codex` output stays machine-readable;
+# a failed sync is reported and the CLI still starts with its previous settings.
+node /usr/local/bin/pi-agent-share-state.mjs >/dev/null \
+  || echo "pi-agent: shared MCP/skills sync failed; starting codex with its previous settings" >&2
+exec /opt/pi-clis/codex/node_modules/.bin/codex "$@"

@@ -2,6 +2,14 @@
 # `docker exec -it ... bash`, etc.). The pi-web longrun sets the same three
 # variables directly so subprocesses spawned by the pi coding agent inherit
 # them without needing a login shell.
+#
+# The browser terminal is a login shell, so /etc/profile rebuilds PATH and
+# drops the pi-web service's $HOME/.local/bin. Put it back first, as the
+# service does, so user-local CLIs keep the precedence the README promises.
+case ":${PATH}:" in
+    *":${HOME}/.local/bin:"*) ;;
+    *) [ -n "${HOME:-}" ] && export PATH="${HOME}/.local/bin:${PATH}" ;;
+esac
 if [ -x /data/pi-agent/venv/bin/python3 ]; then
     export PATH="/data/pi-agent/venv/bin:${PATH}"
 fi

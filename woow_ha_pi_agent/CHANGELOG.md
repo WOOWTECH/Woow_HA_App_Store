@@ -1,3 +1,12 @@
+## 0.14.9
+
+- Fix Pi Web global MCP servers not reaching Claude Code or Codex in the browser terminal. The refresh launchers lived in `~/.local/bin`, but the terminal is a login shell whose rebuilt PATH skipped that directory, so `claude mcp list` and `codex mcp list` stayed empty until the add-on restarted. `/usr/local/bin/claude` and `/usr/local/bin/codex` are now wrappers that refresh the shared MCP/skills state before every launch, whatever PATH the caller has, then exec the pinned binaries.
+- The refresh summary is discarded so `claude -p` / `codex exec` output stays machine-readable; a failed refresh is reported on stderr and the CLI still starts.
+- Retire the `~/.local/bin` launchers written by 0.14.8 and earlier; user-owned binaries there are kept and keep precedence.
+- The terminal's login shell puts `$HOME/.local/bin` back before the system bins, matching the pi-web service PATH.
+- Tolerate two CLI launches refreshing the shared skills links at the same time.
+- Fix `codex` exiting before its sign-in screen: Codex 0.162 runs `ps` to manage its background app-server, and the Debian base image had no `procps` ("failed to invoke ps for pid-managed app server"). The image now installs `procps`, as the Podman and k3s images already do.
+
 ## 0.14.8
 
 - Fix public HTTPS from the add-on when HAOS runs in the PaaS KubeVirt overlay. The VM uplink is MTU 1450 while HAOS's default `hassio` Docker bridge is MTU 1500, which let DNS work but black-holed TLS traffic such as the Skills installer cloning GitHub repositories.
