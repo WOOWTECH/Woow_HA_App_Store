@@ -9,7 +9,7 @@
 - 連線：Nextcloud 根網址、使用者名稱與 **App 密碼**（Nextcloud「個人設定 → 安全性 → 裝置與工作階段」建立，不要用登入密碼）。
 - 管理面板在 HA 側邊欄（Ingress），只有 HA 的 owner 或系統管理員能設定後端與管理權杖；為了驗證這個身分，
   Add-on 需要 `homeassistant_api: true`，這個 token 具廣泛的 Core 存取能力。`hassio_api: false`、保護模式開啟、無 host 網路。
-- MCP client 連 `8081/mcp` 並帶 Bearer 權杖；預設不對 LAN 開埠（`8081/tcp: null`）。
+- MCP client 連 `8081/mcp` 並帶 Bearer 權杖；預設不對 LAN 開埠（`8081/tcp: null`）。Claude.ai 網頁版自訂連接器不能帶 header，改用管理面板產生的密鑰網址 `…/private_<token>/mcp`（0.1.14 起；網址等同密碼）。
 
 請先看 [本產品操作](DOCS.md)、[變更紀錄](CHANGELOG.md)、[共用繁中指南](https://github.com/WOOWTECH/Woow_ha_mcp_addons/blob/claude-delivery/docs/operations/guide.md)
 與 [client 設定](https://github.com/WOOWTECH/Woow_ha_mcp_addons/blob/claude-delivery/docs/operations/clients.md)。

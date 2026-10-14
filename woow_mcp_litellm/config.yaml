@@ -1,18 +1,17 @@
 name: Woow LiteLLM MCP Server
-version: 0.1.11
+version: 0.1.14
 slug: woow_mcp_litellm
 description: Experimental; HA admin-role management; partial tools, read-only by default.
 url: https://github.com/WOOWTECH/Woow_ha_mcp_addons
 arch:
 - amd64
 startup: application
-boot: manual
+boot: auto
 init: true
 stage: experimental
 image: ghcr.io/woowtech/{arch}-mcp-litellm
 ingress: true
 ingress_port: 8099
-ingress_entry: /
 ingress_stream: true
 panel_admin: true
 panel_icon: mdi:connection

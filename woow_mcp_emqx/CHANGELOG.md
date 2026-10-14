@@ -1,5 +1,16 @@
 # EMQX Changelog
 
+## 0.1.14 — 準備中（未發佈）
+
+- 0.1.12、0.1.13 映像已推上 GHCR 但從未發佈到 Store，且不再使用（標籤不可覆寫）；以下原為 0.1.12、0.1.13 準備的內容一併改由 0.1.14 發佈。
+- 工具呼叫被拒時改為正常回話說明原因（2026-10-14 經 Claude.ai 實測：參數不符的 tools/call 都只得到 HTTP 403，用戶端只看到傳輸錯誤、無法自行修正）：帶 `Mcp-Session-Id`、格式正確的 tools/call 遇到下列四種拒絕，gateway 回 HTTP 200 的 JSON-RPC 錯誤（`application/json`、`Cache-Control: no-store`）：工具不存在或未啟用 `-32602 Unknown tool`（不區分是哪一種）；參數驗證失敗 `-32602 Invalid params`，`data.errors` 列出欄位路徑、pydantic 錯誤類型與說明（最多 20 筆、每筆 300 字），**不回顯任何參數值**（自訂的鍵名顯示為 `*`，可能夾帶輸入值的錯誤類型改用固定說明）；寫入操作未開放 `-32602 Operation not permitted`（附管理員可在面板開啟的說明）；後端未設定 `-32603 Backend not configured`。權限本身不變：同樣的呼叫照樣被拒、不轉給子程序、不佔連線名額；權杖錯誤仍 401／404，沒帶 session 或格式錯誤的請求仍 403。`/mcp` 與 `/private_<token>/mcp` 相同。修正後尚未以真實 Claude.ai 重測。
+- 修正真實 Claude.ai 自訂連接器連不上（2026-10-14 經 Cloudflare 到測試 VM 的實機紀錄）：Claude.ai 先送 `server/discover`、再退回 `initialize`，params 帶 MCP 保留欄位 `_meta`（traceparent 等），gateway 兩者都回 HTTP 403。現在每個允許的方法都接受選填 `params._meta`（必須是物件、序列化後至多 8 KiB，否則仍 403），並在轉給子程序前移除；不認識的 request（例如 `server/discover`、`resources/list`、`prompts/list`）由 gateway 自己回 HTTP 200 的 JSON-RPC `-32601 Method not found`，不認識的 notification 回 202，兩者都不轉給子程序、不需 session、不佔連線名額；權杖檢查仍最先（錯誤權杖仍 401／404）。只接受 `application/json` 的 client 收到 JSON 格式的 initialize 回覆。工具權限、參數驗證、寫入閘與 `/mcp`、`/private_<token>/mcp` 其他規則不變。修正後尚未以真實 Claude.ai 重測。
+- 修正 HA 側邊欄打開管理面板顯示「網頁可能暫時離線」：manifest 移除 `ingress_entry: /`。Supervisor 2026.09 以 `/api/hassio_ingress/<token>/` 直接接上 ingress_entry，舊值讓入口變成 `…/<token>//`（404，0.1.11 起七支皆受影響）；不設此鍵即為根目錄。只改 manifest，映像不變。
+- 開機預設由 `boot: manual` 改為 `boot: auto`（使用者 2026-10-14 決定）：HAOS／Supervisor 重開機後自動啟動，不必再手動啟動；packaging/validate.py 的 manifest 規則同步改為 auto。
+- 新增 Claude.ai 網頁版自訂連接器用的密鑰網址 `/private_<token>/mcp`（七支共用 gateway）：Claude.ai 自訂連接器無法帶 Authorization header，改把同一把 Add-on 權杖放在路徑（重新產生／撤銷同時生效）；權杖錯誤、空白或已撤銷一律回與不存在路徑相同的 404，忽略請求自帶的 Authorization，允許 Origin（不轉給子程序）；`/mcp` 的 Bearer 行為不變（含 Origin 403）。所有 log 把 `/private_…/` 遮成 `/private_[REDACTED]/`。管理面板「連線與權杖」新增「顯示 Claude.ai 連線網址」（需先設定對外端點，經確認後短暫顯示並可複製）。**網址等同密碼，外洩請重新產生權杖。**說明見 [client 設定](https://github.com/WOOWTECH/Woow_ha_mcp_addons/blob/claude-delivery/docs/operations/clients.md)；尚未以真實 Claude.ai 實測。
+- 除上述各項外本產品功能未變更；七支共用版本規則一致升版。
+- 新版候選需獨立建置、掃描與 PaaS HAOS VM 驗收（含重開機後自動回來）；既有 0.1.11、0.1.12、0.1.13 標籤不覆寫。
+
 ## 0.1.11 — 準備中（未發佈）
 
 - 本產品功能未變更；依既有七支共用版本規則隨同 LiteLLM MCP metadata 修補升版。
