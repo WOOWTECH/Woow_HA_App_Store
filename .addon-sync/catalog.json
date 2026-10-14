@@ -1506,21 +1506,21 @@
     "woow-hermes": {
       "id": "woow-hermes",
       "name": "Woow Hermes Agent",
-      "version": "0.1.8",
+      "version": "0.1.9",
       "repository": "WOOWTECH/Woow_ha_hermes_add_on",
-      "source_sha": "276ee71b9a90b5ebc093a862bd14edc212aa8866",
+      "source_sha": "bacfbc9e37ed0fe98ffc06149079f9dffd3f901e",
       "source_path": "hermes",
       "config_file": "config.yaml",
-      "config_sha256": "sha256:cb0e1b5f89948173d9c2d8224749b027030b4c4b4fb32e695a2d8f8bd92ef218",
-      "archive_sha256": "sha256:9738d749ff7c65fffd25feeb0af21951a29354df25df140107e56e92175bf286",
-      "context_fingerprint": "sha256:00e99386e8ef71b61e5ca74b0ebf08c75fea2ca1f42697228770eb5e3a07679a",
-      "material_fingerprint": "sha256:88e0d9462d00d05b7bb78f7828f8be8d07e96e9c4b5a201251b45f65cd82a034",
+      "config_sha256": "sha256:b187cbf1d73b33c50c944c1667831638ecc4d0f09fcc500000032781c7c89644",
+      "archive_sha256": "sha256:1050118f006dee20e1e6c7380d14f04e4792d4f8d4a530c8e94e5611affd75f5",
+      "context_fingerprint": "sha256:9e6b275a30278b5117be06e74890fbb0b087ab042c97054bbf8a48673b171c29",
+      "material_fingerprint": "sha256:6bb95fad7be1263c521eafef62316824a2b8dac92e98730204fd0edff4beba26",
       "architectures": [
         "amd64"
       ],
       "config": {
         "name": "Woow Hermes Agent",
-        "version": "0.1.8",
+        "version": "0.1.9",
         "slug": "woow-hermes",
         "description": "Hermes Agent (NousResearch) with the dashboard in the HA sidebar and on the LAN, plus the OpenAI-compatible API and webhooks for Cloudflare Tunnel",
         "url": "https://github.com/WOOWTECH/Woow_ha_hermes_add_on",
@@ -1593,15 +1593,15 @@
       "source_build_supported": true,
       "images": {
         "amd64": {
-          "reference": "ghcr.io/woowtech/woow-ha-hermes-amd64:0.1.8",
-          "index_digest": "sha256:3c043f16f65e0df7dfee21fd71ea38b21cc04a845a0905e695eaa86cd39703c4",
-          "digest": "sha256:25380c09640767c5757a0a6892561341531bdf785fc18962bb25253eb11d82ed",
+          "reference": "ghcr.io/woowtech/woow-ha-hermes-amd64:0.1.9",
+          "index_digest": "sha256:c6c32b5d996a00cec89a38e579307a29b4e74e77f7de1b24d4bac6c98f0be771",
+          "digest": "sha256:2a71d1ea1e0f7f5c296f156e7d9e5a0a4246aa7f6a55d0a64f6b44d5ee05b0dc",
           "source_revision": "29112bef099274229cadff79cdff7bf7b99c4b77"
         }
       },
       "delivery": "published-image",
       "validation": "manifest+architecture-images+configured-CI",
-      "publisher_run_id": "38485567154",
+      "publisher_run_id": "38529815978",
       "channel": "stable",
       "store_path": "woow-hermes"
     },
@@ -3701,5 +3701,5 @@
       "store_path": "woow_mcp_nextcloud"
     }
   },
-  "catalog_id": "sha256:687ca9c19d5d00ce139ff11dfa8887aecd16da86ec2a50b8b60c6a5d5f90790a"
+  "catalog_id": "sha256:9f43ca9c889caa41c037f68b0952d3dfb964f5df7aa0c6ea32e4fc2791a3bc08"
 }

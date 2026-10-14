@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.1.9
+
+- Fix: Hermes now starts after a Home Assistant cold backup restore. Supervisor
+  restores private application directories (such as `platforms` and `plugins`)
+  as root; startup now repairs ownership on the add-on's own `/opt/data` volume
+  before dropping privileges. Modes are preserved, symlinks and nested mounts are
+  skipped, and hardlinked files are refused.
+- Add a real-image regression for the restore repair to candidate CI.
+- Keep the pinned Hermes base and existing add-on configuration contract.
+
+## Unreleased
+
+- Repair ownership of the dedicated Home Assistant application volume after a
+  Supervisor restore, before starting Hermes. This prevents restored private
+  `platforms`, `plugins`, and `backups` directories from blocking startup.
+- Preserve ordinary file permissions and exclude symlinks and nested mounts;
+  refuse ownership changes to hardlinked files.
+
 ## 0.1.8
 
 - Fix: deleting a session or an exact batch now reclaims only prompt records
