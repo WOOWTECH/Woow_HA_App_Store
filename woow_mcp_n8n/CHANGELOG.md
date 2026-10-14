@@ -1,5 +1,11 @@
 # n8n Changelog
 
+## 0.1.11 — 準備中（未發佈）
+
+- Folder API 403/404 回覆加入固定的 entitlement、API key folder scopes、project access 與 route/resource 檢查提示；保留原錯誤碼、私密內容遮蔽與寫入結果可能未知的提醒，不增加 request、retry 或權限。
+- hosted CI 的完整 Python 測試階段使用 UID 0，以執行原有 UID10001 nondumpable proof；不略過測試，不改 builder admission。
+- 新版候選需獨立建置、掃描與 PaaS HAOS VM 驗收；既有 0.1.10 標籤不覆寫。
+
 ## 0.1.10 — 準備中（未發佈）
 
 - 本產品功能未變更；依既有七支共用版本規則隨同 LiteLLM MCP metadata 修補升版。

@@ -1,5 +1,11 @@
 # LiteLLM Changelog
 
+## 0.1.11 — 準備中（未發佈）
+
+- 修正 LiteLLM `model_info` 的合法寬 metadata 被拒絕：dict 上限 128 → 256；維持 256 KiB、depth 8、nodes 10000、list 100、string 16384 與既有私密欄位投影限制。
+- hosted CI 的完整 Python 測試階段使用 UID 0，以執行原有 UID10001 nondumpable proof；不略過測試，不改 builder admission。
+- 新版候選需獨立建置、掃描與 PaaS HAOS VM 驗收；既有 0.1.10 標籤不覆寫。
+
 ## 0.1.10 — 準備中（未發佈）
 
 - 修正 ChatGPT 訂閱模型 mode=responses 的 metadata 相容性，model_group_info 與 model_info 保留既有欄位投影及未知模式拒絕。
