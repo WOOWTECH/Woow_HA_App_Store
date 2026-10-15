@@ -1,7 +1,7 @@
 name: Woow LiteLLM MCP Server
-version: 0.1.14
+version: 0.2.1
 slug: woow_mcp_litellm
-description: Experimental; HA admin-role management; partial tools, read-only by default.
+description: Experimental; HA admin-role management; full tool surface; every tool and write on by default (each can be turned off in the panel).
 url: https://github.com/WOOWTECH/Woow_ha_mcp_addons
 arch:
 - amd64

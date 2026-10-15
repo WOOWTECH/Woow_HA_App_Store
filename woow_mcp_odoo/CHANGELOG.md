@@ -1,5 +1,23 @@
 # Odoo Changelog
 
+## 0.2.1 — 準備中（未發佈）
+
+- **0.2.0 未上架**：0.2.0 映像已推上 GHCR（標籤不可覆寫）並在測試 VM 實測，但不發佈到 Store；**0.1.14 直接升 0.2.1**，下方 0.2.0 段落的內容（完整版、寫入與工具預設全開、原始錯誤訊息）一併由 0.2.1 發佈。升級遷移與 0.2.0 相同：state schema 3→4 只遷移一次，寫入授權全開、0.1.x 的停用清單清空，token、連線與對外端點保留；0.2.0 寫的 schema 4 state 照樣載入（n8n 另補一個空的 MCP access token 欄位）。
+- 修正競態（測試 VM 實測）：非同步任務被取消後仍在執行時，前景 `execute_method` create 與 `chatter_post` 各回一次 `BACKEND_UNAVAILABLE: Idle`。根因是 odoo-mcp 的 `submit_async_task` 用同一個 session 的 Odoo client 在自己的執行緒跑（不經 add-on 的單一工作者），兩個執行緒共用同一條 XML-RPC 連線、每次請求後又關閉連線；現在同一個 transport 一次只跑一個請求（每個 RPC 之間仍可交錯）。
+- 新版候選需獨立建置、掃描與 PaaS HAOS VM 驗收；既有 0.1.x、0.2.0 標籤不覆寫。
+
+## 0.2.0 — 未上架（映像只推 GHCR；內容隨 0.2.1 發佈）
+
+- **完整版**（使用者 2026-10-15 決定）：與原始 MCP server 及 PaaS woow-mcp-server 功能一致，所有工具（含高風險）全部開放、全部預設開啟，管理介面可逐一停用工具或取消寫入。本產品開放上游 41 個工具全部（0.1.x 為 13 個有界子集）：tools/list 用子程序自己的 inputSchema（經 provider-safe 正規化），tools/call 參數原樣轉給子程序驗證，輸出不再截斷或投影。gateway 仍檢查工具名在分類名單內（上游新增但未分類的工具一律拒絕）、未停用、寫入工具或混合工具的寫入 operation 有 grant，被拒時回 JSON-RPC 錯誤（見下方 0.1.14 段落）。
+- **寫入預設開啟**：新安裝的 state 每個寫入 grant 都開、`writes_enabled=true`；**既有安裝升級時一次遷移成全開**（state schema 3→4；token、連線與對外端點保留，**0.1.x 的停用清單清空**，升級後所有工具全開）。之後管理員取消的寫入或停用的工具，重啟與後續升級都維持。0.1.x 不接受 schema 4，回退請還原升級前的備份。
+- **風險：網址（權杖）＝完整後端權限**。拿到權杖或 Claude.ai 密鑰網址的 client（包括 AI 助理誤判時）不需再授權即可以後端帳號的權限寫入；後端帳號權限要設對，只保留需要的工具與寫入，外洩時立刻重新產生權杖。說明見 [共用指南](https://github.com/WOOWTECH/Woow_ha_mcp_addons/blob/claude-delivery/docs/operations/guide.md#寫入預設開啟)。
+- Odoo 子程序比照 PaaS woow-mcp-server 並全開：套上 PaaS 的兩個 build patch（`fix_cross_session_token_store`：approval token 跨 session 有效；`fix_direct_writes`：直接寫入開關），環境 `ODOO_MCP_ENABLE_WRITES=1`、`ODOO_MCP_ALLOW_DIRECT_WRITES=1`：`execute_method` 可直接 create／write／unlink；`ODOO_MCP_ALLOW_UNKNOWN_METHODS=1`（使用者 2026-10-15 決定）：`execute_method` 也可呼叫未審查的副作用方法（例如 `action_confirm`、`action_post`）；三步驟 `preview_write`→`validate_write`→`execute_approved_write` 仍列出可用（未套用隱藏三步驟的 patch）。移除 B1／B2 的 res.partner 限定與 aggregate 投影；launch.py 對 patch 後的檔案做 digest 守門，未 patch 或被竄改就拒絕啟動。
+- `chatter_post` 直接送出（`MCP_CHATTER_DIRECT=1`，使用者 2026-10-15 決定）：不必先 preview 再 confirm；帶了 `approval`／`confirm` 的呼叫照樣直接送出、不報錯。0.1.14 以前照工具說明把 preview 的 `approval` 原樣帶回必定 -32602 的問題也一併消失（參數原樣轉給子程序）。
+- 保留的安全層：Bearer／密鑰網址驗證（錯誤即 404）與 log 遮罩、session 與併發 slot、子程序出站 DNS pin／TLS／redirect 拒絕、回覆中憑證換成 `[REDACTED]`、原始碼 digest 守門、管理面板 HA 管理員驗證。請求上限提高到 16 MiB。
+- 管理面板工具頁加上預設全開的風險提示。
+- **後端錯誤回傳原始訊息**（使用者 2026-10-15 決定，與 PaaS 一致）：拿掉 0.1.x 對後端錯誤的固定代碼遮蔽（例如 `BACKEND_RPC_FAULT`、`BACKEND_UNAVAILABLE`），client 看到後端的實際錯誤文字（例如 Odoo 的 AccessError 訊息、LiteLLM／EMQX 的錯誤 body；傳輸失敗為「代碼: 原因」）。gateway 在每個轉送的回覆中把 add-on 自己持有的憑證（Add-on 權杖、child token、後端 API key／密碼與其 Basic 認證形式）換成 `[REDACTED]`；log 的密鑰網址遮罩不變。**原始錯誤可能含後端內部資訊**（模型、欄位、路徑、版本），請留意誰能拿到網址。
+- 新版候選需獨立建置、掃描與 PaaS HAOS VM 驗收（含升級遷移、真實 Claude.ai 連線與完整工具實測）；既有 0.1.x 標籤不覆寫。
+
 ## 0.1.14 — 準備中（未發佈）
 
 - 0.1.12、0.1.13 映像已推上 GHCR 但從未發佈到 Store，且不再使用（標籤不可覆寫）；以下原為 0.1.12、0.1.13 準備的內容一併改由 0.1.14 發佈。

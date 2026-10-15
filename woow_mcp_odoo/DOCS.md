@@ -12,13 +12,7 @@ system-admin 才放行；token 只給管理程序，child 不繼承。此 token 
 其他版本（含之後的 patch 與 beta）整個管理面板都回 403，看起來和「不是管理員」完全一樣（add-on 紀錄也沒有訊息）；
 MCP 端點（Bearer token）不受影響。新的 Core 版本要等 add-on 發新版才支援，升級 Core 前請先對照這份清單。
 
-本產品 runtime：**odoo-mcp 1.1.0**。完整來源 41 tools，局部支援 13，
-暫不支援 28；全部產品合計見[工具表](https://github.com/WOOWTECH/Woow_ha_mcp_addons/blob/claude-delivery/docs/tool-surface.md)，**不是 full functional parity**。
-health/model list、res.partner 指定欄位 read/search/fields，及 exact-grant chatter preview+confirm；B1 增加 build_domain、generate_json2_payload、diagnose_odoo_call 純 preview（不執行 payload），以及按 active 分組的 id:count aggregate_records。有界輸出不含 ORM domain/context；不開放任意 model/method。
-B2 增加 schema_catalog（固定 res.partner、limit1、兩個 metadata cache keys）、inspect_model_relationships（僅 parent_id/child_ids 自關係 metadata 深度1，絕不讀 relation values）、data_quality_report（只 missing_required、name/active、最多兩次 search_count，無樣本或私密值）。舊 record fields 不擴張。Cache 非即時；refresh=true 才強制更新。品質總數是缺值欄位次數，不是唯一 records；duplicates/format/orphan checks 仍禁止。詳見 [有界功能](https://github.com/WOOWTECH/Woow_ha_mcp_addons/blob/claude-delivery/docs/tool-expansion.md)；B2 待獨立 SPEC → NEW SECURITY。
-逐名 schema／預設／operation／啟用限制／deferred reason 以
-[工具對照](https://github.com/WOOWTECH/Woow_ha_mcp_addons/blob/claude-delivery/docs/tool-surface.md) 與 [machine manifest](https://github.com/WOOWTECH/Woow_ha_mcp_addons/blob/claude-delivery/docs/tool-surface.json)
-為準。未知與 withheld tools 即使開啟 writes 也不放行。
+本產品 runtime：**odoo-mcp 1.1.0**（套上 PaaS woow-mcp-server 的兩個 build patch：跨 session approval token、直接寫入開關）。**0.2.1 起完整版**（負責人 2026-10-15 決定）：上游 41 個工具全部開放，與原始 MCP server 及 PaaS 版功能一致；tools/list 用子程序自己的 inputSchema（經 provider-safe 正規化），tools/call 參數原樣轉給子程序驗證，輸出不再截斷或投影。子程序環境 `ODOO_MCP_ENABLE_WRITES=1`、`ODOO_MCP_ALLOW_DIRECT_WRITES=1`：`execute_method` 可直接 create／write／unlink，三步驟 `preview_write`→`validate_write`→`execute_approved_write` 也照常列出可用（approval token 跨 session 有效）；`ODOO_MCP_ALLOW_UNKNOWN_METHODS=1`：`execute_method` 也可呼叫未審查的副作用方法（例如 `action_confirm`、`action_post`）；`MCP_CHATTER_DIRECT=1`：`chatter_post` 直接送出，不必先 preview（帶了 `approval`／`confirm` 也照樣送出）。Odoo 的錯誤（例如 AccessError）原文回傳。逐名清單與分類見[工具表](https://github.com/WOOWTECH/Woow_ha_mcp_addons/blob/claude-delivery/docs/tool-surface.md)，轉送規則與保留的安全層見[工具範圍](https://github.com/WOOWTECH/Woow_ha_mcp_addons/blob/claude-delivery/docs/tool-expansion.md)。子程序新增但尚未分類的工具一律拒絕。
 
 ## 後端與設定主權
 
@@ -27,9 +21,9 @@ B2 增加 schema_catalog（固定 res.partner、limit1、兩個 metadata cache k
 目前為空，不放 credentials、不覆寫 state。typed 表單已經 test-only role 連真 Core 驗證，
 **不是正式 HA 管理可用宣稱**。需受限測試資料庫與 XML-RPC 相容性；不沿用 legacy wheel patches，使用 source-guarded launcher。
 
-工具頁依實際 v3 metadata 顯示 exact tool/operation grants；保存取代全部
+工具頁依實際 metadata 顯示每個工具的停用開關與寫入授權（寫入工具一個 grant，混合工具每個寫入 operation 一個）；保存取代全部
 `enabled_write_tools` 並 `writes_enabled:false`，disabled 優先；失配／過期契約停止保存。
-116 個延期工具是透明內部 backlog，並非完整遷移完成。
+**全部工具與寫入預設開啟**：新安裝，以及從 0.1.x 升級時一次（state schema 4 遷移：寫入全開、0.1.x 的停用清單清空，token、連線與對外端點保留）；之後管理員取消的寫入或停用的工具，重啟與升級都維持。**風險：網址＝完整後端權限**；後端錯誤回傳原始訊息（可能含後端內部資訊，add-on 持有的憑證會換成 `[REDACTED]`）。後端帳號權限要設對，只保留需要的工具與寫入（見 [寫入預設開啟](https://github.com/WOOWTECH/Woow_ha_mcp_addons/blob/claude-delivery/docs/operations/guide.md#寫入預設開啟)）。
 
 ## 網路與認證
 

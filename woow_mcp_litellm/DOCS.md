@@ -12,12 +12,7 @@ system-admin 才放行；token 只給管理程序，child 不繼承。此 token 
 其他版本（含之後的 patch 與 beta）整個管理面板都回 403，看起來和「不是管理員」完全一樣（add-on 紀錄也沒有訊息）；
 MCP 端點（Bearer token）不受影響。新的 Core 版本要等 add-on 發新版才支援，升級 Core 前請先對照這份清單。
 
-本產品 runtime：**FastMCP 3.4.5 / pinned public vendor**。完整來源 40 tools，局部支援 7，
-暫不支援 33；全部產品合計見[工具表](https://github.com/WOOWTECH/Woow_ha_mcp_addons/blob/claude-delivery/docs/tool-surface.md)，**不是 full functional parity**。
-models/readiness、team metadata；有界 team create/alias update/team delete/model delete 需 exact grants。chat、key/user 任意 mutation、付費 provider health 不開放；private health 僅 GET /v1/models。
-逐名 schema／預設／operation／啟用限制／deferred reason 以
-[工具對照](https://github.com/WOOWTECH/Woow_ha_mcp_addons/blob/claude-delivery/docs/tool-surface.md) 與 [machine manifest](https://github.com/WOOWTECH/Woow_ha_mcp_addons/blob/claude-delivery/docs/tool-surface.json)
-為準。未知與 withheld tools 即使開啟 writes 也不放行。
+本產品 runtime：**FastMCP 3.4.5 / pinned public vendor**（與 Woow_litellm_mcp_server 4d41903 相同，只多出站與錯誤防護）。**0.2.1 起完整版**（負責人 2026-10-15 決定）：上游 40 個工具全部開放，與原始 MCP server 及 PaaS 版功能一致；tools/list 用子程序自己的 inputSchema（經 provider-safe 正規化），tools/call 參數原樣轉給子程序驗證，輸出不再截斷或投影。子程序 `LITELLM_MCP_READONLY=false`；`litellm_chat_completion` 等呼叫模型的工具會產生費用。逐名清單與分類見[工具表](https://github.com/WOOWTECH/Woow_ha_mcp_addons/blob/claude-delivery/docs/tool-surface.md)，轉送規則與保留的安全層見[工具範圍](https://github.com/WOOWTECH/Woow_ha_mcp_addons/blob/claude-delivery/docs/tool-expansion.md)。子程序新增但尚未分類的工具一律拒絕。
 
 ## 後端與設定主權
 
@@ -26,9 +21,9 @@ models/readiness、team metadata；有界 team create/alias update/team delete/m
 目前為空，不放 credentials、不覆寫 state。typed 表單已經 test-only role 連真 Core 驗證，
 **不是正式 HA 管理可用宣稱**。使用批准之受限測試 credentials，master_key 欄位名稱不代表批准全權正式 key；實際 backend 位置與版本待確認。
 
-工具頁依實際 v3 metadata 顯示 exact tool/operation grants；保存取代全部
+工具頁依實際 metadata 顯示每個工具的停用開關與寫入授權（寫入工具一個 grant，混合工具每個寫入 operation 一個）；保存取代全部
 `enabled_write_tools` 並 `writes_enabled:false`，disabled 優先；失配／過期契約停止保存。
-119 個延期工具是透明內部 backlog，並非完整遷移完成。
+**全部工具與寫入預設開啟**：新安裝，以及從 0.1.x 升級時一次（state schema 4 遷移：寫入全開、0.1.x 的停用清單清空，token、連線與對外端點保留）；之後管理員取消的寫入或停用的工具，重啟與升級都維持。**風險：網址＝完整後端權限**；後端錯誤回傳原始訊息（可能含後端內部資訊，add-on 持有的憑證會換成 `[REDACTED]`）。後端帳號權限要設對，只保留需要的工具與寫入（見 [寫入預設開啟](https://github.com/WOOWTECH/Woow_ha_mcp_addons/blob/claude-delivery/docs/operations/guide.md#寫入預設開啟)）。
 
 ## 網路與認證
 

@@ -26,13 +26,7 @@ protection mode 保持 on，無新增 host mounts、Docker socket 或 capabiliti
 快取，停權／降權／缺失／timeout／錯誤一律 fail closed。role query 不保證即時
 撤銷 browser Ingress session 或已在執行的跨系統操作。詳見共用驗收文件。
 
-本產品 runtime：**n8n-mcp 2.91.0 / Node 22.23.2**。完整來源 28 tools，局部支援 13，
-暫不支援 15；全部產品合計見[工具表](https://github.com/WOOWTECH/Woow_ha_mcp_addons/blob/claude-delivery/docs/tool-surface.md)，**不是 full functional parity**。
-文件/search/get_node、workflow list/minimal read、folder list/create/rename，加上 local validate_node/validate_workflow（manualTrigger/noOp 空參數圖）。`n8n_create_workflow` 僅建立2..20節點 inactive draft，不允許 code/URL/credentials/settings/activation；必須 exact grant，legacy global 不授權。delete_workflow 與 folder writes 權限不變。
-B3 新增 tags catalog（只掃第一頁最多250、本地query/limit）、executions list metadata（API includeData=false、最多100）、health status（服務availability，不證明APIkey權限），以及 folder get（明確非personal project/folder IDs、無workflow內容）。新API及get缺URL或key均在child send前拒絕；unconfigured本機docs/search/validators仍啟動。health不讀npm/official-MCP/settings、不回URL/config/env/metrics/version；既有credential health monitor不變。B3待獨立SPEC→NEW SECURITY。
-逐名 schema／預設／operation／啟用限制／deferred reason 以
-[工具對照](https://github.com/WOOWTECH/Woow_ha_mcp_addons/blob/claude-delivery/docs/tool-surface.md) 與 [machine manifest](https://github.com/WOOWTECH/Woow_ha_mcp_addons/blob/claude-delivery/docs/tool-surface.json)
-為準。未知與 withheld tools 即使開啟 writes 也不放行。
+本產品 runtime：**n8n-mcp 2.91.0 / Node 22.23.2**。**0.2.1 起完整版**（負責人 2026-10-15 決定）：上游 28 個工具全部開放，與原始 MCP server 及 PaaS 版功能一致；tools/list 用子程序自己的 inputSchema（經 provider-safe 正規化），tools/call 參數原樣轉給子程序驗證，輸出不再截斷或投影。管理類工具（workflow、executions、credentials、data table、資料夾、版本、agents 等）需先設定 n8n 網址與 API key。原生版本歷史、資料表欄位操作、`n8n_test_workflow` prepare／pinned／direct、`n8n_explore_node_resources`、`n8n_manage_agents` 另需選填的 **MCP Access Token**（0.2.1 起，管理面板「後端連線設定」；n8n 設定 → Instance-level MCP）。子程序以 `WEBHOOK_SECURITY_MODE=permissive` 執行（0.2.1 起，使用者決定關閉 webhook／URL SSRF 防護）：可連 HA 內網的 n8n，**MCP 也能經 n8n-mcp 連到 add-on 能到的任何內網位址**（上游只保留擋雲端 metadata 主機名）。逐名清單與分類見[工具表](https://github.com/WOOWTECH/Woow_ha_mcp_addons/blob/claude-delivery/docs/tool-surface.md)，轉送規則與保留的安全層見[工具範圍](https://github.com/WOOWTECH/Woow_ha_mcp_addons/blob/claude-delivery/docs/tool-expansion.md)。子程序新增但尚未分類的工具一律拒絕。
 
 ## 後端與設定主權
 
@@ -41,10 +35,9 @@ B3 新增 tags catalog（只掃第一頁最多250、本地query/limit）、execu
 目前為空，不放 credentials、不覆寫 state。UI 支援保留／完整替換／確認清除與三維健康，
 **本地串接不代表已通過 HA**。第一個核准試點，僅受限非正式 workflow key；sql.js fallback，npm ci --ignore-scripts；沒有 runtime npm download。
 
-工具頁依實際 v3 metadata 顯示 exact tool/operation grants；保存取代全部
+工具頁依實際 metadata 顯示每個工具的停用開關與寫入授權（寫入工具一個 grant，混合工具每個寫入 operation 一個）；保存取代全部
 `enabled_write_tools` 並 `writes_enabled:false`，disabled 優先；失配／過期契約停止保存。
-舊 delete_workflow global true 會顯示有效授權；保存轉為 exact grants，不靜默留寫入。
-113 個延期工具是透明內部 backlog，並非完整遷移完成。
+**全部工具與寫入預設開啟**：新安裝，以及從 0.1.x 升級時一次（state schema 4 遷移：寫入全開、0.1.x 的停用清單清空，token、連線與對外端點保留）；之後管理員取消的寫入或停用的工具，重啟與升級都維持。**風險：網址＝完整後端權限**；後端錯誤回傳原始訊息（可能含後端內部資訊，add-on 持有的憑證會換成 `[REDACTED]`）。後端帳號權限要設對，只保留需要的工具與寫入（見 [寫入預設開啟](https://github.com/WOOWTECH/Woow_ha_mcp_addons/blob/claude-delivery/docs/operations/guide.md#寫入預設開啟)）。
 
 ## 網路與認證
 
