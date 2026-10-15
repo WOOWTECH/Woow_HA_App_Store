@@ -64,6 +64,7 @@ Omnigent is not part of the add-on until it is stable. 0.2.1 neither installs no
 
 ## Troubleshooting
 
+- **Add-on stays in `error` after restoring a backup (`SQLITE_READONLY` in the log):** update to at least 0.2.2. A Home Assistant restore returns `/data` without its file owners; from 0.2.2 the add-on hands them back to OpenDesign at every start and logs `returned N path(s) under /data/opendesign to open-design`.
 - **Stuck at “Loading OpenDesign…”:** reload without cache and confirm the add-on is at least 0.1.1. The Next/Turbopack runtime and escaped RSC chunk references both require ingress-prefix rewriting; the container browser smoke locks this boot path down.
 - **Settings or Design systems changes the URL but not the page:** update to at least 0.1.2. OpenDesign route logic must see logical paths without HA's transport-only ingress prefix.
 - **Blank page or missing assets:** restart the add-on, then reload the HA page without cache. Report the missing root-relative URL and add-on logs; ingress adaptation is coupled to the pinned OpenDesign version.

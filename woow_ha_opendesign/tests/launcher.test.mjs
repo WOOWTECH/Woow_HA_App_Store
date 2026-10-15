@@ -158,6 +158,16 @@ retire_omnigent_state`;
   }
 });
 
+test('restored /data is handed back to open-design before any child starts', () => {
+  const fn = launcher.indexOf('repair_data_ownership() {');
+  assert.ok(fn > 0, 'repair_data_ownership is defined');
+  const body = launcher.slice(fn, launcher.indexOf('\n}\n', fn));
+  assert.ok(body.includes('find "$DATA_DIR" -xdev \\( ! -user open-design -o ! -group open-design \\) -exec chown -h open-design:open-design {} +'));
+  const call = launcher.indexOf('\nrepair_data_ownership\n');
+  assert.ok(call > launcher.indexOf('prepare_owned_dir "$dir"\ndone'), 'runs after the owned directories exist');
+  assert.ok(call < launcher.indexOf('start_child opendesign'), 'runs before OpenDesign starts');
+});
+
 test('launcher runs a loopback-only writable login TTY under the OpenDesign UID', () => {
   assert.match(launcher, /\/usr\/bin\/ttyd[\s\S]*--interface 127\.0\.0\.1[\s\S]*--base-path \/terminal[\s\S]*--writable[\s\S]*--cwd "\$HOME" \/bin\/bash --login/);
   assert.match(launcher, /start_child ttyd \\\n  "\$\{no_supervisor_env\[@\]\}" su-exec open-design:open-design \/usr\/bin\/ttyd/);

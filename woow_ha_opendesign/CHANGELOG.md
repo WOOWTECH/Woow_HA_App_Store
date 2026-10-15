@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.2
+
+- **Fixed: the add-on did not start after a Home Assistant backup restore.** Restoring a backup returns the add-on's `/data` without the original file owners: OpenDesign's database and project files came back as `root`, so OpenDesign (which runs as UID 1001) stopped at once with `SQLITE_READONLY` and the add-on stayed in `error` (measured on HAOS 18.1 / Supervisor 2026.09.3; 0.2.0 and 0.2.1 are affected). At every start the launcher now returns everything under `/data/opendesign` to the OpenDesign user before anything starts (symbolic links are changed themselves, never followed) and logs how many paths it fixed. A normal start changes nothing. The built-in MCP server already did this for `/data/mcp`. If 0.2.0/0.2.1 is stuck after a restore, updating to 0.2.2 starts it again with the restored data.
+
 ## 0.2.1
 
 **Omnigent removed** (until Omnigent is stable; the WOOW PaaS drops it too):

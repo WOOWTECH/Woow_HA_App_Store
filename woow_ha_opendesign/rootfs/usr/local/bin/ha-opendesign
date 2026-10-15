@@ -133,6 +133,23 @@ retire_omnigent_state() {
   echo "[ha-opendesign] Omnigent was removed in 0.2.1: moved its state (with the stored Omnigent login) to ${target}; delete it when no longer needed" >&2
 }
 
+# A Home Assistant backup restore extracts /data without the original owners:
+# OpenDesign's database and project files come back as root, and the daemon
+# (UID 1001) then fails with SQLITE_READONLY (measured on HAOS 18.1 /
+# Supervisor 2026.09.3). Return everything under DATA_DIR to open-design.
+# -xdev stays on this mount and chown -h changes a symlink itself, never its
+# target, so nothing outside /data/opendesign is touched. A normal start finds
+# nothing to change.
+repair_data_ownership() {
+  local count
+  count=$(find "$DATA_DIR" -xdev \( ! -user open-design -o ! -group open-design \) -print | wc -l)
+  if [[ "$count" -eq 0 ]]; then
+    return
+  fi
+  find "$DATA_DIR" -xdev \( ! -user open-design -o ! -group open-design \) -exec chown -h open-design:open-design {} +
+  echo "[ha-opendesign] returned ${count} path(s) under ${DATA_DIR} to open-design (owners are not kept by a backup restore)" >&2
+}
+
 if [[ $(id -u) -ne 0 ]]; then
   echo "[ha-opendesign] launcher must start as root to prepare the HA /data mount" >&2
   exit 78
@@ -152,6 +169,7 @@ owned_dirs=(
 for dir in "${owned_dirs[@]}"; do
   prepare_owned_dir "$dir"
 done
+repair_data_ownership
 # nginx runs as its own UID (ha-ingress): besides the built-in MCP server it is
 # the only process that may open the MCP administration socket, which
 # OpenDesign, its agents and the ttyd shell (UID 1001) cannot.

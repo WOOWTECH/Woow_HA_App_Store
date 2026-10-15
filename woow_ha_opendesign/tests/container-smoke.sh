@@ -328,6 +328,14 @@ if grep -Fq 'grace; sending KILL' "$tmp/container.log"; then
 fi
 grep -Fq '[ha-opendesign] SIGTERM received; stopping OpenDesign' "$tmp/container.log"
 docker rm "$container" >/dev/null
+# A Home Assistant backup restore returns /data without the original owners
+# (measured on HAOS 18.1: OpenDesign's database came back as root and the
+# daemon failed with SQLITE_READONLY). Reproduce that on the retained volume;
+# the launcher must hand everything back to open-design before OpenDesign starts.
+docker run --rm --platform linux/amd64 -v "$volume:/data" --entrypoint sh "$image" -ceu '
+  find /data/opendesign -mindepth 1 -exec chown -h 0:0 {} +
+  test "$(find /data/opendesign -mindepth 1 -user 0 | wc -l)" -gt 0
+'
 start_container
 wait_for_health
 python3 - "$tmp/health.json" <<'PY'
@@ -335,6 +343,11 @@ import json
 import sys
 assert json.load(open(sys.argv[1], encoding='utf-8')).get('ok') is True
 PY
+docker logs "$container" >"$tmp/container.log" 2>&1
+grep -Eq '\[ha-opendesign\] returned [0-9]+ path\(s\) under /data/opendesign to open-design' "$tmp/container.log"
+docker exec "$container" sh -ceu '
+  test "$(find /data/opendesign -xdev \( ! -user open-design -o ! -group open-design \) | wc -l)" -eq 0
+'
 docker exec "$container" sh -ceu '
   grep -qx persisted /data/opendesign/container-smoke-sentinel
   for skills_path in \
