@@ -177,11 +177,11 @@ docker exec "$container" sh -ceu '
       exit 1
     fi
   done
-  # The omnigent-host kit supervisor runs beside the daemon, as UID 1001.
-  supervisor=$(pgrep -f "^/bin/sh /etc/omnigent-host/supervisor.sh")
-  test -n "$supervisor"
-  set -- $(grep "^Uid:" "/proc/$supervisor/status")
-  test "$2 $3 $4" = "1001 1001 1001"
+  # 0.2.1: no Omnigent host or kit (the core still ships the CLI until a core
+  # without it is pinned).
+  test ! -e /etc/omnigent-host
+  test ! -e /etc/profile.d/omnigent-host.sh
+  test ! -e /usr/local/bin/omnigent-host-status
   test -d /data/opendesign
   test -r /app/apps/daemon/dist/cli.js
   test -d /app/apps/web/out
@@ -210,8 +210,6 @@ docker exec -u 1001:1001 "$container" sh -ceu '
   claude --version | grep -Fq 2.1.296
   codex --version | grep -Fq 0.162.1
   pi --version | grep -Fq 1.1.0
-  omnigent --version 2>&1 | grep -Fq 0.16.0
-  test -x /usr/local/bin/omnigent-host-status
   test ! -e /opt/ha-opendesign/opencode
   test "$(getent passwd open-design | cut -d: -f6)" = /data/opendesign/home
   command -v claude >/dev/null
@@ -233,32 +231,19 @@ for path, key in (("/api/plugins", "plugins"), ("/api/skills", "skills")):
         data = json.load(response)
     assert isinstance(data.get(key), list) and data[key], path + " native catalog is empty"
     catalog[key] = {entry.get("id") for entry in data[key]}
-# The core bundles the WoowTech skill and Omnigent plugin and drops brainstorming.
-assert {"woowtech-brand", "woow-omnigent"} <= catalog["skills"], "core skills missing"
+# The core bundles the WoowTech skill and drops brainstorming. Omnigent is
+# removed from the add-on (0.2.1): neither its plugin nor its skill is offered.
+assert "woowtech-brand" in catalog["skills"], "core skills missing"
 assert "brainstorming" not in catalog["skills"], "brainstorming must not be offered"
-assert "woow-omnigent" in catalog["plugins"], "woow-omnigent plugin missing"
-'
-
-# Omnigent: the kit supervisor waits for a login, and the daemon's native
-# Omnigent integration recognizes it as the resident host manager.
-docker exec -u 1001:1001 "$container" python3 -c '
-import json, time, urllib.request
-status_file = "/data/opendesign/home/.omnigent/omnigent-host/status.json"
-for _ in range(30):
-    try:
-        status = json.load(open(status_file, encoding="utf-8"))
-        break
-    except (OSError, ValueError):
-        time.sleep(1)
-else:
-    raise SystemExit("omnigent-host status file missing")
-assert status["state"] == "waiting-login", status["state"]
-assert status["workspace"] == "/data/opendesign/home/studio", status["workspace"]
+assert "woow-omnigent" not in catalog["skills"], "woow-omnigent skill must not be offered"
+assert "woow-omnigent" not in catalog["plugins"], "woow-omnigent plugin must not be offered"
+# The core daemon keeps its Omnigent route; without the plugin it reports not-installed.
 with urllib.request.urlopen("http://127.0.0.1:7456/api/integrations/omnigent/status", timeout=30) as response:
     integration = json.load(response)
-assert integration["host"]["manager"] == "kit", integration["host"]
-assert set(integration["installedEngines"]) >= {"claude", "codex", "pi", "opencode"}, integration["installedEngines"]
+assert integration.get("installed") is False and integration.get("phase") == "not-installed", integration
 '
+# No Omnigent process runs ("[o]" keeps this command line from matching itself).
+docker exec "$container" sh -c '! pgrep -af "[o]mnigent"'
 
 # WoowTech white-label and zh-TW patches from the core must still reach the
 # browser through ingress: the white-label head script, the zh-TW dictionary
@@ -325,9 +310,16 @@ docker exec "$container" sh -ceu '
   ln -s /data/opendesign/legacy-credentials-target /data/opendesign/credentials
 '
 
+# 0.2.0 Omnigent state (with a fake login) is moved, never deleted, at the next
+# start (0.2.1 removed Omnigent).
+docker exec -u 1001:1001 "$container" sh -ceu '
+  mkdir -m 0700 /data/opendesign/home/.omnigent
+  printf "{\"fake\": \"omnigent-login-not-a-secret\"}" > /data/opendesign/home/.omnigent/auth_tokens.json
+'
+
 # Stop/recreate the container while retaining only its named /data volume.
-# Every process (the kit's supervisor first, then OpenDesign) must stop on TERM
-# inside the launcher's grace period, without the KILL fallback.
+# Every process must stop on TERM inside the launcher's grace period, without
+# the KILL fallback.
 docker stop -t 10 "$container" >/dev/null
 docker logs "$container" >"$tmp/container.log" 2>&1
 if grep -Fq 'grace; sending KILL' "$tmp/container.log"; then
@@ -355,7 +347,15 @@ docker exec "$container" sh -ceu '
   test ! -e /data/opendesign/credentials
   test ! -L /data/opendesign/credentials
   grep -qx retained /data/opendesign/legacy-credentials-target/sentinel
+  test ! -e /data/opendesign/home/.omnigent
+  set -- /data/opendesign/.backup/omnigent-*
+  test "$#" = 1 && test -d "$1" && test ! -L "$1"
+  test "$(stat -c %a "$1")" = 700
+  test "$(stat -c %a /data/opendesign/.backup)" = 700
+  grep -Fq omnigent-login-not-a-secret "$1/auth_tokens.json"
 '
+docker logs "$container" >"$tmp/container.log" 2>&1
+test "$(grep -c "Omnigent was removed in 0.2.1: moved its state" "$tmp/container.log")" = 1
 
 # Direct renderer acceptance uses the Chromium and playwright-core installed in
 # the image. It requires no provider key or generation call.

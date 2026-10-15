@@ -35,6 +35,7 @@ paths=(
   apps/runtime/backend_policy.py
   apps/runtime/bounded_tools.py
   apps/runtime/session_idle.py
+  apps/runtime/output_policy.py
   apps/opendesign/launch.py
   apps/opendesign/vendor
   packaging/entrypoint.py

@@ -56,17 +56,26 @@ chmod 0755 "$root/bin/ha-opendesign-mcp"
 
 # Import-time checks of the vendored code: management imports; child imports run backend_policy.check_sources()
 # (pinned httpx/httpcore sources) and launch.py's FastMCP server; BoundedTools checks the pinned MCP SDK sources.
+# 0.2.1: importing the runtime applies the HA overlay (surface.install): the gateway table is the 15 PaaS tools; the
+# child's four replaced handlers (od_tools.install) come from the overlay.
 PYTHONPATH="$root/packages/mcp-admin-core:$root" "$root/.venv/bin/python" -c '
 import mcp_admin_core.run_product, ha_opendesign_mcp.runtime
 from mcp_admin_core.products import TOOLS
-assert len(TOOLS["opendesign"]) == 11, sorted(TOOLS["opendesign"])
+assert len(TOOLS["opendesign"]) == 15, sorted(TOOLS["opendesign"])
 '
 OD_API_BASE=http://127.0.0.1:7456 PYTHONPATH="$root/apps/opendesign/vendor:$root/apps/runtime:$root/apps/opendesign" \
   "$root/apps/opendesign/.venv/bin/python" -c '
+import sys
+sys.path.append("/opt/woow")
 import launch
 from bounded_tools import BoundedTools
+from ha_opendesign_mcp import od_tools
+od_tools.install(launch.mcp, launch.od)
 workers = BoundedTools(launch.mcp, capacity=1)
 workers.close()
 assert len(launch.mcp._tool_manager.list_tools()) == 15
 '
+# The overlay's unit tests with the image's own interpreters and pinned packages (loopback fake daemon, no network).
+HA_OD_MCP_CODE="$root" HA_OD_MCP_VENDOR="$root" sh "$src/tests/unit/run.sh" "$root/.venv/bin/python" \
+  "$root/apps/opendesign/.venv/bin/python"
 echo "built-in MCP installed: $(sed -n 's/.*"source_commit": "\([0-9a-f]*\)".*/\1/p' "$src/VENDOR.json")"

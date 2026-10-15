@@ -9,11 +9,11 @@
 - 系統 Chromium、Playwright 與 Noto CJK／emoji 字型提供無頭匯出。
 - 支援獨立 HTML、ZIP、截圖式 PDF、PNG/JPEG，以及每張投影片為圖片的 PPTX。**不支援可編輯 PPTX**，要求此模式時會明確失敗。
 - core 映像提供 Claude Code `2.1.296`、Codex CLI `0.162.1`、Pi Coding Agent `1.1.0` 與 OpenCode `1.18.33`（OpenDesign 原生 `byok-opencode` API runtime）；附加元件建置時以 UID 1001 逐一核對版本，不需要 Paseo 插件，也不會在首次使用時下載 CLI。
-- 來自 core 的 WoowTech 改動：白牌介面、繁體中文語系修正、匯出修正、內建 `woowtech-brand` skill 與 `woow-omnigent` plugin，並移除 `brainstorming` skill。
-- OpenDesign 旁邊執行 **Omnigent host**（WOOW 共用 `omnigent-host` 套件）：平時只等待登入；在 OpenDesign **Plugins → Omnigent** 對話框（或 CLI Terminal 執行 `omnigent login <伺服器網址>`）連線後，這個附加元件就會成為 Omnigent 的一台機器。
+- 來自 core 的 WoowTech 改動：白牌介面、繁體中文語系修正、匯出修正、內建 `woowtech-brand` skill，並移除 `brainstorming` skill。
+- 不含 Omnigent：0.2.1 起移除 Omnigent host，以及 core 內建的 `woow-omnigent` plugin 與 skill，待 Omnigent 穩定後再加回（見 [DOCS.md](DOCS.md#omnigent-removed-in-021)）。
 - 透過 OpenDesign 原生 **Plugins** 頁面安裝的插件與 Skills，會由同一個 daemon 提供給 Claude Code、Codex、Pi、OpenCode 的專案執行流程。
 - OpenDesign 頁面提供受 HA Ingress 保護的 **CLI Terminal**，可在 GUI 中完成 Claude Code、Codex、Pi 的互動登入。OpenCode 更多 API provider 可在 **Settings → API providers** 設定。
-- **內建 OpenDesign MCP server**（取代另一支「Woow OpenDesign MCP Server」附加元件）：MCP 用戶端連 `8081/tcp`＋Bearer token，Claude.ai 連接器用 `/private_<token>/mcp`。管理頁（token、工具權限）是 OpenDesign 頁面右下角 **CLI Terminal** 旁的 **MCP Server**，只能經 HA Ingress 進入。詳見 [DOCS.md](DOCS.md#built-in-mcp-server)。
+- **內建 OpenDesign MCP server**（取代另一支「Woow OpenDesign MCP Server」附加元件）：MCP 用戶端連 `8081/tcp`＋Bearer token，Claude.ai 連接器用 `/private_<token>/mcp`。工具與 WOOW PaaS 的 OpenDesign MCP 相同共 15 支，預設全開，包含寫入工具 `create_project`、`send_message`（會執行 OpenDesign agent）與 `delete_project`。管理頁（token、工具權限）是 OpenDesign 頁面右下角 **CLI Terminal** 旁的 **MCP Server**，只能經 HA Ingress 進入。詳見 [DOCS.md](DOCS.md#built-in-mcp-server)。
 
 [English](README.md) · [附加元件說明](DOCS.md)
 
@@ -37,12 +37,11 @@ OpenDesign 原生插件、Skills 的共用方式及 CLI 登入步驟請見[代�
                                   ↘ loopback ttyd :7681 (CLI 登入 TTY)
                                   ↘ /data/opendesign
                                   ↘ 系統 Chromium renderer
-OpenDesign ↔ omnigent-host supervisor → `omnigent host`（登入後主動連到你的 Omnigent 伺服器）
 ```
 
 nginx 先驗證 `X-Ingress-Path`，改寫初始回應中的根路徑 URL，並在應用程式碼之前注入 shim，以處理 fetch、XHR、EventSource、WebSocket、history、worker、動態資源 URL 與 web 模式的匯出缺口。HA Ingress 的 PDF 操作會改走可下載的截圖 PDF 二進位端點，PNG/JPEG 儲存則直接呼叫 daemon 的無頭 image 端點。SSE／WebSocket 不緩衝，且對上游停用壓縮以便安全改寫。
 
-root PID 1 啟動器先準備 Home Assistant 以 root 掛載的 `/data`，安全移除已撤回的 `/data/opendesign/credentials` 舊路徑且不追蹤 symbolic link，再透過 `su-exec` 讓 nginx、OpenDesign（經 omnigent-host 套件 launcher 啟動，同時執行 Omnigent supervisor）與 loopback ttyd 以 UID/GID 1001 執行；任一程序退出時會停止其他程序並結束，由 Supervisor 一起重新啟動（須打開 **Watchdog**；實測約 11 秒恢復，沒開時附加元件會停在 `error`）。關閉時先送 TERM、最多等待五秒，再送 KILL 並回收程序。nginx PID 與暫存目錄位於 `/tmp`。
+root PID 1 啟動器先準備 Home Assistant 以 root 掛載的 `/data`，安全移除已撤回的 `/data/opendesign/credentials` 舊路徑且不追蹤 symbolic link，再透過 `su-exec` 讓 nginx、OpenDesign 與 loopback ttyd 以 UID/GID 1001 執行；任一程序退出時會停止其他程序並結束，由 Supervisor 一起重新啟動（須打開 **Watchdog**；實測約 11 秒恢復，沒開時附加元件會停在 `error`）。關閉時先送 TERM、最多等待五秒，再送 KILL 並回收程序。nginx PID 與暫存目錄位於 `/tmp`。
 
 ## 驗證
 

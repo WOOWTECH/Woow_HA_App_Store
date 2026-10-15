@@ -69,6 +69,8 @@
 
 ## 6. 工具政策預設
 
+> **0.2.1 更新（使用者決定 2026-10-15）**：改為與 PaaS 相同 15 支、預設全開（含 `create_project`／`send_message`／`delete_project`），以 HA 自有 overlay 補上界限（`mcp-runtime/README.md`「0.2.1 tool overlay」）；0.2.0 既有狀態於首次啟動一次性授予三支寫入工具（管理員已停用者除外）。以下為 0.2.0 當時的設計。
+
 - 對外 bounded 11 支：讀取 10 支預設開（`health`、`version`、`list_agents`、`list_projects`、`get_project`、`list_project_files`、`get_file_info`、`list_plugins`、`list_skills`、`list_runs`），`delete_project` 預設關、需在管理頁精確授予。
 - 上游另 4 支 `create_project`、`send_message`（會跑 agent、花費、SSE 未界定）、`read_file`（任意私檔）、`list_connectors`（未投影 connector 設定）**不在 allowlist，無法開**（同舊 add-on 0.1.11 的 `docs/tool-surface.md`）。
 - 實測：child 直接列出 15 支（`evidence/06-container.txt`）；gateway 預設列 10 支，授予 `delete_project` 後 11 支，撤回後 10 支（`evidence/04-policy.txt`）。

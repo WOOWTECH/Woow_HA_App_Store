@@ -11,3 +11,5 @@
 | Earlier history | The Gitea snapshot's file is AST-identical (apart from its module docstring) to `WOOWTECH/Woow_opendesign_mcp_server@d6d157ab9542cf18515d7168f5c8082c88b11331` (see `vendor/docs/provenance/opendesign-upstream-chain.md`) |
 
 The rest of `vendor/` comes from WOOWTECH/Woow_ha_mcp_addons (see `vendor/LICENSE` and `vendor/THIRD_PARTY_NOTICES.md`).
+
+Since 0.2.1 the add-on replaces four of that server's handlers at run time (`list_connectors`, `read_file`, `create_project`, `send_message`) with HA-owned bounded handlers in `ha_opendesign_mcp/od_tools.py` (see `README.md`); the vendored file itself is not modified. `vendor/apps/runtime/output_policy.py` (used by the vendored `list_runs`) is vendored from the same source commit since 0.2.1.

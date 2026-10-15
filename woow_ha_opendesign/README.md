@@ -9,11 +9,11 @@ OpenDesign **0.24.1** from the shared WoowTech OpenDesign core image (the same b
 - System Chromium, Playwright and Noto CJK/emoji fonts provide headless HTML rendering.
 - Downloads supported by the pinned upstream application: standalone HTML, ZIP, screenshot PDF, PNG/JPEG, and screenshot-based PPTX. **Editable PPTX is unsupported** and returns a clear error.
 - The core image provides Claude Code `2.1.296`, Codex CLI `0.162.1`, Pi Coding Agent `1.1.0`, and OpenCode `1.18.33` (OpenDesign's native `byok-opencode` API runtime). The add-on build asserts each version as UID 1001; no Paseo plugin or first-use CLI download is required.
-- WoowTech changes from the core: white-label UI, Traditional Chinese (zh-TW) locale fixes, export fixes, the bundled `woowtech-brand` skill and `woow-omnigent` plugin, and no `brainstorming` skill.
-- An **Omnigent host** runs next to OpenDesign (the shared WOOW `omnigent-host` kit). It idles until you connect it from OpenDesign's **Plugins → Omnigent** dialog (or `omnigent login <server-url>` in the CLI Terminal), then keeps this add-on available as an Omnigent machine.
+- WoowTech changes from the core: white-label UI, Traditional Chinese (zh-TW) locale fixes, export fixes, the bundled `woowtech-brand` skill, and no `brainstorming` skill.
+- No Omnigent: 0.2.1 removed the Omnigent host and the core's `woow-omnigent` plugin and skill until Omnigent is stable (see [DOCS.md](DOCS.md#omnigent-removed-in-021)).
 - OpenDesign owns installed plugins and skills in its persistent data directory. Install them from OpenDesign's **Plugins** page; the daemon stages the selected skill into the project and supplies it to whichever installed agent runtime runs that project.
 - A Home Assistant authenticated **CLI Terminal** entry lets you complete interactive logins for Claude Code, Codex, and Pi. OpenCode's additional model providers can be configured in OpenDesign **Settings → API providers**.
-- A **built-in OpenDesign MCP server** (replacing the separate *Woow OpenDesign MCP Server* add-on) serves MCP clients on `8081/tcp` with a Bearer token, or `/private_<token>/mcp` for Claude.ai connectors. Its administration (token, tool permissions) is the **MCP Server** entry next to **CLI Terminal**, reachable only through HA Ingress. See [DOCS.md](DOCS.md#built-in-mcp-server).
+- A **built-in OpenDesign MCP server** (replacing the separate *Woow OpenDesign MCP Server* add-on) serves MCP clients on `8081/tcp` with a Bearer token, or `/private_<token>/mcp` for Claude.ai connectors. It offers the same 15 tools as the WOOW PaaS OpenDesign MCP, all on by default, including the writers `create_project`, `send_message` (they run an OpenDesign agent) and `delete_project`. Its administration (token, tool permissions) is the **MCP Server** entry next to **CLI Terminal**, reachable only through HA Ingress. See [DOCS.md](DOCS.md#built-in-mcp-server).
 
 [繁體中文](README_zh-TW.md) · [Add-on documentation](DOCS.md)
 
@@ -39,12 +39,11 @@ browser → HA authenticated ingress → nginx :8099 → OpenDesign 127.0.0.1:74
 MCP client → :8081 (Bearer or /private_<token>/mcp) → built-in MCP gateway (UID 10001) → OpenDesign 127.0.0.1:7456
                                         ↘ /data/opendesign
                                         ↘ system Chromium renderer
-OpenDesign ↔ omnigent-host supervisor → `omnigent host` (dials out to your Omnigent server after login)
 ```
 
 nginx validates `X-Ingress-Path`, rewrites initial root-relative URLs, and injects early browser shims covering fetch, XHR, EventSource, WebSocket, history, workers, dynamically inserted asset URLs, and the two web-mode export gaps. In HA Ingress the PDF action is redirected from the desktop-JSON endpoint to the binary screenshot-PDF endpoint, while PNG/JPEG saves call the daemon's headless image endpoint. Buffering and upstream compression are disabled to preserve streams and allow response rewriting.
 
-A root PID-1 launcher prepares Home Assistant's root-owned `/data` mount, safely removes the withdrawn legacy `/data/opendesign/credentials` path without following symlinks, then uses `su-exec` to run OpenDesign (through the omnigent-host kit launcher, which also runs the Omnigent supervisor) and loopback-only ttyd as `open-design` UID/GID 1001, nginx as `ha-ingress` (1002), and the built-in MCP server, which drops itself to `mcp` (10001). No child inherits the Supervisor token. The terminal is reachable only through HA-authenticated Ingress and starts a login shell in the persistent home directory. Every supervised process is required: when one exits, the launcher stops the others and exits so Supervisor restarts them together (only while **Watchdog** is on; measured: back and healthy in about 11 s, while with Watchdog off the add-on stays in `error`); nginx keeps its PID and temporary files under `/tmp`.
+A root PID-1 launcher prepares Home Assistant's root-owned `/data` mount, safely removes the withdrawn legacy `/data/opendesign/credentials` path without following symlinks, then uses `su-exec` to run OpenDesign and loopback-only ttyd as `open-design` UID/GID 1001, nginx as `ha-ingress` (1002), and the built-in MCP server, which drops itself to `mcp` (10001). No child inherits the Supervisor token. The terminal is reachable only through HA-authenticated Ingress and starts a login shell in the persistent home directory. Every supervised process is required: when one exits, the launcher stops the others and exits so Supervisor restarts them together (only while **Watchdog** is on; measured: back and healthy in about 11 s, while with Watchdog off the add-on stays in `error`); nginx keeps its PID and temporary files under `/tmp`.
 
 ## Development and validation
 

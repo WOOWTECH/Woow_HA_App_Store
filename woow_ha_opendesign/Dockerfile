@@ -1,17 +1,21 @@
 # Base = the shared WoowTech OpenDesign "core" image: the PaaS open-design image
 # built from the WoowTech fork (OpenDesign 0.24.1 + WoowTech daemon/web changes,
 # white-label / zh-TW / export patches, Claude Code, Codex, Pi, OpenCode, the
-# omnigent CLI with its SDK patch, bundled woowtech-brand skill and woow-omnigent
-# plugin, no brainstorming skill). This file adds only the Home Assistant shell:
-# nginx Ingress adaptation, the ttyd CLI Terminal, the root PID-1 launcher, the
-# /data layout, the headless export renderer, the omnigent-host kit and the
+# bundled woowtech-brand skill, no brainstorming skill). This file adds only the
+# Home Assistant shell: nginx Ingress adaptation, the ttyd CLI Terminal, the
+# root PID-1 launcher, the /data layout, the headless export renderer and the
 # built-in Woow OpenDesign MCP server (mcp-runtime/).
 #
+# 0.2.1 removed Omnigent from the add-on (until Omnigent is stable). The pinned
+# core (20261015.0617, fork w2.2) is built with OMNIGENT=off: no omnigent CLI,
+# no omnigent-host-entry, no bundled woow-omnigent plugin or skill. The removal
+# step below stays as a guard so an older core can never bring them back.
+#
 # The core is published as the public ghcr.io/woowtech/open-design-core,
-# copied from the PaaS registry by digest (paas-odoo-ci #325, approval #328:
-# OpenDesign 0.24.1 from fork woow-od-v0.24.1-w2.1 = ba3a448). Bump = change the
-# tag and digest together here, in .github/workflows/build.yml and build.yaml.
-ARG BUILD_FROM=ghcr.io/woowtech/open-design-core:20261014.1921@sha256:bfec7cc6c96b559506f33dce9296d9c2e02e9acbb0fe543ad434ea66370baf35
+# copied from the PaaS registry by digest (paas-odoo-ci #332, approval #334:
+# OpenDesign 0.24.1 from fork woow-od-v0.24.1-w2.2 = 1c7e697). Bump with
+# .github/scripts/pin-core.sh <tag> <digest> (rewrites every pin).
+ARG BUILD_FROM=ghcr.io/woowtech/open-design-core:20261015.0617@sha256:c5496453136b5ddc1ec3376c0f7518bfb2ba5091ff1ba75bfadf645d1c52a683
 
 # --- Built-in Woow OpenDesign MCP server: admin UI assets (mcp-runtime/, see mcp-runtime/README.md) ---
 # Built with the core image's own Node/npm from the vendored, lock-pinned UI sources; only dist/ is kept.
@@ -35,12 +39,11 @@ ARG CORE_CLAUDE_CODE_VERSION=2.1.296
 ARG CORE_CODEX_VERSION=0.162.1
 ARG CORE_PI_VERSION=1.1.0
 ARG CORE_OPENCODE_VERSION=1.18.33
-ARG CORE_OMNIGENT_VERSION=0.16.0
 
 USER root
 
 # The core defaults target the PaaS chart (HOME=/home/opendesign, daemon on
-# 7457, omnigent state on the od-home PVC). Home Assistant persists only /data,
+# 7457). Home Assistant persists only /data,
 # so everything stateful moves below /data/opendesign and the daemon listens on
 # loopback 7456 behind nginx :8099 (the HA ingress_port).
 ENV NODE_ENV=production \
@@ -48,8 +51,6 @@ ENV NODE_ENV=production \
     OD_PORT=7456 \
     OD_DATA_DIR=/data/opendesign \
     HOME=/data/opendesign/home \
-    OMNIGENT_CONFIG_HOME=/data/opendesign/home/.omnigent \
-    OMNIGENT_DATA_DIR=/data/opendesign/home/.omnigent \
     PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 \
     PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium-browser
 
@@ -77,16 +78,12 @@ RUN set -eu; \
     test -d /app/apps/web/out; \
     grep -Fq "\"version\": \"${CORE_DAEMON_PACKAGE_VERSION}\"" /app/apps/daemon/package.json; \
     test -f /app/skills/woowtech-brand/SKILL.md; \
-    test -f /app/plugins/_official/woow/woow-omnigent/open-design.json; \
     test ! -e /app/skills/brainstorming; \
-    test -x /usr/local/bin/omnigent; \
     su-exec open-design:open-design sh -ceu "\
       v=\$(claude --version | awk '{print \$1}'); test \"\$v\" = '${CORE_CLAUDE_CODE_VERSION}'; \
       v=\$(codex --version | awk '{print \$2}'); test \"\$v\" = '${CORE_CODEX_VERSION}'; \
       v=\$(pi --version | tr -d '[:space:]'); test \"\$v\" = '${CORE_PI_VERSION}'; \
-      v=\$(opencode --version | tr -d '[:space:]'); test \"\$v\" = '${CORE_OPENCODE_VERSION}'; \
-      OMNIGENT_CONFIG_HOME=/tmp/og-contract OMNIGENT_DATA_DIR=/tmp/og-contract omnigent --version 2>&1 | grep -Fq '${CORE_OMNIGENT_VERSION}'; \
-      rm -rf /tmp/og-contract"; \
+      v=\$(opencode --version | tr -d '[:space:]'); test \"\$v\" = '${CORE_OPENCODE_VERSION}'"; \
     for b in bash node npm chromium-browser python3 rg tmux flock setsid nginx ttyd su-exec; do \
       command -v "$b" >/dev/null || { echo "missing: $b"; exit 1; }; \
     done; \
@@ -94,7 +91,18 @@ RUN set -eu; \
     test -x /usr/local/bin/node; \
     test -x /usr/local/bin/npm; \
     fc-list | grep -qi 'Noto Sans CJK'; \
-    echo "core contract OK: OpenDesign ${CORE_OPENDESIGN_VERSION}, claude ${CORE_CLAUDE_CODE_VERSION}, codex ${CORE_CODEX_VERSION}, pi ${CORE_PI_VERSION}, opencode ${CORE_OPENCODE_VERSION}, omnigent ${CORE_OMNIGENT_VERSION}"
+    echo "core contract OK: OpenDesign ${CORE_OPENDESIGN_VERSION}, claude ${CORE_CLAUDE_CODE_VERSION}, codex ${CORE_CODEX_VERSION}, pi ${CORE_PI_VERSION}, opencode ${CORE_OPENCODE_VERSION}"
+
+# Omnigent is not part of the add-on (0.2.1): remove the core's woow-omnigent
+# plugin and skill (no-ops on a core without them) and fail if either remains.
+RUN set -eu; \
+    rm -rf /app/plugins/_official/woow/woow-omnigent /app/skills/woow-omnigent; \
+    if [ -d /app/plugins/_official/woow ] && [ -z "$(ls -A /app/plugins/_official/woow)" ]; then \
+      rmdir /app/plugins/_official/woow; \
+    fi; \
+    test ! -e /app/plugins/_official/woow/woow-omnigent; \
+    test ! -e /app/skills/woow-omnigent; \
+    ! grep -rlsF 'woow-omnigent' /app/plugins /app/skills
 
 # HA wording for the core's white-label "{agent} is not signed in" hint: the
 # add-on's CLI Terminal instead of the PaaS /console/ path. The patch fails the
@@ -104,20 +112,7 @@ RUN python3 /tmp/ha-patches/sign-in-hint.py /app/apps/web/out \
     && rm -rf /tmp/ha-patches
 
 COPY rootfs/ /
-# omnigent-host kit: byte-identical copies of woow-paas-charts
-# shared/omnigent-host (KIT.sha256). The chart mounts these from a ConfigMap;
-# HA has no chart, so the image lays out the same /etc/omnigent-host tree.
 RUN set -eu; \
-    cd /etc/omnigent-host; \
-    sha256sum -c KIT.sha256; \
-    mkdir -p bin; \
-    install -m 0555 omnigent-shim bin/omnigent; \
-    install -m 0555 omnigent-shim bin/omni; \
-    install -m 0555 omnigent-host-status bin/omnigent-host-status; \
-    install -m 0555 omnigent-host-status /usr/local/bin/omnigent-host-status; \
-    chmod 0555 supervisor.sh omnigent-host-launch omnigent-host-status omnigent-shim; \
-    chmod 0444 og_helper.py omnigent-host-profile.sh KIT.sha256; \
-    chown -R root:root /etc/omnigent-host; \
     mkdir -p /data/opendesign/home; \
     chown -R open-design:open-design /data; \
     # Tools that resolve the passwd home instead of $HOME (OpenCode keeps its
@@ -143,7 +138,7 @@ RUN sh /tmp/mcp-runtime/install.sh && rm -rf /tmp/mcp-runtime
 
 # amd64 only: the core image is built for linux/amd64.
 ARG BUILD_ARCH=amd64
-ARG BUILD_VERSION=0.2.0
+ARG BUILD_VERSION=0.2.1
 ARG BUILD_DATE
 ARG BUILD_DESCRIPTION="OpenDesign for Home Assistant"
 ARG BUILD_NAME="Woow HA OpenDesign"

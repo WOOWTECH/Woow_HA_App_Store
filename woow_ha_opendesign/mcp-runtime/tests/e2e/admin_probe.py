@@ -7,6 +7,9 @@ usage: python admin_probe.py <addon-host> <action>
   revoke        print the HTTP status
   grant-delete  enable the delete_project write grant; print status
   ungrant       remove all write grants; print status
+  grant-writers grant create_project, delete_project and send_message (the 0.2.1 defaults); print status
+  disable-delete  0.2.0-style admin choice: delete_project disabled, no grants; print status
+  policy        print the stored policy (writes_enabled, disabled, enabled_write_tools) from bootstrap
 Env: FAKE_ADMIN_ID, FAKE_USER_ID (two arbitrary Ingress user ids; there is no role lookup to tell them apart).
 """
 import json
@@ -75,6 +78,21 @@ def main():
         elif action == 'ungrant':
             r = mutate('policy', {'writes_enabled': False, 'disabled': [], 'enabled_write_tools': []}, 'PUT')
             print(json.dumps({'case': 'policy remove grants', 'status': r.status_code}))
+        elif action == 'grant-writers':
+            r = mutate('policy', {'writes_enabled': False, 'disabled': [],
+                                  'enabled_write_tools': ['create_project', 'delete_project', 'send_message']}, 'PUT')
+            print(json.dumps({'case': 'policy grant the three writers', 'status': r.status_code}))
+        elif action == 'disable-delete':
+            r = mutate('policy', {'writes_enabled': False, 'disabled': ['delete_project'], 'enabled_write_tools': []},
+                       'PUT')
+            print(json.dumps({'case': 'policy disable delete_project', 'status': r.status_code}))
+        elif action == 'policy':
+            data = bootstrap().json()
+            print(json.dumps({'case': 'stored policy', 'writes_enabled': data.get('writes_enabled'),
+                              'disabled': data.get('disabled'), 'enabled_write_tools': data.get('enabled_write_tools'),
+                              'tool_count': len(data.get('tools', {})),
+                              'write_tools': sorted(k for k, v in data.get('tools', {}).items() if v.get('write'))},
+                             sort_keys=True))
         else:
             raise SystemExit('unknown action')
 

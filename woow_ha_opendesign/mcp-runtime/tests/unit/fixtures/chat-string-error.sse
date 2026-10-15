@@ -1,0 +1,21 @@
+id: 1
+event: start
+data: {"runId":"0b0c6a8e-2f6f-4a59-9f0e-6f1f2d0f6a11","agentId":"codex","projectId":"5a1f1c2e-8f0b-4d7e-9a43-2c1e7b9d0f12","cwd":"/data/opendesign/projects/5a1f1c2e-8f0b-4d7e-9a43-2c1e7b9d0f12"}
+
+event: stderr
+data: {"chunk":"ERROR codex_api: failed to connect: HTTP error: 401 Unauthorized, url: wss://api.openai.com/v1/responses\n"}
+
+: keepalive
+
+id: 2
+event: error
+data: {"error":"unexpected status 401 Unauthorized: Missing bearer or basic authentication in header, url: https://api.openai.com/v1/responses, request id: req_0000","message":"unexpected status 401 Unauthorized"}
+
+id: 3
+event: run_retry_finished
+data: {"run_id":"0b0c6a8e-2f6f-4a59-9f0e-6f1f2d0f6a11","failure_category":"auth","failure_detail":"auth_required","error_code":"AGENT_AUTH_REQUIRED"}
+
+id: 4
+event: end
+data: {"code":1,"signal":null,"status":"failed","artifactPaths":["/data/opendesign/projects/x/index.html"],"failureCategory":"auth","failureAction":"login"}
+

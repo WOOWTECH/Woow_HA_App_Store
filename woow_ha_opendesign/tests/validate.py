@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 from pathlib import Path
-import hashlib
 import json
 import re
 import sys
@@ -28,7 +27,7 @@ with (ROOT / ".github/workflows/build.yml").open() as handle:
 check(isinstance(workflow, dict) and "jobs" in workflow, "GitHub Actions workflow YAML is invalid")
 check(set(repository) == {"name", "url", "maintainer"}, "repository.yaml must have the repository contract keys")
 check(repository.get("url") == "https://github.com/WOOWTECH/Woow_ha_opendesign_add_on", "repository URL mismatch")
-check(config.get("version") == "0.2.0", "release version must be 0.2.0")
+check(config.get("version") == "0.2.1", "release version must be 0.2.1")
 check("browser-local API BYOK" in config.get("description", ""), "add-on description must describe browser-local BYOK")
 check(config.get("arch") == ["amd64"], "the core image is amd64-only; only amd64 is allowed")
 check(config.get("ingress") is True, "ingress must be enabled")
@@ -45,8 +44,8 @@ check(config.get("image") == "ghcr.io/woowtech/woow-ha-opendesign-{arch}", "arch
 # The add-on derives from the shared WoowTech OpenDesign core image. Every build
 # input names the same published core (digest for CI/Dockerfile, its immutable
 # tag for Supervisor local builds), so no build can fall back to upstream OpenDesign.
-core_image = "ghcr.io/woowtech/open-design-core:20261014.1921@sha256:bfec7cc6c96b559506f33dce9296d9c2e02e9acbb0fe543ad434ea66370baf35"
-local_core_image = "ghcr.io/woowtech/open-design-core:20261014.1921"
+core_image = "ghcr.io/woowtech/open-design-core:20261015.0617@sha256:c5496453136b5ddc1ec3376c0f7518bfb2ba5091ff1ba75bfadf645d1c52a683"
+local_core_image = "ghcr.io/woowtech/open-design-core:20261015.0617"
 check(build.get("build_from") == {"amd64": local_core_image}, "Supervisor local builds must use the core image (tag syntax, amd64 only)")
 check("nexu-io/od" not in (ROOT / "build.yaml").read_text(), "build.yaml must not fall back to the upstream OpenDesign image")
 check(package.get("dependencies") == {"playwright-core": "1.55.0"}, "renderer dependency must remain exactly pinned")
@@ -65,7 +64,6 @@ runtime_sources = "\n".join([
     nginx,
     (ROOT / "runtime/package.json").read_text(),
 ])
-kit_dir = ROOT / "rootfs/etc/omnigent-host"
 
 check(re.search(rf"^ARG BUILD_FROM={re.escape(core_image)}$", dockerfile, re.M), "Dockerfile base must default to the core image placeholder")
 check("nexu-io/od" not in dockerfile, "Dockerfile must not fall back to the upstream OpenDesign image")
@@ -88,6 +86,14 @@ for setting in ["HA_OPENDESIGN_HOME=", "CLAUDE_CONFIG_DIR=", "CODEX_HOME=", "PI_
 check((ROOT / "rootfs/usr/local/bin/ha-opendesign-agents").exists(), "shared agent status/sync CLI is missing")
 check((ROOT / "tests/shared-agents.test.mjs").exists(), "shared agent integration tests are missing")
 check("paseo" not in dockerfile.lower() and "paseo" not in launcher.lower(), "retired Paseo runtime must not be installed or injected")
+# 0.2.1: Omnigent is removed from the add-on (until it is stable).
+check(not (ROOT / "rootfs/etc/omnigent-host").exists() and not (ROOT / "rootfs/etc/profile.d/omnigent-host.sh").exists(), "the retired omnigent-host kit must not be shipped")
+check("omnigent" not in (ROOT / "rootfs/etc/profile.d/ha-opendesign-cli-help.sh").read_text().lower(), "CLI help must not mention Omnigent")
+check("omnigent-host-launch" not in launcher and "OG_" not in launcher and "OMNIGENT_" not in launcher, "launcher must not run an Omnigent host")
+check('su-exec open-design:open-design /usr/local/bin/node /opt/ha-opendesign/headless-entry.mjs' in launcher, "OpenDesign must start directly")
+check("retire_omnigent_state" in launcher and 'mv -- "$source" "$target"' in launcher and 'chmod 0700 "$backups"' in launcher and "rm " not in launcher.split("retire_omnigent_state() {")[1].split("\n}\n")[0], "0.2.0 Omnigent state must be moved (never deleted) into a 0700 backup")
+check("rm -rf /app/plugins/_official/woow/woow-omnigent /app/skills/woow-omnigent" in dockerfile and "test ! -e /app/plugins/_official/woow/woow-omnigent" in dockerfile and "test ! -e /app/skills/woow-omnigent" in dockerfile, "the core's woow-omnigent plugin and skill must be removed and checked absent")
+check(not re.search(r"^(ENTRYPOINT|CMD) .*omnigent", dockerfile, re.M) and "OMNIGENT_" not in dockerfile and "/etc/omnigent-host" not in dockerfile, "the image must not run or configure Omnigent")
 check("prepare_owned_dir" in launcher and "chown -h" in launcher, "privileged /data preparation must reject/fail closed on symlinks")
 check("/usr/sbin/nginx -e stderr" in launcher, "unprivileged nginx must use its inherited stderr descriptor under HA procfs")
 apk_block = re.search(r"RUN apk add --no-cache(.*?)&& rm -rf", dockerfile, re.S)
@@ -96,7 +102,6 @@ if apk_block:
     check(apk_block.group(1).split() == ["\\", "nginx", "\\", "su-exec", "\\", "ttyd=1.7.7-r0", "\\"], "only HA-specific packages may be installed over the core")
 for core_assertion in [
     "test -f /app/skills/woowtech-brand/SKILL.md",
-    "test -f /app/plugins/_official/woow/woow-omnigent/open-design.json",
     "test ! -e /app/skills/brainstorming",
     "fc-list | grep -qi 'Noto Sans CJK'",
     "chromium-browser python3 rg tmux flock setsid nginx ttyd su-exec",
@@ -113,7 +118,6 @@ for arg, version in {
     "CORE_CODEX_VERSION": "0.162.1",
     "CORE_PI_VERSION": "1.1.0",
     "CORE_OPENCODE_VERSION": "1.18.33",
-    "CORE_OMNIGENT_VERSION": "0.16.0",
 }.items():
     check(re.search(rf"^ARG {arg}={re.escape(version)}$", dockerfile, re.M), f"core contract must pin {arg}={version}")
     check(f"${{{arg}}}" in dockerfile, f"core contract must assert {arg}")
@@ -130,19 +134,6 @@ check("ha-byok" not in nginx and "127.0.0.1:7457" not in nginx, "nginx must not 
 check('wait -n -p exited_pid "${child_pids[@]}"' in launcher and "byok_pid" not in launcher, "launcher must supervise every started child")
 for child in ["start_child opendesign", "start_child nginx", "start_child ttyd", "start_child mcp"]:
     check(child in launcher, f"launcher must supervise {child.split()[-1]}")
-check('su-exec open-design:open-design /bin/sh "$OMNIGENT_KIT/omnigent-host-launch" --' in launcher, "OpenDesign must start through the omnigent-host kit launcher")
-for setting in ["OG_HOST_ENABLED=1", "OG_BIN=/usr/local/bin/omnigent", 'OG_CONFIG_HOME="$HOME/.omnigent"', 'OG_WORKSPACE="$HOME/studio"', "OMNIGENT_ANALYTICS=0", 'OG_UNSET_ENV="OD_API_TOKEN"']:
-    check(setting in launcher, f"launcher must set the omnigent-host contract: {setting}")
-kit_files = ["supervisor.sh", "og_helper.py", "omnigent-host-status", "omnigent-host-launch", "omnigent-host-profile.sh", "omnigent-shim"]
-kit_sums = {}
-for line in (kit_dir / "KIT.sha256").read_text().splitlines():
-    digest, name = line.split()
-    kit_sums[name] = digest
-check(sorted(kit_sums) == sorted(kit_files), "KIT.sha256 must list exactly the vendored omnigent-host kit files")
-for name, digest in kit_sums.items():
-    path = kit_dir / name
-    check(path.is_file() and hashlib.sha256(path.read_bytes()).hexdigest() == digest, f"vendored omnigent-host kit file differs from KIT.sha256: {name}")
-check("sha256sum -c KIT.sha256" in dockerfile, "image build must verify the vendored omnigent-host kit")
 check("remove_obsolete_credentials" in launcher and "rm -f -- \"$legacy_dir\"" in launcher, "launcher must safely remove obsolete credential symlinks")
 check("startServer" in entry and "desktopSlideRenderer: renderSlides" in entry, "slide renderer injection missing")
 check("desktopPdfExporter" not in entry and "exportPdf" not in entry, "misleading desktop vector PDF exporter must not be injected")

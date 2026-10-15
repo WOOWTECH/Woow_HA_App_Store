@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtemp, mkdir, readFile, rm, stat, symlink } from 'node:fs/promises';
+import { lstat, mkdtemp, mkdir, readdir, readFile, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -103,32 +103,59 @@ ${launcher.slice(superviseStart)}
   assert.match(result.stderr, /required process second exited \(status=3\); stopping its peers/);
 });
 
-test('OpenDesign starts through the omnigent-host kit launcher with the HA contract', () => {
-  assert.match(launcher, /start_child opendesign \\\n  "\$\{no_supervisor_env\[@\]\}" su-exec open-design:open-design \/bin\/sh "\$OMNIGENT_KIT\/omnigent-host-launch" -- \\\n  \/usr\/local\/bin\/node \/opt\/ha-opendesign\/headless-entry\.mjs/);
-  assert.match(launcher, /readonly OMNIGENT_KIT=\/etc\/omnigent-host/);
-  for (const setting of [
-    'OG_HOST_ENABLED=1',
-    'OG_KIT_DIR="$OMNIGENT_KIT"',
-    'OG_CONFIG_HOME="$HOME/.omnigent"',
-    'OG_DATA_DIR="$HOME/.omnigent"',
-    'OMNIGENT_CONFIG_HOME="$OG_CONFIG_HOME"',
-    'OMNIGENT_DATA_DIR="$OG_DATA_DIR"',
-    'OG_STATUS_FILE="$OG_DATA_DIR/omnigent-host/status.json"',
-    'OG_WORKSPACE="$HOME/studio"',
-    'OG_BIN=/usr/local/bin/omnigent',
-    'OG_UNSET_ENV="OD_API_TOKEN"',
-    'OMNIGENT_ANALYTICS=0',
-    'DO_NOT_TRACK=1',
-    'DISABLE_TELEMETRY=1',
-    'OMNIGENT_HOST_NO_OPEN=1',
-  ]) assert.ok(launcher.includes(`export ${setting}`), `missing export ${setting}`);
-  // The kit's ordered stop must fit inside the launcher's own KILL deadline.
-  const grace = Number(launcher.match(/readonly SHUTDOWN_GRACE_SECONDS=(\d+)/)[1]);
-  const kitStop = Number(launcher.match(/export OG_LAUNCH_STOP_SECONDS=(\d+)/)[1]);
-  const hostStop = Number(launcher.match(/export OG_STOP_GRACE_SECONDS=(\d+)/)[1]);
-  assert.ok(hostStop < kitStop && kitStop < grace, `${hostStop} < ${kitStop} < ${grace}`);
-  assert.match(launcher, /"\$DATA_DIR\/home\/\.omnigent"/);
-  assert.match(launcher, /chmod 0700 "\$DATA_DIR\/home\/\.omnigent"/);
+test('OpenDesign starts directly: no Omnigent host (removed in 0.2.1)', () => {
+  assert.match(launcher, /start_child opendesign \\\n  "\$\{no_supervisor_env\[@\]\}" su-exec open-design:open-design \/usr\/local\/bin\/node \/opt\/ha-opendesign\/headless-entry\.mjs\n/);
+  assert.doesNotMatch(launcher, /omnigent-host-launch|OMNIGENT_KIT|\/etc\/omnigent-host|export OG_|export OMNIGENT_/);
+  assert.doesNotMatch(launcher, /"\$DATA_DIR\/home\/(\.omnigent|studio)"\n/, 'the launcher must not (re)create Omnigent directories');
+  for (const setting of ['DO_NOT_TRACK=1', 'DISABLE_TELEMETRY=1']) assert.ok(launcher.includes(`export ${setting}`), `missing export ${setting}`);
+});
+
+test('0.2.0 Omnigent state is moved once into a 0700 backup, never deleted or followed', async () => {
+  const start = launcher.indexOf('retire_omnigent_state() {');
+  const end = launcher.indexOf('\n}\n', start) + 3;
+  assert.ok(start >= 0 && end > start);
+  const root = await mkdtemp(path.join(tmpdir(), 'ha-opendesign-omnigent-'));
+  // prepare_owned_dir (tested above) chowns to open-design; here it only creates the directory.
+  const harness = (dataDir) => `set -Eeuo pipefail
+DATA_DIR=${JSON.stringify(dataDir)}
+prepare_owned_dir() { [[ ! -L "$1" ]] && mkdir -p -- "$1"; }
+${launcher.slice(start, end)}
+retire_omnigent_state`;
+  try {
+    const data = path.join(root, 'data');
+    await mkdir(path.join(data, 'home', '.omnigent', 'omnigent-host'), { recursive: true, mode: 0o755 });
+    await writeFile(path.join(data, 'home', '.omnigent', 'auth_tokens.json'), '{"fake": "login"}');
+    let result = spawnSync('bash', ['-c', harness(data)], { encoding: 'utf8' });
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stderr, /Omnigent was removed in 0\.2\.1: moved its state \(with the stored Omnigent login\) to .*\/\.backup\/omnigent-\d{8}T\d{6}Z; delete it when no longer needed/);
+    const backups = await readdir(path.join(data, '.backup'));
+    assert.equal(backups.length, 1);
+    assert.match(backups[0], /^omnigent-\d{8}T\d{6}Z$/);
+    const moved = path.join(data, '.backup', backups[0]);
+    assert.equal(await readFile(path.join(moved, 'auth_tokens.json'), 'utf8'), '{"fake": "login"}');
+    assert.equal((await stat(moved)).mode & 0o777, 0o700);
+    assert.equal((await stat(path.join(data, '.backup'))).mode & 0o777, 0o700);
+    await assert.rejects(stat(path.join(data, 'home', '.omnigent')));
+    // Idempotent: nothing left to move, nothing logged.
+    result = spawnSync('bash', ['-c', harness(data)], { encoding: 'utf8' });
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.stderr, '');
+    assert.equal((await readdir(path.join(data, '.backup'))).length, 1);
+    // A symlinked .omnigent is moved as the link itself; its target is never touched.
+    const outside = path.join(root, 'outside');
+    await mkdir(outside, { mode: 0o755 });
+    await writeFile(path.join(outside, 'keep.txt'), 'keep');
+    await symlink(outside, path.join(data, 'home', '.omnigent'));
+    result = spawnSync('bash', ['-c', harness(data)], { encoding: 'utf8' });
+    assert.equal(result.status, 0, result.stderr);
+    const links = (await readdir(path.join(data, '.backup'))).filter((name) => name !== backups[0]);
+    assert.equal(links.length, 1);
+    assert.ok((await lstat(path.join(data, '.backup', links[0]))).isSymbolicLink());
+    assert.equal((await stat(outside)).mode & 0o777, 0o755);
+    assert.equal(await readFile(path.join(outside, 'keep.txt'), 'utf8'), 'keep');
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });
 
 test('launcher runs a loopback-only writable login TTY under the OpenDesign UID', () => {

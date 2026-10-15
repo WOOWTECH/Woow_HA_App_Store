@@ -86,11 +86,36 @@ s03() {
   docker exec $P-client $PY -c "import httpx; r = httpx.get('http://$ADDON:8099/mcp-admin/api/bootstrap', headers={'X-Remote-User-Id': '$FAKE_ADMIN_ID'}); print('status', r.status_code)"
 }
 s04() {
-  log "write grant: delete_project (exact grant), then removed"
-  admin grant-delete
+  log "0.2.1 defaults on a fresh install: all 15 tools; the three writers granted once at first start"
+  admin policy
   probe "$TOKEN" tools
+  docker exec $P-addon cat /data/mcp/ha-tool-defaults.json
+  docker logs $P-addon 2>&1 | grep -c 'tool defaults applied' | sed 's/^/defaults log lines: /'
+  log "administrator removes every grant: reads only"
   admin ungrant
   probe "$TOKEN" tools
+  log "write grant: delete_project only (exact grant)"
+  admin grant-delete
+  probe "$TOKEN" tools
+  log "the three writers granted again"
+  admin grant-writers
+  probe "$TOKEN" tools
+}
+s15() {
+  log "0.2.1 tools on a real project (no agent is signed in on this system: runs fail at once, nothing is charged)"
+  local out pid
+  out=$(probe "$TOKEN" create)
+  echo "$out"
+  pid=$(sed -n 's/^project=\([0-9a-f-]*\)$/\1/p' <<<"$out")
+  [[ -n $pid ]] || { echo "no project id"; return 1; }
+  log "files written into the project as uid open-design (what an agent would do)"
+  docker exec -u open-design $P-addon sh -c "cd /data/opendesign/projects/$pid && printf '<h1>e2e</h1>\\n' > index.html \
+    && mkdir -p sub keys && printf 'nested\\n' > sub/a.txt && printf 'FAKE_E2E_VALUE=1\\n' > .env \
+    && printf 'not a key' > keys/server.pem && head -c 300 /dev/urandom > bin.dat \
+    && head -c 1100000 /dev/zero | tr '\\000' a > big.txt && find . -type f | sort"
+  probe "$TOKEN" "files=$pid"
+  probe "$TOKEN" "chat=$pid" connectors runs
+  probe "$TOKEN" "delete=$pid"
 }
 s05() {
   log "token rotate: old token refused, new token accepted"
@@ -124,7 +149,7 @@ s07() {
   wait_ready 60
   probe "$TOKEN" health
 }
-# The OpenDesign node process itself, not the omnigent-host kit launcher (sh) that wraps it.
+# The OpenDesign node process itself (su-exec execs it directly).
 daemon_pid() {
   local pid
   pid=$(docker exec $P-addon pgrep -f '^/usr/local/bin/node /opt/ha-opendesign/headless-entry.mjs' | head -1)
@@ -203,6 +228,7 @@ SEEN+=("$TOKEN")
 step 02-mcp.txt s02
 step 03-admin.txt s03
 step 04-policy.txt s04
+step 15-tools-0.2.1.txt s15
 step 05-token-lifecycle.txt s05
 step 06-container.txt s06
 step 07-daemon-pause.txt s07

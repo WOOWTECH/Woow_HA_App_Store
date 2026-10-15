@@ -10,7 +10,7 @@ const [dockerfile, smoke, workflow, launcher, build] = await Promise.all([
   readFile(new URL('rootfs/usr/local/bin/ha-opendesign', root), 'utf8'),
   readFile(new URL('build.yaml', root), 'utf8'),
 ]);
-const coreImage = 'ghcr.io/woowtech/open-design-core:20261014.1921@sha256:bfec7cc6c96b559506f33dce9296d9c2e02e9acbb0fe543ad434ea66370baf35';
+const coreImage = 'ghcr.io/woowtech/open-design-core:20261015.0617@sha256:c5496453136b5ddc1ec3376c0f7518bfb2ba5091ff1ba75bfadf645d1c52a683';
 
 test('the add-on derives from the WoowTech core image, never upstream OpenDesign', () => {
   assert.match(dockerfile, new RegExp(`^ARG BUILD_FROM=${coreImage.replace(/[.]/g, '\\.')}$`, 'm'));
@@ -28,7 +28,6 @@ test('agent CLIs come from the core and are asserted, not installed, by the add-
     ['CORE_CODEX_VERSION', '0.162.1'],
     ['CORE_PI_VERSION', '1.1.0'],
     ['CORE_OPENCODE_VERSION', '1.18.33'],
-    ['CORE_OMNIGENT_VERSION', '0.16.0'],
   ]) {
     assert.match(dockerfile, new RegExp(`^ARG ${arg}=${version.replace(/[.]/g, '\\.')}$`, 'm'));
     assert.ok(dockerfile.includes(`\${${arg}}`), `${arg} must be asserted`);
@@ -39,16 +38,17 @@ test('agent CLIs come from the core and are asserted, not installed, by the add-
   assert.match(smoke, /claude --version \| grep -Fq 2\.1\.296/);
   assert.match(smoke, /codex --version \| grep -Fq 0\.162\.1/);
   assert.match(smoke, /pi --version \| grep -Fq 1\.1\.0/);
-  assert.match(smoke, /omnigent --version 2>&1 \| grep -Fq 0\.16\.0/);
+  assert.doesNotMatch(dockerfile, /CORE_OMNIGENT_VERSION|omnigent --version|test -x \/usr\/local\/bin\/omnigent/,
+    'the add-on no longer requires the core to ship Omnigent (0.2.1)');
   assert.match(workflow, /Verify bundled agent CLIs as UID 1001/);
   assert.match(workflow, /--platform \$\{\{ matrix\.platform \}\}/);
 });
 
 test('HA overrides the core PaaS runtime defaults', () => {
-  for (const env of ['OD_PORT=7456', 'OD_BIND_HOST=127.0.0.1', 'OD_DATA_DIR=/data/opendesign', 'HOME=/data/opendesign/home',
-    'OMNIGENT_CONFIG_HOME=/data/opendesign/home/.omnigent', 'OMNIGENT_DATA_DIR=/data/opendesign/home/.omnigent']) {
+  for (const env of ['OD_PORT=7456', 'OD_BIND_HOST=127.0.0.1', 'OD_DATA_DIR=/data/opendesign', 'HOME=/data/opendesign/home']) {
     assert.ok(dockerfile.includes(env), `Dockerfile must set ${env}`);
   }
+  assert.doesNotMatch(dockerfile, /OMNIGENT_(?:CONFIG_HOME|DATA_DIR)=/, 'Omnigent is not configured (0.2.1)');
   assert.match(dockerfile, /^ENTRYPOINT \["\/sbin\/tini", "--", "\/usr\/local\/bin\/ha-opendesign"\]$/m);
   assert.match(dockerfile, /^CMD \[\]$/m, 'the core CMD (daemon on 7457) must be cleared');
   assert.doesNotMatch(dockerfile, /^ENTRYPOINT .*omnigent-host-entry/m, 'the PaaS entry stub must not be the HA entrypoint');
@@ -58,11 +58,20 @@ test('HA overrides the core PaaS runtime defaults', () => {
 
 test('core skills and plugin catalog are verified at build and in the running container', () => {
   assert.match(dockerfile, /test -f \/app\/skills\/woowtech-brand\/SKILL\.md/);
-  assert.match(dockerfile, /test -f \/app\/plugins\/_official\/woow\/woow-omnigent\/open-design\.json/);
   assert.match(dockerfile, /test ! -e \/app\/skills\/brainstorming/);
-  assert.match(smoke, /\{"woowtech-brand", "woow-omnigent"\} <= catalog\["skills"\]/);
+  assert.match(smoke, /"woowtech-brand" in catalog\["skills"\]/);
   assert.match(smoke, /"brainstorming" not in catalog\["skills"\]/);
-  assert.match(smoke, /"woow-omnigent" in catalog\["plugins"\]/);
+});
+
+test('Omnigent is removed from the add-on: the core plugin and skill are deleted and checked absent (0.2.1)', () => {
+  assert.match(dockerfile, /rm -rf \/app\/plugins\/_official\/woow\/woow-omnigent \/app\/skills\/woow-omnigent/);
+  assert.match(dockerfile, /test ! -e \/app\/plugins\/_official\/woow\/woow-omnigent/);
+  assert.match(dockerfile, /test ! -e \/app\/skills\/woow-omnigent/);
+  assert.match(smoke, /"woow-omnigent" not in catalog\["skills"\]/);
+  assert.match(smoke, /"woow-omnigent" not in catalog\["plugins"\]/);
+  assert.doesNotMatch(smoke, /omnigent-host\/supervisor\.sh|test -x \/usr\/local\/bin\/omnigent-host-status/);
+  assert.match(smoke, /test ! -e \/etc\/omnigent-host\n/);
+  assert.match(smoke, /! pgrep -af "\[o\]mnigent"/);
 });
 
 test('image license labels name OpenDesign (Apache-2.0) and the add-on code (MIT)', async () => {

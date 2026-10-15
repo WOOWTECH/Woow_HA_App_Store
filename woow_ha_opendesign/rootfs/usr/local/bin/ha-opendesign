@@ -3,10 +3,8 @@ set -Eeuo pipefail
 
 readonly DATA_DIR=/data/opendesign
 readonly NGINX_TMP=/tmp/ha-opendesign-nginx
-readonly OMNIGENT_KIT=/etc/omnigent-host
 readonly SHUTDOWN_GRACE_SECONDS=5
-# Supervised children (OpenDesign with its omnigent-host kit, nginx, ttyd and
-# the built-in MCP server). Every process started with start_child is required:
+# Supervised children (OpenDesign, nginx, ttyd and the built-in MCP server). Every process started with start_child is required:
 # when any one exits, the launcher stops the others and exits so Supervisor
 # restarts the complete set. Add a process with one more start_child call below.
 child_pids=()
@@ -112,6 +110,29 @@ remove_obsolete_credentials() {
   fi
 }
 
+# 0.2.1 retired the Omnigent host (0.2.0 ran the woow-paas-charts omnigent-host
+# kit beside OpenDesign). Its state, including the stored Omnigent login, is
+# MOVED once out of the agents' home into a 0700 backup the user can delete;
+# nothing is deleted. Idempotent: once moved, there is nothing left to move.
+retire_omnigent_state() {
+  local source="$DATA_DIR/home/.omnigent" backups="$DATA_DIR/.backup" target
+  if [[ ! -e "$source" && ! -L "$source" ]]; then
+    return
+  fi
+  prepare_owned_dir "$backups"
+  chmod 0700 "$backups"
+  target="$backups/omnigent-$(date -u +%Y%m%dT%H%M%SZ)"
+  if [[ -e "$target" || -L "$target" ]]; then
+    target="$target-$$"
+  fi
+  # A rename inside /data: a symlink is moved as the link itself, never followed.
+  mv -- "$source" "$target"
+  if [[ -d "$target" && ! -L "$target" ]]; then
+    chmod 0700 "$target"
+  fi
+  echo "[ha-opendesign] Omnigent was removed in 0.2.1: moved its state (with the stored Omnigent login) to ${target}; delete it when no longer needed" >&2
+}
+
 if [[ $(id -u) -ne 0 ]]; then
   echo "[ha-opendesign] launcher must start as root to prepare the HA /data mount" >&2
   exit 78
@@ -120,8 +141,6 @@ fi
 owned_dirs=(
   "$DATA_DIR"
   "$DATA_DIR/home"
-  "$DATA_DIR/home/.omnigent"
-  "$DATA_DIR/home/studio"
   "$DATA_DIR/shared"
   "$DATA_DIR/shared/skills"
   "$DATA_DIR/shared/mcp"
@@ -146,8 +165,7 @@ for dir in "$DATA_DIR" "$DATA_DIR/home" "$DATA_DIR/export-render" "$DATA_DIR/exp
   }
   chmod 0750 "$dir"
 done
-# omnigent keeps its login (auth_tokens.json) here; it expects a 0700 directory.
-chmod 0700 "$DATA_DIR/home/.omnigent"
+retire_omnigent_state
 # Agent CLI config homes (CODEX_HOME etc. below). Codex warns when its home is
 # missing, so create the absent ones. Existing entries are the user's and are
 # left exactly as they are (including symlinks): this never fails startup.
@@ -170,36 +188,9 @@ export CODEX_HOME="$HOME/.codex"
 export PI_CODING_AGENT_DIR="$HOME/.pi/agent"
 export XDG_CONFIG_HOME="$HOME/.config"
 
-# Omnigent host (woow-paas-charts shared/omnigent-host kit, baked into the image
-# at /etc/omnigent-host instead of the chart's ConfigMap). The kit launcher runs
-# its supervisor next to the OpenDesign daemon; the supervisor idles until a
-# login exists (OpenDesign's native Omnigent dialog, or `omnigent login <url>`
-# in the CLI Terminal) and then keeps `omnigent host` connected. These values
-# are the chart's woow.omnigentHost.env contract for open-design, re-pointed at
-# the persistent HA home. Exported for every child: the daemon's Omnigent
-# integration and the terminal's `omnigent` guard read the same state.
-export OMNIGENT_ANALYTICS=0
+# Opt the agent CLIs (and their libraries) out of telemetry, as in 0.2.0.
 export DO_NOT_TRACK=1
 export DISABLE_TELEMETRY=1
-export OG_HOST_ENABLED=1
-export OG_KIT_DIR="$OMNIGENT_KIT"
-export OG_CONFIG_HOME="$HOME/.omnigent"
-export OG_DATA_DIR="$HOME/.omnigent"
-export OMNIGENT_CONFIG_HOME="$OG_CONFIG_HOME"
-export OMNIGENT_DATA_DIR="$OG_DATA_DIR"
-export OG_STATUS_FILE="$OG_DATA_DIR/omnigent-host/status.json"
-export OG_HOST_NAME="Home Assistant OpenDesign"
-export OG_WORKSPACE="$HOME/studio"
-export OG_WATCH_SECONDS=120
-export OG_BIN=/usr/local/bin/omnigent
-export OG_PROVIDERS=claude-subscription
-export OG_PASSTHROUGH="OD_DAEMON_URL,NODE_PATH,NODE_OPTIONS,PUPPETEER_EXECUTABLE_PATH,PUPPETEER_SKIP_DOWNLOAD,PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH,PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD,USE_BUILTIN_RIPGREP,CLAUDE_CONFIG_DIR,CODEX_HOME,PI_CODING_AGENT_DIR,XDG_CONFIG_HOME"
-export OG_UNSET_ENV="OD_API_TOKEN"
-export OMNIGENT_HOST_NO_OPEN=1
-# Fit the kit's ordered stop (supervisor -> host -> daemon) inside this
-# launcher's SHUTDOWN_GRACE_SECONDS and HA Supervisor's default stop timeout.
-export OG_STOP_GRACE_SECONDS=2
-export OG_LAUNCH_STOP_SECONDS=3
 
 # Supervisor credentials stay with this root launcher. No child needs them:
 # OpenDesign, its agents, nginx, the CLI Terminal shell and the built-in MCP
@@ -207,8 +198,7 @@ export OG_LAUNCH_STOP_SECONDS=3
 no_supervisor_env=(/usr/bin/env -u SUPERVISOR_TOKEN -u HASSIO_TOKEN)
 
 start_child opendesign \
-  "${no_supervisor_env[@]}" su-exec open-design:open-design /bin/sh "$OMNIGENT_KIT/omnigent-host-launch" -- \
-  /usr/local/bin/node /opt/ha-opendesign/headless-entry.mjs
+  "${no_supervisor_env[@]}" su-exec open-design:open-design /usr/local/bin/node /opt/ha-opendesign/headless-entry.mjs
 # `-e stderr` uses the inherited descriptor directly; reopening /dev/stderr is
 # denied when HA's root PID 1 drops to an unprivileged UID under its procfs.
 start_child nginx \

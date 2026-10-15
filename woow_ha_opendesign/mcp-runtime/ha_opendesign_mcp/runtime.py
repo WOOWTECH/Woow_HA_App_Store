@@ -16,6 +16,8 @@ health monitor and HA admin verifier are the vendored ones. Local differences:
    /mcp-admin/ (the same gate as OpenDesign itself and its ttyd terminal).
 4. MCP clients use 0.0.0.0:8081 exactly as with the standalone add-on: Bearer on /mcp, and the token in the path
    on /private_<token>/mcp where the pinned gateway supports it.
+5. 0.2.1: the OpenDesign tool table is the PaaS server's 15 tools (surface.install(), before the store is opened),
+   and the three writers are granted once by default (defaults.apply(), before any listener starts).
 """
 import asyncio
 import dataclasses
@@ -37,6 +39,9 @@ from mcp_admin_core.products import INSTRUCTIONS, ProductStore, TOOLS, child_spe
 from mcp_admin_core.run_product import Listener
 
 from . import ADMIN_SOCKET, BACKEND_URL, CHILD_SOCKET, DATA_DIR, INGRESS_PEER, MCP_HOST, MCP_PORT, PRODUCT
+from . import defaults, surface
+
+surface.install()
 
 CHILD_ENTRY = Path(__file__).with_name('child.py')
 BACKEND_WRITE = re.compile(r'(?:^|/)api/backend$')
@@ -100,6 +105,10 @@ async def run():
     stop = asyncio.Event()
     try:
         state = pin_backend(store)
+        record = defaults.apply(store)
+        if record is not None:
+            print('[ha-opendesign-mcp] tool defaults applied: granted %s; left disabled %s'
+                  % (','.join(record['granted']) or 'none', ','.join(record['left_disabled']) or 'none'), flush=True)
         manager = Supervisor(builtin_child_spec(state, store.directory))
         for sig in (signal.SIGINT, signal.SIGTERM):
             loop.add_signal_handler(sig, stop.set)

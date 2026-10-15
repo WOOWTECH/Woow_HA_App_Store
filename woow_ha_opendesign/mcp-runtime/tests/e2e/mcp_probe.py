@@ -17,6 +17,16 @@ checks:
             write not granted, invalid arguments); a tools/call without a session stays 403 (Bearer)
   starting  initialize -> tools/list -> tools/call health in a loop while the daemon (re)starts (Bearer); prints
             each attempt's HTTP status / JSON-RPC outcome
+  0.2.1 (the 15 PaaS tools, writers on by default; no agent is signed in on the test system, so no run costs anything):
+  create        create_project with agent "claude" (not signed in: a failed run) -> projected result; list_projects
+                shows the project. Prints project=<uuid> on its own line for the caller
+  files=<uuid>  list_project_files, get_file_info, read_file: text ok, nested ok, .env refused by the gateway,
+                binary / too large / unknown refused by the child with a public code
+  chat=<uuid>   send_message as "claude" (failed: AGENT_AUTH_REQUIRED), as an unknown agent (AGENT_UNAVAILABLE), to an
+                unknown project (PROJECT_NOT_FOUND); create_project as byok-opencode (refused by OpenDesign: no run)
+  connectors    list_connectors: count, fields, no URL / path / token text
+  runs          list_runs (vendored projection; failed in 0.2.0)
+  delete=<uuid> delete_project (on by default), then list_projects without it
 Outputs one JSON line per check. The token comes only from MCP_TOKEN and is redacted from all output.
 """
 import json
@@ -153,8 +163,9 @@ def refusals(client, base):
     session.initialize()
     cases = [
         ('unknown tool', {'name': 'no_such_tool', 'arguments': {'value': MARKER}}),
-        ('write tool not granted (delete_project)', {'name': 'delete_project', 'arguments': {'project_id': MARKER}}),
-        ('not offered (read_file)', {'name': 'read_file', 'arguments': {'project_id': MARKER, 'path': 'x'}}),
+        ('invalid arguments (delete_project project_id not a UUID)', {'name': 'delete_project', 'arguments': {'project_id': MARKER}}),
+        ('invalid arguments (read_file .env, unknown member)', {'name': 'read_file', 'arguments': {
+            'project_id': '00000000-0000-4000-8000-000000000000', 'file_path': '.env', 'path': MARKER}}),
         ('invalid arguments (get_project without project_id, extra field)', {'name': 'get_project', 'arguments': {'unexpected': MARKER}}),
         ('invalid argument type (get_project project_id=123)', {'name': 'get_project', 'arguments': {'project_id': 123}}),
     ]
@@ -167,6 +178,123 @@ def refusals(client, base):
     no_session = Session(client, base + '/mcp', bearer).post({'jsonrpc': '2.0', 'id': 30, 'method': 'tools/call',
                                                               'params': {'name': 'no_such_tool', 'arguments': {}}})
     out(check='refusals', case='refused tools/call without a session', status=no_session.status_code)
+    session.close()
+
+
+LEAK_MARKERS = ('/data/', 'http://', 'https://', 'cwd', 'localPath', 'token', 'Bearer')
+
+
+def leaks(text):
+    return sorted(marker for marker in LEAK_MARKERS if marker in text)
+
+
+def bearer_session(client, base):
+    session = Session(client, base + '/mcp', {'Authorization': 'Bearer ' + TOKEN})
+    session.initialize()
+    return session
+
+
+def projects(session):
+    reply, value = call_json(session, 'list_projects', {})
+    return [p.get('id') for p in value.get('projects', [])] if isinstance(value, dict) else value
+
+
+def call_json(session, name, arguments):
+    """Like Session.call, with the whole text (call() shortens it) parsed as JSON when it is JSON."""
+    message = session.request('tools/call', {'name': name, 'arguments': arguments})
+    result = message.get('result') or {}
+    text = ''.join(item.get('text', '') for item in result.get('content', []) if item.get('type') == 'text')
+    reply = {'isError': bool(result.get('isError')), 'error': message.get('error'), 'text': text}
+    try:
+        value = json.loads(reply['text'])
+    except ValueError:
+        value = reply['text']
+    return reply, value
+
+
+def od_create(client, base):
+    session = bearer_session(client, base)
+    tools = session.request('tools/list')['result']['tools']
+    out(check='create', step='tools/list', count=len(tools), names=sorted(t['name'] for t in tools),
+        input_schemas={t['name']: sorted(t['inputSchema'].get('properties', {})) for t in tools
+                       if t['name'] in ('read_file', 'create_project', 'send_message')})
+    reply, value = call_json(session, 'create_project', {'prompt': 'e2e probe: a one-line hello page',
+                                                          'agent_id': 'claude'})
+    out(check='create', step='create_project agent=claude (not signed in)', isError=reply['isError'], result=value,
+        leaks=leaks(reply['text']))
+    project = value.get('projectId') if isinstance(value, dict) else None
+    out(check='create', step='list_projects contains the new project', present=project in projects(session))
+    session.close()
+    if project:
+        print('project=' + project, flush=True)
+
+
+def od_files(client, base, project):
+    session = bearer_session(client, base)
+    reply, value = call_json(session, 'list_project_files', {'project_id': project})
+    names = sorted(f.get('path') for f in value.get('files', [])) if isinstance(value, dict) else value
+    out(check='files', step='list_project_files', files=names)
+    reply, value = call_json(session, 'get_file_info', {'project_id': project, 'file_path': 'index.html'})
+    out(check='files', step='get_file_info index.html', isError=reply['isError'],
+        size=value.get('size') if isinstance(value, dict) else value)
+    cases = (('index.html', 'text file'), ('sub/a.txt', 'nested text file'), ('.env', 'secret-like name'),
+             ('keys/server.pem', 'secret-like name'), ('bin.dat', 'binary'), ('big.txt', 'over 1 MiB'),
+             ('missing.txt', 'not in the project'), ('../../mcp/state.json', 'traversal'))
+    for ident, (path, label) in enumerate(cases, start=40):
+        response = session.post({'jsonrpc': '2.0', 'id': ident, 'method': 'tools/call',
+                                 'params': {'name': 'read_file', 'arguments': {'project_id': project, 'file_path': path}}})
+        status, reply = rpc_or_status(response)
+        result = (reply or {}).get('result') or {}
+        error = (reply or {}).get('error')
+        text = ''.join(i.get('text', '') for i in result.get('content', []))
+        out(check='files', case='read_file ' + path + ' (' + label + ')', status=status,
+            isError=bool(result.get('isError')), text=text[:120],
+            gateway_error=None if not error else {'code': error.get('code'), 'message': error.get('message'),
+                                                  'errors': (error.get('data') or {}).get('errors')})
+    session.close()
+
+
+def od_chat(client, base, project):
+    session = bearer_session(client, base)
+    for label, name, arguments in (
+            ('send_message agent=claude (not signed in)', 'send_message',
+             {'project_id': project, 'prompt': 'e2e probe: make the heading blue', 'agent_id': 'claude'}),
+            ('send_message agent=no-such-agent', 'send_message',
+             {'project_id': project, 'prompt': 'e2e probe', 'agent_id': 'no-such-agent'}),
+            ('send_message unknown project', 'send_message',
+             {'project_id': '00000000-0000-4000-8000-000000000000', 'prompt': 'e2e probe'}),
+            ('create_project agent=byok-opencode (no browser-local configuration)', 'create_project',
+             {'prompt': 'e2e probe', 'agent_id': 'byok-opencode'})):
+        reply, value = call_json(session, name, arguments)
+        out(check='chat', case=label, isError=reply['isError'], result=value, leaks=leaks(reply['text']))
+    session.close()
+
+
+def od_connectors(client, base):
+    session = bearer_session(client, base)
+    reply, value = call_json(session, 'list_connectors', {})
+    connectors = value.get('connectors', []) if isinstance(value, dict) else []
+    keys = sorted({k for c in connectors for k in c})
+    out(check='connectors', isError=reply['isError'], total=value.get('total') if isinstance(value, dict) else value,
+        returned=len(connectors), fields=keys, first=connectors[:2], leaks=leaks(reply['text']),
+        bytes=len(reply['text']))
+    session.close()
+
+
+def od_runs(client, base):
+    session = bearer_session(client, base)
+    reply, value = call_json(session, 'list_runs', {})
+    runs = value.get('runs', []) if isinstance(value, dict) else value
+    out(check='runs', isError=reply['isError'], count=len(runs) if isinstance(runs, list) else runs,
+        fields=sorted({k for r in runs for k in r}) if isinstance(runs, list) else None, leaks=leaks(reply['text']))
+    session.close()
+
+
+def od_delete(client, base, project):
+    session = bearer_session(client, base)
+    reply, value = call_json(session, 'delete_project', {'project_id': project})
+    out(check='delete', step='delete_project', isError=reply['isError'], result=value)
+    out(check='delete', step='list_projects after delete', present=project in projects(session))
     session.close()
 
 
@@ -207,7 +335,7 @@ def starting(client, base, seconds):
 
 def main():
     base, checks = sys.argv[1].rstrip('/'), sys.argv[2:]
-    with httpx.Client(timeout=httpx.Timeout(40, connect=5), trust_env=False) as client:
+    with httpx.Client(timeout=httpx.Timeout(130, connect=5), trust_env=False) as client:
         bearer = {'Authorization': 'Bearer ' + TOKEN}
         init = {'jsonrpc': '2.0', 'id': 0, 'method': 'initialize', 'params': {
             'protocolVersion': PROTOCOL, 'capabilities': {}, 'clientInfo': {'name': 'probe', 'version': '0'}}}
@@ -246,6 +374,18 @@ def main():
                 refusals(client, base)
             elif check == 'starting':
                 starting(client, base, int(os.environ.get('STARTING_SECONDS', '120')))
+            elif check == 'create':
+                od_create(client, base)
+            elif check.startswith('files='):
+                od_files(client, base, check[6:])
+            elif check.startswith('chat='):
+                od_chat(client, base, check[5:])
+            elif check == 'connectors':
+                od_connectors(client, base)
+            elif check == 'runs':
+                od_runs(client, base)
+            elif check.startswith('delete='):
+                od_delete(client, base, check[7:])
             elif check == 'ready':
                 r = client.get(base + '/health/ready')
                 out(check='ready', status=r.status_code, body=r.text[:200])

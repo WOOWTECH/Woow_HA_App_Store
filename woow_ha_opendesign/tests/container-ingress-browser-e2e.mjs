@@ -241,20 +241,14 @@ try {
     console.error(`OpenDesign bootstrap diagnostics: ${JSON.stringify(diagnostics)}`);
     throw error;
   }
-  // First boot of the WoowTech core: its native Omnigent integration opens the
-  // bundled woow-omnigent setup project with the connection dialog. Check that
-  // dialog renders through ingress, then return home for the route checks.
-  const onboarded = await page.waitForURL((url) => url.pathname.startsWith('/projects/'), { timeout: 15_000 })
+  // 0.2.1 removed Omnigent: without the woow-omnigent plugin the core's native
+  // integration must not open its setup project or connection dialog.
+  const onboarding = await page.waitForURL((url) => url.pathname.startsWith('/projects/'), { timeout: 15_000 })
     .then(() => true, () => false);
-  if (onboarded) {
-    await page.getByText('Connect Omnigent', { exact: true }).waitFor({ timeout: 15_000 });
-    assert.ok(await page.getByText('Server URL', { exact: true }).isVisible(), 'Omnigent connection dialog must render');
-    await page.getByRole('button', { name: 'Close', exact: true }).click();
-    await page.goto(`http://127.0.0.1:${proxyPort}${prefix}/`, { waitUntil: 'domcontentloaded', timeout: 30_000 });
-    await page.waitForFunction(() => window.__OD_HA_EXPORT_BRIDGE_INSTALLED__ === true, null, { timeout: 15_000 });
-    await page.waitForFunction(() => !document.body.textContent.includes('Loading OpenDesign…'), null, { timeout: 30_000 });
-  }
-  console.log(`first-boot Omnigent setup dialog: ${onboarded ? 'shown through ingress' : 'not shown (already completed)'}`);
+  assert.equal(onboarding, false, 'no Omnigent setup project may open on first load');
+  assert.equal(await page.getByText('Connect Omnigent', { exact: true }).count(), 0, 'no Omnigent connection dialog');
+  const omnigentText = await page.evaluate(() => (document.body.innerText.match(/[^\n]*omnigent[^\n]*/gi) ?? []).slice(0, 10));
+  console.log(`Omnigent text on the home page: ${JSON.stringify(omnigentText)}`);
   assert.equal(new URL(page.url()).pathname, '/', 'ingress transport prefix must be hidden from OpenDesign route logic');
   // OpenDesign 0.24.1: with the sidebar collapsed the nav-rail buttons sit
   // under the main pane, expanding it re-renders (detaches) them, and two

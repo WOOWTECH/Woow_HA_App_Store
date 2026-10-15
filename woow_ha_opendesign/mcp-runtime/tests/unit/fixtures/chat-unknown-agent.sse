@@ -1,0 +1,6 @@
+event: error
+data: {"message":"unknown agent: no-such-agent","error":{"code":"AGENT_UNAVAILABLE","message":"unknown agent: no-such-agent"}}
+
+event: end
+data: {"code":1,"signal":null,"status":"failed","terminalAt":1792037476877,"resumable":false,"endedWithUnfinishedWork":false,"failureCategory":null,"failureDetail":null,"failureAction":null,"retryable":null}
+

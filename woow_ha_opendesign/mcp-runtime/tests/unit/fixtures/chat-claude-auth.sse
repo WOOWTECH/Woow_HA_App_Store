@@ -1,0 +1,40 @@
+id: 1
+event: diagnostic
+data: {"type":"native_session_recovery","nativeSessionRecovery":{"agentId":"claude","state":"no_recoverable_session","acquisition":"daemon-specified","continuation":"native-resume-by-id","handle":{"present":false,"kind":"opaque-id","display":null,"sha256":null,"redacted":false},"guardReason":null,"fallbackReason":null,"updatedAt":1792037441658}}
+
+id: 2
+event: start
+data: {"runId":"e9138737-f40d-4766-9153-ddb8407177f9","agentId":"claude","bin":"claude","streamFormat":"claude-stream-json","projectId":"76c45d7a-3147-45cf-a3f4-295ee256e48e","cwd":"/data/opendesign/projects/76c45d7a-3147-45cf-a3f4-295ee256e48e","model":null,"reasoning":null,"serviceTier":null,"toolTokenExpiresAt":"2026-10-15T04:35:41.642Z"}
+
+id: 3
+event: agent
+data: {"type":"done_key","key":"2b65e17a926ade98"}
+
+id: 4
+event: agent
+data: {"type":"status","label":"initializing","model":"claude-opus-5-5","sessionId":"24e27ef9-0c47-43ed-9e41-2252b2ee9d8e"}
+
+id: 7
+event: agent
+data: {"type":"text_delta","delta":"Not logged in · Please run /login"}
+
+id: 8
+event: agent
+data: {"type":"turn_end","stopReason":"stop_sequence"}
+
+id: 9
+event: error
+data: {"message":"Claude Code could not authenticate. Run `claude`, use `/login`, then retry the OpenDesign request.","error":{"code":"AGENT_AUTH_REQUIRED","message":"Claude Code could not authenticate. Run `claude`, use `/login`, then retry the OpenDesign request.","retryable":true,"details":{"detail":"The configured Claude config directory /data/opendesign/home/.claude may contain stale or expired auth state."}}}
+
+id: 11
+event: diagnostic
+data: {"type":"runtime_close","rpc_close_reason":"stream_error","status":"failed","exit_code":1}
+
+id: 12
+event: run_retry_finished
+data: {"page_name":"chat_panel","area":"chat_panel","project_id":"76c45d7a-3147-45cf-a3f4-295ee256e48e","conversation_id":null,"run_id":"e9138737-f40d-4766-9153-ddb8407177f9","retry_of_run_id":"e9138737-f40d-4766-9153-ddb8407177f9","retry_attempt_index":1,"retry_max_attempts":1,"retry_strategy":"same_run_transient","agent_provider_id":"claude_code","model_id":"default","failure_category":"auth","failure_detail":"auth_required","failure_stage":"session_init","error_code":"AGENT_AUTH_REQUIRED","retry_result":"suppressed","retry_suppressed_reason":"non_retryable_category"}
+
+id: 13
+event: end
+data: {"code":1,"signal":null,"status":"failed","terminalAt":1792037442924,"resumable":false,"endedWithUnfinishedWork":false,"artifactCount":0,"artifactPaths":[],"failureCategory":"auth","failureDetail":"auth_required","failureAction":"login","retryable":false}
+

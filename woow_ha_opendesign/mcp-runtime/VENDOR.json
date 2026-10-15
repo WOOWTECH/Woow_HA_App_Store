@@ -10,6 +10,7 @@
     "apps/opendesign/vendor/opendesign_mcp_server/od_mcp_server.py": "337e40c3e6e069568baad938c373e0492f37462abe10d3a7b422163a5d0ee0fc",
     "apps/runtime/backend_policy.py": "0cfad784a7aac8bdefccaae93c2ea9663407c11081b6268af2fed7fcd0107fb1",
     "apps/runtime/bounded_tools.py": "5af6964fa060a7f82e8e9fd8c66e74805f9be225652756d7144d06d696490630",
+    "apps/runtime/output_policy.py": "5cc75f5e87676786847132a5be4f342dd07e9ef9344c4d7b219219de2aef85a4",
     "apps/runtime/session_idle.py": "98eea032ee68d45eb0e7365ccc0305b5886d896d7ea4d640990c358948a36633",
     "docs/provenance/opendesign-upstream-chain.md": "a05996b3d80d3d108e035e399bdbf9cdcae8f75aa42212ca4b024b902674a6aa",
     "packages/mcp-admin-core/mcp_admin_core/__init__.py": "0079846f17dc8a62b9e5dcebf16e5407e6ab805a933fb378b25e0f36d1d6333b",

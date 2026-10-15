@@ -6,7 +6,7 @@ set -u
 py=/opt/woow/.venv/bin/python
 run=/run/ha-opendesign-mcp
 
-od=$(pgrep -f '^/usr/local/bin/node /opt/ha-opendesign/headless-entry.mjs' | head -1)  # not the kit's sh wrapper
+od=$(pgrep -f '^/usr/local/bin/node /opt/ha-opendesign/headless-entry.mjs' | head -1)
 ngx=$(pgrep -f 'nginx: master' | head -1)
 tty=$(pgrep -f '/usr/bin/ttyd' | head -1)
 mgmt=$(pgrep -f 'ha_opendesign_mcp/management.py' | head -1)
