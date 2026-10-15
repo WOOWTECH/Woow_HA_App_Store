@@ -1,5 +1,5 @@
 name: Woow n8n
-version: 2.12.17
+version: 2.43.6
 slug: woow-n8n
 image: ghcr.io/woowtech/woow-ha-n8n-{arch}
 description: Flexible AI workflow automation (HTTP for LAN, use Cloudflare Tunnel for HTTPS)
@@ -13,7 +13,11 @@ ingress_stream: true
 panel_icon: mdi:sitemap-outline
 panel_title: n8n
 panel_admin: true
-watchdog: "http://[HOST]:[PORT:5690]/healthz"
+watchdog: "http://[HOST]:[PORT:5690]/_woow/watchdog"
+# On SIGTERM n8n finishes running executions (up to 30 s) and closes its
+# database before the task runners stop; give it longer than the Supervisor
+# default of 10 seconds.
+timeout: 60
 arch:
   - aarch64
   - amd64

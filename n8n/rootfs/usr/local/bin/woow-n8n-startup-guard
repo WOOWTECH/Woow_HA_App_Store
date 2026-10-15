@@ -1,0 +1,41 @@
+#!/bin/bash
+# shellcheck shell=bash
+#
+# Usage: woow-n8n-startup-guard <n8n-pid>
+#
+# Keeps the startup marker written by svc-n8n until n8n's readiness endpoint
+# answers 200 (database connected and migrated), then removes it. While the
+# marker exists the Supervisor watchdog endpoint reports "starting". The
+# marker holds the n8n PID so a guard never removes the marker of a newer
+# n8n start. After WOOW_N8N_STARTUP_GRACE seconds the marker is removed even
+# if n8n never became ready, handing a hung start back to the watchdog.
+
+set -u
+
+pid="${1:?usage: woow-n8n-startup-guard <n8n-pid>}"
+marker="${WOOW_N8N_STARTUP_MARKER:-/run/woow-n8n/starting}"
+grace="${WOOW_N8N_STARTUP_GRACE:-3600}"
+interval="${WOOW_N8N_STARTUP_POLL:-2}"
+url="${WOOW_N8N_READINESS_URL:-http://127.0.0.1:5678/healthz/readiness}"
+
+release_marker() {
+    if [ "$(cat "${marker}" 2>/dev/null)" = "${pid}" ]; then
+        rm -f "${marker}"
+    fi
+}
+
+started="$(date +%s)"
+while kill -0 "${pid}" 2>/dev/null; do
+    if curl -fsS -o /dev/null --max-time 5 "${url}" 2>/dev/null; then
+        echo "[woow-n8n] n8n is ready after $(( $(date +%s) - started ))s"
+        release_marker
+        exit 0
+    fi
+    if [ $(( $(date +%s) - started )) -ge "${grace}" ]; then
+        echo "[woow-n8n] n8n is not ready after ${grace}s; the Supervisor watchdog takes over"
+        release_marker
+        exit 0
+    fi
+    sleep "${interval}"
+done
+release_marker

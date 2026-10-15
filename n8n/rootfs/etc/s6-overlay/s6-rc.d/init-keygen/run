@@ -38,15 +38,50 @@ if [ -z "${N8N_HOST:-}" ]; then
     set_s6_env N8N_HOST "$ha_address"
 fi
 
-# n8n <= 2.34 uses WEBHOOK_URL. n8n >= 2.35 prefers N8N_WEBHOOK_URL but
-# keeps WEBHOOK_URL as a deprecated alias. Mirror whichever value the user
-# configured so this add-on keeps working across a future n8n upgrade.
-if [ -n "${N8N_WEBHOOK_URL:-}" ] && [ -z "${WEBHOOK_URL:-}" ]; then
-    set_s6_env WEBHOOK_URL "$N8N_WEBHOOK_URL"
-elif [ -n "${WEBHOOK_URL:-}" ] && [ -z "${N8N_WEBHOOK_URL:-}" ]; then
+# n8n 2.35+ reads N8N_WEBHOOK_URL; WEBHOOK_URL is a deprecated alias that
+# makes n8n print a deprecation warning on every start. Only a WEBHOOK_URL the
+# user configured is mirrored (so older configurations keep working); the
+# add-on itself never sets the deprecated name.
+if [ -n "${WEBHOOK_URL:-}" ] && [ -z "${N8N_WEBHOOK_URL:-}" ]; then
     set_s6_env N8N_WEBHOOK_URL "$WEBHOOK_URL"
 elif [ -z "${WEBHOOK_URL:-}" ] && [ -z "${N8N_WEBHOOK_URL:-}" ]; then
-    fallback_url="${protocol}://${ha_address}:${port}"
-    set_s6_env WEBHOOK_URL "$fallback_url"
-    set_s6_env N8N_WEBHOOK_URL "$fallback_url"
+    set_s6_env N8N_WEBHOOK_URL "${protocol}://${ha_address}:${port}"
 fi
+
+# Every proxied path reaches n8n through exactly one proxy that sets a clean
+# X-Forwarded-For with the client address: the ingress nginx (which reduces
+# the Supervisor ingress chain to the client address seen by Home Assistant)
+# or cloudflared for the Cloudflare hostname. Trust that one hop unless the
+# user chose a value; with the default (no trusted proxy) n8n's rate limiter
+# logs ERR_ERL_UNEXPECTED_X_FORWARDED_FOR on every proxied request.
+if [ -z "${N8N_PROXY_HOPS:-}" ]; then
+    set_s6_env N8N_PROXY_HOPS 1
+fi
+
+# Task broker authentication. Every installation gets its own random secret,
+# generated once and kept in the add-on's private /data (root-only, included
+# in add-on backups). n8n reads it through N8N_RUNNERS_AUTH_TOKEN_FILE, so the
+# value itself is not part of the n8n process environment that workflow
+# expressions can read through $env; svc-runner hands it to the launcher.
+# A token the user set explicitly through env_vars is kept as is.
+RUNNER_TOKEN_FILE="${WOOW_RUNNER_TOKEN_FILE:-/data/n8n-runners-auth-token}"
+if [ -z "${N8N_RUNNERS_AUTH_TOKEN:-}" ]; then
+    if [ ! -s "${RUNNER_TOKEN_FILE}" ]; then
+        (
+            umask 077
+            token="$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')"
+            [ "${#token}" -eq 64 ]
+            printf '%s' "${token}" > "${RUNNER_TOKEN_FILE}.tmp"
+            mv -f "${RUNNER_TOKEN_FILE}.tmp" "${RUNNER_TOKEN_FILE}"
+        )
+        echo "Generated a new task broker token for this installation"
+    fi
+    chmod 600 "${RUNNER_TOKEN_FILE}"
+    set_s6_env N8N_RUNNERS_AUTH_TOKEN_FILE "${RUNNER_TOKEN_FILE}"
+fi
+
+# This script is the add-on's last user of the Supervisor API. Drop the token
+# from the s6 container environment so no service started afterwards - and no
+# workflow Code node, which runs as root and could read these files - can
+# obtain it. Every add-on start recreates the container and this directory.
+rm -f "${S6_ENV_DIR}/SUPERVISOR_TOKEN" "${S6_ENV_DIR}/HASSIO_TOKEN"

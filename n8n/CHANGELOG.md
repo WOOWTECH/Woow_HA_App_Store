@@ -1,5 +1,24 @@
 # Changelog
 
+## 2.43.6
+
+**Before updating: take a Home Assistant backup that includes this add-on.** This release upgrades the bundled n8n and task runners from 2.12.3 to 2.43.6. On its first start n8n migrates the database one way; n8n 2.12.3 cannot use the migrated data. The only rollback is restoring the pre-update backup, which brings back add-on 2.12.17 with its unmigrated database. Let the first start finish (the log shows `Migrations in progress, please do NOT stop the process.`).
+
+- n8n and Task Runner 2.43.6 (Node.js 26, Docker Hardened Images Alpine 3.24 base). The task runner launcher now comes from the runners image of the same release instead of a separately pinned download, and the runner configuration gains upstream's `NODE_PATH`, `N8N_RUNNERS_GRACEFUL_SHUTDOWN_TIMEOUT` and `N8N_RUNNERS_SHUTDOWN_FORCE_KILL_MARGIN` variables. The Code node module allow-lists are unchanged.
+- After updating, re-create n8n API keys under *Settings → n8n API*: keys made before the upgrade lack scopes introduced since (such as publishing workflows), so some public API calls return 403. Update the tools that use them, for example the Woow n8n MCP add-on.
+- Folders (for example the Woow n8n MCP `n8n_manage_folders` tool) need a re-created API key with the `folder:*` scopes and an instance registered for the free Community features (*Settings → Usage and plan*).
+- New in n8n: *Settings → Instance-level MCP*. Its access token can be entered in the optional field of the Woow n8n MCP add-on 0.2.1.
+- Home Assistant Ingress: the preload-helper rewrite now matches the URL builder by its body instead of its minified name, and every build checks it against the bundle actually shipped. Verified in headless Chromium through a Supervisor-style ingress proxy: sign-in, workflow canvas, no duplicate stylesheets, full-height editor and the `/rest/push` WebSocket under the ingress prefix.
+- Watchdog: the Supervisor watchdog now checks n8n's readiness (`/healthz/readiness`, database connected and migrated) through `/_woow/watchdog`. Until n8n is ready for the first time after a start it reports "starting", so a long database migration is never interrupted by a watchdog restart; after one hour without becoming ready the watchdog takes over again.
+- Clean shutdown: n8n now stops before its task runners (the 2.43 launcher otherwise waits about 50 seconds for the broker to drain, after which n8n would be killed without shutting down), and the add-on stop timeout is raised to 60 seconds so running executions can finish.
+- Security: the Supervisor API token is dropped from the container environment after the start-up script that needs it, and no service (n8n, task runners, nginx, Redis) keeps it, so workflows can no longer read it through `$env` (which otherwise stays enabled for existing workflows), files or `/proc`. The task broker listens on loopback only and uses a random per-installation token in `/data` instead of the shared `n8n-runner` constant. Redis listens on loopback only with protected mode on and a private socket. Option values with secret-like names (now including `TOKEN`, `AUTH`, `CREDENTIAL`, `PRIVATE`, `DSN`, `PWD`) are masked in the log, URL credentials are removed, and settings are no longer copied into `/.env`, `/etc/environment` or `~/.bashrc`. See *Security notes* in the documentation for what Code nodes can still do.
+- The Python Code node now runs on the runners image's own CPython (3.13 for n8n 2.43), the interpreter its virtualenv was built for, instead of the base image's `python3` (3.14). `python3` in shells and Execute Command nodes is unchanged.
+- n8n no longer waits for Redis: n8n does not use it, so a Redis that cannot start (for example when its ARM64 kernel self-check fails) only affects workflows that use Redis.
+- The add-on no longer sets the deprecated `WEBHOOK_URL` itself (n8n 2.43 warned about it on every start); a `WEBHOOK_URL` you configured is still honoured and mirrored to `N8N_WEBHOOK_URL`.
+- `N8N_PROXY_HOPS` defaults to `1`: the ingress nginx now hands n8n a single `X-Forwarded-For` address (the client as seen by Home Assistant), the same shape cloudflared sends on the Cloudflare hostname, so n8n's rate limiter sees the real client and no longer logs `ERR_ERL_UNEXPECTED_X_FORWARDED_FOR`. An explicit `N8N_PROXY_HOPS` option still wins.
+- `clean_redis` now deletes the actual Redis dump file (`dump.rdb`; it targeted `dump.rdd`).
+- Release process: every pull request runs all tests, builds the amd64 image and smoke-tests the container; publishing refuses to overwrite an existing image tag; workflow actions are pinned to commit SHAs.
+
 ## 2.12.17
 
 - Force the effective runtime `N8N_SECURE_COOKIE=false` on boot so existing installs that retained `true` can still open the n8n owner/sign-in UI over plain HTTP through direct LAN access or Home Assistant Ingress.

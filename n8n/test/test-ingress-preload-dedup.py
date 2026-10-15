@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import http.client
 import json
-import re
 import shutil
 import socket
 import subprocess
@@ -15,23 +14,27 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-import yaml
 from playwright.sync_api import Page, sync_playwright
+
+from nginx_fixture import portable_nginx, replace_once
 
 
 ADDON_DIR = Path(__file__).resolve().parents[1]
 NGINX_CONFIG = ADDON_DIR / "rootfs/etc/nginx/nginx.conf"
 FRAME_HEIGHT_SCRIPT = ADDON_DIR / "rootfs/etc/nginx/ingress-frame-height.js"
 INGRESS_PATH = "/api/hassio_ingress/abcdefghijklmnop"
-SUPPORTED_N8N_VERSION = "2.12.3"
-ROOT_BUILDER = "hee=function(e){return`/`+e}"
-PREFIX_BUILDER = "hee=function(e){return(window.BASE_PATH||`/`)+e}"
+# The rewrite matches the builder's body, whatever its minified name; the
+# fixture uses the n8n 2.43.6 names. test-ingress-bundle-seam.py checks the
+# same seam against the real bundle of the pinned n8n image.
+ROOT_BUILDER = "Qre=function(e){return`/`+e}"
+PREFIX_BUILDER = "Qre=function(e){return(window.BASE_PATH||`/`)+e}"
 
 HTML = """<!doctype html>
 <html><head><meta charset="utf-8">
 <link rel="stylesheet" href="/assets/BaseLayout.css">
 <link rel="stylesheet" href="/assets/index.css">
-<script>window.BASE_PATH = '/';</script>
+<script src="/static/base-path.js"></script>
+<meta property="csp-nonce" nonce="fixture-nonce">
 <script type="module" src="/assets/preload.js"></script>
 </head><body><div id="app"><div id="n8n-app" class="appGrid app"><div class="natural-content"></div></div></div></body></html>
 """
@@ -42,17 +45,17 @@ INDEX_CSS = """html, body { height: 100%; margin: 0; }
 .natural-content { height: 489px; }
 """
 
-# This keeps the pinned n8n/Vite root builder and its native duplicate-link
+# This keeps n8n 2.43.6's Vite root builder and its native duplicate-link
 # selector together. The production fix must alter the response, not this fixture.
-PRELOAD_JS = r"""const hee=function(e){return`/`+e};
+PRELOAD_JS = r"""const Zre=`modulepreload`,Qre=function(e){return`/`+e};
 (async function(){
-  const e=hee("assets/BaseLayout.css");
+  const e=Qre("assets/BaseLayout.css");
   const t=e.endsWith(".css");
   const s=t?'[rel="stylesheet"]':"";
   const existing=document.querySelector(`link[href="${e}"]${s}`);
   if(!existing){
     const l=document.createElement("link");
-    l.rel=t?"stylesheet":"modulepreload";
+    l.rel=t?"stylesheet":Zre;
     l.href=e;
     document.head.appendChild(l);
     if(t) await new Promise((resolve,reject)=>{l.addEventListener("load",resolve);l.addEventListener("error",reject)});
@@ -62,44 +65,10 @@ PRELOAD_JS = r"""const hee=function(e){return`/`+e};
 """
 
 
-def assert_supported_pin_gate() -> None:
-    """Reject the version-specific fixture until every upstream pin is reviewed."""
-    dockerfile = (ADDON_DIR / "Dockerfile").read_text()
-    build_from = re.findall(
-        r"^ARG BUILD_FROM=(\S+)$", dockerfile, flags=re.MULTILINE
-    )
-    runner_from = re.findall(
-        r"^FROM (\S+) AS runner$", dockerfile, flags=re.MULTILINE
-    )
-    assert len(build_from) == 1, f"expected one Dockerfile BUILD_FROM, got {build_from}"
-    assert len(runner_from) == 1, f"expected one Dockerfile runner FROM, got {runner_from}"
-
-    addon_info = yaml.safe_load((ADDON_DIR / "addon_info.yaml").read_text())
-    expected_n8n_image = f"docker.io/n8nio/n8n:{SUPPORTED_N8N_VERSION}"
-    expected_runner_image = f"docker.io/n8nio/runners:{SUPPORTED_N8N_VERSION}"
-    assert not (ADDON_DIR / "build.yaml").exists(), (
-        "prebuilt GHCR add-on images must not retain Supervisor's client-side build.yaml"
-    )
-    pins = {
-        "Dockerfile BUILD_FROM": (build_from[0], expected_n8n_image),
-        "Dockerfile runner FROM": (runner_from[0], expected_runner_image),
-        "addon_info current_version": (
-            addon_info["source"]["current_version"],
-            f"n8n@{SUPPORTED_N8N_VERSION}",
-        ),
-    }
-    mismatches = [
-        f"{name}: found {actual!r}, expected {expected!r}"
-        for name, (actual, expected) in pins.items()
-        if actual != expected
-    ]
-    assert not mismatches, (
-        "the exact preload fixture/rewrite is supported only for n8n "
-        f"{SUPPORTED_N8N_VERSION}; review the minified seam before changing pins:\n"
-        + "\n".join(mismatches)
-    )
+def assert_fixture_shape() -> None:
+    """Keep the fixture unpatched so nginx, not the fixture, performs the fix."""
     assert PRELOAD_JS.count(ROOT_BUILDER) == 1, (
-        "the pinned preload fixture must contain exactly one supported root builder"
+        "the preload fixture must contain exactly one root builder"
     )
     assert PREFIX_BUILDER not in PRELOAD_JS, (
         "the backend fixture must remain unpatched so nginx performs the rewrite"
@@ -114,6 +83,10 @@ class BackendHandler(BaseHTTPRequestHandler):
             "/assets/BaseLayout.css": ("text/css", BASE_LAYOUT_CSS.encode()),
             "/assets/index.css": ("text/css", INDEX_CSS.encode()),
             "/assets/preload.js": ("application/javascript", PRELOAD_JS.encode()),
+            "/static/base-path.js": (
+                "application/javascript",
+                b"window.BASE_PATH = '/';",
+            ),
         }
         resource = resources.get(path)
         if resource is None:
@@ -182,11 +155,6 @@ def unused_port() -> int:
         return int(sock.getsockname()[1])
 
 
-def replace_once(config: str, old: str, new: str) -> str:
-    assert config.count(old) == 1, f"expected one nginx config seam: {old}"
-    return config.replace(old, new)
-
-
 def http_get(port: int, path: str) -> tuple[int, bytes]:
     connection = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
     try:
@@ -245,7 +213,7 @@ def browser_result(page: Page, url: str) -> dict[str, object]:
 
 
 def main() -> None:
-    assert_supported_pin_gate()
+    assert_fixture_shape()
 
     nginx = shutil.which("nginx")
     if not nginx:
@@ -282,6 +250,7 @@ def main() -> None:
                 "proxy_pass http://127.0.0.1:5678;",
                 f"proxy_pass http://127.0.0.1:{backend.server_port};",
             )
+            config = portable_nginx(config, tmp)
             if "alias /etc/nginx/ingress-frame-height.js;" in config:
                 served_script = tmp / "ingress-frame-height.js"
                 shutil.copyfile(FRAME_HEIGHT_SCRIPT, served_script)

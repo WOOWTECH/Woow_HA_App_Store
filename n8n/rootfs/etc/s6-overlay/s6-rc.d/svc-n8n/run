@@ -3,4 +3,22 @@
 
 set -e
 
+# The Supervisor API token grants control over Home Assistant. n8n itself
+# never calls the Supervisor, and with N8N_BLOCK_ENV_ACCESS_IN_NODE=false any
+# workflow editor could read it through $env, so it is removed from the n8n
+# process environment. The add-on's own init scripts keep using it.
+unset SUPERVISOR_TOKEN HASSIO_TOKEN
+
+# Until n8n reports ready for the first time, the Supervisor watchdog endpoint
+# (nginx /_woow/watchdog) answers "starting" instead of failing, so a long
+# database migration is not interrupted by a watchdog restart. The guard
+# removes the marker once n8n is ready (or after the startup grace period).
+# It is started from a subshell so it is re-parented to the s6 init, which
+# reaps it, instead of lingering as a child of n8n.
+STARTUP_MARKER="${WOOW_N8N_STARTUP_MARKER:-/run/woow-n8n/starting}"
+STARTUP_GUARD="${WOOW_N8N_STARTUP_GUARD:-/usr/local/bin/woow-n8n-startup-guard}"
+mkdir -p "$(dirname "${STARTUP_MARKER}")"
+printf '%s' "$$" > "${STARTUP_MARKER}"
+("${STARTUP_GUARD}" "$$" &)
+
 exec n8n start

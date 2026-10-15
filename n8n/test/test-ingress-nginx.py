@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import http.client
+import json
 import shutil
 import socket
 import subprocess
@@ -13,12 +14,16 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
+from nginx_fixture import portable_nginx, replace_once
+
 
 ADDON_DIR = Path(__file__).resolve().parents[1]
 NGINX_CONFIG = ADDON_DIR / "rootfs/etc/nginx/nginx.conf"
 INGRESS_PATH = "/api/hassio_ingress/abcdefghijklmnop"
-ROOT_BUILDER = "hee=function(e){return`/`+e}"
-PREFIX_BUILDER = "hee=function(e){return(window.BASE_PATH||`/`)+e}"
+# Vite preload URL builder as shipped by n8n 2.43.6 (minified name varies).
+ROOT_BUILDER = "Qre=function(e){return`/`+e}"
+PREFIX_BUILDER = "Qre=function(e){return(window.BASE_PATH||`/`)+e}"
+WATCHDOG_MARKER = "/run/woow-n8n/starting"
 UPSTREAM_CACHE_CONTROL = "public, max-age=86400"
 FIXTURE_ETAG = '"ingress-cache-fixture-v1"'
 FIXTURE_LAST_MODIFIED = "Wed, 01 Jan 2025 00:00:00 GMT"
@@ -33,8 +38,32 @@ MIXED_CASE_MIME_TYPES = {
 
 
 class BackendHandler(BaseHTTPRequestHandler):
+    readiness_status = 503
+
     def do_GET(self) -> None:  # noqa: N802 - BaseHTTPRequestHandler API
         path = self.path.partition("?")[0]
+        if path == "/healthz/readiness":
+            status = type(self).readiness_status
+            body = b'{"status":"ok"}' if status == 200 else b'{"status":"error"}'
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+        if path == "/echo-forwarded":
+            body = json.dumps(
+                {
+                    "xff": self.headers.get("X-Forwarded-For"),
+                    "real": self.headers.get("X-Real-IP"),
+                }
+            ).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
         if path == "/signin":
             body = (
                 "<!doctype html><html><head><title>n8n</title>"
@@ -43,7 +72,7 @@ class BackendHandler(BaseHTTPRequestHandler):
             ).encode()
             content_type = "text/html; charset=utf-8"
         elif path == "/assets/preload.js":
-            body = f"const {ROOT_BUILDER};export default hee;".encode()
+            body = f"const {ROOT_BUILDER};export default Qre;".encode()
             content_type = "application/javascript"
         elif path == "/assets/app.css":
             body = b".hero{background:url(/assets/pixel.png)}"
@@ -86,11 +115,6 @@ def unused_port() -> int:
     with socket.socket() as sock:
         sock.bind(("127.0.0.1", 0))
         return int(sock.getsockname()[1])
-
-
-def replace_once(config: str, old: str, new: str) -> str:
-    assert config.count(old) == 1, f"expected one config seam: {old}"
-    return config.replace(old, new)
 
 
 def request(port: int, path: str, headers: dict[str, str] | None = None):
@@ -154,6 +178,16 @@ def main() -> None:
                 "proxy_pass http://127.0.0.1:5678;",
                 f"proxy_pass http://127.0.0.1:{backend.server_port};",
             )
+            config = replace_once(
+                config,
+                "proxy_pass http://127.0.0.1:5678/healthz/readiness;",
+                f"proxy_pass http://127.0.0.1:{backend.server_port}/healthz/readiness;",
+            )
+            marker = tmp / "starting"
+            config = replace_once(
+                config, f"if (-f {WATCHDOG_MARKER})", f"if (-f {marker})"
+            )
+            config = portable_nginx(config, tmp)
             test_config = tmp / "nginx.conf"
             test_config.write_text(config)
 
@@ -313,6 +347,43 @@ def main() -> None:
                     assert_cache_control(headers, UPSTREAM_CACHE_CONTROL)
                     assert_fixture_validators(headers)
 
+                # X-Forwarded-For: Supervisor sends "<Core input>, <client>, <Core>";
+                # n8n (trusting one hop) must get only the client as seen by Core.
+                forwarded_cases = (
+                    ("198.51.100.9, 203.0.113.7, 172.30.32.1", "203.0.113.7"),
+                    ("203.0.113.7, 172.30.32.1", "203.0.113.7"),
+                    ("203.0.113.7,172.30.32.1", "203.0.113.7"),
+                    ("2001:db8::7, 172.30.32.1", "2001:db8::7"),
+                    ("203.0.113.7", "203.0.113.7"),
+                    (None, "127.0.0.1"),
+                )
+                for incoming, expected in forwarded_cases:
+                    headers = {"X-Ingress-Path": INGRESS_PATH}
+                    if incoming is not None:
+                        headers["X-Forwarded-For"] = incoming
+                    status, _headers, body = request(ingress_port, "/echo-forwarded", headers)
+                    assert status == 200, status
+                    seen = json.loads(body)
+                    assert seen == {"xff": expected, "real": expected}, (incoming, seen)
+
+                # Supervisor watchdog: readiness while starting (marker) vs. after.
+                def watchdog() -> tuple[int, bytes]:
+                    status, _headers, body = request(ingress_port, "/_woow/watchdog")
+                    return status, body
+
+                BackendHandler.readiness_status = 503
+                marker.write_text("1234")
+                assert watchdog() == (200, b"n8n is starting\n"), watchdog()
+                marker.unlink()
+                assert watchdog() == (503, b"n8n is not ready\n"), watchdog()
+                BackendHandler.readiness_status = 200
+                assert watchdog() == (200, b'{"status":"ok"}'), watchdog()
+                marker.write_text("1234")
+                assert watchdog() == (200, b'{"status":"ok"}'), watchdog()
+                marker.unlink()
+                BackendHandler.readiness_status = 500
+                assert watchdog()[0] == 503, watchdog()
+
                 status, _headers, _body = request(
                     ingress_port,
                     "/_woow/ingress-frame-height.js",
@@ -333,9 +404,9 @@ def main() -> None:
 
     print(
         "nginx ingress test passed: HTML base/runtime injection retained, "
-        "pinned helper rewritten, validators suppressed upstream, transformed "
+        "preload helper rewritten, validators suppressed upstream, transformed "
         "types no-store, binary/direct cache policy preserved, old frame-height "
-        "resource absent"
+        "resource absent, watchdog tolerant only while starting"
     )
 
 

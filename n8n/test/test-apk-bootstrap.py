@@ -14,6 +14,14 @@ def main() -> None:
     )[0]
 
     assert "--initdb" not in bootstrap
+    # The n8n 2.43 base (Docker Hardened Images Alpine) has no
+    # /etc/alpine-release; the branch must then come from os-release, before
+    # the hard-coded fallback.
+    alpine_release = bootstrap.index("if [ -r /etc/alpine-release ]; then")
+    os_release = bootstrap.index("elif grep -q '^ID=alpine$' /etc/os-release")
+    fallback = bootstrap.index('ALPINE_BRANCH="${ALPINE_VERSION}"')
+    assert alpine_release < os_release < fallback
+    assert "sed -n 's/^VERSION_ID=//p' /etc/os-release" in bootstrap
     assert 'for STATIC_BRANCH in "${ALPINE_BRANCH}" v3.22; do' in bootstrap
     assert (
         'STATIC_BASE="http://dl-cdn.alpinelinux.org/alpine/${STATIC_BRANCH}/main/${ARCH}"'
@@ -37,7 +45,7 @@ def main() -> None:
     assert '"${APK_STATIC}" -X "${APK_REPO}" add apk-tools;' in bootstrap
     assert "apk del" not in bootstrap
 
-    print("apk bootstrap test passed: compatible static fallback and base database preservation verified")
+    print("apk bootstrap test passed: branch detection, compatible static fallback and base database preservation verified")
 
 
 if __name__ == "__main__":

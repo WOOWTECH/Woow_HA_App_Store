@@ -3,46 +3,55 @@
 
 set -e
 
+# Values exported here can be credentials (database passwords, API tokens,
+# encryption keys). They only go to the s6 container environment, which is
+# what every service reads through with-contenv; nothing is copied into
+# /.env, /etc/environment or a shell profile, and the files are root-only.
+
+OPTIONS_SOURCE="${OPTIONS_SOURCE:-/data/options.json}"
+S6_ENV_DIR="${S6_ENV_DIR:-/var/run/s6/container_environment}"
+
+# True for names whose value must never reach the log. Matching is
+# case-insensitive because env_vars accepts lower-case keys.
+is_sensitive_key() {
+    case "${1^^}" in
+        *PASS*|*PWD*|*SECRET*|*KEY*|*TOKEN*|*AUTH*|*CREDENTIAL*|*PRIVATE*|*DSN*)
+            return 0
+            ;;
+    esac
+    return 1
+}
+
+# Log one setting without leaking its secret: sensitive names are masked
+# entirely, and any other value has URL userinfo (user:password@) removed.
+log_setting() {
+    local key="$1" value="$2"
+    if is_sensitive_key "${key}"; then
+        echo "    ${key}=******"
+    else
+        printf '    %s=%s\n' "${key}" \
+            "$(printf '%s' "${value}" | sed -E 's#(://)[^/@[:space:]]+@#\1******@#g')"
+    fi
+}
+
+export_setting() {
+    local key="$1" value="$2"
+    log_setting "${key}" "${value}"
+    if [ -d "${S6_ENV_DIR}" ]; then
+        (umask 077 && printf "%s" "${value}" > "${S6_ENV_DIR}/${key}")
+    fi
+}
+
 echo "  Loading env variables:"
 
-OPTIONS_SOURCE=/data/options.json
-
-jq -r 'keys[]' "${OPTIONS_SOURCE}" | while read -r KEY; do
+while read -r KEY; do
     # Skip env_vars array — handled separately below
     if [ "$KEY" = "env_vars" ]; then
         continue
     fi
-
-    # export key
     value=$(jq -r --arg key "$KEY" '.[$key]' "${OPTIONS_SOURCE}")
-
-    # Continue for single values
-    line="${KEY}=${value}"
-
-    # log redacted config
-    case "$KEY" in
-        *PASS*|*SECRET*|*KEY*)
-            echo "    ${KEY}=******"
-            ;;
-        *)
-            echo "    $line"
-            ;;
-    esac
-
-    export line
-
-    # set .env
-    echo "$line" >> /.env || true
-
-    # set /etc/environment
-    echo "$line" >> /etc/environment
-
-    # For s6
-    if [ -d /var/run/s6/container_environment ]; then
-        printf "%s" "$value" > /var/run/s6/container_environment/"${KEY}"
-    fi
-    echo "export $line" >> ~/.bashrc
-done
+    export_setting "${KEY}" "${value}"
+done < <(jq -r 'keys[]' "${OPTIONS_SOURCE}")
 
 # Handle env_vars array: [{key: "FOO", value: "bar"}, ...]
 ENV_VARS_COUNT=$(jq -r '.env_vars | length' "${OPTIONS_SOURCE}" 2>/dev/null || echo 0)
@@ -51,24 +60,7 @@ if [ "$ENV_VARS_COUNT" -gt 0 ]; then
     for i in $(seq 0 $((ENV_VARS_COUNT - 1))); do
         KEY=$(jq -r ".env_vars[$i].key" "${OPTIONS_SOURCE}")
         value=$(jq -r ".env_vars[$i].value" "${OPTIONS_SOURCE}")
-        line="${KEY}=${value}"
-
-        case "$KEY" in
-            *PASS*|*SECRET*|*KEY*)
-                echo "    ${KEY}=******"
-                ;;
-            *)
-                echo "    $line"
-                ;;
-        esac
-
-        echo "$line" >> /.env || true
-        echo "$line" >> /etc/environment
-
-        if [ -d /var/run/s6/container_environment ]; then
-            printf "%s" "$value" > /var/run/s6/container_environment/"${KEY}"
-        fi
-        echo "export $line" >> ~/.bashrc
+        export_setting "${KEY}" "${value}"
     done
 fi
 

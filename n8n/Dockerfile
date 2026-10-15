@@ -1,16 +1,37 @@
-ARG BUILD_FROM=docker.io/n8nio/n8n:2.12.3
+# Upstream n8n release wrapped by this add-on. The editor and the task runners
+# must come from the same release, so both images are derived from this one
+# value. The add-on's own version (config.yaml) may advance ahead of it.
+ARG N8N_UPSTREAM_VERSION=2.43.6
 
-ARG BUILD_VERSION=2.12.5
+ARG BUILD_FROM=docker.io/n8nio/n8n:${N8N_UPSTREAM_VERSION}
 
-# Runner tag is decoupled from BUILD_VERSION because the addon's version bumps
-# (e.g. 2.12.3 -> 2.12.4 to ship the N8N_SECURE_COOKIE option) advance ahead
-# of the upstream n8n release cadence. Keep this pinned to the actual upstream
-# n8n version we're wrapping so Docker Hub always has the tag.
-FROM docker.io/n8nio/runners:2.12.3 AS runner
+ARG BUILD_VERSION=2.43.6
+
+FROM docker.io/n8nio/runners:${N8N_UPSTREAM_VERSION} AS runner
+
+# The Python task runner's virtualenv and its compiled dependencies are built
+# for the runners image's own CPython (3.13 for n8n 2.43), not for the
+# distribution python3 of the n8n base (3.14). Stage that interpreter, found
+# through the venv's own symlink, so it is copied without naming a version.
+FROM runner AS runner-python
+# hadolint ignore=DL3002
+USER root
+RUN set -eu; \
+    py="$(readlink -f /opt/runners/task-runner-python/.venv/bin/python)"; \
+    name="$(basename "${py}")"; \
+    mkdir -p /woow-python/usr/local/bin /woow-python/usr/local/lib; \
+    cp -a "${py}" /woow-python/usr/local/bin/; \
+    cp -a "/usr/local/lib/${name}" /woow-python/usr/local/lib/; \
+    cp -a /usr/local/lib/lib"${name}".so* /woow-python/usr/local/lib/
 
 FROM ${BUILD_FROM}
 
 # n8n environment variables
+#
+# The task broker authentication token is deliberately absent: every
+# installation generates its own secret on first boot (init-keygen) and keeps
+# it in /data. The broker only listens on loopback because the runner launcher
+# lives in this same container.
 ENV \
     NODE_ENV=production \
     N8N_EDITION="community" \
@@ -25,16 +46,15 @@ ENV \
     N8N_PORT=5678 \
     N8N_PROTOCOL="http" \
     N8N_RUNNERS_MODE="external" \
-    N8N_RUNNERS_AUTH_TOKEN="n8n-runner" \
-    N8N_RUNNERS_BROKER_LISTEN_ADDRESS="0.0.0.0" \
+    N8N_RUNNERS_BROKER_LISTEN_ADDRESS="127.0.0.1" \
     N8N_NATIVE_PYTHON_RUNNER=true \
-    N8N_RUNNERS_TASK_BROKER_URI="http://localhost:5679"
+    N8N_RUNNERS_TASK_BROKER_URI="http://127.0.0.1:5679"
 
 # hadolint ignore=DL3002
 USER root
 
-# Fallback only — the branch is normally read from /etc/alpine-release below.
-ARG ALPINE_VERSION=v3.23
+# Fallback only — the branch is normally read from the base image below.
+ARG ALPINE_VERSION=v3.24
 
 # hadolint global ignore=DL4001
 # Restore a usable `apk` binary. The n8n image ships a complete, valid apk
@@ -62,12 +82,20 @@ ARG ALPINE_VERSION=v3.23
 #      still describes the image's real contents and nothing is purged.
 #   5. libapk2 deleted rather than unpinned: the apk 3.x series replaced it
 #      with `libapk` and no libapk2 package exists on this branch any more.
+#   6. Branch read from /etc/os-release when /etc/alpine-release is absent.
+#      The n8n 2.43 base is a Docker Hardened Images Alpine build that ships
+#      only os-release; guessing the branch would fetch a mismatched
+#      apk-tools.
 RUN \
     set -eux; \
     cd /tmp; \
     ARCH="$(uname -m)"; \
     if [ -r /etc/alpine-release ]; then \
         ALPINE_BRANCH="v$(cut -d. -f1,2 /etc/alpine-release)"; \
+    elif grep -q '^ID=alpine$' /etc/os-release 2>/dev/null \
+        && OS_VERSION_ID="$(sed -n 's/^VERSION_ID=//p' /etc/os-release | tr -d '"')" \
+        && [ -n "${OS_VERSION_ID}" ]; then \
+        ALPINE_BRANCH="v$(echo "${OS_VERSION_ID}" | cut -d. -f1,2)"; \
     else \
         ALPINE_BRANCH="${ALPINE_VERSION}"; \
     fi; \
@@ -172,43 +200,19 @@ RUN \
     && apk del --no-cache --purge .build-dependencies \
     && rm -rf /tmp/*
 
-# renovate: datasource=github-releases packageName=n8n-io/task-runner-launcher
-ARG LAUNCHER_VERSION=1.4.4
-
-RUN set -e; \
-    case "$BUILD_ARCH" in \
-        "amd64") ARCH_NAME="amd64" ;; \
-        "aarch64") ARCH_NAME="arm64" ;; \
-        *) echo "Unsupported platform: $BUILD_ARCH" && exit 1 ;; \
-    esac; \
-    mkdir /launcher-temp && cd /launcher-temp; \
-    wget -q "https://github.com/n8n-io/task-runner-launcher/releases/download/${LAUNCHER_VERSION}/task-runner-launcher-${LAUNCHER_VERSION}-linux-${ARCH_NAME}.tar.gz"; \
-    wget -q "https://github.com/n8n-io/task-runner-launcher/releases/download/${LAUNCHER_VERSION}/task-runner-launcher-${LAUNCHER_VERSION}-linux-${ARCH_NAME}.tar.gz.sha256"; \
-    echo "$(cat task-runner-launcher-${LAUNCHER_VERSION}-linux-${ARCH_NAME}.tar.gz.sha256) task-runner-launcher-${LAUNCHER_VERSION}-linux-${ARCH_NAME}.tar.gz" > checksum.sha256; \
-    sha256sum -c checksum.sha256; \
-    mkdir -p /launcher-bin; \
-    tar xzf task-runner-launcher-${LAUNCHER_VERSION}-linux-${ARCH_NAME}.tar.gz -C /usr/local/bin; \
-    cd / && rm -rf /launcher-temp
-
+# The launcher is taken from the runners image of the same n8n release, so its
+# version (and its n8n-task-runners.json contract) always matches the runners.
+COPY --from=runner --chown=root:root /usr/local/bin/task-runner-launcher /usr/local/bin/task-runner-launcher
 COPY --from=runner --chown=root:root /opt/runners/task-runner-javascript /opt/runners/task-runner-javascript
 COPY --from=runner --chown=root:root /opt/runners/task-runner-python /opt/runners/task-runner-python
 
-# Fix Python runner: the runners image ships a venv built against its own
-# Python minor, which may not match the n8n base image's Python. Symlink the
-# system python into the venv and mirror the shipped site-packages into the
-# directory the running interpreter will actually look in. Discover the source
-# rather than hardcoding a minor, and no-op when it already matches (copying a
-# directory into itself would fail the build).
-RUN ln -sf /usr/bin/python3 /opt/runners/task-runner-python/.venv/bin/python && \
-    ln -sf /usr/bin/python3 /opt/runners/task-runner-python/.venv/bin/python3 && \
-    PYVER=$(python3 -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')") && \
-    VENV_LIB=/opt/runners/task-runner-python/.venv/lib && \
-    mkdir -p "${VENV_LIB}/python${PYVER}/site-packages" && \
-    SRC=$(find "${VENV_LIB}" -maxdepth 1 -type d -name 'python3.*' \
-            ! -name "python${PYVER}" | head -n1) && \
-    if [ -n "${SRC}" ] && [ -d "${SRC}/site-packages" ]; then \
-        cp -a "${SRC}/site-packages/." "${VENV_LIB}/python${PYVER}/site-packages/"; \
-    fi
+# Upstream's Python interpreter for the Python runner (see the runner-python
+# stage). The venv already points at /usr/local/bin/python3.X; the base
+# image's python3 (used by Execute Command and shells) stays untouched.
+COPY --from=runner-python /woow-python/ /
+RUN cd /opt/runners/task-runner-python \
+    && .venv/bin/python -I -c "import ssl, sqlite3, ctypes, lzma, bz2, zlib, decimal, hashlib, json, asyncio, uuid, websockets, sentry_sdk, urllib3, certifi; import src.main" \
+    && .venv/bin/python -I -c "import sys; print('Python task runner interpreter', sys.version.split()[0])"
 
 COPY .common/redis/ /
 

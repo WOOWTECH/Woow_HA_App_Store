@@ -2377,22 +2377,22 @@
     "woow-n8n": {
       "id": "woow-n8n",
       "name": "Woow n8n",
-      "version": "2.12.17",
+      "version": "2.43.6",
       "repository": "WOOWTECH/Woow_ha_n8n",
-      "source_sha": "e8723ee9759e556535ae3b8bf38b98abfc13e1b4",
+      "source_sha": "d20a13315958499789d3843e787e6cae86cf3a34",
       "source_path": "n8n",
       "config_file": "config.yaml",
-      "config_sha256": "sha256:3884755d23fd8ba9980abc998797f975ba6320cf4ccbe5ba26c7d1f2340ea27e",
-      "archive_sha256": "sha256:d5b5fced7a312fd786586b353e223941c01d4cccb85d06b7140a3d59d6970969",
-      "context_fingerprint": "sha256:952a0d45ad91691d48b669a5619c969424dd13f93981a1d1e0a2f2135b4a7413",
-      "material_fingerprint": "sha256:537428573b15fcd16e5870ae973d4f7437e47755d314ecba7c0b4c459232370d",
+      "config_sha256": "sha256:3d444bc953be642dde9cd2a5a576a97eec5e09d015eff8ed13636da617a7bc17",
+      "archive_sha256": "sha256:14ae50e244ae3c6bc0bbc78524bcc469e5fbda6c60cb4f42362d50af80f365d4",
+      "context_fingerprint": "sha256:517a3c9cf7cc8452b68f213209e89580ccf4c36d549aed708b72000e728651df",
+      "material_fingerprint": "sha256:29478c538ff0d4ad8c5a9f1cdc2bb28d514327c5db33a3521ff1f1a6daf861db",
       "architectures": [
         "aarch64",
         "amd64"
       ],
       "config": {
         "name": "Woow n8n",
-        "version": "2.12.17",
+        "version": "2.43.6",
         "slug": "woow-n8n",
         "image": "ghcr.io/woowtech/woow-ha-n8n-{arch}",
         "description": "Flexible AI workflow automation (HTTP for LAN, use Cloudflare Tunnel for HTTPS)",
@@ -2406,7 +2406,8 @@
         "panel_icon": "mdi:sitemap-outline",
         "panel_title": "n8n",
         "panel_admin": true,
-        "watchdog": "http://[HOST]:[PORT:5690]/healthz",
+        "watchdog": "http://[HOST]:[PORT:5690]/_woow/watchdog",
+        "timeout": 60,
         "arch": [
           "aarch64",
           "amd64"
@@ -2464,21 +2465,21 @@
       "source_build_supported": true,
       "images": {
         "aarch64": {
-          "reference": "ghcr.io/woowtech/woow-ha-n8n-aarch64:2.12.17",
-          "index_digest": "sha256:39b2ccc3e2a4974e7875a942b6ea0b3c0088cb98334d89ee1d85519f7ff54126",
-          "digest": "sha256:30f4a83e8799e7c27da46b25d4076ecef7f9012cb1a802e6eecc6ed4d76e327b",
-          "source_revision": "195f131508f64c0292ae857fe02c62e316745f46"
+          "reference": "ghcr.io/woowtech/woow-ha-n8n-aarch64:2.43.6",
+          "index_digest": "sha256:56e60027f35f049480c7753c71996f532d4bb51e14f1d442bbaaee0b2546717d",
+          "digest": "sha256:ba91334bfe1f37f45a188b41076fa1bce65c03cfa3e8762b213fe9c113f009ee",
+          "source_revision": "d20a13315958499789d3843e787e6cae86cf3a34"
         },
         "amd64": {
-          "reference": "ghcr.io/woowtech/woow-ha-n8n-amd64:2.12.17",
-          "index_digest": "sha256:f668d22207215d0f0887c385e9c31252b41ae3bf81ce5108f2760459b7a39adf",
-          "digest": "sha256:760f0a95f6046bef7cae8bad32ce89776c22bb8eebdb8e578215b66606eeddcc",
-          "source_revision": "195f131508f64c0292ae857fe02c62e316745f46"
+          "reference": "ghcr.io/woowtech/woow-ha-n8n-amd64:2.43.6",
+          "index_digest": "sha256:06408dc25cb8776954f7d82e927a4ba6bcfe7885f214931d94a55bf9ac3aad89",
+          "digest": "sha256:7620c441bbcd93651b56dd8ffc0d9776229a11d9688eefc586a92932a36a383d",
+          "source_revision": "d20a13315958499789d3843e787e6cae86cf3a34"
         }
       },
       "delivery": "published-image",
       "validation": "manifest+architecture-images+configured-CI",
-      "publisher_run_id": "37410365503",
+      "publisher_run_id": "38756639275",
       "channel": "stable",
       "store_path": "n8n"
     },
@@ -3622,5 +3623,5 @@
       "store_path": "woow_mcp_nextcloud"
     }
   },
-  "catalog_id": "sha256:ae831dae230cfb38d63d73d2b96e55c5fca945e28b22dde22b6c00ce03dc3808"
+  "catalog_id": "sha256:3f6daa240efed51a00afacb10db42b5dc0e68536e30ccaa1ec4779e7a5a07233"
 }

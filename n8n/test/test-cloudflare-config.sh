@@ -13,12 +13,13 @@ import yaml
 with open(sys.argv[1], encoding="utf-8") as handle:
     config = yaml.safe_load(handle)
 
-assert config["version"] == "2.12.17"
+# The version itself is owned by config.yaml; only its shape is checked here.
+assert __import__("re").fullmatch(r"\d+\.\d+\.\d+", str(config["version"])), config["version"]
 assert config["ingress"] is True
 assert config["ingress_port"] == 5690
 assert config["ingress_entry"] == "signin"
 assert config["ingress_stream"] is True
-assert config["panel_title"] == "Woow n8n"
+assert config["panel_title"] == "n8n"
 assert config["ports"]["5678/tcp"] == 5678
 
 addon_dir = __import__('pathlib').Path(sys.argv[1]).parent
@@ -30,7 +31,12 @@ assert 'HTMLLinkElement&&HTMLLinkElement.prototype' in nginx
 assert "sub_filter 'url(/assets/'" in nginx
 assert 'sub_filter \'</head>\'' in nginx
 assert 'return 302 $safe_ingress_path/signin;' in nginx
-assert "sub_filter 'hee=function(e){return`/`+e}' 'hee=function(e){return(window.BASE_PATH||`/`)+e}';" in nginx
+assert "sub_filter 'function(e){return`/`+e}' 'function(e){return(window.BASE_PATH||`/`)+e}';" in nginx
+assert "hee=function" not in nginx, "the minified-name rewrite must not come back"
+assert config["watchdog"] == "http://[HOST]:[PORT:5690]/_woow/watchdog"
+assert "location = /_woow/watchdog {" in nginx
+assert "proxy_pass http://127.0.0.1:5678/healthz/readiness;" in nginx
+assert "if (-f /run/woow-n8n/starting) {" in nginx
 assert 'map $upstream_http_content_type $ingress_cache_control {' in nginx
 assert 'default $upstream_http_cache_control;' in nginx
 assert '"~*^text/html[[:space:]]*(?:;|$)" no-store;' in nginx
@@ -74,20 +80,27 @@ run_init() {
         PATH="${PATH}" \
         BASH_ENV="${tmp}/mock-bashio" \
         S6_ENV_DIR="${env_dir}" \
+        WOOW_RUNNER_TOKEN_FILE="${tmp}/runner-token-${case_name}" \
         "$@" \
-        bash "${INIT}"
+        bash "${INIT}" >/dev/null
     printf '%s' "${env_dir}"
 }
 
 legacy_dir="$(run_init legacy WEBHOOK_URL=https://legacy.example.test/)"
 [[ "$(<"${legacy_dir}/N8N_WEBHOOK_URL")" == "https://legacy.example.test/" ]]
 
+# The deprecated WEBHOOK_URL is never set by the add-on itself (n8n 2.43
+# warns about it on every start); only a user's own legacy value is mirrored.
 modern_dir="$(run_init modern N8N_WEBHOOK_URL=https://modern.example.test/)"
-[[ "$(<"${modern_dir}/WEBHOOK_URL")" == "https://modern.example.test/" ]]
+[[ ! -e "${modern_dir}/WEBHOOK_URL" ]]
 
 fallback_dir="$(run_init fallback)"
-[[ "$(<"${fallback_dir}/WEBHOOK_URL")" == "http://192.0.2.10:5678" ]]
+[[ ! -e "${fallback_dir}/WEBHOOK_URL" ]]
 [[ "$(<"${fallback_dir}/N8N_WEBHOOK_URL")" == "http://192.0.2.10:5678" ]]
+# One trusted proxy hop (ingress nginx or cloudflared) unless the user chose.
+[[ "$(<"${fallback_dir}/N8N_PROXY_HOPS")" == "1" ]]
+hops_dir="$(run_init hops N8N_PROXY_HOPS=2)"
+[[ ! -e "${hops_dir}/N8N_PROXY_HOPS" ]]
 [[ "$(<"${fallback_dir}/N8N_HOST")" == "192.0.2.10" ]]
 [[ "$(<"${fallback_dir}/N8N_PROTOCOL")" == "http" ]]
 [[ "$(<"${fallback_dir}/N8N_SECURE_COOKIE")" == "false" ]]
@@ -103,9 +116,10 @@ env -i \
     PATH="${PATH}" \
     BASH_ENV="${tmp}/mock-bashio" \
     S6_ENV_DIR="${both_dir}" \
+    WOOW_RUNNER_TOKEN_FILE="${tmp}/runner-token-both" \
     WEBHOOK_URL='https://legacy.example.test/' \
     N8N_WEBHOOK_URL='https://modern.example.test/' \
-    bash "${INIT}"
+    bash "${INIT}" >/dev/null
 [[ "$(<"${both_dir}/WEBHOOK_URL")" == "https://legacy.example.test/" ]]
 [[ "$(<"${both_dir}/N8N_WEBHOOK_URL")" == "https://modern.example.test/" ]]
 

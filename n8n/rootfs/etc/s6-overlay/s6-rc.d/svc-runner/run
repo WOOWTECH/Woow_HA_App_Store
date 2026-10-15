@@ -3,8 +3,19 @@
 
 set -e
 
-[[ ! -d "/config/runner" ]] && mkdir -p "/config/runner"
+# The task runners execute user Code nodes; they must not see the Supervisor
+# API token (see svc-n8n).
+unset SUPERVISOR_TOKEN HASSIO_TOKEN
 
-#chown -R 1000:1000 /config/runner
+# n8n reads the broker token from N8N_RUNNERS_AUTH_TOKEN_FILE (init-keygen);
+# the launcher only accepts the value itself. It is exported to the launcher
+# process alone and is not in the runners' allowed-env.
+if [ -z "${N8N_RUNNERS_AUTH_TOKEN:-}" ] && [ -n "${N8N_RUNNERS_AUTH_TOKEN_FILE:-}" ]; then
+    N8N_RUNNERS_AUTH_TOKEN="$(<"${N8N_RUNNERS_AUTH_TOKEN_FILE}")"
+    export N8N_RUNNERS_AUTH_TOKEN
+fi
+unset N8N_RUNNERS_AUTH_TOKEN_FILE
+
+[[ ! -d "/config/runner" ]] && mkdir -p "/config/runner"
 
 exec /usr/local/bin/task-runner-launcher javascript python

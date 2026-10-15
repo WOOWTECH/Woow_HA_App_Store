@@ -11,21 +11,32 @@ import yaml
 
 ADDON_DIR = Path(__file__).resolve().parents[1]
 REPOSITORY_DIR = ADDON_DIR.parent
-WORKFLOW = REPOSITORY_DIR / ".github/workflows/publish-n8n-addon-images.yml"
+WORKFLOWS = REPOSITORY_DIR / ".github/workflows"
+PUBLISH = WORKFLOWS / "publish-n8n-addon-images.yml"
+CI = WORKFLOWS / "ci.yml"
 EXPECTED_IMAGE = "ghcr.io/woowtech/woow-ha-n8n-{arch}"
-EXPECTED_VERSION = "2.12.17"
+# Third-party actions run with registry credentials; pin them to a commit.
+PINNED_ACTION = re.compile(r"^[\w.-]+/[\w./-]+@[0-9a-f]{40}$")
+
+
+def assert_actions_pinned(path: Path) -> None:
+    text = path.read_text()
+    for use in re.findall(r"^\s*(?:-\s*)?uses:\s*(\S+)", text, re.MULTILINE):
+        if use.startswith("./") or use.startswith("WOOWTECH/"):
+            continue
+        assert PINNED_ACTION.match(use), f"{path.name}: action not pinned to a commit SHA: {use}"
 
 
 def main() -> None:
     config = yaml.safe_load((ADDON_DIR / "config.yaml").read_text())
-    assert config["version"] == EXPECTED_VERSION
+    assert re.fullmatch(r"\d+\.\d+\.\d+", str(config["version"])), config["version"]
     assert config["image"] == EXPECTED_IMAGE
     assert config["arch"] == ["aarch64", "amd64"]
     assert not (ADDON_DIR / "build.yaml").exists(), (
         "Supervisor must pull the configured GHCR image, not client-build build.yaml"
     )
 
-    workflow = WORKFLOW.read_text()
+    workflow = PUBLISH.read_text()
     required_fragments = (
         "workflow_dispatch:",
         "push:",
@@ -37,11 +48,12 @@ def main() -> None:
         "push: true",
         "BUILD_ARCH=${{ matrix.arch }}",
         "BUILD_VERSION=${{ steps.addon.outputs.version }}",
+        "BUILD_REF=${{ github.sha }}",
         "BUILD_REPOSITORY=${{ github.repository }}",
-        "docker/setup-qemu-action@v3",
-        "docker/login-action@v3",
         "registry: ghcr.io",
         "password: ${{ secrets.GITHUB_TOKEN }}",
+        "uses: ./.github/workflows/ci.yml",
+        "needs: validate",
     )
     missing = [fragment for fragment in required_fragments if fragment not in workflow]
     assert not missing, f"release workflow is missing: {missing}"
@@ -59,9 +71,41 @@ def main() -> None:
         workflow,
     ), "workflow must derive its tag from n8n/config.yaml"
 
+    # Published tags are immutable: the existence check must run before the
+    # build, and every build step must be skipped when the tag already exists.
+    guard = workflow.index("- name: Refuse to overwrite a published tag")
+    build = workflow.index("- name: Build and push image")
+    assert guard < build, "the tag guard must run before the image is built"
+    assert "docker buildx imagetools inspect" in workflow[guard:build]
+    assert "exit 1" in workflow[guard:build], "an existing foreign tag must fail the run"
+    for step in ("Set up QEMU", "Set up Docker Buildx", "Build and push image"):
+        section = workflow[workflow.index(f"- name: {step}"):]
+        section = section[: section.index("uses:")]
+        assert "if: steps.tag.outputs.exists != 'true'" in section, (
+            f"{step} must be skipped for an already published tag"
+        )
+
+    ci = CI.read_text()
+    for fragment in (
+        "pull_request:",
+        "workflow_call:",
+        "bash n8n/test/run-tests.sh",
+        "--build-arg BUILD_ARCH=amd64",
+        "python smoke-container.py local/woow-n8n:ci --browser",
+    ):
+        assert fragment in ci, f"ci.yml is missing {fragment!r}"
+
+    for path in WORKFLOWS.glob("*.yml"):
+        assert_actions_pinned(path)
+
+    docs = (ADDON_DIR / "DOCS.md").read_text()
+    assert "Use **Run workflow** on the release revision to rebuild its images" not in docs, (
+        "DOCS.md must not tell maintainers to rebuild a published tag"
+    )
+
     print(
         "prebuilt image release test passed: config image/version, no client build, "
-        "GHCR workflow triggers, permissions, architecture tags, and build inputs verified"
+        "CI gate, immutable tags, pinned actions, architecture tags and build inputs verified"
     )
 
 
