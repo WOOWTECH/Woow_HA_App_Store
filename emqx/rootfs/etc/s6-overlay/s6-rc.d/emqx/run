@@ -4,25 +4,42 @@
 # Home Assistant Community Add-on: EMQX
 # Runs the EMQX broker
 # ==============================================================================
+# shellcheck source-path=SCRIPTDIR source=../../../../usr/lib/woow-emqx/node-identity.sh
+source /usr/lib/woow-emqx/node-identity.sh
+
+declare node_cookie
+declare node_name
+
 bashio::log.info 'Starting EMQX...'
 
-export EMQX_HOST=$(bashio::info.hostname)
-export EMQX_NAME="emqx"
-export EMQX_NODE__COOKIE="${EMQX_HOST}"
+node_name=$(woow_emqx::resolve_node_name)
+if ! node_cookie=$(woow_emqx::ensure_node_cookie); then
+    bashio::exit.nok "Could not prepare the Erlang cookie in ${WOOW_EMQX_STATE_DIR}"
+fi
+
+export EMQX_NODE__COOKIE="${node_cookie}"
 export EMQX_NODE__DATA_DIR="/data/emqx/data"
 export EMQX_NODE__ETC_DIR="/data/emqx/etc"
-export EMQX_NODE__NAME="${EMQX_NAME}@${EMQX_HOST}.local"
+export EMQX_NODE__NAME="${node_name}"
 export EMQX_PLUGINS__INSTALL_DIR="/data/emqx/plugins"
 export EMQX_RPC__PORT_DISCOVERY="manual"
 export EMQX_LOG_DIR="/config/log"
 
-# Load custom environment variables
+# Load custom environment variables. Values may hold passwords or tokens, so
+# only the names are logged.
 for var in $(bashio::config 'env_vars|keys'); do
     name=$(bashio::config "env_vars[${var}].name")
     value=$(bashio::config "env_vars[${var}].value")
-    bashio::log.info "Setting ${name} to ${value}"
+    bashio::log.info "Setting ${name} to [REDACTED]"
     export "${name}=${value}"
 done
+
+woow_emqx::map_node_host "${EMQX_NODE__NAME}" \
+    || bashio::log.warning "Could not map the host of ${EMQX_NODE__NAME} in /etc/hosts"
+
+woow_emqx::pin_node_name "${EMQX_NODE__NAME}" \
+    || bashio::log.warning "Could not remember the EMQX node name"
+bashio::log.info "Using EMQX node name: ${EMQX_NODE__NAME}"
 
 # Set max open file limit to avoid memory allocation issues
 if [ "$(ulimit -Hn)" -gt 524288 ]; then

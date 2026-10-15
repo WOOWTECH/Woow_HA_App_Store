@@ -22,9 +22,14 @@ Then navigate to **Settings → Add-ons → Add-on Store**, find "Woow EMQX" and
 
 | 元件 | 版本 | 說明 |
 |------|------|------|
-| EMQX | 5.8.9 | MQTT Broker |
+| Woow EMQX Add-on | 5.9.1 | Add-on 版本（Home Assistant 顯示的版本） |
+| EMQX | 5.8.9 | MQTT Broker（最後的 Apache-2.0 開源版） |
 | Erlang/OTP | 內建 | EMQX 執行環境 |
 | SQLite | 內建 | 內部設定存儲 |
+
+> **版本說明**：Add-on 版號 5.9.x 只代表 Add-on 本身的改版，內含的 EMQX Broker 是 **5.8.9**。
+> EMQX 5.8.9 是最後一個 Apache-2.0 開源版本；5.9 以後（含 6.x）為 Business Source License
+> 企業版，不允許內嵌出貨，本 Add-on 不採用，CI 也會擋下 5.8.x 以外的版本。
 
 ## 系統需求
 
@@ -42,7 +47,12 @@ Then navigate to **Settings → Add-ons → Add-on Store**, find "Woow EMQX" and
 5. 使用預設帳號登入：
    - **使用者名稱**: `admin`
    - **密碼**: `public`
-6. **務必先設定 MQTT 驗證機制**
+6. **登入後立刻修改 Dashboard 密碼，並設定 MQTT 驗證機制**
+
+> **安全性提醒**：在 Dashboard 建立驗證器之前，EMQX **允許匿名 MQTT 連線**；
+> 本 Add-on 使用主機網路，同一區網的任何裝置都連得到 1883 與 Dashboard（18083）。
+> 啟用 ngrok 時 1883 會公開到網際網路，**未設定驗證就等於任何人都能匿名連入**。
+> 詳見 [DOCS.md](DOCS.md)「安全性提醒」。
 
 ## 連接埠說明
 
@@ -73,7 +83,7 @@ Then navigate to **Settings → Add-ons → Add-on Store**, find "Woow EMQX" and
 1. 前往 Home Assistant **設定** → **裝置與服務** → **新增整合**
 2. 搜尋 **MQTT**
 3. 填寫連線資訊：
-   - **Broker**: `homeassistant` 或 `localhost`
+   - **Broker**: `localhost`（或 `127.0.0.1`、`homeassistant`）
    - **連接埠**: `1883`
    - **使用者名稱**: （在 EMQX 中建立的帳號）
    - **密碼**: （在 EMQX 中設定的密碼）
@@ -81,7 +91,8 @@ Then navigate to **Settings → Add-ons → Add-on Store**, find "Woow EMQX" and
 ### 3. 設定 Zigbee2MQTT（選擇性）
 
 如果使用 Zigbee2MQTT：
-- **Broker**: `homeassistant` 或 `a0d7b954-emqx`
+- **Broker**: `homeassistant` 或 `172.30.32.1`（不要填 `localhost`；
+  本 Add-on 是主機網路，沒有 `a0d7b954-emqx` 這類 Add-on 主機名稱，那是社群版的名稱）
 - **連接埠**: `1883`
 - 使用在 EMQX 中建立的帳號和密碼
 
@@ -101,8 +112,6 @@ Then navigate to **Settings → Add-ons → Add-on Store**, find "Woow EMQX" and
 
 ```yaml
 env_vars:
-  - name: EMQX_NODE__NAME
-    value: "something@else.local"
   - name: EMQX_LISTENERS__TCP__DEFAULT__MAX_CONNECTIONS
     value: "1000000"
 ```
@@ -111,6 +120,8 @@ env_vars:
 - 僅接受以 `EMQX_` 開頭的變數名稱
 - 變數名稱使用雙底線 `__` 代表設定層級
 - 修改後需重啟 Add-on
+- 記錄檔只印出變數名稱，不印出值（值可能含密碼）
+- **不要隨意設定 `EMQX_NODE__NAME`**：EMQX 資料庫以節點名稱命名，改名會開到空資料庫
 
 完整環境變數參考：https://www.emqx.io/docs/en/v5.0/admin/cfg.html
 
@@ -130,6 +141,7 @@ ngrok_tcp_addr: ""
 - `ngrok_tcp_addr`：可選，指定 ngrok 保留的 TCP 位址以取得「固定」的公開端點；留空則由 ngrok 自動指派臨時位址
 
 注意：
+- **開啟前務必先設定 MQTT 驗證**，否則任何人都能從網際網路匿名連入
 - 8083（MQTT over WebSocket）不在 ngrok 範圍內，請改用 Cloudflare Tunnel
 - TCP 位址穩定性：ngrok 自動指派的 TCP 位址在每次重啟後都可能改變；
   若需要重啟後仍維持固定的端口，請在 ngrok 帳號中設定保留的 TCP address 並填入 `ngrok_tcp_addr`
@@ -167,6 +179,8 @@ ngrok_tcp_addr: ""
 | `/data/emqx/data` | EMQX 資料（持久化） |
 | `/data/emqx/etc` | EMQX 設定檔（持久化） |
 | `/data/emqx/plugins` | EMQX 外掛（持久化） |
+| `/data/emqx/node.name` | 固定的 EMQX 節點名稱（既有安裝沿用原本的名稱） |
+| `/data/emqx/node.cookie` | 每台安裝隨機產生的 Erlang cookie（權限 600，請勿外流） |
 | `/config/log` | 記錄檔 |
 
 ## 備份與還原
@@ -219,6 +233,10 @@ EMQX 比 Mosquitto 需要更多系統資源（RAM、CPU）。如果你的 Home A
 - Dashboard 透過 Home Assistant Ingress 存取（側邊欄）
 - 也可直接存取 `http://<ha-ip>:18083`
 
+### Add-on 一直被重啟
+- Supervisor watchdog 會檢查 `http://<主機>:18083/api/v5/status`；若 Dashboard 被改成只監聽
+  127.0.0.1，或 EMQX 沒有正常啟動，watchdog 會判定異常並重啟 Add-on
+
 ## 技術細節
 
 ### S6-Overlay 服務啟動順序
@@ -232,7 +250,7 @@ init-emqx (oneshot) → emqx (longrun) → ngrok (longrun) → ngrok-announce (o
 | 服務 | 類型 | 說明 |
 |------|------|------|
 | init-emqx | oneshot | 建立資料目錄 |
-| emqx | longrun | EMQX MQTT Broker |
+| emqx | longrun | EMQX MQTT Broker（固定節點名稱、產生 Erlang cookie） |
 | ngrok | longrun | ngrok TCP 1883 通道（由 config 控制） |
 | ngrok-announce | oneshot | 印出解析後的 ngrok 公開網址 |
 
@@ -242,7 +260,7 @@ init-emqx (oneshot) → emqx (longrun) → ngrok (longrun) → ngrok-announce (o
 woow-emqx/
 ├── config.yaml              # Add-on 設定定義
 ├── build.yaml               # 建置設定
-├── addon_info.yaml          # Add-on 資訊
+├── addon_info.yaml          # 上游版本追蹤（只追 EMQX 5.8.x）
 ├── Dockerfile               # 容器建置檔
 ├── DOCS.md                  # 使用說明文件
 ├── CHANGELOG.md             # 變更記錄
@@ -255,6 +273,7 @@ woow-emqx/
 │   ├── docker-compose.amd64.yml
 │   └── docker-compose.aarch64.yml
 └── rootfs/
+    ├── usr/lib/woow-emqx/   # 節點名稱／Erlang cookie 共用函式
     └── etc/s6-overlay/s6-rc.d/
         ├── init-emqx/       # EMQX 初始化
         ├── emqx/            # EMQX 服務 (longrun)
@@ -269,8 +288,9 @@ woow-emqx/
 |------|---------------------|---------------|
 | 品牌 | Community Add-ons | WOOWTECH |
 | 中文支援 | 無 | 繁體中文翻譯及文件 |
-| 功能 | 完全相同 | 完全相同 |
-| EMQX 版本 | v5.8.9 | v5.8.9 |
+| EMQX 版本 | 6.x 企業版（BSL） | v5.8.9（Apache-2.0 開源版） |
+| Erlang cookie | 每台隨機產生 | 每台隨機產生 |
+| ngrok TCP 通道 | 無 | 內建（選用） |
 
 ## 授權條款
 

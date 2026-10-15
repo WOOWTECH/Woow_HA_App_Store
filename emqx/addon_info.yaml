@@ -1,8 +1,13 @@
+# The add-on version (config.yaml) is not the broker version: add-on 5.9.x
+# ships EMQX 5.8.x, and the Store refuses a lower version than one it already
+# offered, so config.yaml is bumped by hand rather than derived from here.
 source:
   type: github-releases
   repo: emqx/emqx
   current_version: v5.8.9
-config:
-  version_template: "{{version}}"
+  # Track only the EMQX 5.8 line. v5.8.9 is the last Apache-2.0 open-source
+  # release; 5.9+ and 6.x are the Business Source License enterprise edition
+  # and must not be shipped in this add-on (CI enforces this as well).
+  version_template: regex:^v(?<major>5)\.(?<minor>8)\.(?<patch>\d+)$
 test:
   enable: true

@@ -1322,22 +1322,22 @@
     "woow-emqx": {
       "id": "woow-emqx",
       "name": "Woow EMQX",
-      "version": "5.9.0",
+      "version": "5.9.1",
       "repository": "WOOWTECH/Woow_ha_emqx",
-      "source_sha": "70947402ddeb58e8f060e864b04fd789c02419da",
+      "source_sha": "6e827231fc794613c96e105055df96373defd55c",
       "source_path": "emqx",
       "config_file": "config.yaml",
-      "config_sha256": "sha256:a210a902bda64a06e92bc14fa3c6a88fa844c8d861c14ee786b3470f4a2c49f2",
-      "archive_sha256": "sha256:f7ea46d636de0cd6c46c004cf1cb2871a930d0a942c027658bdb8c1440d13007",
-      "context_fingerprint": "sha256:00b4f59f86200b097b6cf5cfecb8719d061806d82e2a35f8a97a0d8d1c72bb69",
-      "material_fingerprint": "sha256:d93cb52682cb9df1efe65722b4a0a56d42b5ad8dd4dc85c65526df30a448d0f2",
+      "config_sha256": "sha256:09984699550b5417d02b0cfa4a8cc02ec82aee618e140d24bf2acb6db68a67d5",
+      "archive_sha256": "sha256:1aed41c43b26e831e7476cecd543fca1be78ce7aa20b33e2891a45ad3f1d1c70",
+      "context_fingerprint": "sha256:be92089276421a106e687b858a2eb6b390ca8d80208c32855f2cde5eb7bcd957",
+      "material_fingerprint": "sha256:ed14f7688113404ca6c4ee07d23643413300802f44c197c933150f4f6abb2c61",
       "architectures": [
         "aarch64",
         "amd64"
       ],
       "config": {
         "name": "Woow EMQX",
-        "version": "5.9.0",
+        "version": "5.9.1",
         "slug": "woow-emqx",
         "description": "The most scalable open-source MQTT broker for IoT (WOOWTECH fork)",
         "url": "https://github.com/WOOWTECH/Woow_ha_emqx",
@@ -1345,6 +1345,7 @@
         "ingress": true,
         "ingress_port": 18083,
         "ingress_stream": true,
+        "watchdog": "http://[HOST]:[PORT:18083]/api/v5/status",
         "init": false,
         "panel_icon": "mdi:pipe",
         "panel_title": "EMQX",
@@ -1379,7 +1380,7 @@
       "images": {},
       "delivery": "local-source-build",
       "validation": "manifest+source-context+configured-CI (runtime build not certified)",
-      "publisher_run_id": "37410195634",
+      "publisher_run_id": "38736411492",
       "channel": "stable",
       "store_path": "emqx"
     },
@@ -3621,5 +3622,5 @@
       "store_path": "woow_mcp_nextcloud"
     }
   },
-  "catalog_id": "sha256:d73feabcbd74f02ae110fa2dbcf4377dc5eb996065d7abef147277ea8dd63978"
+  "catalog_id": "sha256:ae831dae230cfb38d63d73d2b96e55c5fca945e28b22dde22b6c00ce03dc3808"
 }
