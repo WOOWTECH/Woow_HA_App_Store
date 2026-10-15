@@ -469,7 +469,7 @@
           "store_path": "woow_mcp_opendesign",
           "channel": "stable",
           "enabled": false,
-          "reason": "Frozen at 0.1.11 in Store: OpenDesign MCP moves into the OpenDesign add-on; this standalone app will be delisted by the OpenDesign lane. Do not sync 0.1.12+."
+          "reason": "Delisted 2026-10-15: replaced by the MCP server built into woow_ha_opendesign 0.2.0. Keep disabled so notifications cannot re-add it."
         },
         {
           "id": "woow_mcp_emqx",

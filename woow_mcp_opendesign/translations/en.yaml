@@ -1,4 +1,0 @@
-configuration: {}
-network:
-  8081/tcp: Optional LAN Streamable HTTP /mcp; Bearer required. Null disables host
-    mapping. Not the Ingress UI.

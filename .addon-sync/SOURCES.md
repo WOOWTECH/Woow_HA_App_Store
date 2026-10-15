@@ -41,7 +41,7 @@
 | [Woow_ha_mcp_addons](https://github.com/WOOWTECH/Woow_ha_mcp_addons) | 預設分支（`claude-delivery`） | `addons/n8n` | `woow_mcp_n8n`／stable | `woow_mcp_n8n` | ✓ | —；各架構映像 digest | 預建映像（amd64） | 已同步 |
 | [Woow_ha_mcp_addons](https://github.com/WOOWTECH/Woow_ha_mcp_addons) | 預設分支（`claude-delivery`） | `addons/odoo` | `woow_mcp_odoo`／stable | `woow_mcp_odoo` | ✓ | —；各架構映像 digest | 預建映像（amd64） | 已同步 |
 | [Woow_ha_mcp_addons](https://github.com/WOOWTECH/Woow_ha_mcp_addons) | 預設分支（`claude-delivery`） | `addons/hermes` | `woow_mcp_hermes`／stable | `woow_mcp_hermes` | ✓ | —；各架構映像 digest | 預建映像（amd64） | 已同步 |
-| [Woow_ha_mcp_addons](https://github.com/WOOWTECH/Woow_ha_mcp_addons) | 預設分支（`claude-delivery`） | `addons/opendesign` | `woow_mcp_opendesign`／stable | `woow_mcp_opendesign` | ✓ | —；各架構映像 digest | 預建映像（amd64） | 已同步 |
+| [Woow_ha_mcp_addons](https://github.com/WOOWTECH/Woow_ha_mcp_addons) | 預設分支（`claude-delivery`） | `addons/opendesign` | `woow_mcp_opendesign`／stable | `woow_mcp_opendesign` | ✓ | —；各架構映像 digest | 預建映像（amd64） | 已下架（2026-10-15，改用 woow_ha_opendesign 0.2.0 內建 MCP） |
 | [Woow_ha_mcp_addons](https://github.com/WOOWTECH/Woow_ha_mcp_addons) | 預設分支（`claude-delivery`） | `addons/emqx` | `woow_mcp_emqx`／stable | `woow_mcp_emqx` | ✓ | —；各架構映像 digest | 預建映像（amd64） | 已同步 |
 | [Woow_ha_mcp_addons](https://github.com/WOOWTECH/Woow_ha_mcp_addons) | 預設分支（`claude-delivery`） | `addons/litellm` | `woow_mcp_litellm`／stable | `woow_mcp_litellm` | ✓ | —；各架構映像 digest | 預建映像（amd64） | 已同步 |
 | [Woow_ha_mcp_addons](https://github.com/WOOWTECH/Woow_ha_mcp_addons) | 預設分支（`claude-delivery`） | `addons/nextcloud` | `woow_mcp_nextcloud`／stable | `woow_mcp_nextcloud` | ✓ | —；各架構映像 digest | 預建映像（amd64） | 已同步 |

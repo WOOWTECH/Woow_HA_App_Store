@@ -57,7 +57,6 @@ ha store add https://github.com/WOOWTECH/Woow_HA_App_Store
 | `woow_mcp_n8n` | Woow n8n MCP Server | 0.1.9 | 預建映像（amd64） | n8n 的 MCP server |
 | `woow_mcp_odoo` | Woow Odoo MCP Server | 0.1.9 | 預建映像（amd64） | Odoo 的 MCP server |
 | `woow_mcp_hermes` | Woow Hermes MCP Server | 0.1.9 | 預建映像（amd64） | Hermes Agent 的 MCP server |
-| `woow_mcp_opendesign` | Woow OpenDesign MCP Server | 0.1.9 | 預建映像（amd64） | OpenDesign 的 MCP server |
 | `woow_mcp_emqx` | Woow EMQX MCP Server | 0.1.9 | 預建映像（amd64） | EMQX 的 MCP server |
 | `woow_mcp_litellm` | Woow LiteLLM MCP Server | 0.1.9 | 預建映像（amd64） | LiteLLM（本 store 沒有 LiteLLM add-on，需自備） 的 MCP server |
 | `woow_mcp_nextcloud` | Woow Nextcloud MCP Server | 0.1.9 | 預建映像（amd64） | Nextcloud（一個帳號的檔案、行事曆與任務） 的 MCP server |
@@ -93,6 +92,11 @@ ha store add https://github.com/WOOWTECH/Woow_HA_App_Store
 
 > Jellyfin 原本要從 Community Apps store 安裝，現已改為本 repo 的 WOOWTECH 鏡像
 > （`jellyfin`），不再依賴上游 store。
+>
+> **Woow OpenDesign MCP Server（`woow_mcp_opendesign`）已於 2026-10-15 下架**，OpenDesign 的
+> MCP server 改為內建在 **Woow HA OpenDesign（`woow_ha_opendesign`）0.2.0** 裡。已安裝舊 add-on 的人
+> 請到 OpenDesign 頁面右下角的 **MCP Server** 建立新 token、更新用戶端網址後，再移除舊 add-on；
+> 舊 add-on 不會被自動移除，但本 store 不再提供或更新它。
 >
 > **Studio Code Server（`vscode`）已於 2026-09-11 下架**，由 WOOWTECH 自有的
 > `woow_ha_code_server` 取代。兩者是**不同的 addon**（slug、選項 schema、映像都不同），
