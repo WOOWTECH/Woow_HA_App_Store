@@ -1,0 +1,27 @@
+{
+  "name": "@woowtech/mcp-admin-ui",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "test": "node --test tests/*.test.mjs",
+    "test:browser": "PLAYWRIGHT_BROWSERS_PATH=0 playwright test",
+    "browser:install": "PLAYWRIGHT_BROWSERS_PATH=0 playwright install chromium",
+    "fixture": "node fixtures/server.mjs"
+  },
+  "dependencies": {
+    "@fontsource/noto-sans-tc": "5.2.9",
+    "@fontsource/outfit": "5.2.8",
+    "@fontsource/poppins": "5.2.7",
+    "@fontsource/yellowtail": "5.2.8",
+    "@mdi/font": "7.4.47"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.61.1",
+    "esbuild": "0.25.12"
+  }
+}

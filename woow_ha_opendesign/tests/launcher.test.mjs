@@ -51,15 +51,15 @@ test('launcher shutdown actually kills and reaps a TERM-resistant child after gr
   const harness = `
 set -Eeuo pipefail
 readonly SHUTDOWN_GRACE_SECONDS=1
-od_pid=''
-nginx_pid=''
+child_pids=()
 stopping=0
 ${terminateChildren}
 bash -c 'trap "" TERM; while :; do sleep 1; done' &
-od_pid=$!
+stubborn=$!
+child_pids+=("$stubborn")
 sleep 0.2
 terminate_children
-if kill -0 "$od_pid" 2>/dev/null; then exit 70; fi
+if kill -0 "$stubborn" 2>/dev/null; then exit 70; fi
 echo reaped
 `;
   const result = spawnSync('bash', ['-c', harness], { encoding: 'utf8', timeout: 4000 });
@@ -68,13 +68,73 @@ echo reaped
   assert.match(result.stderr, /exceeded 1s grace; sending KILL/);
 });
 
-test('launcher supervises only OpenDesign and nginx as one unit', () => {
+test('launcher supervises OpenDesign, nginx, the login TTY and the built-in MCP server as one unit', () => {
   assert.doesNotMatch(launcher, /byok_pid|ha-byok-store|ha-byok-profiles/);
-  assert.match(launcher, /wait -n "\$od_pid" "\$nginx_pid"/);
+  for (const name of ['opendesign', 'nginx', 'ttyd', 'mcp']) assert.match(launcher, new RegExp(`^start_child ${name} \\\\$`, 'm'));
+  assert.match(launcher, /wait -n -p exited_pid "\$\{child_pids\[@\]\}"/);
   const shutdown = launcher.slice(launcher.indexOf('terminate_children() {'), launcher.indexOf('\n}\n\ntrap terminate_children') + 2);
-  assert.match(shutdown, /"\$od_pid" "\$nginx_pid"/);
+  assert.match(shutdown, /for pid in "\$\{child_pids\[@\]\}"/);
   assert.match(launcher, /terminate_children/);
   assert.match(launcher, /if \(\( status == 0 \)\)/);
+});
+
+test('any supervised child exit stops every peer and names the exited process', () => {
+  // Run the real launcher supervision section against stub children: the
+  // second child exits with 3, so the launcher must stop the long-running
+  // peers, report the exited child by name and propagate its status.
+  const helpersStart = launcher.indexOf('terminate_children() {');
+  const helpersEnd = launcher.indexOf('\nprepare_owned_dir() {', helpersStart);
+  const superviseStart = launcher.indexOf("exited_pid=''");
+  assert.ok(helpersStart >= 0 && helpersEnd > helpersStart && superviseStart > helpersEnd);
+  const harness = `
+set -Eeuo pipefail
+readonly SHUTDOWN_GRACE_SECONDS=2
+child_pids=()
+child_names=()
+stopping=0
+${launcher.slice(helpersStart, helpersEnd)}
+start_child first sleep 30
+start_child second sh -c 'sleep 0.3; exit 3'
+start_child third sleep 30
+${launcher.slice(superviseStart)}
+`;
+  const result = spawnSync('bash', ['-c', harness], { encoding: 'utf8', timeout: 10_000 });
+  assert.equal(result.status, 3, result.stderr || result.error?.message);
+  assert.match(result.stderr, /required process second exited \(status=3\); stopping its peers/);
+});
+
+test('OpenDesign starts through the omnigent-host kit launcher with the HA contract', () => {
+  assert.match(launcher, /start_child opendesign \\\n  "\$\{no_supervisor_env\[@\]\}" su-exec open-design:open-design \/bin\/sh "\$OMNIGENT_KIT\/omnigent-host-launch" -- \\\n  \/usr\/local\/bin\/node \/opt\/ha-opendesign\/headless-entry\.mjs/);
+  assert.match(launcher, /readonly OMNIGENT_KIT=\/etc\/omnigent-host/);
+  for (const setting of [
+    'OG_HOST_ENABLED=1',
+    'OG_KIT_DIR="$OMNIGENT_KIT"',
+    'OG_CONFIG_HOME="$HOME/.omnigent"',
+    'OG_DATA_DIR="$HOME/.omnigent"',
+    'OMNIGENT_CONFIG_HOME="$OG_CONFIG_HOME"',
+    'OMNIGENT_DATA_DIR="$OG_DATA_DIR"',
+    'OG_STATUS_FILE="$OG_DATA_DIR/omnigent-host/status.json"',
+    'OG_WORKSPACE="$HOME/studio"',
+    'OG_BIN=/usr/local/bin/omnigent',
+    'OG_UNSET_ENV="OD_API_TOKEN"',
+    'OMNIGENT_ANALYTICS=0',
+    'DO_NOT_TRACK=1',
+    'DISABLE_TELEMETRY=1',
+    'OMNIGENT_HOST_NO_OPEN=1',
+  ]) assert.ok(launcher.includes(`export ${setting}`), `missing export ${setting}`);
+  // The kit's ordered stop must fit inside the launcher's own KILL deadline.
+  const grace = Number(launcher.match(/readonly SHUTDOWN_GRACE_SECONDS=(\d+)/)[1]);
+  const kitStop = Number(launcher.match(/export OG_LAUNCH_STOP_SECONDS=(\d+)/)[1]);
+  const hostStop = Number(launcher.match(/export OG_STOP_GRACE_SECONDS=(\d+)/)[1]);
+  assert.ok(hostStop < kitStop && kitStop < grace, `${hostStop} < ${kitStop} < ${grace}`);
+  assert.match(launcher, /"\$DATA_DIR\/home\/\.omnigent"/);
+  assert.match(launcher, /chmod 0700 "\$DATA_DIR\/home\/\.omnigent"/);
+});
+
+test('launcher runs a loopback-only writable login TTY under the OpenDesign UID', () => {
+  assert.match(launcher, /\/usr\/bin\/ttyd[\s\S]*--interface 127\.0\.0\.1[\s\S]*--base-path \/terminal[\s\S]*--writable[\s\S]*--cwd "\$HOME" \/bin\/bash --login/);
+  assert.match(launcher, /start_child ttyd \\\n  "\$\{no_supervisor_env\[@\]\}" su-exec open-design:open-design \/usr\/bin\/ttyd/);
+  assert.doesNotMatch(launcher, /shared-agents\.mjs/);
 });
 
 test('launcher removes obsolete credential symlinks without following them or deleting data', async () => {
@@ -98,4 +158,40 @@ test('launcher removes obsolete credential symlinks without following them or de
   } finally {
     await rm(root, { recursive: true, force: true });
   }
+});
+
+test('agent CLI homes are created when absent but never replaced or followed', async () => {
+  const start = launcher.indexOf('for dir in "$DATA_DIR/home/.claude"');
+  const end = launcher.indexOf('\ndone\n', start) + 6;
+  assert.ok(start >= 0 && end > start);
+  const block = launcher.slice(start, end).replace(/chown -h open-design:open-design "\$dir"/, 'true');
+  const root = await mkdtemp(path.join(tmpdir(), 'ha-opendesign-agent-homes-'));
+  const data = path.join(root, 'opendesign');
+  const outside = path.join(root, 'outside');
+  try {
+    await mkdir(path.join(data, 'home'), { recursive: true });
+    await mkdir(outside);
+    await symlink(outside, path.join(data, 'home', '.claude'));
+    const result = spawnSync('bash', ['-c', `set -Eeuo pipefail\nDATA_DIR="$1"\n${block}`, 'launcher-test', data], { encoding: 'utf8' });
+    assert.equal(result.status, 0, result.stderr);
+    for (const dir of ['.codex', '.config', '.pi', '.pi/agent']) assert.ok((await stat(path.join(data, 'home', dir))).isDirectory(), dir);
+    assert.ok((await (await import('node:fs/promises')).lstat(path.join(data, 'home', '.claude'))).isSymbolicLink(), 'existing .claude symlink must be left alone');
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('no supervised child inherits the Supervisor token; nginx and MCP run under their own UIDs', () => {
+  const env = spawnSync('bash', ['-c', `${launcher.match(/^no_supervisor_env=.*$/m)[0]}\n"\${no_supervisor_env[@]}" sh -c 'echo "\${SUPERVISOR_TOKEN-unset} \${HASSIO_TOKEN-unset} \${KEEP-unset}"'`], {
+    encoding: 'utf8',
+    env: { ...process.env, SUPERVISOR_TOKEN: 'fake-supervisor', HASSIO_TOKEN: 'fake-hassio', KEEP: 'kept' },
+  });
+  assert.equal(env.status, 0, env.stderr);
+  assert.equal(env.stdout.trim(), 'unset unset kept');
+  const starts = launcher.match(/^start_child \w+ \\\n  .*$/gm);
+  assert.equal(starts.length, 4);
+  for (const start of starts) assert.match(start, /\n  "\$\{no_supervisor_env\[@\]\}" /);
+  assert.match(launcher, /start_child nginx \\\n  "\$\{no_supervisor_env\[@\]\}" su-exec ha-ingress:ha-ingress \/usr\/sbin\/nginx/);
+  assert.match(launcher, /start_child mcp \\\n  "\$\{no_supervisor_env\[@\]\}" \/opt\/woow\/bin\/ha-opendesign-mcp$/m);
+  assert.match(launcher, /prepare_owned_dir "\$dir" ha-ingress:ha-ingress/);
 });

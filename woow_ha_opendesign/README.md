@@ -1,16 +1,19 @@
 # Woow HA OpenDesign Add-on
 
-OpenDesign **0.21.1**, packaged as a standalone Home Assistant add-on for `amd64` and `aarch64`.
+OpenDesign **0.24.1** from the shared WoowTech OpenDesign core image (the same build the WOOW PaaS runs), packaged as a standalone Home Assistant add-on for `amd64`.
 
-- Home Assistant Ingress/sidebar access only; no LAN port is published.
+- Home Assistant Ingress/sidebar access only. The one declared LAN port is the built-in MCP server's `8081/tcp`, unmapped unless you map it.
 - OpenDesign binds to `127.0.0.1`; unprivileged nginx fronts it on the Supervisor ingress port.
 - OpenDesign native API BYOK stores provider, model, and API-key settings only in each administrator browser's local storage. Keys are not written to `/data`, add-on options, logs, or Home Assistant backups.
 - OpenDesign project and application state is persisted under `/data/opendesign` and is included in cold backups.
 - System Chromium, Playwright and Noto CJK/emoji fonts provide headless HTML rendering.
 - Downloads supported by the pinned upstream application: standalone HTML, ZIP, screenshot PDF, PNG/JPEG, and screenshot-based PPTX. **Editable PPTX is unsupported** and returns a clear error.
-- OpenCode `1.18.29` is bundled at an exact locked version for OpenDesign's native `byok-opencode` API runtime.
-- Claude Code `2.1.296`, Codex CLI `0.162.1`, and Pi Coding Agent `1.1.0` are preinstalled in the image and available to OpenDesign's Local AI discovery; no Paseo plugin or first-use CLI download is required.
-- Claude Code, Codex, Pi, and OpenCode share Agent Skills, a translated MCP catalog, and a persistent default workspace under `/data/opendesign/shared`; native plugin code remains runtime-specific.
+- The core image provides Claude Code `2.1.296`, Codex CLI `0.162.1`, Pi Coding Agent `1.1.0`, and OpenCode `1.18.33` (OpenDesign's native `byok-opencode` API runtime). The add-on build asserts each version as UID 1001; no Paseo plugin or first-use CLI download is required.
+- WoowTech changes from the core: white-label UI, Traditional Chinese (zh-TW) locale fixes, export fixes, the bundled `woowtech-brand` skill and `woow-omnigent` plugin, and no `brainstorming` skill.
+- An **Omnigent host** runs next to OpenDesign (the shared WOOW `omnigent-host` kit). It idles until you connect it from OpenDesign's **Plugins → Omnigent** dialog (or `omnigent login <server-url>` in the CLI Terminal), then keeps this add-on available as an Omnigent machine.
+- OpenDesign owns installed plugins and skills in its persistent data directory. Install them from OpenDesign's **Plugins** page; the daemon stages the selected skill into the project and supplies it to whichever installed agent runtime runs that project.
+- A Home Assistant authenticated **CLI Terminal** entry lets you complete interactive logins for Claude Code, Codex, and Pi. OpenCode's additional model providers can be configured in OpenDesign **Settings → API providers**.
+- A **built-in OpenDesign MCP server** (replacing the separate *Woow OpenDesign MCP Server* add-on) serves MCP clients on `8081/tcp` with a Bearer token, or `/private_<token>/mcp` for Claude.ai connectors. Its administration (token, tool permissions) is the **MCP Server** entry next to **CLI Terminal**, reachable only through HA Ingress. See [DOCS.md](DOCS.md#built-in-mcp-server).
 
 [繁體中文](README_zh-TW.md) · [Add-on documentation](DOCS.md)
 
@@ -18,26 +21,30 @@ OpenDesign **0.21.1**, packaged as a standalone Home Assistant add-on for `amd64
 
 1. In Home Assistant, open **Settings → Add-ons → Add-on Store → Repositories**.
 2. Add `https://github.com/WOOWTECH/Woow_ha_opendesign_add_on`.
-3. Install **Woow HA OpenDesign**, start it, and open **OpenDesign** from the sidebar.
+3. Install **Woow HA OpenDesign**. On its **Info** tab turn on **Watchdog** (Home Assistant leaves it off for new add-ons; without it the add-on stays stopped after an internal process exits), then start it and open **OpenDesign** from the sidebar.
 4. In **Settings**, configure API BYOK with your provider, model, and key. Those settings remain local to that browser.
-5. Open **Local AI → Rescan** to refresh the bundled Claude Code, Codex, and Pi entries, then sign in to each provider when you first use it.
-Shared skills live in `/data/opendesign/shared/skills`, and the MCP catalog is `/data/opendesign/shared/mcp/servers.json`; synchronization runs automatically at startup. If you have a shell in the container, `ha-opendesign-agents status` reports its state.
+5. Open **Local AI → Rescan** after installation or image updates. In OpenDesign, open **Plugins**, install the workflow you want, then select it in a project. Its Skills and plugin context are resolved by the native OpenDesign daemon for Claude Code, Codex, Pi, or OpenCode runs.
+6. Click **CLI Terminal** in the OpenDesign page to open the authenticated terminal. Run `claude` and `/login`, `codex login --device-auth`, or `pi` and use its `/login` command. The terminal uses the persistent `/data/opendesign/home` profile. OpenCode API providers can instead be entered in **Settings → API providers**.
 
 There are no add-on configuration options and no host directory mappings.
 
-See [shared agent capabilities](docs/shared-agent-capabilities.md) for compatibility, migration, MCP catalog, and plugin adapter details.
+See [agent and plugin setup](docs/shared-agent-capabilities.md) for how OpenDesign shares installed plugins/Skills across agent runtimes and how login/configuration is persisted.
 
 ## Architecture
 
 ```text
 browser → HA authenticated ingress → nginx :8099 → OpenDesign 127.0.0.1:7456
-                                                   ↘ /data/opendesign
-                                                   ↘ system Chromium renderer
+                                        ↘ loopback ttyd :7681 (CLI login TTY)
+                                        ↘ /mcp-admin/ → MCP admin (Unix socket, Supervisor peer only)
+MCP client → :8081 (Bearer or /private_<token>/mcp) → built-in MCP gateway (UID 10001) → OpenDesign 127.0.0.1:7456
+                                        ↘ /data/opendesign
+                                        ↘ system Chromium renderer
+OpenDesign ↔ omnigent-host supervisor → `omnigent host` (dials out to your Omnigent server after login)
 ```
 
 nginx validates `X-Ingress-Path`, rewrites initial root-relative URLs, and injects early browser shims covering fetch, XHR, EventSource, WebSocket, history, workers, dynamically inserted asset URLs, and the two web-mode export gaps. In HA Ingress the PDF action is redirected from the desktop-JSON endpoint to the binary screenshot-PDF endpoint, while PNG/JPEG saves call the daemon's headless image endpoint. Buffering and upstream compression are disabled to preserve streams and allow response rewriting.
 
-A root PID-1 launcher prepares Home Assistant's root-owned `/data` mount, safely removes the withdrawn legacy `/data/opendesign/credentials` path without following symlinks, then uses `su-exec` to run nginx and OpenDesign as upstream `open-design` UID/GID 1001. It forwards termination and stops the peer if either process exits; shutdown sends TERM, waits at most five seconds, then sends KILL and reaps. nginx keeps its PID and temporary files under `/tmp`.
+A root PID-1 launcher prepares Home Assistant's root-owned `/data` mount, safely removes the withdrawn legacy `/data/opendesign/credentials` path without following symlinks, then uses `su-exec` to run OpenDesign (through the omnigent-host kit launcher, which also runs the Omnigent supervisor) and loopback-only ttyd as `open-design` UID/GID 1001, nginx as `ha-ingress` (1002), and the built-in MCP server, which drops itself to `mcp` (10001). No child inherits the Supervisor token. The terminal is reachable only through HA-authenticated Ingress and starts a login shell in the persistent home directory. Every supervised process is required: when one exits, the launcher stops the others and exits so Supervisor restarts them together (only while **Watchdog** is on; measured: back and healthy in about 11 s, while with Watchdog off the add-on stays in `error`); nginx keeps its PID and temporary files under `/tmp`.
 
 ## Development and validation
 
@@ -45,7 +52,7 @@ A root PID-1 launcher prepares Home Assistant's root-owned `/data` mount, safely
 ./tests/run.sh
 ```
 
-The local suite requires Node.js and Python 3 with PyYAML, but not Docker. It validates metadata, forbidden host/runtime coupling, JavaScript and shell syntax, renderer/security helpers, export bridges, ingress rewrite fixtures, and the workflow's least-privilege/immutable-release policy. CI additionally builds an amd64 image and runs `tests/container-smoke.sh` before architecture builds: a real Chromium session traverses a Supervisor-style path-stripping proxy and exercises the injected fetch/XHR/SSE/WebSocket and PDF/image bridges, alongside health, persistence, renderer, and HTTP export checks. Pull-request and main-branch architecture builds never authenticate to GHCR and run with `contents: read` only. `amd64` and `aarch64` images are published only by a `v<config-version>` Git tag after a release preflight proves both version tags are unused. Published version tags are immutable; if a release publishes only one architecture, recovery requires bumping `config.yaml` and creating a new matching tag rather than overwriting the partial release.
+The local suite requires Node.js and Python 3 with PyYAML, but not Docker. It validates metadata, forbidden host/runtime coupling, JavaScript and shell syntax, renderer/security helpers, export bridges, ingress rewrite fixtures, and the workflow's least-privilege/immutable-release policy. CI additionally builds an amd64 image and runs `tests/container-smoke.sh` before architecture builds: a real Chromium session traverses a Supervisor-style path-stripping proxy and exercises the injected fetch/XHR/SSE/WebSocket and PDF/image bridges, alongside health, persistence, renderer, and HTTP export checks. Pull-request and main-branch builds never authenticate to GHCR and run with `contents: read` only. The `amd64` image is published only by a `v<config-version>` Git tag after a release preflight proves the version tag is unused. Published version tags are immutable; recovery from a failed release requires bumping `config.yaml` and creating a new matching tag rather than overwriting it.
 
 ## Security notes
 
@@ -55,4 +62,4 @@ Renderer HTML is model-generated, so Chromium applies a request policy before ev
 
 ## Upstream and license
 
-The runtime derives from `ghcr.io/nexu-io/od:0.21.1`. The Dockerfile and release/CI builds pin its multi-architecture digest. Home Assistant's local add-on builder does not accept digest syntax in `build.yaml`, so that development-only path is pinned to the `0.21.1` tag instead. OpenDesign has its own upstream licensing and notices. The add-on packaging and integration code in this repository is MIT licensed; see [LICENSE](LICENSE).
+The runtime derives from the WoowTech OpenDesign core image, published as `ghcr.io/woowtech/open-design-core` (OpenDesign 0.24.1 built from the WoowTech fork). The Dockerfile and release/CI builds pin it by digest; until the core digest is published the default is a deliberate all-zero placeholder and builds pass `BUILD_FROM` explicitly. Home Assistant's local add-on builder does not accept digest syntax in `build.yaml`, so that development-only path uses a tag (also a placeholder for now). OpenDesign is licensed under Apache-2.0; the core image carries its license and a notice of the WoowTech changes. The add-on packaging and integration code in this repository is MIT licensed; see [LICENSE](LICENSE). The image is therefore labelled `Apache-2.0 AND MIT`.

@@ -32,7 +32,8 @@ test('native byok-opencode container harness uses a streaming mock and browser r
 test('container smoke executes native BYOK coverage and rejects log and /data leakage', () => {
   assert.match(smoke, /docker cp tests\/container-opencode-byok-e2e\.mjs "\$container:\/tmp\/container-opencode-byok-e2e\.mjs"/);
   assert.match(smoke, /docker exec "\$container" node \/tmp\/container-opencode-byok-e2e\.mjs/);
-  assert.match(smoke, /docker logs "\$container" 2>&1 \| grep -Fq -- "\$BYOK_FAKE_KEY"/);
+  assert.match(smoke, /docker logs "\$container" >"\$tmp\/container\.log" 2>&1\nif grep -Fq -- "\$BYOK_FAKE_KEY" "\$tmp\/container\.log"; then/);
+  assert.doesNotMatch(smoke, /docker logs[^\n|]*\| *grep -[A-Za-z]*q/, 'docker logs | grep -q can fail with SIGPIPE under pipefail');
   assert.match(smoke, /grep -R -I -F -q -- "\$1" \/data/);
   assert.match(smoke, /fake BYOK key leaked to \/data persisted artifacts/);
 });

@@ -1,11 +1,10 @@
 name: Woow HA OpenDesign
-version: "0.1.10"
+version: "0.2.0"
 slug: woow_ha_opendesign
-description: OpenDesign 0.21.1 with browser-local API BYOK and headless exports
+description: OpenDesign 0.24.1 (WoowTech core) with browser-local API BYOK, headless exports, an Omnigent host and a built-in MCP server
 url: https://github.com/WOOWTECH/Woow_ha_opendesign_add_on
 arch:
   - amd64
-  - aarch64
 startup: application
 boot: auto
 init: false
@@ -17,6 +16,13 @@ panel_title: OpenDesign
 panel_admin: true
 watchdog: http://[HOST]:[PORT:8099]/api/health
 backup: cold
+# Built-in OpenDesign MCP server: optional LAN MCP endpoint (Bearer token or
+# /private_<token>/mcp). Not mapped by default; map a host port in the add-on's
+# Network settings. Never administration (that is Ingress /mcp-admin/ only).
+ports:
+  8081/tcp: null
+ports_description:
+  8081/tcp: Built-in OpenDesign MCP server (Bearer token required; not administration)
 options: {}
 schema: {}
 image: ghcr.io/woowtech/woow-ha-opendesign-{arch}

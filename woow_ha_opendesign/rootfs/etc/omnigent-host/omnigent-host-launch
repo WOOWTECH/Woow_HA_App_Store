@@ -1,0 +1,168 @@
+#!/bin/sh
+# omnigent-host-launch — entrypoint wrapper of the WOOW PaaS omnigent-host kit.
+#
+# Canonical copy: woow-paas-charts/shared/omnigent-host/omnigent-host-launch
+# (charts mount it from the kit ConfigMap at $OG_KIT_DIR/omnigent-host-launch).
+#
+#   <init> /bin/sh /etc/omnigent-host/omnigent-host-launch -- <product command...>
+#
+# Runs the product exactly as given (argv, env, cwd, stdin/stdout/stderr) and,
+# next to it, the kit supervisor (supervisor.sh) in the background, inside the
+# SAME container — like a daemon on an ordinary machine: the host dials out to
+# the Omnigent server over the network.
+#
+#   * OG_HOST_ENABLED not 1/true, no supervisor.sh, or no omnigent CLI in the
+#     image: `exec` the product, nothing else (zero overhead). The CLI is
+#     OG_BIN: charts set the image's pinned absolute path; a bare name is
+#     looked up on PATH, never under HOME/OG_HOME.
+#   * $OG_KIT_DIR/bin goes first on the product's PATH (the `omnigent` guard
+#     and omnigent-host-status for its terminals and agents).
+#   * The supervisor and the product each run in their own session (setsid),
+#     so an init that signals the whole process group (dumb-init) reaches only
+#     this wrapper, which orders the shutdown.
+#   * SIGTERM / SIGINT / SIGQUIT: stop the supervisor first (it stops the host
+#     gracefully, SIGKILL after OG_STOP_GRACE_SECONDS), wait up to
+#     OG_LAUNCH_STOP_SECONDS (default OG_STOP_GRACE_SECONDS + 5), THEN pass the
+#     signal to the product's process group and wait for it. SIGHUP / SIGUSR1 /
+#     SIGUSR2 go to the product only.
+#   * The product exits by itself: the supervisor is stopped, and the wrapper
+#     exits with the product's status (the container restarts as before).
+#   * The supervisor exiting (disabled, image too old, ...) never affects the
+#     product. The supervisor is never restarted by this wrapper; a container
+#     restart starts a fresh one.
+#
+# PID 1 should stay an init that reaps zombies (dumb-init / tini). If this
+# wrapper is PID 1 anyway, every `wait` it does also reaps adopted orphans.
+# POSIX sh (dash, bash, busybox ash).
+[ "${1:-}" = -- ] && shift
+if [ $# -eq 0 ]; then
+  echo "omnigent-host-launch: no product command given" >&2
+  echo "usage: omnigent-host-launch [--] <command> [args...]" >&2
+  exit 64
+fi
+
+case ${OG_HOST_ENABLED:-0} in
+  1 | true | yes | on) ;;
+  *) exec "$@" ;;
+esac
+KIT=${OG_KIT_DIR:-$(cd "$(dirname "$0")" 2>/dev/null && pwd)}
+[ -r "$KIT/supervisor.sh" ] || exec "$@"
+
+# under_home <path>: inside HOME or OG_HOME, where the tenant can install a CLI
+under_home() {
+  for _h in "${HOME:-}" "${OG_HOME:-}"; do
+    _h=${_h%/}
+    [ -n "$_h" ] || continue
+    case $1 in "$_h"/*) return 0 ;; esac
+  done
+  return 1
+}
+# og_real_bin <OG_BIN>: an absolute OG_BIN (what charts set: the image's pinned
+# CLI) is used as is, never looked up on PATH. A bare name is looked up on PATH,
+# skipping the kit's guard and any copy under HOME/OG_HOME (e.g. a persistent
+# ~/.local/bin that comes first on PATH: `uv tool install omnigent` there must
+# never replace the image's hash-locked CLI).
+og_real_bin() {
+  case $1 in */*) [ -x "$1" ] && printf '%s' "$1"; return ;; esac
+  _oifs=$IFS
+  IFS=:
+  set -f
+  for _d in $PATH; do
+    _c=${_d:-.}/$1
+    under_home "$_c" && continue
+    if [ -f "$_c" ] && [ -x "$_c" ] && ! head -c 512 "$_c" 2>/dev/null | grep -q OMNIGENT_HOST_KIT_SHIM; then
+      IFS=$_oifs; set +f; printf '%s' "$_c"; return 0
+    fi
+  done
+  IFS=$_oifs
+  set +f
+  return 1
+}
+REAL_OG=$(og_real_bin "${OG_BIN:-omnigent}") || exec "$@"
+
+if [ -d "$KIT/bin" ]; then
+  case ":${PATH:-}:" in
+    *":$KIT/bin:"*) ;;
+    *) PATH="$KIT/bin${PATH:+:$PATH}"; export PATH ;;
+  esac
+fi
+
+_g=${OG_STOP_GRACE_SECONDS:-15}
+case $_g in '' | *[!0-9]*) _g=15 ;; esac
+STOP_WAIT=${OG_LAUNCH_STOP_SECONDS:-$((_g + 5))}
+case $STOP_WAIT in '' | *[!0-9]*) STOP_WAIT=$((_g + 5)) ;; esac
+SETSID=""
+command -v setsid >/dev/null 2>&1 && SETSID=setsid
+
+# Reaping sleep: `wait` on it also collects any other exited child.
+nap() { sleep "$1" & wait $! 2>/dev/null; }
+# signal_group <sig> <pid>: the process group when <pid> leads one, else the pid
+signal_group() {
+  if [ -n "$SETSID" ]; then
+    kill -s "$1" -- "-$2" 2>/dev/null || kill -s "$1" "-$2" 2>/dev/null || kill -s "$1" "$2" 2>/dev/null
+  else
+    kill -s "$1" "$2" 2>/dev/null
+  fi
+}
+
+SUP=""
+stop_supervisor() {
+  [ -n "$SUP" ] || return 0
+  kill -s TERM "$SUP" 2>/dev/null
+  _i=0
+  # kill -0 is also true for an exited-but-unreaped child; nap's wait reaps it
+  while kill -0 "$SUP" 2>/dev/null && [ "$_i" -lt "$STOP_WAIT" ]; do
+    nap 1
+    _i=$((_i + 1))
+  done
+  if kill -0 "$SUP" 2>/dev/null; then
+    echo "omnigent-host-launch: supervisor did not stop within ${STOP_WAIT}s; killing it" >&2
+    signal_group KILL "$SUP"
+  fi
+  wait "$SUP" 2>/dev/null
+  SUP=""
+}
+
+STOPPING=""
+PROD=""
+# shellcheck disable=SC2329 # invoked from traps
+on_stop() {
+  [ -n "$STOPPING" ] && return 0
+  STOPPING=$1
+  stop_supervisor
+  [ -n "$PROD" ] && signal_group "$1" "$PROD"
+}
+# shellcheck disable=SC2329
+forward() { [ -n "$PROD" ] && kill -s "$1" "$PROD" 2>/dev/null; }
+trap 'on_stop TERM' TERM
+trap 'on_stop INT' INT
+trap 'on_stop QUIT' QUIT
+trap 'forward HUP' HUP
+trap 'forward USR1' USR1
+trap 'forward USR2' USR2
+
+# The supervisor: background, own session, stdin closed; its log lines go to
+# the container log next to the product's.
+# OG_SHELL (default /bin/sh) runs it.
+# shellcheck disable=SC2086 # $SETSID is empty or one word
+OG_BIN=$REAL_OG $SETSID "${OG_SHELL:-/bin/sh}" "$KIT/supervisor.sh" </dev/null &
+SUP=$!
+
+# The product: own session, the container's stdin kept (an asynchronous list
+# would otherwise get /dev/null).
+exec 3<&0
+# shellcheck disable=SC2086
+$SETSID "$@" <&3 3<&- &
+PROD=$!
+exec 3<&-
+# a stop signal that arrived before the product existed: pass it on now
+[ -n "$STOPPING" ] && signal_group "$STOPPING" "$PROD"
+
+while :; do
+  wait "$PROD"
+  rc=$?
+  # a trapped signal interrupts wait: keep waiting while the product lives
+  kill -0 "$PROD" 2>/dev/null || break
+done
+[ -z "$STOPPING" ] && stop_supervisor
+exit "$rc"

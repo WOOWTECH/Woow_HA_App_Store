@@ -53,9 +53,8 @@ check(release_gate.get("permissions") == {"contents": "read"}, "release architec
 check("push: false" in release_gate_job_text and "load: true" in release_gate_job_text, "release architecture gate must build local images without publishing")
 for needle, message in [
     ("linux/amd64", "release architecture gate must build amd64"),
-    ("linux/arm64", "release architecture gate must build aarch64"),
     ('test "$(id -u)" = 1001', "release architecture gate must execute OpenCode as UID 1001"),
-    ('test "$(opencode --version)" = 1.18.29', "release architecture gate must verify the exact locked OpenCode version"),
+    ('test "$(opencode --version)" = 1.18.33', "release architecture gate must verify the core OpenCode version"),
     ("docker cp tests/container-opencode-byok-e2e.mjs", "release architecture gate must run the native BYOK streaming mock"),
     ("node /tmp/container-opencode-byok-e2e.mjs", "release architecture gate must execute the native BYOK streaming mock in the built image"),
     ("fake BYOK key leaked to container logs", "release architecture gate must reject BYOK key log leakage"),
@@ -74,7 +73,8 @@ check("docker/login-action" in publish_text, "release publisher must authenticat
 for needle, message in [
     ('expected="v${version}"', "preflight must derive the exact release tag from config.version"),
     ('"${GITHUB_REF_NAME:-}" != "$expected"', "preflight must reject a non-matching release tag"),
-    ('for arch in amd64 aarch64', "preflight must inspect both architecture image names"),
+    ('architectures="amd64"', "preflight must inspect the amd64 image name"),
+    ('for arch in $architectures; do', "preflight must check every published architecture"),
     ('--user "${GHCR_ACTOR}:${GHCR_TOKEN}"', "preflight must use its read-only token so private existing tags cannot be missed"),
     ('--request GET', "preflight must use a GET that works around GHCR HTTP/2 HEAD framing"),
     ('case "$status" in', "preflight must classify the registry response"),

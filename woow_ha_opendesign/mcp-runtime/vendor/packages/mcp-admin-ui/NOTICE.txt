@@ -1,0 +1,15 @@
+Woow MCP management UI — locally bundled typography and icon assets
+
+Poppins 5.2.7 (@fontsource/poppins): SIL Open Font License 1.1.
+Outfit 5.2.8 (@fontsource/outfit): SIL Open Font License 1.1.
+Noto Sans TC 5.2.9 (@fontsource/noto-sans-tc): SIL Open Font License 1.1.
+Yellowtail 5.2.8 (@fontsource/yellowtail): Apache License 2.0 (yellowtail-Apache-2.0.txt).
+Copyright (c) 2011 by Brian J. Bonislawsky DBA Astigmatic (AOETI). All rights reserved.
+Yellowtail font files are bundled unchanged.
+Material Design Icons 7.4.47 (@mdi/font): icon/font licenses as distributed in mdi-LICENSE.txt.
+
+Build copies the complete upstream license texts into dist/licenses alongside the assets.
+Fontsource packages distribute upstream fonts; package versions above identify the locked asset packages.
+Poppins, Outfit, Yellowtail and Noto Sans TC are the approved free brand font choices, not the proprietary brand fonts.
+No official logo asset is supplied or fabricated. The interface heading is plain product text.
+No runtime CDN or remote font requests are needed.

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 from pathlib import Path
+import hashlib
 import json
 import re
 import sys
@@ -21,47 +22,34 @@ with (ROOT / "build.yaml").open() as handle:
     build = yaml.safe_load(handle)
 with (ROOT / "runtime/package.json").open() as handle:
     package = json.load(handle)
-with (ROOT / "runtime/opencode/package.json").open() as handle:
-    opencode_package = json.load(handle)
-with (ROOT / "runtime/opencode/package-lock.json").open() as handle:
-    opencode_lock = json.load(handle)
 with (ROOT / ".github/workflows/build.yml").open() as handle:
     workflow = yaml.safe_load(handle)
 
 check(isinstance(workflow, dict) and "jobs" in workflow, "GitHub Actions workflow YAML is invalid")
 check(set(repository) == {"name", "url", "maintainer"}, "repository.yaml must have the repository contract keys")
 check(repository.get("url") == "https://github.com/WOOWTECH/Woow_ha_opendesign_add_on", "repository URL mismatch")
-check(config.get("version") == "0.1.10", "release version must be 0.1.10")
+check(config.get("version") == "0.2.0", "release version must be 0.2.0")
 check("browser-local API BYOK" in config.get("description", ""), "add-on description must describe browser-local BYOK")
-check(config.get("arch") == ["amd64", "aarch64"], "only amd64 and aarch64 are allowed")
+check(config.get("arch") == ["amd64"], "the core image is amd64-only; only amd64 is allowed")
 check(config.get("ingress") is True, "ingress must be enabled")
 check(config.get("ingress_stream") is True, "ingress_stream must be enabled")
 check(config.get("ingress_port") == 8099, "ingress port must be 8099")
-check("ports" not in config and "ports_description" not in config and "webui" not in config, "LAN port publication is forbidden")
+check("ingress_entry" not in config, "no ingress_entry: '/' makes Supervisor 2026.09 build <token>// URLs that 404")
+check(config.get("ports") == {"8081/tcp": None} and set(config.get("ports_description", {})) == {"8081/tcp"} and "webui" not in config, "only the unmapped built-in MCP port 8081 may be declared")
+check(not config.get("homeassistant_api") and not config.get("hassio_api") and not config.get("full_access"), "built-in MCP administration relies on Ingress login; no HA/Supervisor API access")
 check(config.get("backup") == "cold", "cold backup is required")
 check(config.get("watchdog") == "http://[HOST]:[PORT:8099]/api/health", "watchdog must use ingress health route")
 check(config.get("options") == {} and config.get("schema") == {}, "add-on options/schema must stay empty (no provider secrets)")
 check("map" not in config, "host/add-on path maps are forbidden")
 check(config.get("image") == "ghcr.io/woowtech/woow-ha-opendesign-{arch}", "architecture image pattern mismatch")
-upstream_image = "ghcr.io/nexu-io/od:0.21.1@sha256:441daca881e699657bacf28e0c27b16cd6be551dfff4bd63368dd74bec581f39"
-local_build_image = "ghcr.io/nexu-io/od:0.21.1"
-check(build.get("build_from") == {"amd64": local_build_image, "aarch64": local_build_image}, "Supervisor local builds must use the supported OpenDesign 0.21.1 tag syntax")
+# The add-on derives from the shared WoowTech OpenDesign core image. Every build
+# input names the same published core (digest for CI/Dockerfile, its immutable
+# tag for Supervisor local builds), so no build can fall back to upstream OpenDesign.
+core_image = "ghcr.io/woowtech/open-design-core:20261014.1921@sha256:bfec7cc6c96b559506f33dce9296d9c2e02e9acbb0fe543ad434ea66370baf35"
+local_core_image = "ghcr.io/woowtech/open-design-core:20261014.1921"
+check(build.get("build_from") == {"amd64": local_core_image}, "Supervisor local builds must use the core image (tag syntax, amd64 only)")
+check("nexu-io/od" not in (ROOT / "build.yaml").read_text(), "build.yaml must not fall back to the upstream OpenDesign image")
 check(package.get("dependencies") == {"playwright-core": "1.55.0"}, "renderer dependency must remain exactly pinned")
-opencode_root_lock = opencode_lock.get("packages", {}).get("", {})
-opencode_launcher_lock = opencode_lock.get("packages", {}).get("node_modules/opencode-ai", {})
-check(opencode_package == {"name": "ha-opendesign-opencode", "private": True, "dependencies": {"opencode-ai": "1.18.29"}}, "OpenCode package must contain only the approved exact dependency")
-check(opencode_root_lock.get("dependencies") == {"opencode-ai": "1.18.29"}, "OpenCode lock root must use the approved exact version")
-check(opencode_launcher_lock.get("version") == "1.18.29", "OpenCode lock resolves an unexpected version")
-check(opencode_launcher_lock.get("integrity") == "sha512-syIDVwlrYTgTOXzZe9SkInJWethbq6l3SNC762UeXyO0a9V0wGfd+U4yACvppwNBnhIsl0j2QPYYCyLpNaSomg==", "OpenCode launcher integrity mismatch")
-check(opencode_launcher_lock.get("bin", {}).get("opencode") == "bin/opencode.exe", "OpenCode lock must expose the opencode executable")
-check(opencode_launcher_lock.get("license") == "MIT", "OpenCode lock license must remain MIT")
-for platform_package, integrity in {
-    "opencode-linux-x64-musl": "sha512-bGAZ9NFzNOzrXVN9oczd1H+vzLH1aGyYg1ZZNtuZiszxKr8+vTjLnNcjzGJIuc6jtjvlWbfp8l+S5fxCVuQo2A==",
-    "opencode-linux-arm64-musl": "sha512-9lNhNvW3FdwbI+BDy/y+0bwIQkbz36u/RVQoZH2tYvWjHkOaf8D+mSuDKbKcFqpLFIbbQona01oYSQZzncZIcQ==",
-}.items():
-    platform_lock = opencode_lock.get("packages", {}).get(f"node_modules/{platform_package}", {})
-    check(platform_lock.get("version") == "1.18.29" and platform_lock.get("integrity") == integrity, f"OpenCode {platform_package} lock integrity mismatch")
-
 dockerfile = (ROOT / "Dockerfile").read_text()
 launcher = (ROOT / "rootfs/usr/local/bin/ha-opendesign").read_text()
 entry = (ROOT / "rootfs/opt/ha-opendesign/headless-entry.mjs").read_text()
@@ -76,18 +64,25 @@ runtime_sources = "\n".join([
     export_bridge,
     nginx,
     (ROOT / "runtime/package.json").read_text(),
-    (ROOT / "runtime/opencode/package.json").read_text(),
-    (ROOT / "runtime/opencode/package-lock.json").read_text(),
 ])
+kit_dir = ROOT / "rootfs/etc/omnigent-host"
 
-check(re.search(rf"^ARG BUILD_FROM={re.escape(upstream_image)}$", dockerfile, re.M), "Dockerfile base must pin the approved upstream digest")
+check(re.search(rf"^ARG BUILD_FROM={re.escape(core_image)}$", dockerfile, re.M), "Dockerfile base must default to the core image placeholder")
+check("nexu-io/od" not in dockerfile, "Dockerfile must not fall back to the upstream OpenDesign image")
 check("EXPOSE" not in dockerfile, "Dockerfile must not expose a port")
 check("OD_DATA_DIR=/data/opendesign" in dockerfile, "OD_DATA_DIR persistence is missing")
 check("OD_BIND_HOST=127.0.0.1" in dockerfile, "Dockerfile must set loopback bind")
 check(re.search(r"^USER root$", dockerfile, re.M), "PID 1 must start as root to prepare HA's root-owned /data mount")
-check("su-exec open-design:open-design" in launcher, "launcher must drop OpenDesign and nginx to UID/GID 1001")
+check("su-exec open-design:open-design" in launcher, "launcher must drop OpenDesign and ttyd to UID/GID 1001")
+check("su-exec ha-ingress:ha-ingress /usr/sbin/nginx" in launcher, "launcher must run nginx as its own ha-ingress UID")
+check("no_supervisor_env=(/usr/bin/env -u SUPERVISOR_TOKEN -u HASSIO_TOKEN)" in launcher, "children must not inherit Supervisor credentials")
+check(len(re.findall(r'^start_child \w+ \\\n  "\$\{no_supervisor_env\[@\]\}" ', launcher, re.M)) == len(re.findall(r"^start_child ", launcher, re.M)) == 4, "every supervised child must start without Supervisor credentials")
+check('"${no_supervisor_env[@]}" /opt/woow/bin/ha-opendesign-mcp' in launcher, "launcher must start the built-in MCP server")
+check("RUN python3 /tmp/ha-patches/sign-in-hint.py /app/apps/web/out" in dockerfile, "HA sign-in hint patch must run on the core web build")
+check("sh /tmp/mcp-runtime/install.sh" in dockerfile and "FROM ${BUILD_FROM} AS woow-mcp-ui" in dockerfile, "built-in MCP install missing")
+check("proxy_pass http://unix:/run/ha-opendesign-mcp/admin.sock:/;" in nginx and nginx.count("allow 172.30.32.2;") == 2 and nginx.count("deny all;") == 2, "MCP admin must be Ingress-peer only over the Unix socket")
 check("npm" not in launcher.lower(), "launcher must not download/install CLI packages at startup")
-check("shared-agents.mjs" in launcher and "shared/skills" in launcher, "launcher must initialize shared agent resources on startup")
+check("shared-agents.mjs" not in launcher, "OpenDesign-native plugin/skill registries must not be replaced by startup symlinks")
 for setting in ["HA_OPENDESIGN_HOME=", "CLAUDE_CONFIG_DIR=", "CODEX_HOME=", "PI_CODING_AGENT_DIR=", "XDG_CONFIG_HOME="]:
     check(setting in launcher, f"launcher must pin the CLI config location: {setting}")
 check((ROOT / "rootfs/usr/local/bin/ha-opendesign-agents").exists(), "shared agent status/sync CLI is missing")
@@ -95,26 +90,34 @@ check((ROOT / "tests/shared-agents.test.mjs").exists(), "shared agent integratio
 check("paseo" not in dockerfile.lower() and "paseo" not in launcher.lower(), "retired Paseo runtime must not be installed or injected")
 check("prepare_owned_dir" in launcher and "chown -h" in launcher, "privileged /data preparation must reject/fail closed on symlinks")
 check("/usr/sbin/nginx -e stderr" in launcher, "unprivileged nginx must use its inherited stderr descriptor under HA procfs")
-for expected in ["bash", "chromium", "font-noto-cjk", "font-noto-emoji", "fontconfig", "gcompat", "libgcc", "libstdc++", "nginx", "python3", "ripgrep", "su-exec"]:
-    check(expected in dockerfile, f"expected image package missing: {expected}")
+apk_block = re.search(r"RUN apk add --no-cache(.*?)&& rm -rf", dockerfile, re.S)
+check(apk_block is not None, "HA package install step missing")
+if apk_block:
+    check(apk_block.group(1).split() == ["\\", "nginx", "\\", "su-exec", "\\", "ttyd=1.7.7-r0", "\\"], "only HA-specific packages may be installed over the core")
+for core_assertion in [
+    "test -f /app/skills/woowtech-brand/SKILL.md",
+    "test -f /app/plugins/_official/woow/woow-omnigent/open-design.json",
+    "test ! -e /app/skills/brainstorming",
+    "fc-list | grep -qi 'Noto Sans CJK'",
+    "chromium-browser python3 rg tmux flock setsid nginx ttyd su-exec",
+]:
+    check(core_assertion in dockerfile, f"core contract assertion missing: {core_assertion}")
 check("/usr/local/bin/npm ci --omit=dev" in dockerfile, "locked production npm install must use the upstream absolute npm path for HA BuildKit")
 check("test -x /usr/local/bin/npm" in dockerfile, "image build must verify the absolute npm executable")
-check("COPY runtime/opencode/package.json runtime/opencode/package-lock.json /opt/ha-opendesign/opencode/" in dockerfile, "OpenCode lockfiles must be copied independently")
-check("/usr/local/bin/npm ci --omit=dev --prefix /opt/ha-opendesign/opencode" in dockerfile, "OpenCode install must use the locked production package prefix")
-check('test "$(su-exec open-design:open-design opencode --version)" = "1.18.29"' in dockerfile, "image build must assert the exact OpenCode version as UID 1001")
-check("PATH=/usr/local/bin:/opt/ha-opendesign/opencode/node_modules/.bin:${PATH}" in dockerfile, "OpenDesign and bundled CLI binaries must be on PATH")
-for package in [
-    "@anthropic-ai/claude-code@2.1.296",
-    "@openai/codex@0.162.1",
-    "@earendil-works/pi-coding-agent@1.1.0",
-]:
-    check(package in dockerfile, f"image must pin and preinstall {package}")
-for assertion in [
-    "claude --version | grep -Fq '2.1.296'",
-    "codex --version | grep -Fq '0.162.1'",
-    "pi --version | grep -Fq '1.1.0'",
-]:
-    check(assertion in dockerfile, f"image build must verify CLI as UID 1001: {assertion}")
+check(not (ROOT / "runtime/opencode").exists() and "opencode" not in dockerfile.split("COPY runtime/")[1].split("\n")[0], "OpenCode comes from the core image; no add-on OpenCode runtime")
+check("npm install --global" not in dockerfile and "npm install -g" not in dockerfile, "agent CLIs come from the core image, not add-on npm installs")
+for arg, version in {
+    "CORE_OPENDESIGN_VERSION": "0.24.1",
+    "CORE_DAEMON_PACKAGE_VERSION": "0.23.1",
+    "CORE_CLAUDE_CODE_VERSION": "2.1.296",
+    "CORE_CODEX_VERSION": "0.162.1",
+    "CORE_PI_VERSION": "1.1.0",
+    "CORE_OPENCODE_VERSION": "1.18.33",
+    "CORE_OMNIGENT_VERSION": "0.16.0",
+}.items():
+    check(re.search(rf"^ARG {arg}={re.escape(version)}$", dockerfile, re.M), f"core contract must pin {arg}={version}")
+    check(f"${{{arg}}}" in dockerfile, f"core contract must assert {arg}")
+check('su-exec open-design:open-design sh -ceu' in dockerfile, "core CLI versions must be asserted as UID 1001")
 for removed_path in [
     "runtime/pi",
     "rootfs/usr/local/bin/pi",
@@ -124,12 +127,27 @@ for removed_path in [
 ]:
     check(not (ROOT / removed_path).exists(), f"withdrawn persistent BYOK component remains: {removed_path}")
 check("ha-byok" not in nginx and "127.0.0.1:7457" not in nginx, "nginx must not expose the withdrawn profile sidecar")
-check("wait -n \"$od_pid\" \"$nginx_pid\"" in launcher and "byok_pid" not in launcher, "launcher must supervise only OpenDesign and nginx")
+check('wait -n -p exited_pid "${child_pids[@]}"' in launcher and "byok_pid" not in launcher, "launcher must supervise every started child")
+for child in ["start_child opendesign", "start_child nginx", "start_child ttyd", "start_child mcp"]:
+    check(child in launcher, f"launcher must supervise {child.split()[-1]}")
+check('su-exec open-design:open-design /bin/sh "$OMNIGENT_KIT/omnigent-host-launch" --' in launcher, "OpenDesign must start through the omnigent-host kit launcher")
+for setting in ["OG_HOST_ENABLED=1", "OG_BIN=/usr/local/bin/omnigent", 'OG_CONFIG_HOME="$HOME/.omnigent"', 'OG_WORKSPACE="$HOME/studio"', "OMNIGENT_ANALYTICS=0", 'OG_UNSET_ENV="OD_API_TOKEN"']:
+    check(setting in launcher, f"launcher must set the omnigent-host contract: {setting}")
+kit_files = ["supervisor.sh", "og_helper.py", "omnigent-host-status", "omnigent-host-launch", "omnigent-host-profile.sh", "omnigent-shim"]
+kit_sums = {}
+for line in (kit_dir / "KIT.sha256").read_text().splitlines():
+    digest, name = line.split()
+    kit_sums[name] = digest
+check(sorted(kit_sums) == sorted(kit_files), "KIT.sha256 must list exactly the vendored omnigent-host kit files")
+for name, digest in kit_sums.items():
+    path = kit_dir / name
+    check(path.is_file() and hashlib.sha256(path.read_bytes()).hexdigest() == digest, f"vendored omnigent-host kit file differs from KIT.sha256: {name}")
+check("sha256sum -c KIT.sha256" in dockerfile, "image build must verify the vendored omnigent-host kit")
 check("remove_obsolete_credentials" in launcher and "rm -f -- \"$legacy_dir\"" in launcher, "launcher must safely remove obsolete credential symlinks")
 check("startServer" in entry and "desktopSlideRenderer: renderSlides" in entry, "slide renderer injection missing")
 check("desktopPdfExporter" not in entry and "exportPdf" not in entry, "misleading desktop vector PDF exporter must not be injected")
 check("host = '127.0.0.1'" in entry, "OpenDesign entry must bind loopback")
-check("wait -n" in launcher and "terminate_children" in launcher, "two-process watchdog launcher missing")
+check("wait -n" in launcher and "terminate_children" in launcher, "watchdog launcher missing")
 check("SHUTDOWN_GRACE_SECONDS" in launcher and "kill -KILL" in launcher, "bounded TERM-to-KILL shutdown missing")
 check("canonicalizeOutputDir" in renderer and "canonical outputDir escapes" in renderer, "canonical output confinement missing")
 check("evaluateRequestPolicy" in renderer and "allowPublicHttpAssets: true" in renderer, "renderer network policy missing")
@@ -141,14 +159,15 @@ check("mkdtemp('/tmp/ha-opendesign-chromium-')" in renderer and "XDG_CONFIG_HOME
 check("--disable-web-security" not in renderer, "renderer must not disable browser web security")
 check("redirectPdfRequest" in export_bridge and "/export/image" in export_bridge, "browser PDF/image export bridge missing")
 check("proxy_pass http://127.0.0.1:7456" in nginx, "nginx may only forward to loopback OpenDesign")
+check("proxy_pass http://127.0.0.1:7681;" in nginx and "location ^~ /terminal/" in nginx, "interactive CLI TTY must be routed only through nginx")
 check("/tmp/ha-opendesign-nginx" in nginx, "unprivileged nginx temp paths missing")
 check("error_log stderr" in nginx and "access_log off" in nginx, "unprivileged nginx must not reopen HA Supervisor log pipes through /dev")
 check("container-smoke.sh" in workflow_text and "load: true" in workflow_text, "real amd64 container smoke lane missing")
-check("linux/amd64" in workflow_text and "linux/arm64" in workflow_text, "CI architecture matrix is incomplete")
+check("linux/amd64" in workflow_text and "linux/arm64" not in workflow_text and "aarch64" not in workflow_text, "CI must build amd64 only")
 check("ghcr.io/woowtech/woow-ha-opendesign-${{ matrix.arch }}" in workflow_text, "CI GHCR architecture image name mismatch")
 check("latest" not in workflow_text.lower(), "CI must not publish a latest tag")
 check(workflow.get("permissions") == {"contents": "read"}, "top-level workflow permissions must be contents:read only")
-check(upstream_image in workflow_text, "workflow build inputs must pin the approved upstream digest")
+check(core_image in workflow_text and "nexu-io/od" not in workflow_text, "workflow build inputs must use the core image")
 for action_ref in re.findall(r"uses:\s*[^\s]+@([^\s#]+)", workflow_text):
     check(bool(re.fullmatch(r"[0-9a-f]{40}", action_ref)), f"GitHub Action is not pinned to a full commit SHA: {action_ref}")
 

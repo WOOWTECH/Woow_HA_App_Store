@@ -24,9 +24,14 @@ trap cleanup EXIT
 
 docker volume create "$volume" >/dev/null
 
+# Deliberately fake, like Supervisor's: it must stay with the root launcher and
+# never reach a child process environment.
+readonly SUPERVISOR_FAKE_TOKEN='supervisor-test-token-not-a-secret'
+
 start_container() {
   docker run -d --platform linux/amd64 --name "$container" \
     -p "127.0.0.1:${port}:8099" \
+    -e SUPERVISOR_TOKEN="$SUPERVISOR_FAKE_TOKEN" \
     -v "$volume:/data" \
     "$image" >/dev/null
 }
@@ -73,6 +78,10 @@ curl --fail-with-body -sSL -o "$tmp/ingress.html" \
   "http://127.0.0.1:${port}/"
 grep -Fq "window.__OD_INGRESS_PATH__=\"$ingress_prefix\"" "$tmp/ingress.html"
 grep -Eq "(href|src)=\\\"$ingress_prefix/_next/" "$tmp/ingress.html"
+curl --fail-with-body -sS -o "$tmp/terminal.html" \
+  -H "X-Ingress-Path: $ingress_prefix" \
+  "http://127.0.0.1:${port}/terminal/"
+grep -Eiq '<!doctype html|<html' "$tmp/terminal.html"
 
 # This models a browser request to <public-prefix>/api/health after Supervisor
 # path stripping: nginx sees /api/health plus the validated prefix header.
@@ -85,18 +94,94 @@ import sys
 assert json.load(open(sys.argv[1], encoding='utf-8')).get('ok') is True
 PY
 
+# The CLI Terminal is ttyd on loopback only; its sole public route is nginx's
+# ingress-prefixed /terminal/ proxy (HA authenticates that route). The image
+# publishes no other port, and a request without a valid X-Ingress-Path never
+# receives the prefixed terminal assets.
+# The redirect must stay a relative, ingress-prefixed path: an absolute
+# Location would name nginx's internal host:port instead of the HA origin.
+curl -sS -o /dev/null -D "$tmp/terminal-redirect.txt" \
+  -H "X-Ingress-Path: $ingress_prefix" \
+  "http://127.0.0.1:${port}/terminal"
+grep -Eq '^HTTP/1\.1 302' "$tmp/terminal-redirect.txt"
+grep -Fqx "Location: $ingress_prefix/terminal/"$'\r' "$tmp/terminal-redirect.txt"
+# A header that is not Supervisor-shaped is never reflected into the route.
+curl -sS -o /dev/null -D "$tmp/terminal-redirect-invalid.txt" \
+  -H 'X-Ingress-Path: /not-an-ingress-path' \
+  "http://127.0.0.1:${port}/terminal"
+grep -Fqx "Location: /terminal/"$'\r' "$tmp/terminal-redirect-invalid.txt"
+test "$(docker port "$container" | wc -l)" = 1
+docker port "$container" | grep -Eq '^8099/tcp -> 127\.0\.0\.1:'
+# The built-in MCP server listens on 8081 for LAN clients (never host-mapped
+# unless the user maps it). Its Ingress administration only admits the
+# Supervisor peer: this host request (Docker gateway source) is refused.
+docker exec "$container" sh -ceu '
+  for _ in $(seq 1 60); do
+    netstat -ltn | grep -q "0.0.0.0:8081 " && break
+    sleep 1
+  done
+  listeners=$(netstat -ltn | awk "/LISTEN/ { print \$4 }" | sort)
+  test "$listeners" = "$(printf "%s\n" 0.0.0.0:8081 0.0.0.0:8099 127.0.0.1:7456 127.0.0.1:7681 | sort)"
+'
+test "$(curl -sS -o /dev/null -w '%{http_code}' -H "X-Ingress-Path: $ingress_prefix" \
+  -H 'X-Remote-User-Id: 0123456789abcdef0123456789abcdef' "http://127.0.0.1:${port}/mcp-admin/")" = 403
+docker exec "$container" python3 -c '
+import json, urllib.error, urllib.request
+body = json.dumps({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}}).encode()
+request = urllib.request.Request("http://127.0.0.1:8081/mcp", data=body, method="POST",
+    headers={"Content-Type": "application/json", "Accept": "application/json, text/event-stream"})
+try:
+    urllib.request.urlopen(request, timeout=10)
+except urllib.error.HTTPError as error:
+    assert error.code == 401 and error.headers.get("WWW-Authenticate", "").startswith("Bearer"), error.code
+else:
+    raise SystemExit("built-in MCP accepted a request without a token")
+'
+
 docker exec "$container" sh -ceu '
   # PID 1 is root only to prepare the Supervisor root-owned /data mount.
   test "$(id -u)" = 0
   test "$(stat -c %u:%g /data/opendesign)" = 1001:1001
-  for process in node nginx; do
-    pids=$(pidof "$process")
-    test -n "$pids"
-    for pid in $pids; do
-      set -- $(grep "^Uid:" "/proc/$pid/status")
-      test "$2 $3 $4" = "1001 1001 1001"
+  check_uid() {
+    for pid in $(pidof "$1"); do
+      # Short-lived CLI probes (e.g. `pi --version`) may exit between pidof
+      # and the read; only a process that still exists must have the UID.
+      status=$(cat "/proc/$pid/status" 2>/dev/null) || continue
+      set -- $(printf "%s\n" "$status" | grep "^Uid:")
+      test "$2 $3 $4" = "$uid $uid $uid"
     done
+  }
+  uid=1001
+  for process in node ttyd; do
+    test -n "$(pidof "$process")"
+    check_uid "$process"
   done
+  # nginx has its own UID so only it (and the MCP server) can open the MCP
+  # administration socket; the MCP server runs as UID 10001.
+  test -n "$(pidof nginx)"
+  uid=1002
+  check_uid nginx
+  test -n "$(pgrep -u 10001 -f ha_opendesign_mcp/management.py)"
+  test -n "$(pgrep -u 10001 -f ha_opendesign_mcp/child.py)"
+  test "$(stat -c %a:%u /data/mcp)" = 700:10001
+  ! su-exec open-design:open-design cat /data/mcp/state.json >/dev/null 2>&1
+  # Only the root launcher keeps the Supervisor token. A child environment is
+  # read as that child UID; the MCP management process is not dumpable at all.
+  for proc in /proc/[0-9]*; do
+    pid=${proc#/proc/}
+    owner=$(awk "/^Uid:/ { print \$2 }" "$proc/status" 2>/dev/null) || continue
+    test -n "$owner" && test "$owner" != 0 || continue
+    env=$(su-exec "$owner" cat "/proc/$pid/environ" 2>/dev/null | tr "\000" "\n") || continue
+    if printf "%s\n" "$env" | grep -q "^SUPERVISOR_TOKEN="; then
+      echo "Supervisor token reached child process $pid (uid $owner)" >&2
+      exit 1
+    fi
+  done
+  # The omnigent-host kit supervisor runs beside the daemon, as UID 1001.
+  supervisor=$(pgrep -f "^/bin/sh /etc/omnigent-host/supervisor.sh")
+  test -n "$supervisor"
+  set -- $(grep "^Uid:" "/proc/$supervisor/status")
+  test "$2 $3 $4" = "1001 1001 1001"
   test -d /data/opendesign
   test -r /app/apps/daemon/dist/cli.js
   test -d /app/apps/web/out
@@ -120,11 +205,15 @@ docker exec "$container" sh -ceu '
 # these executables through PATH without a plugin installer or first-run download.
 docker exec -u 1001:1001 "$container" sh -ceu '
   test "$(id -u)" = 1001
-  test "$(opencode --version)" = 1.18.29
-  test "$(command -v opencode)" = /opt/ha-opendesign/opencode/node_modules/.bin/opencode
+  test "$(opencode --version)" = 1.18.33
+  test "$(command -v opencode)" = /usr/local/bin/opencode
   claude --version | grep -Fq 2.1.296
   codex --version | grep -Fq 0.162.1
   pi --version | grep -Fq 1.1.0
+  omnigent --version 2>&1 | grep -Fq 0.16.0
+  test -x /usr/local/bin/omnigent-host-status
+  test ! -e /opt/ha-opendesign/opencode
+  test "$(getent passwd open-design | cut -d: -f6)" = /data/opendesign/home
   command -v claude >/dev/null
   command -v codex >/dev/null
   command -v pi >/dev/null
@@ -134,24 +223,73 @@ docker exec -u 1001:1001 "$container" sh -ceu '
   printf persisted > /data/opendesign/container-smoke-sentinel
 '
 
-# Verify all four native skill discovery paths resolve to the same persistent
-# store, then verify a skill written through one runtime is visible through all.
+# Verify OpenDesign's native plugin and skill catalog APIs are available.
+# The daemon resolves selected content and stages it for whichever adapter runs.
+docker exec -u 1001:1001 "$container" python3 -c '
+import json, urllib.request
+catalog = {}
+for path, key in (("/api/plugins", "plugins"), ("/api/skills", "skills")):
+    with urllib.request.urlopen("http://127.0.0.1:7456" + path, timeout=10) as response:
+        data = json.load(response)
+    assert isinstance(data.get(key), list) and data[key], path + " native catalog is empty"
+    catalog[key] = {entry.get("id") for entry in data[key]}
+# The core bundles the WoowTech skill and Omnigent plugin and drops brainstorming.
+assert {"woowtech-brand", "woow-omnigent"} <= catalog["skills"], "core skills missing"
+assert "brainstorming" not in catalog["skills"], "brainstorming must not be offered"
+assert "woow-omnigent" in catalog["plugins"], "woow-omnigent plugin missing"
+'
+
+# Omnigent: the kit supervisor waits for a login, and the daemon's native
+# Omnigent integration recognizes it as the resident host manager.
+docker exec -u 1001:1001 "$container" python3 -c '
+import json, time, urllib.request
+status_file = "/data/opendesign/home/.omnigent/omnigent-host/status.json"
+for _ in range(30):
+    try:
+        status = json.load(open(status_file, encoding="utf-8"))
+        break
+    except (OSError, ValueError):
+        time.sleep(1)
+else:
+    raise SystemExit("omnigent-host status file missing")
+assert status["state"] == "waiting-login", status["state"]
+assert status["workspace"] == "/data/opendesign/home/studio", status["workspace"]
+with urllib.request.urlopen("http://127.0.0.1:7456/api/integrations/omnigent/status", timeout=30) as response:
+    integration = json.load(response)
+assert integration["host"]["manager"] == "kit", integration["host"]
+assert set(integration["installedEngines"]) >= {"claude", "codex", "pi", "opencode"}, integration["installedEngines"]
+'
+
+# WoowTech white-label and zh-TW patches from the core must still reach the
+# browser through ingress: the white-label head script, the zh-TW dictionary
+# chunk, the WoowTech support channel, and its same-origin redirect.
+grep -Fq 'id="woow-white-label"' "$tmp/ingress.html"
+grep -Fq 'open-design:experience-survey:v1:retired' "$tmp/ingress.html"
+docker exec "$container" sh -ceu '
+  cd /app/apps/web/out
+  grep -rl "請審查並潤色現有動效" _next/static/chunks | head -n1
+  grep -rl "_woow/support" _next/static/chunks | head -n1
+  grep -rlF "「CLI Terminal」開啟終端機登入 {agent}" _next/static/chunks | head -n1
+  # HA wording (ha-patches/sign-in-hint.py): no PaaS /console/ hint is left.
+  ! { grep -rlF "/console/" _next/static/chunks | grep -v "[.]map\$"; }
+' >"$tmp/patched-chunks.txt"
+test "$(wc -l <"$tmp/patched-chunks.txt")" = 3
+zh_chunk=$(sed -n 1p "$tmp/patched-chunks.txt")
+support_chunk=$(sed -n 2p "$tmp/patched-chunks.txt")
+sign_in_chunk=$(sed -n 3p "$tmp/patched-chunks.txt")
+curl -fsS -H "X-Ingress-Path: $ingress_prefix" -o "$tmp/sign-in-chunk.js" "http://127.0.0.1:${port}/$sign_in_chunk"
+grep -Fq 'Sign in to {agent} in the CLI Terminal' "$tmp/sign-in-chunk.js"
+grep -Fq '請點 OpenDesign 頁面右下角的「CLI Terminal」' "$tmp/sign-in-chunk.js"
+curl -fsS -H "X-Ingress-Path: $ingress_prefix" -o "$tmp/zh-chunk.js" "http://127.0.0.1:${port}/$zh_chunk"
+grep -Fq '請審查並潤色現有動效' "$tmp/zh-chunk.js"
+curl -fsS -H "X-Ingress-Path: $ingress_prefix" -o "$tmp/support-chunk.js" "http://127.0.0.1:${port}/$support_chunk"
+grep -Fq 'support@woowtech.io' "$tmp/support-chunk.js"
+curl -sS -o /dev/null -w '%{http_code} %{redirect_url}\n' -H "X-Ingress-Path: $ingress_prefix" \
+  "http://127.0.0.1:${port}/_woow/support" >"$tmp/support-redirect.txt"
+grep -Fqx '302 https://aiot.woowtech.io/woow' "$tmp/support-redirect.txt"
 docker exec -u 1001:1001 "$container" sh -ceu '
-  status=$(ha-opendesign-agents status)
-  printf "%s" "$status" | python3 -c "import json,sys; s=json.load(sys.stdin); assert all(v is True for v in s[\"skills\"].values()), s[\"skills\"]; assert s[\"mcpServerCount\"] == 0, s[\"mcpServerCount\"]"
-  mkdir /data/opendesign/shared/skills/container-smoke
-  printf "---\\nname: container-smoke\\ndescription: shared test\\n---\\n" > /data/opendesign/shared/skills/container-smoke/SKILL.md
-  for directory in \
-    /data/opendesign/home/.claude/skills \
-    /data/opendesign/home/.agents/skills \
-    /data/opendesign/home/.pi/agent/skills \
-    /data/opendesign/home/.config/opencode/skills; do
-    test -f "$directory/container-smoke/SKILL.md"
-  done
-  test "$(realpath /data/opendesign/home/.claude/skills)" = /data/opendesign/shared/skills
-  test "$(realpath /data/opendesign/home/.agents/skills)" = /data/opendesign/shared/skills
-  test "$(realpath /data/opendesign/home/.pi/agent/skills)" = /data/opendesign/shared/skills
-  test "$(realpath /data/opendesign/home/.config/opencode/skills)" = /data/opendesign/shared/skills
+  test -d /data/opendesign
+  test ! -L /data/opendesign/home/.claude/skills
 '
 
 # Exercise the upstream native browser API request contract end-to-end: the
@@ -159,7 +297,10 @@ docker exec -u 1001:1001 "$container" sh -ceu '
 # loopback OpenAI-compatible mock. The test script itself never writes its key.
 docker cp tests/container-opencode-byok-e2e.mjs "$container:/tmp/container-opencode-byok-e2e.mjs"
 docker exec "$container" node /tmp/container-opencode-byok-e2e.mjs
-if docker logs "$container" 2>&1 | grep -Fq -- "$BYOK_FAKE_KEY"; then
+# Read the logs to a file first: piping docker logs into a quiet grep lets grep exit on
+# the first match while docker logs is still writing; pipefail turns that SIGPIPE into 141.
+docker logs "$container" >"$tmp/container.log" 2>&1
+if grep -Fq -- "$BYOK_FAKE_KEY" "$tmp/container.log"; then
   echo 'fake BYOK key leaked to container logs' >&2
   exit 1
 fi
@@ -185,7 +326,15 @@ docker exec "$container" sh -ceu '
 '
 
 # Stop/recreate the container while retaining only its named /data volume.
+# Every process (the kit's supervisor first, then OpenDesign) must stop on TERM
+# inside the launcher's grace period, without the KILL fallback.
 docker stop -t 10 "$container" >/dev/null
+docker logs "$container" >"$tmp/container.log" 2>&1
+if grep -Fq 'grace; sending KILL' "$tmp/container.log"; then
+  echo 'a process ignored TERM and needed the launcher KILL fallback' >&2
+  exit 1
+fi
+grep -Fq '[ha-opendesign] SIGTERM received; stopping OpenDesign' "$tmp/container.log"
 docker rm "$container" >/dev/null
 start_container
 wait_for_health
@@ -196,10 +345,13 @@ assert json.load(open(sys.argv[1], encoding='utf-8')).get('ok') is True
 PY
 docker exec "$container" sh -ceu '
   grep -qx persisted /data/opendesign/container-smoke-sentinel
-  test -f /data/opendesign/home/.claude/skills/container-smoke/SKILL.md
-  test -f /data/opendesign/home/.agents/skills/container-smoke/SKILL.md
-  test -f /data/opendesign/home/.pi/agent/skills/container-smoke/SKILL.md
-  test -f /data/opendesign/home/.config/opencode/skills/container-smoke/SKILL.md
+  for skills_path in \
+    /data/opendesign/home/.claude/skills \
+    /data/opendesign/home/.agents/skills \
+    /data/opendesign/home/.pi/agent/skills \
+    /data/opendesign/home/.config/opencode/skills; do
+    test ! -L "$skills_path"
+  done
   test ! -e /data/opendesign/credentials
   test ! -L /data/opendesign/credentials
   grep -qx retained /data/opendesign/legacy-credentials-target/sentinel

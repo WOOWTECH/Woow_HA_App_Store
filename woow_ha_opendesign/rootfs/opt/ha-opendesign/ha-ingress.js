@@ -12,6 +12,41 @@
   const nativeHistoryReplaceState = history.replaceState;
   const initialLogicalPath = window.location.pathname.slice(prefix.length) || '/';
   const isProjectIframeTransport = /^\/api\/projects\/[^/]+\/(?:raw|preview)(?:\/|$)/.test(initialLogicalPath);
+
+  // Add-on entry points next to the OpenDesign UI (not inside project
+  // previews). Both keep the ingress prefix, which carries HA's authenticated
+  // ingress session, and open in a new tab:
+  // - CLI Terminal: the web TTY, the interactive login path for the CLIs.
+  // - MCP Server: the built-in MCP server's administration (/mcp-admin/).
+  const shellLinks = [
+    { id: 'od-mcp-admin-link', path: '/mcp-admin/', text: 'MCP Server', label: 'Open built-in MCP server administration' },
+    { id: 'od-agent-terminal-link', path: '/terminal/', text: 'CLI Terminal', label: 'Open agent CLI terminal for login' },
+  ];
+  const mountShellLinks = () => {
+    if (!document.body || !document.createElement || document.getElementById('od-ha-shell-links')) return;
+    const bar = document.createElement('div');
+    bar.id = 'od-ha-shell-links';
+    bar.style.cssText = 'position:fixed;right:16px;bottom:16px;z-index:2147483000;display:flex;gap:8px';
+    for (const entry of shellLinks) {
+      const link = document.createElement('a');
+      link.id = entry.id;
+      link.href = `${prefix}${entry.path}`;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      link.textContent = entry.text;
+      link.setAttribute('aria-label', entry.label);
+      link.style.cssText = 'padding:10px 14px;border-radius:8px;background:#252a36;color:#fff;font:600 13px system-ui,sans-serif;text-decoration:none;box-shadow:0 2px 10px #0005';
+      bar.append(link);
+    }
+    document.body.append(bar);
+  };
+  if (!isProjectIframeTransport) {
+    if (document.readyState === 'loading' && document.addEventListener) {
+      document.addEventListener('DOMContentLoaded', mountShellLinks, { once: true });
+    } else {
+      mountShellLinks();
+    }
+  }
   if ((window.location.pathname === prefix || window.location.pathname.startsWith(`${prefix}/`)) && !isProjectIframeTransport) {
     nativeHistoryReplaceState.call(history, history.state, '', `${initialLogicalPath}${window.location.search}${window.location.hash}`);
   }
@@ -217,8 +252,27 @@
       if (element.tagName === 'STYLE') element.textContent = rewriteCss(element.textContent);
     }
   };
-  new MutationObserver((records) => records.forEach((record) => record.addedNodes.forEach(scopeTree)))
-    .observe(document.documentElement, { childList: true, subtree: true });
+  // React applies inline style objects through CSSStyleDeclaration properties
+  // (element.style.maskImage = 'url("/agent-icons/x.svg")'), which bypass the
+  // setAttribute/setProperty wrappers. OpenDesign 0.24.1 renders agent and model
+  // icons that way and swaps them on existing elements, so style attribute
+  // changes are re-scoped too. A rewrite is idempotent (already-scoped URLs are
+  // left alone), so the observer's own write does not loop.
+  const scopeStyleAttribute = (element) => {
+    if (!(element instanceof Element) || !element.hasAttribute('style')) return;
+    const value = element.getAttribute('style');
+    const scoped = rewriteCss(value);
+    if (scoped !== value) originalSetAttribute.call(element, 'style', scoped);
+  };
+  new MutationObserver((records) => records.forEach((record) => {
+    if (record.type === 'attributes') scopeStyleAttribute(record.target);
+    else record.addedNodes.forEach(scopeTree);
+  })).observe(document.documentElement, {
+    childList: true,
+    subtree: true,
+    attributes: true,
+    attributeFilter: ['style'],
+  });
 
   // A service worker scoped to '/' would control Home Assistant itself.
   if (navigator.serviceWorker?.register) {

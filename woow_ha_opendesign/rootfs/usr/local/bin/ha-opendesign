@@ -3,9 +3,14 @@ set -Eeuo pipefail
 
 readonly DATA_DIR=/data/opendesign
 readonly NGINX_TMP=/tmp/ha-opendesign-nginx
+readonly OMNIGENT_KIT=/etc/omnigent-host
 readonly SHUTDOWN_GRACE_SECONDS=5
-od_pid=''
-nginx_pid=''
+# Supervised children (OpenDesign with its omnigent-host kit, nginx, ttyd and
+# the built-in MCP server). Every process started with start_child is required:
+# when any one exits, the launcher stops the others and exits so Supervisor
+# restarts the complete set. Add a process with one more start_child call below.
+child_pids=()
+child_names=()
 stopping=0
 
 terminate_children() {
@@ -15,7 +20,7 @@ terminate_children() {
   stopping=1
   trap - TERM INT
   local pid deadline
-  for pid in "$od_pid" "$nginx_pid"; do
+  for pid in "${child_pids[@]}"; do
     if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
       kill -TERM "$pid" 2>/dev/null || true
     fi
@@ -24,7 +29,7 @@ terminate_children() {
   deadline=$((SECONDS + SHUTDOWN_GRACE_SECONDS))
   while (( SECONDS < deadline )); do
     local alive=0
-    for pid in "$od_pid" "$nginx_pid"; do
+    for pid in "${child_pids[@]}"; do
       if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
         alive=1
       fi
@@ -33,13 +38,13 @@ terminate_children() {
     sleep 0.1
   done
 
-  for pid in "$od_pid" "$nginx_pid"; do
+  for pid in "${child_pids[@]}"; do
     if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
       echo "[ha-opendesign] process $pid exceeded ${SHUTDOWN_GRACE_SECONDS}s grace; sending KILL" >&2
       kill -KILL "$pid" 2>/dev/null || true
     fi
   done
-  for pid in "$od_pid" "$nginx_pid"; do
+  for pid in "${child_pids[@]}"; do
     if [[ -n "$pid" ]]; then
       wait "$pid" 2>/dev/null || true
     fi
@@ -48,8 +53,28 @@ terminate_children() {
 
 trap terminate_children TERM INT
 
+# start_child <name> <command...>: run a required process in the background.
+start_child() {
+  local name=$1
+  shift
+  "$@" &
+  child_pids+=("$!")
+  child_names+=("$name")
+}
+
+child_name() {
+  local i
+  for i in "${!child_pids[@]}"; do
+    if [[ "${child_pids[$i]}" == "$1" ]]; then
+      printf '%s' "${child_names[$i]}"
+      return
+    fi
+  done
+  printf 'unknown'
+}
+
 prepare_owned_dir() {
-  local dir=$1
+  local dir=$1 owner=${2:-open-design:open-design}
   if [[ -L "$dir" ]]; then
     echo "[ha-opendesign] refusing symbolic-link runtime directory: $dir" >&2
     exit 78
@@ -69,7 +94,7 @@ prepare_owned_dir() {
     exit 78
   fi
   # -h/--no-dereference prevents a late symlink swap from changing its target.
-  chown -h open-design:open-design "$dir"
+  chown -h "$owner" "$dir"
 }
 
 remove_obsolete_credentials() {
@@ -95,6 +120,8 @@ fi
 owned_dirs=(
   "$DATA_DIR"
   "$DATA_DIR/home"
+  "$DATA_DIR/home/.omnigent"
+  "$DATA_DIR/home/studio"
   "$DATA_DIR/shared"
   "$DATA_DIR/shared/skills"
   "$DATA_DIR/shared/mcp"
@@ -102,15 +129,15 @@ owned_dirs=(
   "$DATA_DIR/shared/workspaces"
   "$DATA_DIR/export-render"
   "$DATA_DIR/export-pdf"
-  "$NGINX_TMP"
-  "$NGINX_TMP/client"
-  "$NGINX_TMP/proxy"
-  "$NGINX_TMP/fastcgi"
-  "$NGINX_TMP/uwsgi"
-  "$NGINX_TMP/scgi"
 )
 for dir in "${owned_dirs[@]}"; do
   prepare_owned_dir "$dir"
+done
+# nginx runs as its own UID (ha-ingress): besides the built-in MCP server it is
+# the only process that may open the MCP administration socket, which
+# OpenDesign, its agents and the ttyd shell (UID 1001) cannot.
+for dir in "$NGINX_TMP" "$NGINX_TMP/client" "$NGINX_TMP/proxy" "$NGINX_TMP/fastcgi" "$NGINX_TMP/uwsgi" "$NGINX_TMP/scgi"; do
+  prepare_owned_dir "$dir" ha-ingress:ha-ingress
 done
 for dir in "$DATA_DIR" "$DATA_DIR/home" "$DATA_DIR/export-render" "$DATA_DIR/export-pdf"; do
   [[ ! -L "$dir" && -d "$dir" ]] || {
@@ -119,11 +146,23 @@ for dir in "$DATA_DIR" "$DATA_DIR/home" "$DATA_DIR/export-render" "$DATA_DIR/exp
   }
   chmod 0750 "$dir"
 done
+# omnigent keeps its login (auth_tokens.json) here; it expects a 0700 directory.
+chmod 0700 "$DATA_DIR/home/.omnigent"
+# Agent CLI config homes (CODEX_HOME etc. below). Codex warns when its home is
+# missing, so create the absent ones. Existing entries are the user's and are
+# left exactly as they are (including symlinks): this never fails startup.
+for dir in "$DATA_DIR/home/.claude" "$DATA_DIR/home/.codex" "$DATA_DIR/home/.config" \
+  "$DATA_DIR/home/.pi" "$DATA_DIR/home/.pi/agent"; do
+  if [[ ! -e "$dir" && ! -L "$dir" && -d "${dir%/*}" && ! -L "${dir%/*}" ]]; then
+    mkdir -- "$dir" && chown -h open-design:open-design "$dir"
+  fi
+done
 remove_obsolete_credentials
 
 export OD_DATA_DIR="$DATA_DIR"
 export OD_BIND_HOST=127.0.0.1
 export OD_PORT=7456
+export OD_DAEMON_URL=http://127.0.0.1:7456
 export HOME="$DATA_DIR/home"
 export HA_OPENDESIGN_HOME="$DATA_DIR/home"
 export CLAUDE_CONFIG_DIR="$HOME/.claude"
@@ -131,24 +170,74 @@ export CODEX_HOME="$HOME/.codex"
 export PI_CODING_AGENT_DIR="$HOME/.pi/agent"
 export XDG_CONFIG_HOME="$HOME/.config"
 
-if ! su-exec open-design:open-design /usr/local/bin/node /opt/ha-opendesign/shared-agents.mjs; then
-  echo '[ha-opendesign] shared-agent synchronization failed; OpenDesign will start and the error is available via ha-opendesign-agents sync' >&2
-fi
+# Omnigent host (woow-paas-charts shared/omnigent-host kit, baked into the image
+# at /etc/omnigent-host instead of the chart's ConfigMap). The kit launcher runs
+# its supervisor next to the OpenDesign daemon; the supervisor idles until a
+# login exists (OpenDesign's native Omnigent dialog, or `omnigent login <url>`
+# in the CLI Terminal) and then keeps `omnigent host` connected. These values
+# are the chart's woow.omnigentHost.env contract for open-design, re-pointed at
+# the persistent HA home. Exported for every child: the daemon's Omnigent
+# integration and the terminal's `omnigent` guard read the same state.
+export OMNIGENT_ANALYTICS=0
+export DO_NOT_TRACK=1
+export DISABLE_TELEMETRY=1
+export OG_HOST_ENABLED=1
+export OG_KIT_DIR="$OMNIGENT_KIT"
+export OG_CONFIG_HOME="$HOME/.omnigent"
+export OG_DATA_DIR="$HOME/.omnigent"
+export OMNIGENT_CONFIG_HOME="$OG_CONFIG_HOME"
+export OMNIGENT_DATA_DIR="$OG_DATA_DIR"
+export OG_STATUS_FILE="$OG_DATA_DIR/omnigent-host/status.json"
+export OG_HOST_NAME="Home Assistant OpenDesign"
+export OG_WORKSPACE="$HOME/studio"
+export OG_WATCH_SECONDS=120
+export OG_BIN=/usr/local/bin/omnigent
+export OG_PROVIDERS=claude-subscription
+export OG_PASSTHROUGH="OD_DAEMON_URL,NODE_PATH,NODE_OPTIONS,PUPPETEER_EXECUTABLE_PATH,PUPPETEER_SKIP_DOWNLOAD,PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH,PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD,USE_BUILTIN_RIPGREP,CLAUDE_CONFIG_DIR,CODEX_HOME,PI_CODING_AGENT_DIR,XDG_CONFIG_HOME"
+export OG_UNSET_ENV="OD_API_TOKEN"
+export OMNIGENT_HOST_NO_OPEN=1
+# Fit the kit's ordered stop (supervisor -> host -> daemon) inside this
+# launcher's SHUTDOWN_GRACE_SECONDS and HA Supervisor's default stop timeout.
+export OG_STOP_GRACE_SECONDS=2
+export OG_LAUNCH_STOP_SECONDS=3
 
-su-exec open-design:open-design /usr/local/bin/node /opt/ha-opendesign/headless-entry.mjs &
-od_pid=$!
+# Supervisor credentials stay with this root launcher. No child needs them:
+# OpenDesign, its agents, nginx, the CLI Terminal shell and the built-in MCP
+# server (its administration relies on the HA Ingress login) all start without.
+no_supervisor_env=(/usr/bin/env -u SUPERVISOR_TOKEN -u HASSIO_TOKEN)
+
+start_child opendesign \
+  "${no_supervisor_env[@]}" su-exec open-design:open-design /bin/sh "$OMNIGENT_KIT/omnigent-host-launch" -- \
+  /usr/local/bin/node /opt/ha-opendesign/headless-entry.mjs
 # `-e stderr` uses the inherited descriptor directly; reopening /dev/stderr is
-# denied when HA's root PID 1 drops to UID 1001 under its container procfs.
-su-exec open-design:open-design /usr/sbin/nginx -e stderr -c /etc/nginx/nginx.conf &
-nginx_pid=$!
+# denied when HA's root PID 1 drops to an unprivileged UID under its procfs.
+start_child nginx \
+  "${no_supervisor_env[@]}" su-exec ha-ingress:ha-ingress /usr/sbin/nginx -e stderr -c /etc/nginx/nginx.conf
+start_child ttyd \
+  "${no_supervisor_env[@]}" su-exec open-design:open-design /usr/bin/ttyd \
+  --port 7681 --interface 127.0.0.1 --base-path /terminal \
+  --writable --check-origin --max-clients 1 \
+  --cwd "$HOME" /bin/bash --login
+# Built-in MCP server: starts as root only to own /data/mcp and
+# /run/ha-opendesign-mcp, then drops itself to UID 10001 (mcp). LAN MCP on
+# 0.0.0.0:8081 (Bearer or /private_<token>/mcp), administration via Ingress
+# /mcp-admin/. It is always on and, like every child, required.
+start_child mcp \
+  "${no_supervisor_env[@]}" /opt/woow/bin/ha-opendesign-mcp
 
+exited_pid=''
 set +e
-wait -n "$od_pid" "$nginx_pid"
+wait -n -p exited_pid "${child_pids[@]}"
 status=$?
 set -e
 
-echo "[ha-opendesign] a required process exited (status=$status); stopping its peer" >&2
-terminate_children
+if (( stopping )); then
+  # TERM/INT interrupted the wait; the trap has already stopped every child.
+  echo "[ha-opendesign] stop requested (status=$status); all processes stopped" >&2
+else
+  echo "[ha-opendesign] required process $(child_name "${exited_pid:-}") exited (status=$status); stopping its peers" >&2
+  terminate_children
+fi
 
 # A clean but unexpected child exit still requires Supervisor to restart us.
 if (( status == 0 )); then

@@ -1,0 +1,186 @@
+#!/bin/sh
+# OMNIGENT_HOST_KIT_SHIM — `omnigent` / `omni` PATH wrapper of the WOOW PaaS omnigent-host kit.
+# (The marker above must stay in the first 512 bytes: the launcher and the
+# supervisor skip this file when they look for the real omnigent CLI.)
+#
+# Canonical copy: woow-paas-charts/shared/omnigent-host/omnigent-shim; charts
+# mount it as $OG_KIT_DIR/bin/omnigent AND $OG_KIT_DIR/bin/omni (the CLI's two
+# entry points), and omnigent-host-launch (for the product and its terminals) /
+# omnigent-host-profile.sh (for exec'd shells) put that directory first on PATH.
+#
+# Everything is passed to the real omnigent unchanged, except — while the
+# background supervisor runs (it holds $OG_STATE_DIR/supervisor.lock):
+#   * commands that would start or stop a SECOND host next to the supervisor's:
+#       omnigent host [--server URL|URL|--background|...], omnigent host enable,
+#       omnigent host stop, omnigent start, omnigent stop, and a bare `omnigent`
+#       on a terminal (omnigent runs `start` then);
+#   * commands that make omnigent spawn its own background host daemon (run and
+#     its shorthands, resume, the harness commands claude/codex/pi/...) when an
+#     explicit --server differs from the supervisor's server: that daemon would
+#     register the same host_id against another server and fight the supervisor.
+# These fail with exit 1 and a clear message. Global options before the command
+# (--debug, --log-to-stderr, --profiling) are looked past. `host status`,
+# `host reset-id`, `host stop-session`, `login`, sessions, `--help` and the
+# harness commands with the supervisor's server (or no --server) are untouched.
+# OG_SHIM_BYPASS=1 disables the guard.
+
+og_real_bin() {
+  _oifs=$IFS
+  IFS=:
+  set -f
+  for _d in $PATH; do
+    _c=${_d:-.}/omnigent
+    if [ -f "$_c" ] && [ -x "$_c" ] && ! head -c 512 "$_c" 2>/dev/null | grep -q OMNIGENT_HOST_KIT_SHIM; then
+      IFS=$_oifs; set +f; printf '%s' "$_c"; return 0
+    fi
+  done
+  IFS=$_oifs
+  set +f
+  return 1
+}
+
+_data=${OG_DATA_DIR:-${OMNIGENT_DATA_DIR:-${HOME:-/tmp}/.omnigent}}
+_state=${OG_STATE_DIR:-$_data/omnigent-host}
+
+# True while the kit supervisor holds its lock (it is waiting for a login or
+# keeping the host connected).
+managed() {
+  [ -e "$_state/supervisor.lock" ] || return 1
+  command -v flock >/dev/null 2>&1 || return 1
+  flock -n "$_state/supervisor.lock" true 2>/dev/null
+  [ $? -eq 1 ]
+}
+
+# norm_url <url>: trailing slashes dropped, scheme and host lower-cased.
+norm_url() {
+  _u=$1
+  while :; do case $_u in */) _u=${_u%/} ;; *) break ;; esac; done
+  case $_u in
+    *://*)
+      _r=${_u#*://}
+      _a=${_r%%/*}
+      _u=$(printf '%s://%s' "${_u%%://*}" "$_a" | tr 'ABCDEFGHIJKLMNOPQRSTUVWXYZ' 'abcdefghijklmnopqrstuvwxyz')${_r#"$_a"}
+      ;;
+  esac
+  printf '%s' "$_u"
+}
+
+# The server the supervisor's host uses: "server" in the status file, else
+# (no host started yet) the environment's Omnigent URL. Empty when unknown.
+sup_server() {
+  _f=${OG_STATUS_FILE:-$_state/status.json}
+  _s=""
+  [ -r "$_f" ] && _s=$(sed -n 's/^  "server": "\(.*\)",\{0,1\}$/\1/p' "$_f" | head -n 1)
+  if [ -z "$_s" ]; then
+    _s=${OG_SERVER_URL:-}
+    if [ -z "$_s" ] && [ -n "${OG_SERVER_URL_FILE:-}" ] && [ -r "$OG_SERVER_URL_FILE" ]; then
+      IFS= read -r _s <"$OG_SERVER_URL_FILE" || :
+    fi
+    case $_s in http://?* | https://?*) ;; *) _s="" ;; esac
+  fi
+  norm_url "$_s"
+}
+
+guard=""
+want=""
+given=""
+
+# host [group options] [subcommand ...]
+classify_host() {
+  while [ $# -gt 0 ]; do
+    case $1 in
+      --server) shift; [ $# -gt 0 ] && shift ;;
+      --server=* | --no-open | --background | --non-interactive | --debug | --log-to-stderr) shift ;;
+      *) break ;;
+    esac
+  done
+  case ${1:-} in
+    status | stop-session | reset-id | disable) ;;
+    stop) guard=stop ;;
+    *) guard=start ;;   # bare, URL, enable, ...
+  esac
+}
+
+# <args after a command that may spawn a host daemon>: refuse an explicit
+# --server that is not the supervisor's server (options end at "--").
+classify_daemon() {
+  _has=""
+  _srv=""
+  while [ $# -gt 0 ]; do
+    case $1 in
+      --) break ;;
+      --server) _has=1; _srv=${2-}; [ $# -gt 1 ] && shift ;;
+      --server=*) _has=1; _srv=${1#--server=} ;;
+    esac
+    shift
+  done
+  [ -n "$_has" ] || return 0
+  want=$(sup_server)
+  [ -n "$want" ] || return 0
+  [ "$(norm_url "$_srv")" = "$want" ] && return 0
+  given=${_srv:-'""'}
+  guard=server
+}
+
+classify() {
+  _prof=""
+  while [ $# -gt 0 ]; do
+    case $1 in
+      --debug | --log-to-stderr) shift ;;
+      --profiling) _prof=1; shift ;;
+      *) break ;;
+    esac
+  done
+  if [ $# -eq 0 ]; then
+    # a bare `omnigent` on a terminal is `omnigent start`
+    [ -z "$_prof" ] && [ -t 0 ] && guard=start
+    return 0
+  fi
+  case $1 in
+    --help | -h | --version) ;;
+    -*) classify_daemon "$@" ;;   # `omnigent --harness x ...` = run
+    host) shift; classify_host "$@" ;;
+    start) guard=start ;;
+    stop) guard=stop ;;
+    run | polly | debby | copilot | resume | claude | codex | opencode | pi | cursor | devin | kiro | goose | hermes | antigravity | agy | qwen | kimi)
+      shift; classify_daemon "$@" ;;
+    *.yaml | *.yml | ./* | ../* | */*) classify_daemon "$@" ;;   # `omnigent agent.yaml ...` = run
+  esac
+  return 0
+}
+
+if [ -z "${OG_SHIM_BYPASS:-}" ]; then
+  classify "$@"
+  for _a in "$@"; do
+    case $_a in
+      --) break ;;
+      --help | -h) guard="" ;;
+    esac
+  done
+fi
+
+if [ -n "$guard" ] && managed; then
+  if [ "$guard" = server ]; then
+    {
+      echo "omnigent: --server $given is not the server of this environment's Omnigent host ($want); refusing to start a second host daemon."
+      echo "  這個指令會另外啟動一個背景 host daemon 連到 $given，和背景服務維持的 host（$want）用同一個 host_id，兩者會互相搶線。"
+      echo "  請改用 --server $want，或不要加 --server（會使用登入時的網址）。"
+      echo "  查看狀態：omnigent-host-status"
+    } >&2
+    exit 1
+  fi
+  {
+    echo "omnigent: the Omnigent host of this environment is already running, managed automatically — see omnigent-host-status."
+    if [ "$guard" = start ]; then
+      echo "  這個環境的 omnigent host 已由背景服務自動執行並維持連線，不需要（也不要）再手動啟動第二個。"
+    else
+      echo "  這個環境的 omnigent host 由背景服務管理；手動停止後它會自動重新連線。要關閉請把服務的 omnigentHost.enabled 設為 false。"
+    fi
+    echo "  查看狀態：omnigent-host-status　　（omnigent host status 也可以）"
+  } >&2
+  command -v omnigent-host-status >/dev/null 2>&1 && omnigent-host-status >&2
+  exit 1
+fi
+
+real=$(og_real_bin) || { echo "omnigent: command not found (the omnigent CLI is not installed in this image)" >&2; exit 127; }
+exec "$real" "$@"

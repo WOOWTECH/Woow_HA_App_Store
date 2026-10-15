@@ -1,0 +1,146 @@
+#!/bin/sh
+# omnigent-host-status — tenant-facing Omnigent host status (WOOW PaaS shared kit).
+#
+# Canonical copy: woow-paas-charts/shared/omnigent-host/omnigent-host-status
+# (charts vendor a byte-identical copy). Reads the status JSON the supervisor
+# writes (no secrets in it) and prints what the tenant should know or do,
+# including the exact login command.
+#
+#   omnigent-host-status           full status; exit 0 connected/starting,
+#                                  1 the tenant must act, 2 no status yet
+#   omnigent-host-status --motd    print ONLY when the tenant must act (for
+#                                  ~/.bashrc, /etc/bash.bashrc.d, a console
+#                                  banner); silent otherwise; always exit 0
+#   omnigent-host-status --json    the raw status JSON
+#
+# Status file: $OG_STATUS_FILE, else $OG_STATE_DIR/status.json, else
+# ${OG_DATA_DIR:-$OMNIGENT_DATA_DIR:-~/.omnigent}/omnigent-host/status.json.
+mode=full
+case ${1:-} in
+  --motd) mode=motd ;;
+  --json) mode=json ;;
+  '' | --full) ;;
+  -h | --help) sed -n '2,18p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+  *) echo "usage: omnigent-host-status [--motd|--json]" >&2; exit 2 ;;
+esac
+
+_data=${OG_DATA_DIR:-${OMNIGENT_DATA_DIR:-${HOME:-/tmp}/.omnigent}}
+f=${OG_STATUS_FILE:-${OG_STATE_DIR:-$_data/omnigent-host}/status.json}
+
+if [ ! -r "$f" ]; then
+  [ "$mode" = motd ] && exit 0
+  if [ "$mode" = json ]; then echo '{}'; exit 2; fi
+  echo "Omnigent host：還沒有狀態檔（$f）。背景服務可能尚未啟動，或這個環境沒有開啟 Omnigent host（omnigentHost.enabled=false），或映像裡沒有 omnigent。"
+  exit 2
+fi
+if [ "$mode" = json ]; then cat "$f"; exit 0; fi
+
+# The supervisor writes one "key": "value" pair per line; values are escaped.
+get() {
+  sed -n "s/^  \"$1\": \"\\(.*\\)\",\\{0,1\\}\$/\\1/p" "$f" | head -n 1 | sed 's/\\"/"/g; s/\\\\/\\/g'
+}
+state=$(get state)
+detail=$(get detail)
+action=$(get action)
+login=$(get login_command)
+name=$(get host_name)
+server=$(get server)
+workspace=$(get workspace)
+retry=$(get retry_at)
+hostlog=$(get host_log)
+guard=$(get memory_guard)
+# The Omnigent URL is runtime data (OG_SERVER_URL_FILE, a ConfigMap file the
+# platform may fill or change after the supervisor wrote the status): read it
+# now, with the supervisor's precedence and validation, so the login hint is
+# never stale.
+surl=${OG_SERVER_URL:-}
+if [ -z "$surl" ] && [ -n "${OG_SERVER_URL_FILE:-}" ] && [ -r "$OG_SERVER_URL_FILE" ]; then
+  IFS= read -r surl <"$OG_SERVER_URL_FILE" || :
+fi
+case $surl in http://?* | https://?*) ;; *) surl="" ;; esac
+case $surl in *[[:space:][:cntrl:]\"\'\\\`]*) surl="" ;; esac
+surl=${surl%/}
+[ -n "$surl" ] && login="omnigent login $surl"
+[ -n "$login" ] || login="omnigent login <Omnigent 網址>"
+[ -n "$name" ] || name="（config.yaml 裡的名稱）"
+
+if [ -t 1 ]; then c_warn=$(printf '\033[33m'); c_info=$(printf '\033[36m'); c_off=$(printf '\033[0m'); else c_warn=""; c_info=""; c_off=""; fi
+
+say_login() {
+  printf '  %s\n' "$login"
+  echo "  （依提示輸入 Omnigent 帳號與密碼。這台機器會屬於登入的帳號，只有該帳號能在 Omnigent 看到並使用它；"
+  echo "   Username 提示的預設值是 admin，直接按 Enter 就是以 admin 登入。登入後約 1 分鐘內上線，之後重啟也會自動回來。）"
+}
+
+needs_action=0
+case $state in
+  waiting-login)
+    needs_action=1
+    printf '%sOmnigent：這個環境尚未接上 Omnigent。要讓 Omnigent 在這裡開 session，請執行：%s\n' "$c_info" "$c_off"
+    say_login
+    ;;
+  login-expired)
+    needs_action=1
+    printf '%sOmnigent：登入已失效或在 Omnigent 端被撤銷，這台目前離線。請重新登入：%s\n' "$c_warn" "$c_off"
+    say_login
+    ;;
+  needs-reset-id)
+    needs_action=1
+    printf '%sOmnigent：這台機器的 host ID 已登記在另一個 Omnigent 帳號下（是否換了帳號登入？）。請執行：%s\n' "$c_warn" "$c_off"
+    printf '  %s\n' "${action:-omnigent host reset-id --yes}"
+    echo "  （--yes 表示直接產生新的 host ID，不再詢問；不加 --yes 時會問 [y/N]，請輸入 y。之後會自動重新連線，"
+    echo "   以「$name」出現在目前登入帳號的機器清單；舊帳號下的那筆離線紀錄需由 Omnigent 管理員清理。）"
+    [ -n "$retry" ] && echo "  （在那之前背景服務會以遞增的間隔自動重試，下次重試：$retry）"
+    ;;
+  image-too-old)
+    needs_action=1
+    printf '%sOmnigent：這個環境的映像版本太舊（%s）。請到 PaaS 服務頁重新部署，或聯絡管理員更新映像。%s\n' "$c_warn" "$detail" "$c_off"
+    ;;
+  duplicate-host)
+    needs_action=1
+    printf '%sOmnigent：另外有人手動執行了 omnigent host（繞過了 omnigent 指令的保護），和背景服務搶同一個資料目錄。請停掉它：%s\n' "$c_warn" "$c_off"
+    echo "  OG_SHIM_BYPASS=1 omnigent host stop --all"
+    echo "  （背景服務會自動重新連線；平常不需要也不要手動執行 omnigent host。）"
+    ;;
+  error)
+    needs_action=1
+    printf '%sOmnigent host 無法運作：%s%s\n' "$c_warn" "$detail" "$c_off"
+    ;;
+  running)
+    [ "$mode" = motd ] && exit 0
+    echo "Omnigent：已連線。這台以「$name」出現在 Omnigent 的機器清單（$server）。"
+    [ "$detail" = connected ] || echo "  狀態：$detail"
+    [ -n "$workspace" ] && echo "  在 Omnigent 開 session 時，workspace 請選 $workspace"
+    ;;
+  starting)
+    [ "$mode" = motd ] && exit 0
+    echo "Omnigent：host 啟動中，正在連線到 $server（名稱「$name」）。"
+    ;;
+  host-error)
+    needs_action=1
+    printf '%sOmnigent：host 發生無法自動排除的錯誤（exit 78），這台目前離線。背景服務會以遞增間隔重試%s。%s\n' "$c_warn" "${retry:+（下次：$retry）}" "$c_off"
+    echo "  記錄檔：$hostlog　若持續發生，請把這段訊息交給管理員。"
+    ;;
+  backoff)
+    [ "$mode" = motd ] && exit 0
+    echo "Omnigent：host 異常結束，稍後自動重試${retry:+（$retry）}。"
+    echo "  原因：$detail"
+    ;;
+  stopped)
+    [ "$mode" = motd ] && exit 0
+    echo "Omnigent：背景服務已停止（容器正在結束或重啟）。"
+    ;;
+  *)
+    [ "$mode" = motd ] && exit 0
+    echo "Omnigent：狀態 $state — $detail"
+    ;;
+esac
+if [ "$mode" = full ]; then
+  echo "  狀態：$state；記錄檔：$hostlog"
+  [ -n "$guard" ] && echo "  記憶體保護：容器快用完記憶體時，背景服務停掉了一個 Omnigent session 以保護主服務（$guard）"
+  echo "  （中斷連線：刪除 OMNIGENT_DATA_DIR 下的 auth_tokens.json 只是本機登出；"
+  echo "   要真正撤銷這台的登入，請在 Omnigent 刪除或停用該帳號。）"
+fi
+[ "$mode" = motd ] && exit 0
+[ "$needs_action" -eq 1 ] && exit 1
+exit 0

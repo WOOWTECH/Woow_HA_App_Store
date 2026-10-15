@@ -3,17 +3,23 @@ set -Eeuo pipefail
 cd "$(dirname "$0")/.."
 
 python3 tests/validate.py
+python3 mcp-runtime/tests/verify_vendor.py
+sh -n mcp-runtime/install.sh
+bash -n mcp-runtime/tests/e2e/run-proof.sh
 python3 tests/workflow-policy.test.py
+python3 tests/sign-in-hint.test.py
+python3 tests/import-core-policy.test.py
 
-for file in rootfs/opt/ha-opendesign/*.js rootfs/opt/ha-opendesign/*.mjs tests/*.mjs; do
+for file in rootfs/opt/ha-opendesign/*.js rootfs/opt/ha-opendesign/*.mjs tests/*.mjs mcp-runtime/tests/e2e/*.mjs docs/repro/*.cjs; do
   node --check "$file"
 done
 
-bash -n rootfs/usr/local/bin/ha-opendesign rootfs/usr/local/bin/ha-opendesign-agents .github/scripts/release-preflight.sh tests/run.sh tests/container-smoke.sh
+bash -n rootfs/usr/local/bin/ha-opendesign rootfs/usr/local/bin/ha-opendesign-agents .github/scripts/release-preflight.sh .github/scripts/import-core.sh tests/run.sh tests/container-smoke.sh tests/import-core.test.sh
 node --test tests/*.test.mjs
+bash tests/import-core.test.sh
 
 if command -v shellcheck >/dev/null 2>&1; then
-  shellcheck rootfs/usr/local/bin/ha-opendesign .github/scripts/release-preflight.sh tests/run.sh tests/container-smoke.sh
+  shellcheck rootfs/usr/local/bin/ha-opendesign .github/scripts/release-preflight.sh .github/scripts/import-core.sh tests/run.sh tests/container-smoke.sh tests/import-core.test.sh
 else
   echo "shellcheck: SKIP (not installed)"
 fi

@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import test from 'node:test';
-import { initializeSharedAgents, statusSharedAgents } from '../rootfs/opt/ha-opendesign/shared-agents.mjs';
+import { initializeSharedAgents, installSharedPlugin, removeSharedPlugin, statusSharedAgents } from '../rootfs/opt/ha-opendesign/shared-agents.mjs';
 
 async function fixture(t) {
   const root = await mkdtemp(path.join(os.tmpdir(), 'ha-opendesign-shared-'));
@@ -180,4 +180,27 @@ test('discovers portable plugin components and reports missing native adapters',
     nativeAdapters: { claude: true, opencode: false },
   }]);
   assert.equal(first.plugins.length, 0);
+});
+
+test('installs and removes a portable plugin bundle across shared skills and MCP catalog', async (t) => {
+  const f = await fixture(t);
+  await initializeSharedAgents(f);
+  const bundle = path.join(f.dataDir, 'shared/plugins/team-tools');
+  await mkdir(path.join(bundle, 'skills/grill-me'), { recursive: true });
+  await mkdir(path.join(bundle, 'mcp'), { recursive: true });
+  await writeFile(path.join(bundle, 'skills/grill-me/SKILL.md'), 'shared grill skill');
+  await writeFile(path.join(bundle, 'mcp/servers.json'), JSON.stringify({ version: 1, servers: [{ name: 'team-docs', command: 'node', args: ['docs.js'] }] }));
+  await writeFile(path.join(bundle, 'manifest.json'), JSON.stringify({ schemaVersion: 1, name: 'team-tools', components: { skills: ['grill-me'], mcpServers: ['team-docs'] } }));
+  assert.deepEqual(await installSharedPlugin({ ...f, name: 'team-tools' }), { name: 'team-tools', skills: ['grill-me'], mcpServers: ['team-docs'] });
+  const status = await statusSharedAgents(f);
+  assert.equal(status.mcpServerCount, 1);
+  assert.equal(JSON.parse(await readFile(path.join(f.home, '.claude.json'), 'utf8')).mcpServers['ha-shared-team-docs'].command, 'node');
+  assert.match(await readFile(path.join(f.home, '.codex/config.toml'), 'utf8'), /\[mcp_servers\.ha-shared-team-docs\]/);
+  for (const runtime of ['.claude/skills', '.agents/skills', '.pi/agent/skills', '.config/opencode/skills']) {
+    assert.equal(await readFile(path.join(f.home, runtime, 'grill-me/SKILL.md'), 'utf8'), 'shared grill skill');
+  }
+  assert.deepEqual(await removeSharedPlugin({ ...f, name: 'team-tools' }), { name: 'team-tools', removedSkills: ['grill-me'], removedMcpServers: ['team-docs'] });
+  assert.equal((await statusSharedAgents(f)).mcpServerCount, 0);
+  assert.deepEqual(JSON.parse(await readFile(path.join(f.home, '.claude.json'), 'utf8')).mcpServers, {});
+  await assert.rejects(readFile(path.join(f.dataDir, 'shared/skills/grill-me/SKILL.md')));
 });

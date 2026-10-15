@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.2.0
+
+**Upgrading from 0.1.x — please read:**
+
+- After updating, open the add-on's **Info** tab and turn on **Watchdog**. Home Assistant leaves it off; without it the add-on stays stopped if one of its internal processes exits (with it on, it is back in about 11 seconds).
+- The OpenDesign MCP server is now built in. If you used the separate *Woow OpenDesign MCP Server* add-on, open **MCP Server** at the bottom right of the OpenDesign page, create a token, update your MCP client with the new URL/token (LAN port `8081/tcp` is unmapped by default; Claude.ai uses the `/private_<token>/mcp` URL), then uninstall the old add-on. It no longer receives updates.
+- Only amd64 is supported from this release.
+
+- **Built on the shared WoowTech OpenDesign core image** instead of upstream `ghcr.io/nexu-io/od:0.21.1`: OpenDesign 0.24.1 from the WoowTech fork, the same build the WOOW PaaS runs, with its white-label, zh-TW locale and export patches, the bundled `woowtech-brand` skill and `woow-omnigent` plugin, and no `brainstorming` skill. The Dockerfile default is an all-zero placeholder digest of `ghcr.io/woowtech/open-design-core` until the core is published; builds pass `BUILD_FROM`.
+- Agent CLIs now come from the core: Claude Code `2.1.296`, Codex CLI `0.162.1`, Pi `1.1.0` and OpenCode `1.18.33` (was the add-on's own OpenCode `1.18.29`). The build asserts every version as UID 1001 and fails on a different core.
+- **Omnigent host:** the shared WOOW `omnigent-host` kit (woow-paas-charts `6a6d1f9`, sha256-verified) runs its supervisor next to OpenDesign. It waits for a login from OpenDesign's native Omnigent dialog or `omnigent login` in the CLI Terminal, then keeps `omnigent host` connected. State lives in `/data/opendesign/home/.omnigent`.
+- amd64 only, like the core image. The image licence label now reads `Apache-2.0 AND MIT` (OpenDesign and the add-on code).
+- Ingress fixes for OpenDesign 0.24.1: agent and model icons built from template literals and applied as inline `mask-image` styles are now prefixed by nginx (they were fetched from the HA root before the shim could react), inline style attribute updates are re-scoped, and redirects stay relative to the HA origin (`absolute_redirect off`). The white-label "Contact us" path `/_woow/support` redirects to WoowTech support.
+- OpenDesign now stops on TERM: 0.24.1's `shutdown()` no longer closes the HTTP server, so the entry closes it and exits instead of waiting for the KILL deadline.
+- The `open-design` passwd home is the persistent `/data/opendesign/home`, so tools that ignore `$HOME` (OpenCode's cache, data and state) persist too. Missing agent CLI homes (`.claude`, `.codex`, `.config`, `.pi/agent`) are created at startup; existing entries are left alone.
+- The launcher supervises a list of named required processes, which makes adding one a single `start_child` line, and names the process that exited.
+- The white-label "agent is not signed in" message points to the add-on's **CLI Terminal** (zh-TW, zh-CN and English) instead of the PaaS `/console/` path and service settings (`ha-patches/sign-in-hint.py`, which fails the build when the core text changes).
+- **Built-in MCP server** (replaces the separate *Woow OpenDesign MCP Server* add-on): the pinned Woow MCP gateway and OpenDesign tools (`mcp-runtime/`, vendored from `WOOWTECH/Woow_ha_mcp_addons`, hashes in `VENDOR.json`) run as a fourth required process under their own UID, always on, with the add-on's own OpenDesign as the fixed backend. LAN MCP on container port `8081` (Bearer, or `/private_<token>/mcp` for Claude.ai; not mapped by default); administration at Ingress `/mcp-admin/`, opened from the new **MCP Server** entry next to **CLI Terminal** on the OpenDesign page (neither entry is added inside project previews any more). nginx now runs as its own UID `ha-ingress`, and no child process inherits the Supervisor token.
+
 ## 0.1.10
 
 - Synchronize Agent Skills, MCP server definitions, portable plugin manifests, and a default working directory across Claude Code, Codex, Pi, and OpenCode.

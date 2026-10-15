@@ -2991,28 +2991,26 @@
     "woow_ha_opendesign": {
       "id": "woow_ha_opendesign",
       "name": "Woow HA OpenDesign",
-      "version": "0.1.10",
+      "version": "0.2.0",
       "repository": "WOOWTECH/Woow_ha_opendesign_add_on",
-      "source_sha": "098aecd9fa33e4150f7f69a9002b65b3e09f827e",
+      "source_sha": "bb89e0cc9a75c46289e7dfcc906603a22451cfda",
       "source_path": ".",
       "config_file": "config.yaml",
-      "config_sha256": "sha256:ee2c465c69c50c6a76711efcca886e25c84e584a194f56f70bb9279094511465",
-      "archive_sha256": "sha256:2996f62b2617e4f30159a35f31f9ced267e3e9271797c6d8e174e2cbb3f65478",
-      "context_fingerprint": "sha256:5346ec07a5edee79d1964cdd0a9ce19829b3f87dd1d00d0e24cd82672ef0cf02",
-      "material_fingerprint": "sha256:7d39af97fc1b701d5fb0d1d0d7168f2c0f39fe6f1b5206f23d03e7bf8596f32f",
+      "config_sha256": "sha256:6b40a401dab0943787bbd590a8e9a02f32eb3e0b95af829527ede140a5492170",
+      "archive_sha256": "sha256:8098cc4fa41a8fcac6d4b7333bfc41b6a28ae08e6e60df57c25bab876f0cf1d6",
+      "context_fingerprint": "sha256:3199260e042523a0ec6d82b7969a8746c10d4b49602369f78ca39335dc862994",
+      "material_fingerprint": "sha256:43262b4f09e098a6649e0cdb50024e64ac10613e99c4f19bc203d3cb157bed5b",
       "architectures": [
-        "amd64",
-        "aarch64"
+        "amd64"
       ],
       "config": {
         "name": "Woow HA OpenDesign",
-        "version": "0.1.10",
+        "version": "0.2.0",
         "slug": "woow_ha_opendesign",
-        "description": "OpenDesign 0.21.1 with browser-local API BYOK and headless exports",
+        "description": "OpenDesign 0.24.1 (WoowTech core) with browser-local API BYOK, headless exports, an Omnigent host and a built-in MCP server",
         "url": "https://github.com/WOOWTECH/Woow_ha_opendesign_add_on",
         "arch": [
-          "amd64",
-          "aarch64"
+          "amd64"
         ],
         "startup": "application",
         "boot": "auto",
@@ -3025,6 +3023,12 @@
         "panel_admin": true,
         "watchdog": "http://[HOST]:[PORT:8099]/api/health",
         "backup": "cold",
+        "ports": {
+          "8081/tcp": null
+        },
+        "ports_description": {
+          "8081/tcp": "Built-in OpenDesign MCP server (Bearer token required; not administration)"
+        },
         "options": {},
         "schema": {},
         "image": "ghcr.io/woowtech/woow-ha-opendesign-{arch}"
@@ -3032,21 +3036,15 @@
       "source_build_supported": true,
       "images": {
         "amd64": {
-          "reference": "ghcr.io/woowtech/woow-ha-opendesign-amd64:0.1.10",
-          "index_digest": "sha256:727e9749a879eb0a9fba1a5c9018c6f6907c0123707da9c98e032ea20d0c27e0",
-          "digest": "sha256:727e9749a879eb0a9fba1a5c9018c6f6907c0123707da9c98e032ea20d0c27e0",
-          "source_revision": "098aecd9fa33e4150f7f69a9002b65b3e09f827e"
-        },
-        "aarch64": {
-          "reference": "ghcr.io/woowtech/woow-ha-opendesign-aarch64:0.1.10",
-          "index_digest": "sha256:d0fc064ca11613100b0d7eac8f2afdd88f576065f0798ae429f1bc143d0ef56f",
-          "digest": "sha256:d0fc064ca11613100b0d7eac8f2afdd88f576065f0798ae429f1bc143d0ef56f",
-          "source_revision": "098aecd9fa33e4150f7f69a9002b65b3e09f827e"
+          "reference": "ghcr.io/woowtech/woow-ha-opendesign-amd64:0.2.0",
+          "index_digest": "sha256:18a5cd2dc0d3f52063a77b02e9c5a74e03d6fd4864851e9641167ebf802e7266",
+          "digest": "sha256:18a5cd2dc0d3f52063a77b02e9c5a74e03d6fd4864851e9641167ebf802e7266",
+          "source_revision": "bb89e0cc9a75c46289e7dfcc906603a22451cfda"
         }
       },
       "delivery": "published-image",
       "validation": "manifest+architecture-images+configured-CI",
-      "publisher_run_id": "38373767053",
+      "publisher_run_id": "38671944998",
       "channel": "stable",
       "store_path": "woow_ha_opendesign"
     },
@@ -3695,5 +3693,5 @@
       "store_path": "woow_mcp_nextcloud"
     }
   },
-  "catalog_id": "sha256:a84603325e0a61875e23c948287a2ac2f17e4ef92004c6314dfe898260a0bc48"
+  "catalog_id": "sha256:1beb87bf1bc94fbd9482c4c82eaab86a69ccceff1f96cc09c797b09c04a6686c"
 }

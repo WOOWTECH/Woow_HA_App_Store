@@ -65,9 +65,10 @@ function runIngressShim(initialPath) {
   class XMLHttpRequest { open() {} }
   class CSSStyleDeclaration { setProperty() {} }
   class CSSStyleSheet { insertRule() {} }
+  const mutationObservers = [];
   class MutationObserver {
-    constructor() {}
-    observe() {}
+    constructor(callback) { this.callback = callback; mutationObservers.push(this); }
+    observe(target, options) { this.options = options; }
   }
   const iframeSetterCalls = [];
   class HTMLIFrameElement extends Element {}
@@ -106,7 +107,7 @@ function runIngressShim(initialPath) {
     URL,
     Request,
   });
-  return { history, historyCalls, location, replaceCalls, Element, HTMLIFrameElement, originalSetAttributeCalls, iframeSetterCalls };
+  return { history, historyCalls, location, replaceCalls, Element, HTMLIFrameElement, originalSetAttributeCalls, iframeSetterCalls, mutationObservers };
 }
 
 test('representative initial HTML rewrite matches the fixture', async () => {
@@ -179,6 +180,67 @@ test('nginx validates the ingress prefix and preserves streaming upgrades', () =
   assert.ok(nginx.indexOf('location ~ ^/api/projects/') < nginx.indexOf('location / {'), 'download bypass must precede the filtered shell location');
 });
 
+test('nginx keeps OpenDesign 0.24.1 template-literal icon URLs and redirects on the ingress prefix', () => {
+  assert.ok(nginx.includes("sub_filter '`/agent-icons/' '`$safe_ingress_path/agent-icons/';"));
+  assert.ok(nginx.includes("sub_filter '`/model-icons/' '`$safe_ingress_path/model-icons/';"));
+  assert.match(nginx, /^\s*absolute_redirect off;$/m, 'redirect Locations must stay relative to the HA origin');
+  assert.match(nginx, /location = \/_woow\/support \{\s*return 302 https:\/\/aiot\.woowtech\.io\/woow;/);
+});
+
+test('nginx exposes ttyd only through the ingress-prefixed terminal proxy', () => {
+  assert.match(nginx, /location \^~ \/terminal\//);
+  assert.match(nginx, /proxy_pass http:\/\/127\.0\.0\.1:7681;/);
+  assert.match(nginx, /sub_filter '\"\/terminal\/' '\"\$safe_ingress_path\/terminal\/'/);
+  assert.match(shim, /od-agent-terminal-link/);
+  assert.match(shim, /path: '\/terminal\/'/);
+});
+
+function mountLinks(initialPath) {
+  const appended = [];
+  class Node {
+    constructor(tag) { this.tagName = tag.toUpperCase(); this.children = []; this.attributes = {}; this.style = {}; }
+    append(child) { this.children.push(child); }
+    setAttribute(name, value) { this.attributes[name] = String(value); }
+  }
+  const body = { append(node) { appended.push(node); } };
+  const document = {
+    body,
+    readyState: 'complete',
+    documentElement: {},
+    createElement: (tag) => new Node(tag),
+    getElementById: (id) => (appended.some((node) => node.id === id) ? appended[0] : null),
+  };
+  const location = { pathname: initialPath, search: '', hash: '', href: `http://localhost${initialPath}`, host: 'localhost', origin: 'http://localhost' };
+  vm.runInNewContext(shim, {
+    window: { __OD_INGRESS_PATH__: prefix, location, fetch() {}, addEventListener() {} },
+    location,
+    history: { state: null, pushState() {}, replaceState() {} },
+    XMLHttpRequest: class { open() {} },
+    Element: class { setAttribute() {} },
+    CSSStyleDeclaration: class { setProperty() {} },
+    CSSStyleSheet: class { insertRule() {} },
+    MutationObserver: class { observe() {} },
+    document,
+    navigator: {},
+    URL,
+    Request,
+  });
+  return appended;
+}
+
+test('shim adds MCP Server and CLI Terminal entry points on the ingress prefix, not inside project previews', () => {
+  const [bar, ...rest] = mountLinks(`${prefix}/`);
+  assert.equal(rest.length, 0);
+  assert.equal(bar.id, 'od-ha-shell-links');
+  assert.deepEqual(bar.children.map((link) => [link.id, link.href, link.textContent, link.target, link.attributes['aria-label']]), [
+    ['od-mcp-admin-link', `${prefix}/mcp-admin/`, 'MCP Server', '_blank', 'Open built-in MCP server administration'],
+    ['od-agent-terminal-link', `${prefix}/terminal/`, 'CLI Terminal', '_blank', 'Open agent CLI terminal for login'],
+  ]);
+  assert.ok(bar.children.every((link) => link.rel === 'noopener noreferrer'));
+  assert.deepEqual(mountLinks(`${prefix}/api/projects/p1/raw/index.html`), []);
+  assert.deepEqual(mountLinks(`${prefix}/api/projects/p1/preview/s1/index.html`), []);
+});
+
 test('repeated iframe src setAttribute with the same logical URL commits once', () => {
   // React reconciliation writes an unprefixed URL every render; the shim
   // scopes it to the ingress prefix once, then subsequent identical writes
@@ -213,6 +275,26 @@ test('repeated iframe.src property assignment with the same logical URL commits 
 
   iframe.src = '/api/projects/project-123/raw/other.html';
   assert.equal(iframeSetterCalls.length, 2);
+});
+
+test('inline style URL updates on existing elements keep the ingress prefix', () => {
+  // OpenDesign 0.24.1 renders agent icons as React inline styles
+  // (style.maskImage = 'url("/agent-icons/x.svg")'); updates reach the DOM as
+  // style attribute mutations, not through setAttribute or setProperty.
+  const { Element, originalSetAttributeCalls, mutationObservers } = runIngressShim(`${prefix}/`);
+  assert.equal(mutationObservers.length, 1);
+  const [observer] = mutationObservers;
+  assert.equal(observer.options.attributes, true);
+  assert.deepEqual([...observer.options.attributeFilter], ['style']);
+  const icon = new Element();
+  icon._attrs.set('style', 'mask-image: url("/agent-icons/opencode.svg"); width: 36px');
+  originalSetAttributeCalls.length = 0;
+  observer.callback([{ type: 'attributes', target: icon, addedNodes: [] }]);
+  assert.equal(icon.getAttribute('style'), `mask-image: url("${prefix}/agent-icons/opencode.svg"); width: 36px`);
+  assert.equal(originalSetAttributeCalls.length, 1);
+  // The observer sees its own write; an already-scoped value must not loop.
+  observer.callback([{ type: 'attributes', target: icon, addedNodes: [] }]);
+  assert.equal(originalSetAttributeCalls.length, 1);
 });
 
 test('early shim covers root-relative streaming, navigation, and dynamic URLs', () => {

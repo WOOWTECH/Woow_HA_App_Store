@@ -1,0 +1,84 @@
+#!/opt/woow/.venv/bin/python
+"""Root bootstrap of the built-in OpenDesign MCP server; the add-on launcher starts it as its 4th process.
+
+1. /data/mcp: the vendored packaging/entrypoint.prepare_data() (no-follow creation of a NEW 0700 directory owned
+   by uid/gid 10001, or the bounded repair of a tree that a Home Assistant restore left root-owned).
+2. /run/ha-opendesign-mcp: recreated empty on every start, 0750 mcp:ha-ingress (nginx may open admin.sock);
+   child/ inside it is 0700 mcp:mcp (only the gateway and its child).
+3. Irreversible drop to uid/gid 10001 with no supplementary groups, no_new_privs, then exec management.py with a
+   fixed environment. Nothing is inherited: the built-in server makes no Supervisor/Core API call, so it never
+   receives SUPERVISOR_TOKEN (administration relies on Ingress login, owner decision 2026-10-14).
+"""
+import ctypes
+import grp
+import os
+from pathlib import Path
+import shutil
+import stat
+import sys
+
+ROOT = Path('/opt/woow')
+sys.path.insert(0, str(ROOT / 'packaging'))
+import entrypoint  # noqa: E402  vendored: prepare_data(), UID, GID
+
+RUN_PARENT = '/run'
+RUN_NAME = 'ha-opendesign-mcp'
+PROXY_GROUP = 'ha-ingress'
+NOFOLLOW_DIR = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+
+
+def prepare_run_dir(proxy_gid):
+    parent = os.open(RUN_PARENT, NOFOLLOW_DIR)
+    try:
+        try:
+            info = os.stat(RUN_NAME, dir_fd=parent, follow_symlinks=False)
+        except FileNotFoundError:
+            info = None
+        if info is not None:
+            if not stat.S_ISDIR(info.st_mode):
+                raise RuntimeError('runtime socket path is not a directory')
+            shutil.rmtree(RUN_NAME, dir_fd=parent)  # rmtree with dir_fd never follows symlinks
+        os.mkdir(RUN_NAME, 0o750, dir_fd=parent)
+        run_fd = os.open(RUN_NAME, NOFOLLOW_DIR, dir_fd=parent)
+        try:
+            os.fchown(run_fd, entrypoint.UID, proxy_gid)
+            os.fchmod(run_fd, 0o750)
+            os.mkdir('child', 0o700, dir_fd=run_fd)
+            child_fd = os.open('child', NOFOLLOW_DIR, dir_fd=run_fd)
+            try:
+                os.fchown(child_fd, entrypoint.UID, entrypoint.GID)
+                os.fchmod(child_fd, 0o700)
+            finally:
+                os.close(child_fd)
+        finally:
+            os.close(run_fd)
+    finally:
+        os.close(parent)
+
+
+def main():
+    if len(sys.argv) != 1 or os.geteuid() != 0:
+        raise RuntimeError('root bootstrap required')
+    os.umask(0o077)
+    entrypoint.prepare_data()
+    prepare_run_dir(grp.getgrnam(PROXY_GROUP).gr_gid)
+    os.setgroups([])
+    os.setgid(entrypoint.GID)
+    os.setuid(entrypoint.UID)
+    if (os.getuid(), os.geteuid(), os.getgid(), os.getegid()) != (entrypoint.UID,) * 2 + (entrypoint.GID,) * 2:
+        raise RuntimeError('runtime privilege drop failed')
+    if ctypes.CDLL(None, use_errno=True).prctl(38, 1, 0, 0, 0) != 0:  # PR_SET_NO_NEW_PRIVS
+        raise RuntimeError('no_new_privs unavailable')
+    python = str(ROOT / '.venv/bin/python')
+    env = {'PATH': '/usr/bin:/bin', 'HOME': '/data/mcp',
+           'PYTHONPATH': str(ROOT / 'packages/mcp-admin-core') + ':' + str(ROOT),
+           'PYTHONDONTWRITEBYTECODE': '1', 'PYTHONUNBUFFERED': '1'}
+    os.chdir(ROOT)
+    os.execve(python, [python, str(ROOT / 'ha_opendesign_mcp/management.py')], env)
+
+
+if __name__ == '__main__':
+    try:
+        main()
+    except (OSError, RuntimeError, KeyError):
+        raise SystemExit('[ha-opendesign-mcp] bootstrap unavailable; check /data/mcp ownership') from None

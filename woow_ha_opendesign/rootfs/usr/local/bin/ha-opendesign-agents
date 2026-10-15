@@ -11,8 +11,10 @@ case "${1:-status}" in
   status) exec /usr/local/bin/node /opt/ha-opendesign/shared-agents.mjs --status ;;
   workspace) printf '%s\n' /data/opendesign/shared/workspaces ;;
   sync) exec /usr/local/bin/node /opt/ha-opendesign/shared-agents.mjs ;;
+  plugin-install) [[ $# == 2 ]] || { echo 'Usage: ha-opendesign-agents plugin-install NAME' >&2; exit 2; }; exec /usr/local/bin/node /opt/ha-opendesign/shared-agents.mjs --plugin-install "$2" ;;
+  plugin-remove) [[ $# == 2 ]] || { echo 'Usage: ha-opendesign-agents plugin-remove NAME' >&2; exit 2; }; exec /usr/local/bin/node /opt/ha-opendesign/shared-agents.mjs --plugin-remove "$2" ;;
   *)
-    printf 'Usage: ha-opendesign-agents [status|workspace|sync]\n' >&2
+    printf 'Usage: ha-opendesign-agents [status|workspace|sync|plugin-install NAME|plugin-remove NAME]\n' >&2
     exit 2
     ;;
 esac

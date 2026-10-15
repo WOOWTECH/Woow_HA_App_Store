@@ -1,16 +1,19 @@
 # Woow HA OpenDesign 附加元件
 
-將 OpenDesign **0.21.1** 封裝成獨立的 Home Assistant 附加元件，支援 `amd64` 與 `aarch64`。
+以 WoowTech 共用 OpenDesign core 映像（與 WOOW PaaS 相同的建置）提供 OpenDesign **0.24.1**，封裝成獨立的 Home Assistant 附加元件，支援 `amd64`。
 
-- 僅透過 Home Assistant Ingress／側邊欄存取，不發布區域網路連接埠。
+- 透過 Home Assistant Ingress／側邊欄存取。唯一宣告的區域網路連接埠是內建 MCP server 的 `8081/tcp`，預設不映射。
 - OpenDesign 只監聽 `127.0.0.1`，由非特權 nginx 提供 Supervisor Ingress 入口。
 - OpenDesign 原生 API BYOK 的供應商、模型與 API 金鑰設定只保留在各管理員瀏覽器的 localStorage；金鑰不會寫入 `/data`、附加元件選項、日誌或 Home Assistant 備份。
 - OpenDesign 專案與應用程式狀態保存於 `/data/opendesign`，由冷備份涵蓋。
 - 系統 Chromium、Playwright 與 Noto CJK／emoji 字型提供無頭匯出。
 - 支援獨立 HTML、ZIP、截圖式 PDF、PNG/JPEG，以及每張投影片為圖片的 PPTX。**不支援可編輯 PPTX**，要求此模式時會明確失敗。
-- 映像以精確鎖定版本內建 OpenCode `1.18.29`，供 OpenDesign 原生 `byok-opencode` API runtime 使用。
-- 映像預裝 Claude Code `2.1.296`、Codex CLI `0.162.1` 與 Pi Coding Agent `1.1.0`，供 OpenDesign Local AI 掃描使用；不需要 Paseo 插件，也不會在首次使用時下載 CLI。
-- 四個 CLI 的 Agent Skills、MCP server 清單與工作檔案透過 `/data/opendesign/shared` 持久化共用；原生插件仍需各代理專用 adapter。
+- core 映像提供 Claude Code `2.1.296`、Codex CLI `0.162.1`、Pi Coding Agent `1.1.0` 與 OpenCode `1.18.33`（OpenDesign 原生 `byok-opencode` API runtime）；附加元件建置時以 UID 1001 逐一核對版本，不需要 Paseo 插件，也不會在首次使用時下載 CLI。
+- 來自 core 的 WoowTech 改動：白牌介面、繁體中文語系修正、匯出修正、內建 `woowtech-brand` skill 與 `woow-omnigent` plugin，並移除 `brainstorming` skill。
+- OpenDesign 旁邊執行 **Omnigent host**（WOOW 共用 `omnigent-host` 套件）：平時只等待登入；在 OpenDesign **Plugins → Omnigent** 對話框（或 CLI Terminal 執行 `omnigent login <伺服器網址>`）連線後，這個附加元件就會成為 Omnigent 的一台機器。
+- 透過 OpenDesign 原生 **Plugins** 頁面安裝的插件與 Skills，會由同一個 daemon 提供給 Claude Code、Codex、Pi、OpenCode 的專案執行流程。
+- OpenDesign 頁面提供受 HA Ingress 保護的 **CLI Terminal**，可在 GUI 中完成 Claude Code、Codex、Pi 的互動登入。OpenCode 更多 API provider 可在 **Settings → API providers** 設定。
+- **內建 OpenDesign MCP server**（取代另一支「Woow OpenDesign MCP Server」附加元件）：MCP 用戶端連 `8081/tcp`＋Bearer token，Claude.ai 連接器用 `/private_<token>/mcp`。管理頁（token、工具權限）是 OpenDesign 頁面右下角 **CLI Terminal** 旁的 **MCP Server**，只能經 HA Ingress 進入。詳見 [DOCS.md](DOCS.md#built-in-mcp-server)。
 
 [English](README.md) · [附加元件說明](DOCS.md)
 
@@ -18,26 +21,28 @@
 
 1. 在 Home Assistant 開啟 **設定 → 附加元件 → 附加元件商店 → 儲存庫**。
 2. 加入 `https://github.com/WOOWTECH/Woow_ha_opendesign_add_on`。
-3. 安裝並啟動 **Woow HA OpenDesign**，再從側邊欄開啟。
+3. 安裝 **Woow HA OpenDesign**，在「資訊」頁籤打開 **Watchdog**（Home Assistant 新裝的附加元件預設是關的；沒開時內部程序一結束，附加元件就會停著不會自己回來），再啟動並從側邊欄開啟。
 4. 在 **設定** 設定 API BYOK 的供應商、模型與金鑰；設定只會保留在該瀏覽器。
-5. 開啟 **Local AI → Rescan** 重新掃描映像內建的 Claude Code、Codex 與 Pi，再依各供應商流程登入。
-共用技能放在 `/data/opendesign/shared/skills`，共用 MCP 清單放在 `/data/opendesign/shared/mcp/servers.json`；服務啟動時會自動同步。若有容器 shell，可用 `ha-opendesign-agents status` 檢查狀態。
+5. 開啟 **Local AI → Rescan** 重新掃描已預裝的 CLI。接著進入 **Plugins** 安裝工作流程，再於專案中選取；OpenDesign 會將所選 Skill stage 到專案並交給當次選用的代理。
+6. 點擊 OpenDesign 頁面上的 **CLI Terminal**，在終端執行 `claude` 後輸入 `/login`、`codex login --device-auth`，或執行 `pi` 後在 TUI 輸入 `/login`。登入狀態保存在 `/data/opendesign/home`。OpenCode API 供應商可在 **Settings → API providers** 設定。
 
 本附加元件沒有設定選項，也沒有主機目錄掛載。
 
-四個 CLI 的共用範圍、MCP 設定格式、外掛相容界線與操作方式請見[共用代理能力說明](docs/shared-agent-capabilities.md)。
+OpenDesign 原生插件、Skills 的共用方式及 CLI 登入步驟請見[代理與插件設定說明](docs/shared-agent-capabilities.md)。
 
 ## 架構
 
 ```text
 瀏覽器 → HA 驗證 Ingress → nginx :8099 → OpenDesign 127.0.0.1:7456
-                                               ↘ /data/opendesign
-                                               ↘ 系統 Chromium renderer
+                                  ↘ loopback ttyd :7681 (CLI 登入 TTY)
+                                  ↘ /data/opendesign
+                                  ↘ 系統 Chromium renderer
+OpenDesign ↔ omnigent-host supervisor → `omnigent host`（登入後主動連到你的 Omnigent 伺服器）
 ```
 
 nginx 先驗證 `X-Ingress-Path`，改寫初始回應中的根路徑 URL，並在應用程式碼之前注入 shim，以處理 fetch、XHR、EventSource、WebSocket、history、worker、動態資源 URL 與 web 模式的匯出缺口。HA Ingress 的 PDF 操作會改走可下載的截圖 PDF 二進位端點，PNG/JPEG 儲存則直接呼叫 daemon 的無頭 image 端點。SSE／WebSocket 不緩衝，且對上游停用壓縮以便安全改寫。
 
-root PID 1 啟動器先準備 Home Assistant 以 root 掛載的 `/data`，安全移除已撤回的 `/data/opendesign/credentials` 舊路徑且不追蹤 symbolic link，再透過 `su-exec` 讓 nginx 與 OpenDesign 以 UID/GID 1001 執行；任一程序退出時會停止另一個並讓 Supervisor 重新啟動。關閉時先送 TERM、最多等待五秒，再送 KILL 並回收程序。nginx PID 與暫存目錄位於 `/tmp`。
+root PID 1 啟動器先準備 Home Assistant 以 root 掛載的 `/data`，安全移除已撤回的 `/data/opendesign/credentials` 舊路徑且不追蹤 symbolic link，再透過 `su-exec` 讓 nginx、OpenDesign（經 omnigent-host 套件 launcher 啟動，同時執行 Omnigent supervisor）與 loopback ttyd 以 UID/GID 1001 執行；任一程序退出時會停止其他程序並結束，由 Supervisor 一起重新啟動（須打開 **Watchdog**；實測約 11 秒恢復，沒開時附加元件會停在 `error`）。關閉時先送 TERM、最多等待五秒，再送 KILL 並回收程序。nginx PID 與暫存目錄位於 `/tmp`。
 
 ## 驗證
 
@@ -45,7 +50,7 @@ root PID 1 啟動器先準備 Home Assistant 以 root 掛載的 `/data`，安全
 ./tests/run.sh
 ```
 
-本機測試不需要 Docker；會檢查 YAML、禁止的主機／本機執行環境耦合、JavaScript 與 shell 語法、renderer／網路安全純函式、匯出 bridge、Ingress fixture，以及 CI 的最小權限與不可變發布政策。CI 會先實際建置 amd64 映像，透過模擬 Supervisor 路徑剝除的代理在 Chromium 中執行注入腳本與 fetch／XHR／SSE／WebSocket、PDF／圖片操作，並驗證健康檢查、持久性、renderer 與 HTTP 匯出。PR／main 建置只有 `contents: read` 權限且不登入 GHCR；amd64／aarch64 映像只在 Git 標籤與 `config.yaml` 版本完全相符、且預檢確認兩個版本標籤都不存在時發布。已發布版本不可覆寫；若只成功發布其中一個架構，必須提升 `config.yaml` 版本並建立新的相符標籤。
+本機測試不需要 Docker；會檢查 YAML、禁止的主機／本機執行環境耦合、JavaScript 與 shell 語法、renderer／網路安全純函式、匯出 bridge、Ingress fixture，以及 CI 的最小權限與不可變發布政策。CI 會先實際建置 amd64 映像，透過模擬 Supervisor 路徑剝除的代理在 Chromium 中執行注入腳本與 fetch／XHR／SSE／WebSocket、PDF／圖片操作，並驗證健康檢查、持久性、renderer 與 HTTP 匯出。PR／main 建置只有 `contents: read` 權限且不登入 GHCR；amd64 映像只在 Git 標籤與 `config.yaml` 版本完全相符、且預檢確認版本標籤不存在時發布。已發布版本不可覆寫；發布失敗時必須提升 `config.yaml` 版本並建立新的相符標籤。
 
 ## 安全性
 
@@ -55,4 +60,4 @@ API BYOK 的供應商、模型與金鑰只存在管理員瀏覽器的 localStora
 
 ## 授權
 
-執行映像衍生自 `ghcr.io/nexu-io/od:0.21.1`。Dockerfile 與 release／CI 建置固定其多架構 digest；Home Assistant 本機附加元件建置器不接受 `build.yaml` 的 digest 語法，因此僅該開發路徑固定使用 `0.21.1` tag。OpenDesign 本身適用其上游授權與聲明。本儲存庫的附加元件封裝及整合程式採 MIT 授權，詳見 [LICENSE](LICENSE)。
+執行映像衍生自 WoowTech OpenDesign core 映像，公開發布為 `ghcr.io/woowtech/open-design-core`（從 WoowTech fork 建置的 OpenDesign 0.24.1）。Dockerfile 與 release／CI 建置以 digest 固定；core digest 發布前，預設值是刻意無法拉取的全零佔位，建置時必須明確傳入 `BUILD_FROM`。Home Assistant 本機附加元件建置器不接受 `build.yaml` 的 digest 語法，因此該開發路徑使用 tag（目前也是佔位）。OpenDesign 採 Apache-2.0 授權，core 映像附有其授權與 WoowTech 改動聲明；本儲存庫的附加元件封裝及整合程式採 MIT 授權，詳見 [LICENSE](LICENSE)，因此映像標示為 `Apache-2.0 AND MIT`。

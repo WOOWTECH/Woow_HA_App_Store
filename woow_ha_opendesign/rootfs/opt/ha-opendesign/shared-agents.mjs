@@ -1,4 +1,4 @@
-import { copyFile, lstat, mkdir, readdir, readFile, rename, symlink, writeFile } from 'node:fs/promises';
+import { copyFile, cp, lstat, mkdir, readdir, readFile, rename, rm, symlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
 const RUNTIME_NAMES = ['claude', 'codex', 'pi', 'opencode'];
@@ -266,6 +266,72 @@ async function discoverSharedPlugins(sharedRoot, catalog) {
   return plugins;
 }
 
+// Bundle layout: manifest.json, skills/<skill-name>/..., and optional mcp/servers.json.
+// Native adapters remain runtime-specific; this command installs only portable components.
+export async function installSharedPlugin({ dataDir = '/data/opendesign', name, home, runtimeEnv = process.env } = {}) {
+  if (!name || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(name)) throw new Error('plugin name must be a lowercase hyphenated identifier');
+  const root = path.join(dataDir, 'shared');
+  const bundle = path.join(root, 'plugins', name);
+  const manifest = JSON.parse(await readFile(path.join(bundle, 'manifest.json'), 'utf8'));
+  if (manifest.schemaVersion !== 1 || manifest.name !== name || !manifest.components) throw new Error('invalid shared plugin manifest');
+  const skills = manifest.components.skills ?? [];
+  const mcpNames = manifest.components.mcpServers ?? [];
+  if (!Array.isArray(skills) || !Array.isArray(mcpNames)) throw new Error('invalid plugin component lists');
+  const stateFile = path.join(root, 'plugins', 'installed.json');
+  let state = { version: 1, plugins: {} };
+  if (await exists(stateFile)) state = JSON.parse(await readFile(stateFile, 'utf8'));
+  if (state.version !== 1 || !state.plugins || state.plugins[name]) throw new Error(`plugin already installed or invalid install state: ${name}`);
+  const catalogFile = path.join(root, 'mcp', 'servers.json');
+  const catalog = JSON.parse(await readFile(catalogFile, 'utf8'));
+  validateMcpCatalog(catalog);
+  let selected = [];
+  if (mcpNames.length) {
+    const pluginCatalog = JSON.parse(await readFile(path.join(bundle, 'mcp', 'servers.json'), 'utf8'));
+    validateMcpCatalog(pluginCatalog);
+    selected = pluginCatalog.servers.filter((item) => mcpNames.includes(item.name));
+    if (selected.length !== mcpNames.length) throw new Error('plugin MCP definitions do not match manifest');
+    const collisions = selected.filter((item) => catalog.servers.some((existing) => existing.name === item.name));
+    if (collisions.length) throw new Error(`MCP server already exists: ${collisions.map((item) => item.name).join(', ')}`);
+  }
+  const installedSkills = [];
+  for (const skill of skills) {
+    if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(skill)) throw new Error(`invalid skill name: ${skill}`);
+    const source = path.join(bundle, 'skills', skill);
+    const target = path.join(root, 'skills', skill);
+    if (!(await exists(path.join(source, 'SKILL.md')))) throw new Error(`plugin skill is missing: ${skill}`);
+    if (await exists(target)) throw new Error(`skill already exists; refusing to overwrite: ${skill}`);
+    await cp(source, target, { recursive: true, errorOnExist: true, force: false, dereference: false });
+    installedSkills.push(skill);
+  }
+  const installedServers = selected.map((item) => item.name);
+  if (mcpNames.length) {
+    catalog.servers.push(...selected);
+    await atomicWrite(catalogFile, `${JSON.stringify(catalog, null, 2)}\n`);
+  }
+  state.plugins[name] = { skills: installedSkills, mcpServers: installedServers };
+  await atomicWrite(stateFile, `${JSON.stringify(state, null, 2)}\n`);
+  await initializeSharedAgents({ dataDir, home, runtimeEnv });
+  return { name, skills: installedSkills, mcpServers: installedServers };
+}
+
+export async function removeSharedPlugin({ dataDir = '/data/opendesign', name, home, runtimeEnv = process.env } = {}) {
+  if (!name || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(name)) throw new Error('plugin name must be a lowercase hyphenated identifier');
+  const root = path.join(dataDir, 'shared');
+  const stateFile = path.join(root, 'plugins', 'installed.json');
+  const state = JSON.parse(await readFile(stateFile, 'utf8'));
+  const owned = state.plugins?.[name];
+  if (!owned) throw new Error(`plugin is not installed: ${name}`);
+  const catalogFile = path.join(root, 'mcp', 'servers.json');
+  const catalog = JSON.parse(await readFile(catalogFile, 'utf8'));
+  catalog.servers = catalog.servers.filter((item) => !owned.mcpServers.includes(item.name));
+  await atomicWrite(catalogFile, `${JSON.stringify(catalog, null, 2)}\n`);
+  for (const skill of owned.skills) await rm(path.join(root, 'skills', skill), { recursive: true, force: true });
+  delete state.plugins[name];
+  await atomicWrite(stateFile, `${JSON.stringify(state, null, 2)}\n`);
+  await initializeSharedAgents({ dataDir, home, runtimeEnv });
+  return { name, removedSkills: owned.skills, removedMcpServers: owned.mcpServers };
+}
+
 export async function initializeSharedAgents({ home, dataDir = '/data/opendesign', runtimeEnv = process.env } = {}) {
   home ??= runtimeEnv.HA_OPENDESIGN_HOME || runtimeEnv.HOME;
   if (!home) throw new Error('HOME is required');
@@ -320,9 +386,12 @@ export async function statusSharedAgents({ home, dataDir = '/data/opendesign', r
 
 if (import.meta.url === `file://${process.argv[1]}`) {
   try {
-    const result = process.argv.includes('--status')
-      ? await statusSharedAgents()
-      : await initializeSharedAgents();
+    const args = process.argv.slice(2);
+    let result;
+    if (args[0] === '--status') result = await statusSharedAgents();
+    else if (args[0] === '--plugin-install') result = await installSharedPlugin({ name: args[1] });
+    else if (args[0] === '--plugin-remove') result = await removeSharedPlugin({ name: args[1] });
+    else result = await initializeSharedAgents();
     process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
   } catch (error) {
     process.stderr.write(`[shared-agents] ${error.message}\n`);

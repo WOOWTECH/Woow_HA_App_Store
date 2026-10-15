@@ -16,7 +16,9 @@ function fail(message) {
 }
 
 async function fetchWithTimeout(url, options) {
-  const signal = AbortSignal.timeout(60_000);
+  // A cold OpenCode start first downloads the models.dev catalog (~5.6 MB);
+  // on a slow or filtered network that alone has taken over a minute.
+  const signal = AbortSignal.timeout(180_000);
   return fetch(url, { ...options, signal });
 }
 

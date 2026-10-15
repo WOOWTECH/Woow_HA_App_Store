@@ -1,7 +1,0 @@
-{
-  "name": "ha-opendesign-opencode",
-  "private": true,
-  "dependencies": {
-    "opencode-ai": "1.18.29"
-  }
-}
