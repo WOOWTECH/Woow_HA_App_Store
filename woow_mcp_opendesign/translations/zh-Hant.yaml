@@ -1,3 +1,0 @@
-configuration: {}
-network:
-  8081/tcp: 可選 LAN Streamable HTTP /mcp；必須使用 Bearer。空值停用主機映射，並非 Ingress 管理介面。
