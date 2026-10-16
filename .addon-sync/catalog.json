@@ -1387,22 +1387,22 @@
     "frigate": {
       "id": "frigate",
       "name": "Frigate",
-      "version": "0.18.1",
+      "version": "0.18.2",
       "repository": "WOOWTECH/Woow_ha_frigate_add_on",
-      "source_sha": "742345a2f056f2b06dea8ffcb6b0a7f87bba2fd2",
+      "source_sha": "e30fd9927d29335239b27d97673e9843f8b33dfd",
       "source_path": "frigate",
       "config_file": "config.yaml",
-      "config_sha256": "sha256:d531f37c36d276050111f72d2dd9e0ab473a0451fa83cd455c32b089c5b71727",
-      "archive_sha256": "sha256:620251326ed483e5c16828d19a8925caedc5d07626f347d6e692ff5d386d5482",
-      "context_fingerprint": "sha256:b6d7ba13d35ce997ed8744c367ce78108738c1ce3eaff5500011937193ed778d",
-      "material_fingerprint": "sha256:4c3489381b7afcd41d07756c4ce4ffaa52d34a99006cf1d73b2ecd6cf1e3115b",
+      "config_sha256": "sha256:7f858da19657fd3e60f6b9e4f775295ec57cb4a1c4ff806aec630993e6f3c4e3",
+      "archive_sha256": "sha256:cdd01ddbe4678cb2b3e6705dbd76697bcaa84df6570f32653dd4e8d1cfae1fce",
+      "context_fingerprint": "sha256:c46ff16c63790fa1a7eb172cdeba90df03ff8044f6e302530aeeeadf5d7ae1d8",
+      "material_fingerprint": "sha256:740c020ecb46f67b1926fae32dcbaaa3eacddf5f441f678036d188456510c2aa",
       "architectures": [
         "amd64",
         "aarch64"
       ],
       "config": {
         "name": "Frigate",
-        "version": "0.18.1",
+        "version": "0.18.2",
         "breaking_versions": [
           "0.18.0",
           "0.17.0",
@@ -1486,21 +1486,21 @@
       "source_build_supported": false,
       "images": {
         "amd64": {
-          "reference": "ghcr.io/woowtech/ha-mirror-ghcr-io-blakeblackshear-frigate:0.18.1",
-          "index_digest": "sha256:ae4ee2505e4dba6313b02bf5e8eea6c35fb1119f7087b9f684082be0a9fa0a71",
-          "digest": "sha256:0171060cb020ba25e6e94746004842b04783c7482b76406d6a707a275bb187f4",
+          "reference": "ghcr.io/woowtech/ha-mirror-ghcr-io-blakeblackshear-frigate:0.18.2",
+          "index_digest": "sha256:fd60f99ffd4eb6c42360ed4e14953e270586f239309ab3983e55b2e97ffac09a",
+          "digest": "sha256:9ebab4801be69ab4ebc7f6ab1d582c859ff7412d457a3fa550056894e8444dad",
           "source_revision": null
         },
         "aarch64": {
-          "reference": "ghcr.io/woowtech/ha-mirror-ghcr-io-blakeblackshear-frigate:0.18.1",
-          "index_digest": "sha256:ae4ee2505e4dba6313b02bf5e8eea6c35fb1119f7087b9f684082be0a9fa0a71",
-          "digest": "sha256:673acbc86fc557504345241e58e6af153c1abe0509b5d49e331e48d7d31b49d0",
+          "reference": "ghcr.io/woowtech/ha-mirror-ghcr-io-blakeblackshear-frigate:0.18.2",
+          "index_digest": "sha256:fd60f99ffd4eb6c42360ed4e14953e270586f239309ab3983e55b2e97ffac09a",
+          "digest": "sha256:a4a0cfca9eba58e4796831a3e7de701da1021ccbaec5cd38fd87d0b5d1a929b9",
           "source_revision": null
         }
       },
       "delivery": "published-image",
       "validation": "manifest+architecture-images+configured-CI",
-      "publisher_run_id": "38544775095",
+      "publisher_run_id": "38879613284",
       "channel": "stable",
       "store_path": "frigate"
     },
@@ -3623,5 +3623,5 @@
       "store_path": "woow_mcp_nextcloud"
     }
   },
-  "catalog_id": "sha256:3f6daa240efed51a00afacb10db42b5dc0e68536e30ccaa1ec4779e7a5a07233"
+  "catalog_id": "sha256:0a00002cd361273b227f3d1f5d19180474d1b82b664939aa4de39dad2c87159b"
 }
