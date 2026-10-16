@@ -11,6 +11,7 @@
 - 管理面板在 HA 側邊欄（Ingress），只有 HA 的 owner 或系統管理員能設定後端與管理權杖；為了驗證這個身分，
   Add-on 需要 `homeassistant_api: true`，這個 token 具廣泛的 Core 存取能力。`hassio_api: false`、保護模式開啟、無 host 網路。
 - MCP client 連 `8081/mcp` 並帶 Bearer 權杖；預設不對 LAN 開埠（`8081/tcp: null`）。Claude.ai 網頁版自訂連接器不能帶 header，改用管理面板產生的密鑰網址 `…/private_<token>/mcp`（0.1.14 起；網址等同密碼）。
+- 0.2.2 起後端還沒設定或暫時連不上時，client（含 Claude.ai 連接器）照樣能連線並列出全部工具；呼叫工具會回錯誤說明原因（未設定／連不上）。
 
 請先看 [本產品操作](DOCS.md)、[變更紀錄](CHANGELOG.md)、[共用繁中指南](https://github.com/WOOWTECH/Woow_ha_mcp_addons/blob/claude-delivery/docs/operations/guide.md)
 與 [client 設定](https://github.com/WOOWTECH/Woow_ha_mcp_addons/blob/claude-delivery/docs/operations/clients.md)。

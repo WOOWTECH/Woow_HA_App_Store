@@ -1,13 +1,27 @@
 # Odoo Changelog
 
-## 0.2.1 — 準備中（未發佈）
+## 0.2.2 — 準備中（未發佈）
 
+- **後端未設定或連不上時也能連線**（使用者 2026-10-16 核准）：0.2.1 以前沒有後端時 initialize 回 HTTP 502（沒有子程序可轉送），Claude.ai 連接器加不上去。現在 initialize、`notifications/initialized`、tools/list 一律成功，tools/list 回完整工具清單與 schema（依停用與寫入授權過濾，與有後端時相同）；tools/call 回 JSON-RPC 錯誤說明原因，不轉給子程序。
+- 未設定：沒有後端時沒有子程序，gateway 自己回 initialize、`notifications/initialized`、ping 與 tools/list（完整 41 個工具），tools/call 回 `-32603 Backend not configured`。
+- 後端已設定但連不上：initialize 與 tools/list 照常由子程序回答（實測七支子程序在後端連不上時都照常列出全部工具）；需要後端的工具呼叫回 `-32603 Backend unreachable`，`data.reason` 是最近一次完成的健康檢查得到的原因（後端自己的錯誤文字，add-on 持有的憑證換成 `[REDACTED]`，最多 1000 字）。健康檢查每 15 秒一次：後端恢復後最多約 15 秒內恢復轉送；子程序剛重啟、還沒完成檢查時一律轉送。
+- 子程序沒在跑（啟動中、退避重啟、失敗）：initialize 最多等 10 秒，之後由 gateway 自己回答；工具呼叫回 `Backend unreachable`，原因 `MCP_SERVER_NOT_READY`。子程序停掉後它開的 session 回 404。
+- 工具清單來源：add-on 內附 `mcp_admin_core/tool_snapshot.py`，是建置前由真實子程序（每個工具都啟用）產生的 tools/list（名稱、說明、原始 inputSchema、annotations），經與子程序回覆相同的過濾；測試確認它與真實子程序逐字一致、與工具分類（surface.py）一致，子程序升級後不一致即測試失敗。
+- gateway 自己開的 session id 以 `woow-local-` 開頭（閒置 30 分鐘結束、最多 256 個）；GET 回 405、DELETE 回 200。設定好後端、子程序通過一次健康檢查後，這個 session 的下一個請求回 404，client 依 MCP 規範重新 initialize 即改連子程序；Claude.ai 是否自動重連尚未實測。
+- gateway：tools/call 的回覆最多可閒置、總共可持續 330 秒（原為閒置 30 秒、總共 120 秒；Python SDK 子程序每 15 秒送 SSE 註解保持連線，所以實際卡住的是 120 秒總時限），配合 Hermes 對話最長 300 秒；其他請求維持原時限。長呼叫期間佔用 32 個同時連線名額之一；各子程序對後端的逾時不變。
+- 不變：權杖檢查最先（401／404）、沒帶 session 400、policy 拒絕優先、readiness（未設定或連不上仍 503）、管理面板、子程序與後端的其他行為。
+- 新版候選需獨立建置、掃描與 PaaS HAOS VM 驗收（含真實 Claude.ai 在未設定與後端離線時新增連接器）；既有 0.1.x、0.2.0、0.2.1 標籤不覆寫。
+
+## 0.2.1 — 2026-10-15 公開（experimental）
+
+- GitHub tag／release `v0.2.1`（以映像建置 commit `88a707f` 為準）。
 - **0.2.0 未上架**：0.2.0 映像已推上 GHCR（標籤不可覆寫）並在測試 VM 實測，但不發佈到 Store；**0.1.14 直接升 0.2.1**，下方 0.2.0 段落的內容（完整版、寫入與工具預設全開、原始錯誤訊息）一併由 0.2.1 發佈。升級遷移與 0.2.0 相同：state schema 3→4 只遷移一次，寫入授權全開、0.1.x 的停用清單清空，token、連線與對外端點保留；0.2.0 寫的 schema 4 state 照樣載入（n8n 另補一個空的 MCP access token 欄位）。
 - 修正競態（測試 VM 實測）：非同步任務被取消後仍在執行時，前景 `execute_method` create 與 `chatter_post` 各回一次 `BACKEND_UNAVAILABLE: Idle`。根因是 odoo-mcp 的 `submit_async_task` 用同一個 session 的 Odoo client 在自己的執行緒跑（不經 add-on 的單一工作者），兩個執行緒共用同一條 XML-RPC 連線、每次請求後又關閉連線；現在同一個 transport 一次只跑一個請求（每個 RPC 之間仍可交錯）。
 - 新版候選需獨立建置、掃描與 PaaS HAOS VM 驗收；既有 0.1.x、0.2.0 標籤不覆寫。
 
 ## 0.2.0 — 未上架（映像只推 GHCR；內容隨 0.2.1 發佈）
 
+- GitHub tag／release `v0.2.0`（以映像建置 commit `baac83b` 為準）。
 - **完整版**（使用者 2026-10-15 決定）：與原始 MCP server 及 PaaS woow-mcp-server 功能一致，所有工具（含高風險）全部開放、全部預設開啟，管理介面可逐一停用工具或取消寫入。本產品開放上游 41 個工具全部（0.1.x 為 13 個有界子集）：tools/list 用子程序自己的 inputSchema（經 provider-safe 正規化），tools/call 參數原樣轉給子程序驗證，輸出不再截斷或投影。gateway 仍檢查工具名在分類名單內（上游新增但未分類的工具一律拒絕）、未停用、寫入工具或混合工具的寫入 operation 有 grant，被拒時回 JSON-RPC 錯誤（見下方 0.1.14 段落）。
 - **寫入預設開啟**：新安裝的 state 每個寫入 grant 都開、`writes_enabled=true`；**既有安裝升級時一次遷移成全開**（state schema 3→4；token、連線與對外端點保留，**0.1.x 的停用清單清空**，升級後所有工具全開）。之後管理員取消的寫入或停用的工具，重啟與後續升級都維持。0.1.x 不接受 schema 4，回退請還原升級前的備份。
 - **風險：網址（權杖）＝完整後端權限**。拿到權杖或 Claude.ai 密鑰網址的 client（包括 AI 助理誤判時）不需再授權即可以後端帳號的權限寫入；後端帳號權限要設對，只保留需要的工具與寫入，外洩時立刻重新產生權杖。說明見 [共用指南](https://github.com/WOOWTECH/Woow_ha_mcp_addons/blob/claude-delivery/docs/operations/guide.md#寫入預設開啟)。
@@ -18,8 +32,9 @@
 - **後端錯誤回傳原始訊息**（使用者 2026-10-15 決定，與 PaaS 一致）：拿掉 0.1.x 對後端錯誤的固定代碼遮蔽（例如 `BACKEND_RPC_FAULT`、`BACKEND_UNAVAILABLE`），client 看到後端的實際錯誤文字（例如 Odoo 的 AccessError 訊息、LiteLLM／EMQX 的錯誤 body；傳輸失敗為「代碼: 原因」）。gateway 在每個轉送的回覆中把 add-on 自己持有的憑證（Add-on 權杖、child token、後端 API key／密碼與其 Basic 認證形式）換成 `[REDACTED]`；log 的密鑰網址遮罩不變。**原始錯誤可能含後端內部資訊**（模型、欄位、路徑、版本），請留意誰能拿到網址。
 - 新版候選需獨立建置、掃描與 PaaS HAOS VM 驗收（含升級遷移、真實 Claude.ai 連線與完整工具實測）；既有 0.1.x 標籤不覆寫。
 
-## 0.1.14 — 準備中（未發佈）
+## 0.1.14 — 2026-10-14 公開（experimental）
 
+- GitHub tag／release `v0.1.14`（以映像建置 commit `ed3122b` 為準）。
 - 0.1.12、0.1.13 映像已推上 GHCR 但從未發佈到 Store，且不再使用（標籤不可覆寫）；以下原為 0.1.12、0.1.13 準備的內容一併改由 0.1.14 發佈。
 - 工具呼叫被拒時改為正常回話說明原因（2026-10-14 經 Claude.ai 實測：參數不符的 tools/call 都只得到 HTTP 403，用戶端只看到傳輸錯誤、無法自行修正）：帶 `Mcp-Session-Id`、格式正確的 tools/call 遇到下列四種拒絕，gateway 回 HTTP 200 的 JSON-RPC 錯誤（`application/json`、`Cache-Control: no-store`）：工具不存在或未啟用 `-32602 Unknown tool`（不區分是哪一種）；參數驗證失敗 `-32602 Invalid params`，`data.errors` 列出欄位路徑、pydantic 錯誤類型與說明（最多 20 筆、每筆 300 字），**不回顯任何參數值**（自訂的鍵名顯示為 `*`，可能夾帶輸入值的錯誤類型改用固定說明）；寫入操作未開放 `-32602 Operation not permitted`（附管理員可在面板開啟的說明）；後端未設定 `-32603 Backend not configured`。權限本身不變：同樣的呼叫照樣被拒、不轉給子程序、不佔連線名額；權杖錯誤仍 401／404，沒帶 session 或格式錯誤的請求仍 403。`/mcp` 與 `/private_<token>/mcp` 相同。修正後尚未以真實 Claude.ai 重測。
 - 修正真實 Claude.ai 自訂連接器連不上（2026-10-14 經 Cloudflare 到測試 VM 的實機紀錄）：Claude.ai 先送 `server/discover`、再退回 `initialize`，params 帶 MCP 保留欄位 `_meta`（traceparent 等），gateway 兩者都回 HTTP 403。現在每個允許的方法都接受選填 `params._meta`（必須是物件、序列化後至多 8 KiB，否則仍 403），並在轉給子程序前移除；不認識的 request（例如 `server/discover`、`resources/list`、`prompts/list`）由 gateway 自己回 HTTP 200 的 JSON-RPC `-32601 Method not found`，不認識的 notification 回 202，兩者都不轉給子程序、不需 session、不佔連線名額；權杖檢查仍最先（錯誤權杖仍 401／404）。只接受 `application/json` 的 client 收到 JSON 格式的 initialize 回覆。工具權限、參數驗證、寫入閘與 `/mcp`、`/private_<token>/mcp` 其他規則不變。修正後尚未以真實 Claude.ai 重測。
@@ -29,14 +44,24 @@
 - 除上述各項外本產品功能未變更；七支共用版本規則一致升版。
 - 新版候選需獨立建置、掃描與 PaaS HAOS VM 驗收（含重開機後自動回來）；既有 0.1.11、0.1.12、0.1.13 標籤不覆寫。
 
-## 0.1.11 — 準備中（未發佈）
+## 0.1.13 — 未上架（映像只推 GHCR；內容隨 0.1.14 發佈）
 
+- GitHub tag／release `v0.1.13`（以映像建置 commit `72b672e` 為準）；內容見 0.1.14 段落。
+
+## 0.1.12 — 未上架（映像只推 GHCR；內容隨 0.1.14 發佈）
+
+- GitHub tag／release `v0.1.12`（以映像建置 commit `439308f` 為準）；內容見 0.1.14 段落。
+
+## 0.1.11 — 2026-10-14 公開（experimental）
+
+- GitHub tag／release `v0.1.11`（以映像建置 commit `7e328f7` 為準）。
 - 本產品功能未變更；依既有七支共用版本規則隨同 LiteLLM MCP metadata 修補升版。
 - hosted CI 的完整 Python 測試階段使用 UID 0，以執行原有 UID10001 nondumpable proof；不略過測試，不改 builder admission。
 - 新版候選需獨立建置、掃描與 PaaS HAOS VM 驗收；既有 0.1.10 標籤不覆寫。
 
-## 0.1.10 — 準備中（未發佈）
+## 0.1.10 — 2026-10-13 公開（experimental）
 
+- GitHub tag／release `v0.1.10`（以映像建置 commit `9762a94` 為準）。
 - 本產品功能未變更；依既有七支共用版本規則隨同 LiteLLM MCP metadata 修補升版。
 - 建置、掃描與實機結果待候選證據；不覆寫 0.1.9 標籤。
 

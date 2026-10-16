@@ -1,5 +1,5 @@
 name: Woow Hermes MCP Server
-version: 0.2.1
+version: 0.2.2
 slug: woow_mcp_hermes
 description: Experimental; HA admin-role management; full tool surface; every tool and write on by default (each can be turned off in the panel).
 url: https://github.com/WOOWTECH/Woow_ha_mcp_addons
