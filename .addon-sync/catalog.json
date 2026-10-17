@@ -2125,22 +2125,22 @@
     "local_audio": {
       "id": "local_audio",
       "name": "Local Audio",
-      "version": "0.1.13",
+      "version": "0.2.0",
       "repository": "WOOWTECH/Woow_ha_music_assistant_add_on",
-      "source_sha": "21ca94aeca16f46d31101ad543096763644ea1f7",
+      "source_sha": "6a86960bca2724a2d299810d7526d910086ce169",
       "source_path": "local_audio",
       "config_file": "config.yaml",
-      "config_sha256": "sha256:f90da1bf7ed668de6dee0b347ec400e98c6f0742f598213e1d90829eae02dfc8",
-      "archive_sha256": "sha256:f651b23ed159fc9988ebed1dda0e3c64d9cbc047bed1468c725f77b8c0d0f350",
-      "context_fingerprint": "sha256:8ffd883cb93858fabcc3b18dfda9fce66b597ad9eb84c11f4d076813943bd0b2",
-      "material_fingerprint": "sha256:bc7f6d0ced6caac2b1116835557dc5462ae87247050aa697dca14120a277116f",
+      "config_sha256": "sha256:0457dbf0eb0c64b90c4d7522fcf504d614d659f3502f08acea608562fb53538a",
+      "archive_sha256": "sha256:9ad04b885ce0f0c399489144f4b34424bb91de7127344dc8625e537622d6e7fa",
+      "context_fingerprint": "sha256:f2d4efffbfa5d4f488a4b18cf14d87c538b5f88ba47c37b08dea034284710314",
+      "material_fingerprint": "sha256:2f4ef82a5ec13297e1afcd6bf6aeba80e585e7458bdaae39dba32aa04aac4f18",
       "architectures": [
         "amd64",
         "aarch64"
       ],
       "config": {
         "name": "Local Audio",
-        "version": "0.1.13",
+        "version": "0.2.0",
         "slug": "local_audio",
         "description": "Turns this Home Assistant system into a synchronized Sendspin player for Music Assistant, playing to speakers or a USB DAC attached to it.",
         "url": "https://github.com/music-assistant/local-audio-addon",
@@ -2170,21 +2170,21 @@
       "source_build_supported": false,
       "images": {
         "amd64": {
-          "reference": "ghcr.io/woowtech/ha-mirror-ghcr-io-music-assistant-local-audio-addon:0.1.13",
-          "index_digest": "sha256:0af919b86c7e3bdc9333efea6454dd566ec18d3bf378935b9a55cd369cfda868",
-          "digest": "sha256:a21ed48816d5e14849cc3ac583e34d6965aa4036a7a05d3129e939a082ed5928",
+          "reference": "ghcr.io/woowtech/ha-mirror-ghcr-io-music-assistant-local-audio-addon:0.2.0",
+          "index_digest": "sha256:2750c80c1bfc3b261afcaf81f81926c347a430d6d12cd4731c1df227bc3ea267",
+          "digest": "sha256:135ec49595e07ffef7af1e3a18cb8e320a330fb92c93b4c6636e49788f2ccde1",
           "source_revision": null
         },
         "aarch64": {
-          "reference": "ghcr.io/woowtech/ha-mirror-ghcr-io-music-assistant-local-audio-addon:0.1.13",
-          "index_digest": "sha256:0af919b86c7e3bdc9333efea6454dd566ec18d3bf378935b9a55cd369cfda868",
-          "digest": "sha256:0e6185057e4e94bec2212ec47e44e93493b4ed1fbcfdaa2c7b9203ceacffa6d0",
+          "reference": "ghcr.io/woowtech/ha-mirror-ghcr-io-music-assistant-local-audio-addon:0.2.0",
+          "index_digest": "sha256:2750c80c1bfc3b261afcaf81f81926c347a430d6d12cd4731c1df227bc3ea267",
+          "digest": "sha256:412dad0d4769a98f47e1618580b2eac829778f050c4582b18ade1900cf0c3e7b",
           "source_revision": null
         }
       },
       "delivery": "published-image",
       "validation": "manifest+architecture-images+configured-CI",
-      "publisher_run_id": "37410335353",
+      "publisher_run_id": "39018867947",
       "channel": "stable",
       "store_path": "local_audio"
     },
@@ -3623,5 +3623,5 @@
       "store_path": "woow_mcp_nextcloud"
     }
   },
-  "catalog_id": "sha256:0235f47e2ad92989e2543fc0b5378410eb068480ddd090d10ab3c48c91a7bbc0"
+  "catalog_id": "sha256:91107d8ad4bea43efe7ae322912a1b7cb0b5ea0fd2196bf936c8617dcb0c6e40"
 }
