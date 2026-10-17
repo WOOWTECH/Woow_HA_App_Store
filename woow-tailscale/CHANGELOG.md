@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.1.3
+
+- Stopping the app now leaves it **stopped** instead of **error**. When
+  Supervisor stops the container, s6 ends every service with SIGTERM, and the
+  service finish scripts recorded that as a failure (exit code 128 + 15 = 143).
+  Supervisor treats any non-zero container exit code as a crash, logged
+  "did not handle SIGTERM … (exit code 143)" and showed the app as `error`
+  after a normal stop or restart. A service ended by SIGTERM no longer sets the
+  container exit code; other signals and real service failures are still
+  reported. This is upstream hassio-addons/app-tailscale#703.
+- Known limitation (unchanged, shared with upstream): stopping the app while it
+  is still waiting for its first login (`NeedsLogin`, an authentication URL in
+  the log) still takes about 10 seconds and ends in `error`, because the
+  start-up step that runs `tailscale up` blocks the s6 shutdown until
+  Supervisor kills the container. Nothing is lost: starting the app again
+  works normally. Tracked in this repository's issues.
+- CI runs the new `tests/test-finish-exit-code.sh`.
+
 ## 0.1.2
 
 - This repository is now the canonical source of the add-on. The App Store copy

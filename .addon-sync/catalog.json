@@ -3053,22 +3053,22 @@
     "woow-tailscale": {
       "id": "woow-tailscale",
       "name": "Woow Tailscale",
-      "version": "0.1.2",
+      "version": "0.1.3",
       "repository": "WOOWTECH/Woow_ha_vpn_tailscale_package",
-      "source_sha": "5f13a8e7bfc9ac499017f3b72bb624e06ccfcbcc",
+      "source_sha": "f345ff8a89641a5a693481d19e9757430b320f18",
       "source_path": "tailscale",
       "config_file": "config.yaml",
-      "config_sha256": "sha256:69c3a76b3555810a3146f2ac6fdbdcdfe823bf26cf1f402fa636969c5bac32b7",
-      "archive_sha256": "sha256:8ab753605635c30f485aea434d119bef3ef5f3f8be40f67f6c5d3f2030a7aad9",
-      "context_fingerprint": "sha256:d28568562feec7739c5e5a839b75c5111498538cfd909b14dd0b337dba61a890",
-      "material_fingerprint": "sha256:95c3bd22fc16adc9f26c9ab4d8eb304ba46b9b5d9cda86937804bd514af15cf0",
+      "config_sha256": "sha256:d1eca90ed9ea6f95b253a0999367612aec5db1f941d58e7a744cb94ffbc7e0f1",
+      "archive_sha256": "sha256:9275e2fa2a628ada9ba2191c4c8c27104f5fd6a7fb0a3e44fa6d28cd303af122",
+      "context_fingerprint": "sha256:77aee222cb6fd85943e52ed56b2de11192277f5433c36d4e0d18fb45e241431a",
+      "material_fingerprint": "sha256:5afebac45658117ee1fd0b89ebada55295d1e1ea55432649937aeb9240e93bf0",
       "architectures": [
         "aarch64",
         "amd64"
       ],
       "config": {
         "name": "Woow Tailscale",
-        "version": "0.1.2",
+        "version": "0.1.3",
         "slug": "woow-tailscale",
         "description": "Tailscale client for Tailscale and Headscale",
         "url": "https://github.com/WOOWTECH/Woow_ha_vpn_tailscale_package",
@@ -3192,7 +3192,7 @@
       "images": {},
       "delivery": "local-source-build",
       "validation": "manifest+source-context+configured-CI (runtime build not certified)",
-      "publisher_run_id": "37437027663",
+      "publisher_run_id": "39071023629",
       "channel": "stable",
       "store_path": "woow-tailscale"
     },
@@ -3623,5 +3623,5 @@
       "store_path": "woow_mcp_nextcloud"
     }
   },
-  "catalog_id": "sha256:91107d8ad4bea43efe7ae322912a1b7cb0b5ea0fd2196bf936c8617dcb0c6e40"
+  "catalog_id": "sha256:d1157864ab4bdab6b6973141b6cec67c021648d4e753787f30c8f24aa5c356bc"
 }
