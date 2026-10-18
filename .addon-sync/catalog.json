@@ -2191,22 +2191,22 @@
     "music_assistant": {
       "id": "music_assistant",
       "name": "Music Assistant",
-      "version": "2.10.6",
+      "version": "2.10.7",
       "repository": "WOOWTECH/Woow_ha_music_assistant_add_on",
-      "source_sha": "79be06fe8353dd645c6228e690623382e8504656",
+      "source_sha": "a25d8faf469d9e1e23e8e79b84aa296ac5fd9434",
       "source_path": "music_assistant",
       "config_file": "config.yaml",
-      "config_sha256": "sha256:395249a844654498e1ee24055ba5172d4fb68fc37b36198df5350bfaf0beb931",
-      "archive_sha256": "sha256:9b075bb1463d79c1712f28bad8340502020d99c2a4535ed0f8f468f65dc0555c",
-      "context_fingerprint": "sha256:87e80a37e0424272a483373cd14156ef92c53343a0f35d05a4891d7094d11e25",
-      "material_fingerprint": "sha256:914d1b33a0be9aa18262f68e78c82705dddc00f21fb29976635f5b952b527124",
+      "config_sha256": "sha256:383c158ce1c6dddfcc2040268190fa0e00387488a3fc63736844967dda338626",
+      "archive_sha256": "sha256:af21f88ed44c6c9bacb5466bc864f86269156092b9c0060c78e641eb882cd4e4",
+      "context_fingerprint": "sha256:6acc68e42fa7cb7cb35b5a791a068754081d084a24035e3268e42c8262a3d8f4",
+      "material_fingerprint": "sha256:90bb8dbab9d6407915083ca9552606c3a8e7a9bc212d262c5ea1d070959066cb",
       "architectures": [
         "amd64",
         "aarch64"
       ],
       "config": {
         "name": "Music Assistant",
-        "version": "2.10.6",
+        "version": "2.10.7",
         "slug": "music_assistant",
         "description": "The Music Assistant server is a free, opensource Media library manager that connects to your streaming services and a wide range of connected speakers.",
         "url": "https://music-assistant.io",
@@ -2260,21 +2260,21 @@
       "source_build_supported": false,
       "images": {
         "amd64": {
-          "reference": "ghcr.io/woowtech/ha-mirror-ghcr-io-music-assistant-server:2.10.6",
-          "index_digest": "sha256:45fdb050e06962097a07feeb092606ad119fac17965c8228a57146448d5fa772",
-          "digest": "sha256:f56bc2e4466a17081c9cab6a75a35135b512dc50d2fc77a3d4f4d4312ef28949",
-          "source_revision": "c24866405bd2068c25a60e1014e5ef8c3f6445bb"
+          "reference": "ghcr.io/woowtech/ha-mirror-ghcr-io-music-assistant-server:2.10.7",
+          "index_digest": "sha256:dce482dc3bf4093735acf217b3bead74a05c46d40922341e775580c6d05394cd",
+          "digest": "sha256:ac3263065888579ac69abe5c71ee33e3df1e39d4d42e5bc529dd8f81ea2c67c5",
+          "source_revision": "76ad754a68abdd0bfd179b13a2807d44771ddf90"
         },
         "aarch64": {
-          "reference": "ghcr.io/woowtech/ha-mirror-ghcr-io-music-assistant-server:2.10.6",
-          "index_digest": "sha256:45fdb050e06962097a07feeb092606ad119fac17965c8228a57146448d5fa772",
-          "digest": "sha256:f96e5feaca760dbce34ee7ca79b5ae56a8d636b9af73985240a4f59322b0b5dc",
-          "source_revision": "c24866405bd2068c25a60e1014e5ef8c3f6445bb"
+          "reference": "ghcr.io/woowtech/ha-mirror-ghcr-io-music-assistant-server:2.10.7",
+          "index_digest": "sha256:dce482dc3bf4093735acf217b3bead74a05c46d40922341e775580c6d05394cd",
+          "digest": "sha256:6a826fb6508f026c83a8863777ab3745da619162f86e78f31a47494796ef3d8d",
+          "source_revision": "76ad754a68abdd0bfd179b13a2807d44771ddf90"
         }
       },
       "delivery": "published-image",
       "validation": "manifest+architecture-images+configured-CI",
-      "publisher_run_id": "38046340342",
+      "publisher_run_id": "39114184407",
       "channel": "stable",
       "store_path": "music_assistant"
     },
@@ -3623,5 +3623,5 @@
       "store_path": "woow_mcp_nextcloud"
     }
   },
-  "catalog_id": "sha256:d1157864ab4bdab6b6973141b6cec67c021648d4e753787f30c8f24aa5c356bc"
+  "catalog_id": "sha256:1d37ee084823d8cea05702ce04dfcf012b4fffc2d4beed777b530b1e778b9ee7"
 }
