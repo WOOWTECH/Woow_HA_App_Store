@@ -436,7 +436,7 @@
       "observe_workflow_names": [
         "WOOW addon source notification"
       ],
-      "ref_policy": "main",
+      "ref_policy": "release",
       "components": [
         {
           "id": "woow_mcp_n8n",
