@@ -432,9 +432,11 @@
     },
     "WOOWTECH/Woow_ha_mcp_addons": {
       "default_branch": "claude-delivery",
-      "required_workflows": [],
+      "required_workflows": [
+        ".github/workflows/woow-addon-release.yml"
+      ],
       "observe_workflow_names": [
-        "WOOW addon source notification"
+        "WOOW addon release"
       ],
       "ref_policy": "release",
       "components": [

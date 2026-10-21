@@ -51,7 +51,7 @@ ha store add https://github.com/WOOWTECH/Woow_HA_App_Store
 
 把對應軟體的部分工具以 MCP（Streamable HTTP，Bearer token）提供給 AI client；預設只開讀取工具，寫入要由 HA 管理員在 add-on 面板逐支授權。圖示與所連接的軟體相同。來源與完整文件：[WOOWTECH/Woow_ha_mcp_addons](https://github.com/WOOWTECH/Woow_ha_mcp_addons)。
 同一套 add-on 也在該 repo 自己的 store；兩個 store 的同名 add-on 在 HA 裡是不同的 add-on（slug 前綴不同，設定不互通），同一台 HA 只裝其中一個來源的。
-下面 6 支自 2026-10-20 起只同步正式 Release：維護者在建置 VM 驗收後，於 GitHub 把整個 repo 的 `v<版本>` 發成正式 Release，本 store 才會前進到該版本（見「版本策略與同步」的例外說明）。原本的第 7 支 `woow_mcp_opendesign` 已於 2026-10-15 下架（見下方說明）。
+下面 6 支只同步正式 Release，和其他來源 repo 一樣：升版的 PR 通過該 repo 的 `WOOW addon release` 檢查並合併後，自動發 `<slug>-v<版本>` 正式 Release，本 store 才會前進到該版本。原本的第 7 支 `woow_mcp_opendesign` 已於 2026-10-15 下架（見下方說明）。
 
 | Slug | 名稱 | Ver | 安裝 | 用途 |
 |---|---|---|---|---|
@@ -107,13 +107,13 @@ ha store add https://github.com/WOOWTECH/Woow_HA_App_Store
 
 - 每個 App 目錄都從**對應的 WOOWTECH 個別 repo 單向同步**，不在本 repo 直接修改。唯一例外是側欄標題政策 `.github/scripts/sidebar_titles.py`。來源、路徑與政策的對照表在 [`.addon-sync/registry.json`](.addon-sync/registry.json)。
 - 流程：
-  0. 來源 repo 的 CI 通過後，由共用的 [`woow-addon-release.yml`](.github/workflows/woow-addon-release.yml) 替新的 addon 版本發正式 Release（單一 addon 的 repo tag 為 `v<版本>`，多個 addon 的 repo 為 `<slug>-v<版本>`）。例外是 [`Woow_ha_mcp_addons`](https://github.com/WOOWTECH/Woow_ha_mcp_addons)：整個 repo 一個 `v<版本>` tag，由維護者在建置 VM 驗收後手動發正式 Release，再手動執行該 repo 的 `WOOW addon source notification`；沒有 required workflow。
+  0. 來源 repo 的 CI 通過後，由共用的 [`woow-addon-release.yml`](.github/workflows/woow-addon-release.yml) 替新的 addon 版本發正式 Release（單一 addon 的 repo tag 為 `v<版本>`，多個 addon 的 repo 為 `<slug>-v<版本>`）。[`Woow_ha_mcp_addons`](https://github.com/WOOWTECH/Woow_ha_mcp_addons) 的映像在建置 VM 建置，所以它的 CI 另外檢查映像已公開、而且要發的版本有建置 VM 的發佈紀錄。
   1. 個別 repo 的 `woow-addon-sync.yml` 確認必要 CI 與各架構映像都通過，再把固定 commit、雜湊與映像 digest 寫進該 repo 的 `woow-addon-sync` 分支。
   2. 本 repo 的 `sync-upstreams.yml` 依 registry 重新驗證：正式 Release、CI、預設分支、各架構映像、防降版、防亂序。
   3. 全部通過後才更新 App 目錄與 [`.addon-sync/catalog.json`](.addon-sync/catalog.json)。
   
   細節見 [`.addon-sync/README.md`](.addon-sync/README.md)。
-- **只同步正式 Release**（ADR-0002）：43 個 App 裡 32 個（含 6 個 `woow_mcp_*`，見上方例外）。以下 11 個仍跟隨來源 repo 的預設分支，正在逐步切換：`apporo_ha_core_1..5`、`woow_ha_core`、`ha_mcp`、`ha_mcp_webhook_proxy`、`frigate`、`jellyfin`、`woow-nginxproxymanager`。每個來源的設定以 [`registry.json`](.addon-sync/registry.json) 的 `ref_policy` 為準。
+- **只同步正式 Release**（ADR-0002）：43 個 App 裡 32 個（含 6 個 `woow_mcp_*`）。以下 11 個仍跟隨來源 repo 的預設分支，正在逐步切換：`apporo_ha_core_1..5`、`woow_ha_core`、`ha_mcp`、`ha_mcp_webhook_proxy`、`frigate`、`jellyfin`、`woow-nginxproxymanager`。每個來源的設定以 [`registry.json`](.addon-sync/registry.json) 的 `ref_policy` 為準。
 - 觸發方式（盡力而為，不是即時）：
   - 排程每 5 分鐘一次，錯開整點。此帳號的 GitHub 排程實測常延遲 2–7 小時。
   - 來源 repo 寫出新的通知後（共用發布 workflow 的 output `ready` 為 `true`），由該 repo `woow-addon-sync.yml` 的 `notify-store` job 送 `repository_dispatch`（`woow-addon-ready`），幾分鐘內同步。來源 repo 要設 `APP_STORE_DISPATCH_TOKEN`，沒設時等排程。27 個來源 repo 都已設（2026-10-13）；token 的權限與輪替見 `.addon-sync/SOURCES.md` 的「Store dispatch token」。
