@@ -2051,21 +2051,21 @@
     "hamh": {
       "id": "hamh",
       "name": "Home-Assistant-Matter-Hub",
-      "version": "2.0.58",
+      "version": "2.0.59",
       "repository": "WOOWTECH/Woow_ha_matter_hub_add_on",
-      "source_sha": "283418b3ac41028a429625b096a7e83b5af3b11a",
+      "source_sha": "e29345ba66d69a005307646e198fb83c93ea4c74",
       "source_path": "hamh",
       "config_file": "config.yaml",
-      "config_sha256": "sha256:1b3fd62e85f97b026f4f697526172fc8ce64a1240fba0c4922aa6a3821b4858e",
-      "archive_sha256": "sha256:ad97c256edf2083e78814ca0c70a06a87f7145d97dcbc7c8f25506317977b270",
-      "context_fingerprint": "sha256:adafc81c5e842f5385ba23b88b904d879f77339e91943722bf81223400834430",
-      "material_fingerprint": "sha256:b258da2aeccbb97e0582c5f18f56503d2c939aa270f17bf90b698a116d0c5bb4",
+      "config_sha256": "sha256:ad597ac33be32354c9a7f02b3656065f9ef17b3fc7ada56d01b17624a2dc3f2b",
+      "archive_sha256": "sha256:5e4f96f3cddd477fb4137e6c6337bbad4f522ec8dabd1921830bc68c85379d0a",
+      "context_fingerprint": "sha256:c4827a40903af447c60647b8885da9f0924403da00b18d7d79c8dd4e4432b59b",
+      "material_fingerprint": "sha256:4134df3673e5c6b6a2d9043625707556a8e618b5b68304485f8d498efc00f511",
       "architectures": [
         "aarch64",
         "amd64"
       ],
       "config": {
-        "version": "2.0.58",
+        "version": "2.0.59",
         "image": "ghcr.io/woowtech/ha-mirror-ghcr-io-riddix-home-assistant-matter-hub-addon",
         "slug": "hamh",
         "name": "Home-Assistant-Matter-Hub",
@@ -2088,6 +2088,7 @@
         ],
         "options": {
           "app_log_level": "info",
+          "protocol_log_level": "info",
           "disable_log_colors": false,
           "mdns_network_interface": "",
           "mdns_strip_global_ipv6": false,
@@ -2095,6 +2096,7 @@
         },
         "schema": {
           "app_log_level": "list(silly|debug|info|notice|warn|error|fatal)",
+          "protocol_log_level": "list(silly|debug|info|notice|warn|error|fatal)",
           "disable_log_colors": "bool",
           "mdns_network_interface": "str?",
           "mdns_strip_global_ipv6": "bool",
@@ -2104,21 +2106,21 @@
       "source_build_supported": false,
       "images": {
         "aarch64": {
-          "reference": "ghcr.io/woowtech/ha-mirror-ghcr-io-riddix-home-assistant-matter-hub-addon:2.0.58",
-          "index_digest": "sha256:0beefd476309671e115372e8e89e3f98833dde7dbe280d32bebea2b005c42106",
-          "digest": "sha256:796ae326204e350e20115ffb30fe7046d8881cac60dca641da9adacb14167a34",
+          "reference": "ghcr.io/woowtech/ha-mirror-ghcr-io-riddix-home-assistant-matter-hub-addon:2.0.59",
+          "index_digest": "sha256:39ad0044c085e270063cb0f76fefdc9a376ac2883e02e3a98d1af472e0e14829",
+          "digest": "sha256:17989c0e26c2f3796cf0e87c7c2c52be47c6bdc79f4a4ea980279bfc2d10e598",
           "source_revision": "bddd6646b846dc44b2ceb744d5a0229191d7ecef"
         },
         "amd64": {
-          "reference": "ghcr.io/woowtech/ha-mirror-ghcr-io-riddix-home-assistant-matter-hub-addon:2.0.58",
-          "index_digest": "sha256:0beefd476309671e115372e8e89e3f98833dde7dbe280d32bebea2b005c42106",
-          "digest": "sha256:9ba116d08d17e1871a7bc27561f0d215376d7aa70de4bb87c070ee2e0710b309",
+          "reference": "ghcr.io/woowtech/ha-mirror-ghcr-io-riddix-home-assistant-matter-hub-addon:2.0.59",
+          "index_digest": "sha256:39ad0044c085e270063cb0f76fefdc9a376ac2883e02e3a98d1af472e0e14829",
+          "digest": "sha256:5508fe642b3929959c5e25d15f7ebbcdebdf9075b7277aff713b534d4242f8b8",
           "source_revision": "bddd6646b846dc44b2ceb744d5a0229191d7ecef"
         }
       },
       "delivery": "published-image",
       "validation": "manifest+architecture-images+configured-CI",
-      "publisher_run_id": "37410306640",
+      "publisher_run_id": "39757396217",
       "channel": "stable",
       "store_path": "hamh"
     },
@@ -3623,5 +3625,5 @@
       "store_path": "woow_mcp_nextcloud"
     }
   },
-  "catalog_id": "sha256:1d37ee084823d8cea05702ce04dfcf012b4fffc2d4beed777b530b1e778b9ee7"
+  "catalog_id": "sha256:238b56dc99893ba2018b337767cb0d64c1811431c50a5a83738ea68f8e78996e"
 }
