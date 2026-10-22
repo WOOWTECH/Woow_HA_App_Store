@@ -360,4 +360,17 @@ class Tests(unittest.TestCase):
         self.assertIn('--apply',commands)
         self.assertNotIn('secrets.',path.read_text(encoding='utf-8').replace('secrets.GITHUB_TOKEN',''))
 
+    def test_every_provider_is_gated_by_branch_rules_or_exempt_with_a_reason(self):
+        # ADR-0005: a gated provider's release is a merged PR that passed these checks; branch_rules.py checks them daily.
+        registry=json.loads((pathlib.Path(__file__).resolve().parent/'registry.json').read_text(encoding='utf-8'))
+        for repo,provider in registry['providers'].items():
+            with self.subTest(repo):
+                rules=provider['branch_rules']
+                if 'exempt' in rules:
+                    self.assertEqual(set(rules),{'exempt'});self.assertTrue(rules['exempt'].strip())
+                else:
+                    self.assertEqual(set(rules),{'required_checks'})
+                    self.assertTrue(rules['required_checks']);self.assertTrue(all(isinstance(c,str) and c for c in rules['required_checks']))
+                    self.assertTrue(provider['required_workflows'])
+
 if __name__=='__main__':unittest.main()

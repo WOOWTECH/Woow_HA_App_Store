@@ -1,0 +1,63 @@
+# Daily check that every gated source repository still has its branch rules
+# (ADR-0005 in the pipeline workspace; standard in .addon-sync/branch_rules.py).
+# A failed run lists each repository and rule that no longer meets it, and
+# GitHub mails the failure. Exempt providers are marked in registry.json.
+#
+# bypass_actors is visible only to a token with Administration read on the
+# source repositories. BRANCH_RULES_TOKEN lives in the branch-rules
+# environment, limited to main, so a workflow on another branch cannot read it;
+# without it the run warns that bypass was not checked.
+name: Source branch rules
+'on':
+  schedule:
+  - cron: '41 1 * * *'
+  workflow_dispatch: {}
+  pull_request:
+    paths:
+    - .addon-sync/branch_rules.py
+    - .addon-sync/addon_sync.py
+    - .addon-sync/requirements.txt
+    - .addon-sync/test_branch_rules.py
+    - .addon-sync/registry.json
+    - .github/workflows/branch-rules.yml
+permissions:
+  contents: read
+jobs:
+  # Scheduled and manual runs on main: may read BRANCH_RULES_TOKEN.
+  check:
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: branch-rules
+    steps:
+    - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      with:
+        persist-credentials: false
+    - name: Install dependencies
+      run: python3 -m pip install -r .addon-sync/requirements.txt
+    - name: Test the check
+      run: python3 .addon-sync/test_branch_rules.py -v
+    - name: Check source branch rules
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        BRANCH_RULES_TOKEN: ${{ secrets.BRANCH_RULES_TOKEN }}
+      run: python3 .addon-sync/branch_rules.py --registry .addon-sync/registry.json
+  # A PR that changes the check or the registry runs it without the token. It
+  # checks the live repositories, so apply a new source's ruleset before adding
+  # its required_checks to the registry.
+  check-pr:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+    - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      with:
+        persist-credentials: false
+    - name: Install dependencies
+      run: python3 -m pip install -r .addon-sync/requirements.txt
+    - name: Test the check
+      run: python3 .addon-sync/test_branch_rules.py -v
+    - name: Check source branch rules
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: python3 .addon-sync/branch_rules.py --registry .addon-sync/registry.json

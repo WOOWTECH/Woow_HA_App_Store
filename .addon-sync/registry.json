@@ -4,9 +4,22 @@
   "providers": {
     "WOOWTECH/apporo_ha_multi_ha_core": {
       "default_branch": "main",
-      "required_workflows": [],
-      "observe_workflow_names": [],
+      "required_workflows": [
+        ".github/workflows/ci.yml"
+      ],
+      "observe_workflow_names": [
+        "CI"
+      ],
       "ref_policy": "main",
+      "branch_rules": {
+        "required_checks": [
+          "Validate and build apporo_ha_core_1 (amd64)",
+          "Validate and build apporo_ha_core_2 (amd64)",
+          "Validate and build apporo_ha_core_3 (amd64)",
+          "Validate and build apporo_ha_core_4 (amd64)",
+          "Validate and build apporo_ha_core_5 (amd64)"
+        ]
+      },
       "components": [
         {
           "id": "apporo_ha_core_1",
@@ -59,6 +72,11 @@
         "Test"
       ],
       "ref_policy": "release",
+      "branch_rules": {
+        "required_checks": [
+          "test"
+        ]
+      },
       "components": [
         {
           "id": "woow_lan_gateway",
@@ -79,6 +97,15 @@
         "Release"
       ],
       "ref_policy": "release",
+      "branch_rules": {
+        "required_checks": [
+          "Validate and build woow_ha_core_1 (amd64)",
+          "Validate and build woow_ha_core_2 (amd64)",
+          "Validate and build woow_ha_core_3 (amd64)",
+          "Validate and build woow_ha_core_4 (amd64)",
+          "Validate and build woow_ha_core_5 (amd64)"
+        ]
+      },
       "components": [
         {
           "id": "woow_ha_core_1",
@@ -131,6 +158,11 @@
         "Validate package"
       ],
       "ref_policy": "main",
+      "branch_rules": {
+        "required_checks": [
+          "package"
+        ]
+      },
       "components": [
         {
           "id": "woow_ha_core",
@@ -177,6 +209,9 @@
         "Webhook Proxy — Stable Guard"
       ],
       "ref_policy": "main",
+      "branch_rules": {
+        "exempt": "upstream fork: workflows inherited from homeassistant-ai/ha-mcp push master directly"
+      },
       "components": [
         {
           "id": "ha_mcp_dev",
@@ -225,6 +260,12 @@
         "Build"
       ],
       "ref_policy": "release",
+      "branch_rules": {
+        "required_checks": [
+          "Build aarch64 add-on",
+          "Build amd64 add-on"
+        ]
+      },
       "components": [
         {
           "id": "cloudflared",
@@ -245,6 +286,14 @@
         "Build & Publish add-on image"
       ],
       "ref_policy": "release",
+      "branch_rules": {
+        "required_checks": [
+          "Verify shared-file hashes",
+          "Check whether this version is released",
+          "Build (amd64)",
+          "Build (aarch64)"
+        ]
+      },
       "components": [
         {
           "id": "woow_ha_code_server",
@@ -264,6 +313,9 @@
         "mirror-sync"
       ],
       "ref_policy": "release",
+      "branch_rules": {
+        "exempt": "mirror: mirror-sync pushes the default branch; checked before release by pipeline #91"
+      },
       "components": [
         {
           "id": "dnsmasq-dhcp",
@@ -284,6 +336,11 @@
         "Release"
       ],
       "ref_policy": "release",
+      "branch_rules": {
+        "required_checks": [
+          "Validate and build emqx (amd64)"
+        ]
+      },
       "components": [
         {
           "id": "woow-emqx",
@@ -303,6 +360,9 @@
         "mirror-sync"
       ],
       "ref_policy": "main",
+      "branch_rules": {
+        "exempt": "mirror: mirror-sync pushes the default branch; checked before release by pipeline #91"
+      },
       "components": [
         {
           "id": "frigate",
@@ -323,6 +383,12 @@
         "Publish Hermes add-on image"
       ],
       "ref_policy": "release",
+      "branch_rules": {
+        "required_checks": [
+          "Unit tests",
+          "Candidate image smoke (no publish)"
+        ]
+      },
       "components": [
         {
           "id": "woow-hermes",
@@ -343,6 +409,11 @@
         "Release"
       ],
       "ref_policy": "release",
+      "branch_rules": {
+        "required_checks": [
+          "Validate and build woow-immich (amd64)"
+        ]
+      },
       "components": [
         {
           "id": "woow-immich",
@@ -362,6 +433,9 @@
         "mirror-sync"
       ],
       "ref_policy": "main",
+      "branch_rules": {
+        "exempt": "mirror: mirror-sync pushes the default branch; checked before release by pipeline #91"
+      },
       "components": [
         {
           "id": "jellyfin",
@@ -382,6 +456,11 @@
         "Release"
       ],
       "ref_policy": "release",
+      "branch_rules": {
+        "required_checks": [
+          "Validate and build knxd (amd64)"
+        ]
+      },
       "components": [
         {
           "id": "knxd",
@@ -403,6 +482,9 @@
         "Release Home-Assistant-Matter-Hub"
       ],
       "ref_policy": "release",
+      "branch_rules": {
+        "exempt": "mirror: mirror-sync pushes the default branch; checked before release by pipeline #91"
+      },
       "components": [
         {
           "id": "hamh-alpha",
@@ -439,6 +521,12 @@
         "WOOW addon release"
       ],
       "ref_policy": "release",
+      "branch_rules": {
+        "required_checks": [
+          "checks",
+          "readiness"
+        ]
+      },
       "components": [
         {
           "id": "woow_mcp_n8n",
@@ -507,6 +595,9 @@
         "mirror-sync"
       ],
       "ref_policy": "release",
+      "branch_rules": {
+        "exempt": "mirror: mirror-sync pushes the default branch; checked before release by pipeline #91"
+      },
       "components": [
         {
           "id": "local_audio",
@@ -575,6 +666,12 @@
         "Publish n8n add-on images"
       ],
       "ref_policy": "release",
+      "branch_rules": {
+        "required_checks": [
+          "Repository tests",
+          "Build and smoke-test the amd64 image"
+        ]
+      },
       "components": [
         {
           "id": "woow-n8n",
@@ -595,6 +692,12 @@
         "Publish Nextcloud Office add-on image"
       ],
       "ref_policy": "release",
+      "branch_rules": {
+        "required_checks": [
+          "Unit tests",
+          "Build and smoke test amd64 image"
+        ]
+      },
       "components": [
         {
           "id": "woow-nextcloud-office",
@@ -608,9 +711,18 @@
     },
     "WOOWTECH/Woow_ha_nginxpm": {
       "default_branch": "main",
-      "required_workflows": [],
-      "observe_workflow_names": [],
+      "required_workflows": [
+        ".github/workflows/ci.yml"
+      ],
+      "observe_workflow_names": [
+        "CI"
+      ],
       "ref_policy": "main",
+      "branch_rules": {
+        "required_checks": [
+          "Validate and build nginxpm (amd64)"
+        ]
+      },
       "components": [
         {
           "id": "woow-nginxproxymanager",
@@ -636,6 +748,14 @@
         "Release"
       ],
       "ref_policy": "release",
+      "branch_rules": {
+        "required_checks": [
+          "lint",
+          "static",
+          "build (amd64)",
+          "build (aarch64)"
+        ]
+      },
       "components": [
         {
           "id": "odoo18ce",
@@ -656,6 +776,12 @@
         "Publish omnigent add-on images"
       ],
       "ref_policy": "release",
+      "branch_rules": {
+        "required_checks": [
+          "build (amd64)",
+          "build (aarch64)"
+        ]
+      },
       "components": [
         {
           "id": "woow-omnigent",
@@ -676,6 +802,13 @@
         "Validate, build, and publish"
       ],
       "ref_policy": "release",
+      "branch_rules": {
+        "required_checks": [
+          "validate",
+          "smoke",
+          "build-nonrelease (amd64, linux/amd64)"
+        ]
+      },
       "components": [
         {
           "id": "woow_ha_opendesign",
@@ -696,6 +829,13 @@
         "Build & Publish add-on image"
       ],
       "ref_policy": "release",
+      "branch_rules": {
+        "required_checks": [
+          "Ingress shim regression and patch syntax",
+          "Build (amd64)",
+          "Build (aarch64)"
+        ]
+      },
       "components": [
         {
           "id": "woow_ha_pi_agent",
@@ -716,6 +856,11 @@
         "Release"
       ],
       "ref_policy": "release",
+      "branch_rules": {
+        "required_checks": [
+          "Validate and build headscale (amd64)"
+        ]
+      },
       "components": [
         {
           "id": "woow-headscale",
@@ -736,6 +881,13 @@
         "Build"
       ],
       "ref_policy": "release",
+      "branch_rules": {
+        "required_checks": [
+          "Tests",
+          "Build (amd64)",
+          "Build (aarch64)"
+        ]
+      },
       "components": [
         {
           "id": "woow-tailscale",
@@ -756,6 +908,9 @@
         "mirror-sync"
       ],
       "ref_policy": "main",
+      "branch_rules": {
+        "exempt": "retired: replaced by woow_ha_code_server, not published"
+      },
       "components": [
         {
           "id": "vscode",

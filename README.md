@@ -105,6 +105,30 @@ ha store add https://github.com/WOOWTECH/Woow_HA_App_Store
 
 ## 版本策略與同步
 
+### 放行：通過必要檢查的升版合併
+
+（管線工作區 ADR-0005，2026-10-21 起。）
+
+- **放行就是合併一個修改 addon 版本、且通過所有必要檢查的 PR。** 不需要特定的人核准，必要檢查本身就是把關。合併後，該 repo 的 CI 在合併後的 commit 上發正式 Release，Store 才會同步（ADR-0002：只有正式 Release 才能出貨）。
+- **WOOWTECH 自己開發的來源 repo 都採同一套分支規則**（`Woow_ha_odoo` 的「main: PR and green checks」形式），套在預設分支上（`Woow_ha_mcp_addons` 是 `claude-delivery`）：
+  - 一律走 PR；禁止刪除分支與強制推送（non-fast-forward）。
+  - 必要檢查是該 repo 在 PR 上會跑、而且會通過的 CI job；PR 的 CI 不設 path filter，否則必要檢查會一直等不到結果。
+  - 核准數 0、不用 CODEOWNERS、`bypass_actors` 為空，誰都不能繞過。
+  - 每個 repo 的 `AGENTS.md` 寫了給 agent 與人的三條規則：只能走 PR、升版 PR 必須通過必要檢查、破壞性變更要寫進 `upgrade-notes.yaml`。
+- **發 Release 的方式可以不同，但都保證**：tag 不重複、每個架構的映像都已推送、Release 只發在合併後的 commit 上。`Woow_ha_odoo` 用自己的 `release.yml`，其他 repo 都用共用的 [`woow-addon-release.yml`](.github/workflows/woow-addon-release.yml)。推 tag 不會發 Release（推 tag 不經過 PR）。（OpenDesign 從推 tag 改成合併後發、Hermes 與 Nextcloud 改用共用 workflow 的 PR 在 2026-10-21 等負責人審查，合併前它們仍用舊方式。）
+- **每個來源在 registry 的 `branch_rules`**：受管的 repo 列出 `required_checks`（ruleset 裡必須有的檢查名稱），而且 `required_workflows` 不能是空的；不受管的寫 `exempt` 與原因：
+  - mirror（Dnsmasq、Frigate、Jellyfin、Matter Hub、Music Assistant）：由 `mirror-sync` 推送預設分支，不需要放行；發 Release 前的檢查見 pipeline #91。
+  - `Woow_ha_ai_mcp`：上游 fork，上游帶來的 workflow 會直接推 `master`。
+  - `Woow_ha_vscode_add_on`：已退役。
+  
+  `test_addon_sync.py` 檢查每個來源都屬於其中一種。
+- **每日監測**：[`branch-rules.yml`](.github/workflows/branch-rules.yml)（`.addon-sync/branch_rules.py`）每天讀 registry，逐一檢查受管 repo 的預設分支規則：四條規則都在、`required_checks` 都還是必要檢查、核准數 0、不要求 CODEOWNERS 審查、預設分支沒換。不符合就讓 run 失敗，訊息列出哪個 repo、哪一條，GitHub 會寄信。`WOOWTECH` 是共用帳號，拿到它的人（包括 agent）都能改規則；這個風險已經接受，靠監測讓改動一定會被發現。
+  - `bypass_actors` 只有具 Administration 讀取權的 token 看得到。它放在 `branch-rules` environment 的 secret `BRANCH_RULES_TOKEN`（fine-grained PAT，resource owner `WOOWTECH`，選所有受管的來源 repo，權限 Administration: read-only），environment 只允許 `main`。沒設時 run 不會失敗，但會警告「沒檢查 bypass」。
+  - 管線工作區的 issue monitor 也顯示最近一次的結果。
+- 新增受管來源時：先在來源 repo 開 PR 讓 CI 跑一次、記下 check 名稱，套用 ruleset（照 `Woow_ha_odoo` 的形式），再在 registry 填 `required_checks`。
+
+### 同步流程
+
 - 每個 App 目錄都從**對應的 WOOWTECH 個別 repo 單向同步**，不在本 repo 直接修改。唯一例外是側欄標題政策 `.github/scripts/sidebar_titles.py`。來源、路徑與政策的對照表在 [`.addon-sync/registry.json`](.addon-sync/registry.json)。
 - 流程：
   0. 來源 repo 的 CI 通過後，由共用的 [`woow-addon-release.yml`](.github/workflows/woow-addon-release.yml) 替新的 addon 版本發正式 Release（單一 addon 的 repo tag 為 `v<版本>`，多個 addon 的 repo 為 `<slug>-v<版本>`）。[`Woow_ha_mcp_addons`](https://github.com/WOOWTECH/Woow_ha_mcp_addons) 的映像在建置 VM 建置，所以它的 CI 另外檢查映像已公開、而且要發的版本有建置 VM 的發佈紀錄。
