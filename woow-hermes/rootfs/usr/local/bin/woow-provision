@@ -26,7 +26,8 @@ curl -fsS -o /dev/null http://127.0.0.1:8642/health || { echo "gateway not healt
 # Approval settings stay at upstream's defaults: the podman stack's sed policy never matched the
 # v2026.8.31 config, and keeping the defaults was chosen over making it work (2026-09-25).
 if [[ ! -f $POLICY_STAMP ]]; then
-  for t in video moa context_engine homeassistant; do as_hermes hermes tools enable "$t"; done
+  # Home Assistant is a catalog plugin; MoA is now selected as a model preset.
+  for t in video context_engine; do as_hermes hermes tools enable "$t"; done
   for p in disk-cleanup security-guidance; do as_hermes hermes plugins enable "$p"; done
   as_hermes touch "$POLICY_STAMP"
   echo "woow-provision: tools and plugins enabled"

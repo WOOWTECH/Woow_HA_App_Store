@@ -1,10 +1,9 @@
-"""Run inside the add-on image: the approval gate for unattended runs.
+"""Run inside the add-on image: the upstream v0.22.5 unattended approval gate.
 
-The gateway sets HERMES_EXEC_ASK=1 for its whole process. Upstream then skips
-the non-interactive branch of check_all_command_guards for everything that
-process runs, so a dangerous command from a cron job, the OpenAI-compatible
-API or a webhook reaches smart approval and is approved there, instead of
-being refused by approvals.cron_mode / approvals.unattended_mode (both deny).
+The gateway sets HERMES_EXEC_ASK=1 for its whole process. The native _presence
+helper must still route cron, API calls without an approval reader, and
+webhooks to approvals.cron_mode / approvals.unattended_mode (both deny).
+This is the regression that the former WOOW approval patch addressed.
 
     podman run --rm -v hermes/test:/t:ro,Z --entrypoint /opt/hermes/.venv/bin/python <image> /t/test-approval-gate.py
 """
@@ -21,13 +20,11 @@ for var in ("HERMES_GATEWAY_SESSION", "HERMES_INTERACTIVE", "HERMES_CRON_SESSION
 os.environ["HERMES_EXEC_ASK"] = "1"  # what start_gateway() does
 
 import tools.approval as approval  # noqa: E402
-import tools.tirith_security as tirith  # noqa: E402
 from gateway.session_context import _VAR_MAP  # noqa: E402
 
-tirith.check_command_security = lambda command: {"action": "allow", "findings": [], "summary": ""}
 smart_calls = []
-approval._smart_approve = lambda command, description: (smart_calls.append(command), "approve")[1]
-approval._get_approval_mode = lambda: "smart"
+approval._smart_verdict = lambda command, *args: (smart_calls.append(command), "approve")[1]
+approval.approval_context._get_approval_mode = lambda: "smart"
 
 COMMAND = "rm -r /opt/data/workspace/approval-gate-test"
 assert approval.detect_dangerous_command(COMMAND)[0], "the test command must count as dangerous"

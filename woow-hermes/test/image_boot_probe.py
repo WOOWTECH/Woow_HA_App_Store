@@ -7,6 +7,24 @@ import subprocess
 import urllib.request
 
 
+# Exact bootstrap from v0.22.5 /opt/hermes/libexec/hermes. /proc/cmdline
+# retains the -c bootstrap even though Python changes its own sys.argv[0].
+BUNDLED_HERMES_BOOTSTRAP = (
+    "import os, site, sys; sys.argv[0]='hermes'; "
+    "site.addsitedir(os.environ['HERMES_SITE']); "
+    "from hermes_cli.main import main; sys.exit(main())"
+)
+
+
+def hermes_arguments(args):
+    if args[:4] == ['/opt/hermes/.venv/bin/python', '-P', '-c', BUNDLED_HERMES_BOOTSTRAP]:
+        return args[4:]
+    if (len(args) >= 2 and Path(args[0]).name.startswith('python')
+            and args[1] == '/opt/hermes/.venv/bin/hermes'):
+        return args[2:]
+    return None
+
+
 def secret_nonempty(path):
     return path.is_file() and path.stat().st_size > 0
 
@@ -40,9 +58,9 @@ def worker_checks(role, pid, main_pid, proc=Path('/proc'), env_reader=environmen
         status = dict(line.split(':', 1) for line in (root / 'status').read_text().splitlines() if ':' in line)
         parent_args = [x.decode() for x in (proc / status['PPid'].strip() / 'cmdline').read_bytes().split(bytes([0])) if x]
         supervised = bool(parent_args) and Path(parent_args[0]).name == 's6-supervise' and parent_args[-1].rstrip('/').split('/')[-1] == role
-        cli = next((i for i, arg in enumerate(args) if Path(arg).name == 'hermes'), -1)
+        cli_args = hermes_arguments(args)
         expected = ['gateway', 'run', '--replace'] if role == 'gateway-default' else ['dashboard']
-        identity = cli >= 0 and args[cli + 1:cli + 1 + len(expected)] == expected
+        identity = cli_args is not None and cli_args[:len(expected)] == expected
         env = env_reader(root / 'environ')
         out['identity'] = supervised and identity and (role != 'gateway-default' or env['supervised_child'])
         out['uid10000'] = status['Uid'].split() == ['10000'] * 4

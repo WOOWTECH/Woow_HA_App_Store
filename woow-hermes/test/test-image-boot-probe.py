@@ -99,6 +99,26 @@ class BootGate(unittest.TestCase):
             (root / '10/cmdline').write_bytes(b's6-supervise\0main-hermes\0')
             self.assertFalse(check()['identity'])
 
+    def test_bundled_launcher_worker_identity(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            for pid in ('20', '10'): (root / pid).mkdir()
+            (root / '20/status').write_text('Uid:\t10000\t10000\t10000\t10000\nPPid:\t10\n')
+            env = {'tokens_absent': True, 'supervised_child': True}
+            def check(role, args, parent=None):
+                (root / '10/cmdline').write_bytes(('s6-supervise\0' + (parent or role) + '\0').encode())
+                (root / '20/cmdline').write_bytes(('\0'.join(args) + '\0').encode())
+                return probe.worker_checks(role, 20, 30, root, lambda _: env)
+            launch = ['/opt/hermes/.venv/bin/python', '-P', '-c', probe.BUNDLED_HERMES_BOOTSTRAP]
+            for role, command in [('gateway-default', ['gateway', 'run', '--replace']),
+                                  ('dashboard', ['dashboard', '--host', '0.0.0.0'])]:
+                self.assertTrue(all(check(role, launch + command).values()))
+                self.assertFalse(check(role, launch + command, parent='main-hermes')['identity'])
+                self.assertFalse(check(role, ['/tmp/python', *launch[1:], *command])['identity'])
+                self.assertFalse(check(role, [*launch[:3], 'print("hermes")', *command])['identity'])
+                self.assertFalse(check(role, [*launch[:3], launch[3] + '; print(1)', *command])['identity'])
+                self.assertFalse(check(role, launch + ['chat'])['identity'])
+
     def test_heartbeat_dashboard_relay_without_gateway_fails(self):
         # Every other gate is live/healthy; only the true gateway PID is absent.
         original_worker_checks = probe.worker_checks

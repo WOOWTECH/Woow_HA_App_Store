@@ -6,7 +6,7 @@
 #
 # The ARG is deliberately not called BUILD_FROM: the Supervisor overrides
 # BUILD_FROM with its own base image when it builds a local add-on.
-ARG HERMES_BASE=docker.io/nousresearch/hermes-agent:v2026.8.31@sha256:64923faeae267792bf9bf87fe3b4c4869e35004e360c7df01730ad801b74d524
+ARG HERMES_BASE=docker.io/nousresearch/hermes-agent:v0.22.5@sha256:9c5561579f3ffdf333401797094ac3a743738d6c25d40f4331c7bf77b694238d
 FROM ${HERMES_BASE}
 USER root
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
@@ -28,7 +28,8 @@ RUN apt-get update \
            /opt/hermes/skills/media/youtube-content /opt/hermes/skills/smart-home/openhue
 
 RUN SITE="$(/opt/hermes/.venv/bin/python3 -c 'import site; print(site.getsitepackages()[0])')" \
- && uv pip install --python /opt/hermes/.venv/bin/python3 --target="$SITE" "ddgs==${DDGS_VERSION}" \
+ && UV="$(/opt/hermes/.venv/bin/python3 -c 'from pm import uv_launcher; print(uv_launcher("uv"))')" \
+ && "$UV" pip install --python /opt/hermes/.venv/bin/python3 --target="$SITE" "ddgs==${DDGS_VERSION}" \
  && /opt/hermes/.venv/bin/python3 -c 'from ddgs import DDGS'
 
 RUN curl -fsSL --retry 5 -o /usr/local/bin/officecli \
@@ -37,23 +38,23 @@ RUN curl -fsSL --retry 5 -o /usr/local/bin/officecli \
  && chmod 0755 /usr/local/bin/officecli \
  && DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=true officecli --version
 
-# MCP OAuth RFC 9207 `iss` patches. They exit 1 when an anchor is missing.
-COPY vendor/podman/patches/ /tmp/woow-patches/
-RUN python3 /tmp/woow-patches/iss-callback.py \
- && python3 /tmp/woow-patches/iss-permissive.py \
- && find /opt/hermes/hermes_cli /opt/hermes/tools -type d -name __pycache__ -prune -exec rm -rf {} + \
- && rm -rf /tmp/woow-patches
+# v0.22.5 carries RFC 9207 issuer through the native dashboard OAuth flow.
+# Keep the upstream SDK issuer validation; do not reapply the old permissive override.
 
-# The browser tool's CLI. Upstream fetches agent-browser@^0.26.0 with npx on first
-# use, into /opt/data/.npm (about 100 MB, and it ends up in every backup).
-ARG AGENT_BROWSER_VERSION=0.26.0
-RUN npm install -g "agent-browser@${AGENT_BROWSER_VERSION}" \
- && npm cache clean --force \
- && agent-browser --version
+# Use the upstream package manager's hash-checked browser CLI pin. Its sealed
+# payload installs extra tools in HERMES_HOME; keep this build-only store outside
+# /opt/data, which Home Assistant replaces with the addon_config bind mount.
+RUN export HERMES_HOME=/opt/woow/browser-home \
+ && python3 -c 'from pm import ensure; ensure("agent-browser", explicit=True)' \
+ && ln -sf "$(python3 -c 'from pm import installed_package; print(installed_package("agent-browser").binary)')" /usr/local/bin/agent-browser \
+ && chmod 0755 /opt/woow/browser-home \
+ && chmod -R a+rX /opt/woow/browser-home/tools \
+ && /command/s6-setuidgid hermes /usr/local/bin/agent-browser --version \
+ && test "$(readlink -f /usr/local/bin/agent-browser | cut -d/ -f2-3)" = opt/woow
 
 # Own patches to upstream code. They exit 1 when an anchor is missing.
 COPY patches/ /tmp/woow-own-patches/
-RUN python3 /tmp/woow-own-patches/approval-unattended.py \
+RUN python3 /tmp/woow-own-patches/upstream-contract.py \
  && python3 /tmp/woow-own-patches/ha-restore-ownership.py \
  && python3 /tmp/woow-own-patches/ha-restore-ownership.py --check \
  && /bin/sh -n /opt/hermes/docker/stage2-hook.sh \
@@ -76,7 +77,7 @@ RUN git clone --filter=blob:none https://github.com/obra/superpowers.git /tmp/sp
  && cp -a /tmp/sp/skills /opt/woow/seed/skills \
  && rm -rf /tmp/sp
 
-RUN chown -R hermes:hermes /opt/hermes/ui-tui /opt/hermes/node_modules
+# Preserve upstream's root-owned immutable application and dependency trees.
 
 # ---- add-on layer ----
 COPY vendor/podman/fix-model-routes.py /opt/woow/fix-model-routes.py
@@ -106,19 +107,12 @@ ENV HERMES_DASHBOARD=1 \
 
 # Build-time proofs. A base bump that moves a patched or rewritten anchor fails here.
 RUN set -e; \
-    L=/opt/hermes/hermes_cli/dashboard_auth/login_page.py; W=/opt/hermes/hermes_cli/web_dist/assets; \
-    grep -q "fetch('/auth/password-login'" "$L"; \
-    grep -q "window.location.assign((data && data.next) || '/')" "$L"; \
-    grep -q "url('/fonts/" "$L"; \
-    grep -q 'href="/auth/login?' "$L"; \
+    W=/opt/hermes/hermes_cli/web_dist/assets; \
     grep -lq 'function(e){return`/`+e}' "$W"/*.js; \
-    grep -lq 'window.location.assign(`/login`)' "$W"/*.js; \
     grep -lq 'href:`/config`' "$W"/*.js; \
     grep -q 'iss: Optional\[str\] = None' /opt/hermes/hermes_cli/web_routers/mcp.py; \
-    grep -q 'iss mismatch tolerated' /opt/hermes/.venv/lib/python*/site-packages/mcp/client/auth/utils.py; \
     nginx -V 2>&1 | grep -q -- '--with-http_sub_module'; \
     test -f /usr/lib/nginx/modules/ngx_http_js_module.so; \
-    grep -q 'woow: unattended runs ignore HERMES_EXEC_ASK' /opt/hermes/tools/approval.py; \
     command -v agent-browser; \
     /opt/hermes/.venv/bin/python -c 'import aiohttp' && /opt/hermes/.venv/bin/python -c 'import ast; ast.parse(open("/opt/woow/ws_relay.py").read())'; \
     nginx -t -c /etc/nginx/nginx.conf; \

@@ -3,7 +3,7 @@
 
 Applied in the addon build, not to a running store. Exact input/output hashes
 fail closed on drift, partial application and tampering. The split source pin
-is a forward compatibility test target, not a change to the Dockerfile base.
+is the current v0.22.5 image target; older excerpts are regression fixtures.
 """
 import argparse
 import ast
@@ -17,8 +17,8 @@ SPECS = {
         "8a17f82d934ddc454c1e8251a3bd862b2ffa11f21bf916f57da803ae43932d48",
     ),
     "hermes_state_sessions.py": (
-        "f1bfa82b4010b054001a8344f1b00a6b25694ae4cd439f8c8355f8a74f0fe084",
-        "2dfef303c1650e5a51478372a753ee36891d1c78d546d3ba937e2a66f7427305",
+        "1eddb7aadd63ca88d366cfe10d9ba3a709f044eb7d6dcb60dbdd699167f7300e",
+        "5cc672ecc77bfed764544efaf4320ec2457c5298f49701d675814ade319a6db3",
     ),
 }
 
@@ -37,7 +37,7 @@ def rewrite_methods(source):
             raise ValueError("session deletion anchors changed")
         anchor = anchors[0]
         if node.name == "delete_session":
-            roots = "[session_id]"
+            roots = "scope" if "_delete_delegate_children(conn, scope)" in anchor else "[session_id]"
         else:
             roots = "expanded" if "_delete_delegate_children(conn, expanded)" in anchor else "existing"
         split = any(arg.arg == "include_compression_chain" for arg in node.args.args + node.args.kwonlyargs)

@@ -222,7 +222,7 @@ MCP 伺服器的 OAuth 登入完成後，瀏覽器會被導回 **儀表板公開
 
 | 元件 | 版本 |
 |---|---|
-| Hermes Agent（`nousresearch/hermes-agent`，以 digest 固定） | v2026.8.31（dashboard 0.21.0） |
+| Hermes Agent（`nousresearch/hermes-agent`，以 digest 固定） | v0.22.5（stable，2026-10-23 發布） |
 | ddgs（DuckDuckGo 搜尋） | 9.16.0 |
 | agent-browser | 0.26.0 |
 | OfficeCLI | v1.0.135 |

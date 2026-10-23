@@ -1,26 +1,16 @@
 # HA exec-boundary regression sources
 
-These two **unmodified installed upstream scripts** were recovered from
-`recovery/focused-source.json` in the 2026-10-11 HA recovery evidence (outside
-this repository). Joining the captured source lines with LF and a final LF
-reproduces the receipt's SHA256 exactly. They are not synthetic shell fixtures
-and were not taken from Hermes 0.21.6.
-
-- Add-on: 0.1.6; observed installed Hermes runtime: 0.21.0.
-- Product baseline commit: `514dca9488522a278ea1ecf2ba950838643048cc`.
-- Unchanged Dockerfile base:
-  `docker.io/nousresearch/hermes-agent:v2026.8.31@sha256:64923faeae267792bf9bf87fe3b4c4869e35004e360c7df01730ad801b74d524`.
-- Original paths: `/opt/hermes/docker/<filename>`.
+Current fixture source: official Hermes Agent **v0.22.5**, commit
+`bf0203a794a07aac3ff764972ab9087baa4e4f4e`, `docker/<filename>`.
+The `hermes-exec-shim.sh` bytes are unchanged from the prior reviewed baseline.
+`main-wrapper.sh` removes virtualenv activation and correctly forwards leading
+Hermes options (such as `-p team gateway run`); both token-clearing boundaries
+remain before any exec and after `with-contenv` re-entry.
 
 | File | SHA256 |
 | --- | --- |
 | `hermes-exec-shim.sh` | `57637e73c8db76aa84a38e4a2edb1b155bfd86a2e89a8d4c38c4546ee1175985` |
-| `main-wrapper.sh` | `d01d7ece5198f79496cf8ce64552665699995f0bf2cabbac78205b6b1779fb9b` |
-
-The build patch requires these exact original bytes (or the exact fully patched
-form), and unique anchors. Both files are validated before either is written.
-A future base change must be reviewed and these sources/hashes/tests refreshed;
-a comment-only drift also fails closed. Existing Podman vendor files are untouched.
+| `main-wrapper.sh` | `9aa0d6e3d3d08ed14b9a7a48fe7cca0535ec614472cc3fc752eb4772e2beb745` |
 
 ## Boundary and checks
 

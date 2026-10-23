@@ -18,7 +18,7 @@ SPECS = {
         ("set -e\n",),
     ),
     "main-wrapper.sh": (
-        "d01d7ece5198f79496cf8ce64552665699995f0bf2cabbac78205b6b1779fb9b",
+        "9aa0d6e3d3d08ed14b9a7a48fe7cca0535ec614472cc3fc752eb4772e2beb745",
         # Clear before the helper exec AND after it rehydrates the environment.
         ("set -e\n", "unset HERMES_MAIN_WRAPPER_ENV_READY\n"),
     ),

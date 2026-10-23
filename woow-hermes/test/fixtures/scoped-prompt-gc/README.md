@@ -4,7 +4,7 @@ The addon builds upstream Hermes from the digest in `hermes/Dockerfile`. Its
 versioned product change lives in `hermes/patches/scoped-prompt-gc.py`; no upstream
 checkout is vendored into the addon. The build applies the patch and verifies
 its complete output hash. A source change, partial patch, unknown split module
-or symlink fails closed. The base digest and addon version are unchanged.
+or symlink fails closed. The v0.22.5 image is the current full-source build target.
 
 Deleting one session previously collected **every** unreferenced prompt in the
 store. Both deletion methods now capture the prompt hashes of the actual
@@ -14,7 +14,17 @@ Compression deletion captures after lineage expansion and active-write guard
 filtering. Existing return values, cascade/branch behavior, transactions,
 guards and public signatures are preserved. Other maintenance GC is unchanged.
 
-## Reviewed inputs
+## Current v0.22.5 source
+
+`hermes_state_sessions.py` at commit `bf0203a794a07aac3ff764972ab9087baa4e4f4e`:
+original SHA-256 `1eddb7aadd63ca88d366cfe10d9ba3a709f044eb7d6dcb60dbdd699167f7300e`,
+patched SHA-256 `5cc672ecc77bfed764544efaf4320ec2457c5298f49701d675814ade319a6db3`.
+Single-session deletion now expands an owned local conversation into `scope`;
+prompt capture follows that entire scope plus delegate children. Runtime CI
+uses the current complete SessionDB. Older excerpts below remain regression
+fixtures for the supported SQL transformation shapes.
+
+## Historical regression inputs
 
 | Source | Original SHA-256 | Patched SHA-256 |
 | --- | --- | --- |

@@ -1,3 +1,13 @@
+## 0.1.10
+
+- Upgrade Hermes Agent to stable **v0.22.5**, commit `bf0203a794a07aac3ff764972ab9087baa4e4f4e`, using the immutable upstream image digest `sha256:9c5561579f3ffdf333401797094ac3a743738d6c25d40f4331c7bf77b694238d`.
+- Adapt HA ingress to upstream's native prefix-aware login and OAuth flow; keep chunk loading, configuration links, isolated ingress cookies and WebSocket relay support.
+- Preserve Supervisor-token isolation across exec boundaries, restored-volume ownership repair and session-scoped prompt cleanup, including the new local conversation lineage.
+- Use upstream's unattended approval fixes and verify them against the built image. Keep application code root-owned and install the browser CLI through upstream's pinned package manager outside the HA data mount. Validate the CLI as the non-root runtime user.
+- Fresh installs no longer try to enable the removed `moa` and `homeassistant` core toolsets. MoA remains available through its model-provider presets. Existing Home Assistant integrations are migrated to the official `homeassistant` plugin at gateway startup when lazy installs and network access permit; `HASS_TOKEN`, `HASS_URL` and platform settings remain unchanged. If migration cannot run, install/enable the plugin in Settings > Plugins or run `hermes plugins install homeassistant`; reconnect only if the saved credentials are invalid. See DOCS for recovery.
+- Remove the legacy permissive OAuth issuer override. A server returning a different issuer must correct its OAuth metadata or callback; Hermes now keeps upstream validation. Reconnect affected integrations after correcting the server.
+- Ports, architecture, add-on options, persistent data mount and HA login credentials remain unchanged. Take a Home Assistant backup before upgrading; restoring it is the rollback path after upstream database migrations.
+
 # Changelog
 
 ## 0.1.9

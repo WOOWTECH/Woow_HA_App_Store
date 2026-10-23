@@ -20,7 +20,7 @@ if UNPATCHED:
     sys.argv.remove("--unpatched")
 HASHES = {
     "hermes-exec-shim.sh": "57637e73c8db76aa84a38e4a2edb1b155bfd86a2e89a8d4c38c4546ee1175985",
-    "main-wrapper.sh": "d01d7ece5198f79496cf8ce64552665699995f0bf2cabbac78205b6b1779fb9b",
+    "main-wrapper.sh": "9aa0d6e3d3d08ed14b9a7a48fe7cca0535ec614472cc3fc752eb4772e2beb745",
 }
 TOKENS = ("SUPERVISOR_TOKEN", "HASSIO_TOKEN")
 
@@ -151,7 +151,7 @@ class ShellBoundary(unittest.TestCase):
     def test_main_routes_root_nonroot_and_reentry(self):
         for uid in ("0", "10000"):
             for reenter in (False, True):
-                for args in ((), ("agent-probe", "", "two words", "*;$HOME"), ("chat", "--query", "a b")):
+                for args in ((), ("agent-probe", "", "two words", "*;$HOME"), ("chat", "--query", "a b"), ("-p", "team", "gateway", "run")):
                     with self.subTest(uid=uid, reenter=reenter, args=args):
                         result, events = self.run_shell("main-wrapper.sh", uid=uid, args=args, reenter=reenter)
                         executable = bool(args and args[0] == "agent-probe")

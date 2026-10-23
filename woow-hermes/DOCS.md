@@ -101,3 +101,35 @@ while the backup runs.
 
 Home Assistant cannot limit an add-on's memory. Hermes with a browser session can use 3-6 GiB;
 the log warns when less than 4 GiB is available at start.
+
+
+## Upgrading to add-on 0.1.10 / Hermes 0.22.5
+
+The data mount, add-on options, ports and dashboard credentials are preserved.
+Take a Home Assistant backup before upgrading; restore that backup to roll back
+upstream database migrations.
+
+Home Assistant's former core integration is now the official `homeassistant`
+plugin. Upstream gateway startup detects an existing `HASS_TOKEN`, enabled
+`platforms.homeassistant`, or selected Home Assistant toolset and attempts the
+catalog migration. It retains `HASS_TOKEN`, `HASS_URL`, platform configuration
+and `ha_*` tool names. Automatic installation requires network access and
+`security.allow_lazy_installs`; an intentionally removed plugin is not silently
+reinstalled after a successful migration.
+
+If the integration is missing after upgrade, open Settings > Plugins and
+install/enable **Home Assistant**, or use `hermes plugins install homeassistant`
+for the affected profile. Check the plugin's dependency-install result and
+connection status. Existing valid credentials can be reused; reconnect or issue
+a new Home Assistant token only if the existing credentials no longer work.
+Fresh installs should configure this integration explicitly. The HA Supervisor
+bootstrap token remains isolated from Hermes and is not an integration token.
+
+MoA is still available as a model provider with named presets (`hermes moa` and
+`/moa`); it is no longer a core toolset to enable with `hermes tools enable moa`.
+The add-on does not start `hermes mcp serve`; the separately packaged WOOW MCP
+bridge continues to use the HTTP gateway API.
+
+OAuth issuer validation now follows upstream. A server that advertises one
+issuer but returns another must correct its OAuth metadata or callback, then
+be reconnected. The old permissive issuer override is not reapplied.

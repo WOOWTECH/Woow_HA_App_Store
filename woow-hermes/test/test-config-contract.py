@@ -78,9 +78,11 @@ assert Image.open(ADDON / "logo.png").size == (400, 400)
 # Swagger's server comes from the ingress path (P4k).
 assert "location = /openapi.json" in nginx and "$openapi_head" in nginx
 
-# Unattended runs follow cron_mode / unattended_mode (own patch, proven at build).
-assert (ADDON / "patches/approval-unattended.py").exists()
-assert "woow: unattended runs ignore HERMES_EXEC_ASK" in dockerfile
+# v0.22.5 supplies native unattended approval and prefix-aware OAuth/login.
+assert (ADDON / "patches/upstream-contract.py").exists()
+assert "upstream-contract.py" in dockerfile
+assert "approval-unattended.py" not in dockerfile
+assert "iss-permissive.py" not in dockerfile
 
 # Defaults the add-on writes while the keys are empty.
 provision_run = (ADDON / "rootfs/etc/s6-overlay/s6-rc.d/woow-provision/run").read_text()
