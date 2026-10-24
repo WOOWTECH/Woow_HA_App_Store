@@ -169,7 +169,7 @@ test('restored /data is handed back to open-design before any child starts', () 
 });
 
 test('launcher runs a loopback-only writable login TTY under the OpenDesign UID', () => {
-  assert.match(launcher, /\/usr\/bin\/ttyd[\s\S]*--interface 127\.0\.0\.1[\s\S]*--base-path \/terminal[\s\S]*--writable[\s\S]*--cwd "\$HOME" \/bin\/bash --login/);
+  assert.match(launcher, /\/usr\/bin\/ttyd[\s\S]*--interface 127\.0\.0\.1[\s\S]*--base-path \/console[\s\S]*--writable[\s\S]*--cwd "\$HOME" \/bin\/bash --login/);
   assert.match(launcher, /start_child ttyd \\\n  "\$\{no_supervisor_env\[@\]\}" su-exec open-design:open-design \/usr\/bin\/ttyd/);
   assert.doesNotMatch(launcher, /shared-agents\.mjs/);
 });

@@ -80,7 +80,7 @@ grep -Fq "window.__OD_INGRESS_PATH__=\"$ingress_prefix\"" "$tmp/ingress.html"
 grep -Eq "(href|src)=\\\"$ingress_prefix/_next/" "$tmp/ingress.html"
 curl --fail-with-body -sS -o "$tmp/terminal.html" \
   -H "X-Ingress-Path: $ingress_prefix" \
-  "http://127.0.0.1:${port}/terminal/"
+  "http://127.0.0.1:${port}/console/"
 grep -Eiq '<!doctype html|<html' "$tmp/terminal.html"
 
 # This models a browser request to <public-prefix>/api/health after Supervisor
@@ -95,21 +95,29 @@ assert json.load(open(sys.argv[1], encoding='utf-8')).get('ok') is True
 PY
 
 # The CLI Terminal is ttyd on loopback only; its sole public route is nginx's
-# ingress-prefixed /terminal/ proxy (HA authenticates that route). The image
-# publishes no other port, and a request without a valid X-Ingress-Path never
-# receives the prefixed terminal assets.
-# The redirect must stay a relative, ingress-prefixed path: an absolute
-# Location would name nginx's internal host:port instead of the HA origin.
+# ingress-prefixed /console/ proxy (HA authenticates that route), the same path
+# as the WOOW PaaS build. The image publishes no other port, and a request
+# without a valid X-Ingress-Path never receives the prefixed terminal assets.
+# Redirects must stay relative, ingress-prefixed paths: an absolute Location
+# would name nginx's internal host:port instead of the HA origin.
 curl -sS -o /dev/null -D "$tmp/terminal-redirect.txt" \
   -H "X-Ingress-Path: $ingress_prefix" \
-  "http://127.0.0.1:${port}/terminal"
+  "http://127.0.0.1:${port}/console"
 grep -Eq '^HTTP/1\.1 302' "$tmp/terminal-redirect.txt"
-grep -Fqx "Location: $ingress_prefix/terminal/"$'\r' "$tmp/terminal-redirect.txt"
+grep -Fqx "Location: $ingress_prefix/console/"$'\r' "$tmp/terminal-redirect.txt"
 # A header that is not Supervisor-shaped is never reflected into the route.
 curl -sS -o /dev/null -D "$tmp/terminal-redirect-invalid.txt" \
   -H 'X-Ingress-Path: /not-an-ingress-path' \
-  "http://127.0.0.1:${port}/terminal"
-grep -Fqx "Location: /terminal/"$'\r' "$tmp/terminal-redirect-invalid.txt"
+  "http://127.0.0.1:${port}/console"
+grep -Fqx "Location: /console/"$'\r' "$tmp/terminal-redirect-invalid.txt"
+# The pre-0.2.5 /terminal/ links (and anything below them) land on /console/.
+for old_path in /terminal /terminal/ /terminal/ws; do
+  curl -sS -o /dev/null -D "$tmp/terminal-legacy.txt" \
+    -H "X-Ingress-Path: $ingress_prefix" \
+    "http://127.0.0.1:${port}${old_path}"
+  grep -Eq '^HTTP/1\.1 302' "$tmp/terminal-legacy.txt"
+  grep -Fqx "Location: $ingress_prefix/console/"$'\r' "$tmp/terminal-legacy.txt"
+done
 test "$(docker port "$container" | wc -l)" = 1
 docker port "$container" | grep -Eq '^8099/tcp -> 127\.0\.0\.1:'
 # The built-in MCP server listens on 8081 for LAN clients (never host-mapped
@@ -284,17 +292,17 @@ docker exec "$container" sh -ceu '
   cd /app/apps/web/out
   grep -rl "請審查並潤色現有動效" _next/static/chunks | head -n1
   grep -rl "_woow/support" _next/static/chunks | head -n1
-  grep -rlF "「CLI Terminal」開啟終端機登入 {agent}" _next/static/chunks | head -n1
-  # HA wording (ha-patches/sign-in-hint.py): no PaaS /console/ hint is left.
-  ! { grep -rlF "/console/" _next/static/chunks | grep -v "[.]map\$"; }
+  grep -rlF "「CLI 終端機」登入 {agent}（Claude 請執行 claude 後輸入 /login）" _next/static/chunks | head -n1
+  # HA wording (ha-patches/sign-in-hint.py): no PaaS-only sign-in hint is left.
+  ! { grep -rlF -e "網址後加上" -e "WoowTech 平台的服務設定" _next/static/chunks | grep -v "[.]map\$"; }
 ' >"$tmp/patched-chunks.txt"
 test "$(wc -l <"$tmp/patched-chunks.txt")" = 3
 zh_chunk=$(sed -n 1p "$tmp/patched-chunks.txt")
 support_chunk=$(sed -n 2p "$tmp/patched-chunks.txt")
 sign_in_chunk=$(sed -n 3p "$tmp/patched-chunks.txt")
 curl -fsS -H "X-Ingress-Path: $ingress_prefix" -o "$tmp/sign-in-chunk.js" "http://127.0.0.1:${port}/$sign_in_chunk"
-grep -Fq 'Sign in to {agent} in the CLI Terminal' "$tmp/sign-in-chunk.js"
-grep -Fq '請點 OpenDesign 頁面右下角的「CLI Terminal」' "$tmp/sign-in-chunk.js"
+grep -Fq 'Sign in to {agent} in the built-in CLI Terminal plugin' "$tmp/sign-in-chunk.js"
+grep -Fq '請到「外掛」頁開啟內建的「CLI 終端機」' "$tmp/sign-in-chunk.js"
 curl -fsS -H "X-Ingress-Path: $ingress_prefix" -o "$tmp/zh-chunk.js" "http://127.0.0.1:${port}/$zh_chunk"
 grep -Fq '請審查並潤色現有動效' "$tmp/zh-chunk.js"
 curl -fsS -H "X-Ingress-Path: $ingress_prefix" -o "$tmp/support-chunk.js" "http://127.0.0.1:${port}/$support_chunk"

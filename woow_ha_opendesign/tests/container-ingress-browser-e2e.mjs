@@ -88,7 +88,7 @@ proxy.on('connection', (socket) => {
 
 proxy.on('upgrade', (request, socket) => {
   publicRequests.push(request.url);
-  if (request.url.startsWith(`${prefix}/terminal/`)) {
+  if (request.url.startsWith(`${prefix}/console/`)) {
     const stripped = request.url.slice(prefix.length) || '/';
     const upstreamRequest = http.request({
       hostname: '127.0.0.1',
@@ -176,22 +176,27 @@ try {
   });
   await page.goto(`http://127.0.0.1:${proxyPort}${prefix}/`, { waitUntil: 'domcontentloaded', timeout: 30_000 });
   await page.waitForFunction(() => window.__OD_HA_EXPORT_BRIDGE_INSTALLED__ === true, null, { timeout: 15_000 });
-  const terminalLink = page.getByRole('link', { name: 'Open agent CLI terminal for login' });
-  await terminalLink.waitFor({ timeout: 15_000 });
-  assert.equal(await terminalLink.getAttribute('href'), `${prefix}/terminal/`);
+  // MCP Server and CLI Terminal are built-in plugins on OpenDesign's Plugins
+  // page (core w2.3); their Open links are plain root-absolute anchors that the
+  // ingress shim scopes to the Supervisor prefix.
+  const pluginsPage = await context.newPage();
+  await pluginsPage.goto(`http://127.0.0.1:${proxyPort}${prefix}/plugins`, { waitUntil: 'domcontentloaded', timeout: 30_000 });
+  const terminalLink = pluginsPage.getByTestId('plugins-card-open-woow-cli-terminal');
+  await terminalLink.waitFor({ timeout: 30_000 });
+  assert.equal(await terminalLink.getAttribute('href'), `${prefix}/console/`);
   assert.equal(await terminalLink.getAttribute('target'), '_blank');
-  // The built-in MCP server's administration entry sits next to it. This
-  // proxy's source is not the Supervisor peer, so only the link is checked
-  // here; mcp-runtime/tests/e2e/mcp_link_browser.mjs follows it from there.
-  const mcpLink = page.getByRole('link', { name: 'Open built-in MCP server administration' });
+  // This proxy's source is not the Supervisor peer, so only the MCP Server
+  // link is checked here; mcp-runtime/tests/e2e/mcp_link_browser.mjs follows it.
+  const mcpLink = pluginsPage.getByTestId('plugins-card-open-woow-mcp-server');
   await mcpLink.waitFor({ timeout: 15_000 });
-  assert.ok(await mcpLink.isVisible(), 'MCP Server entry must be visible');
+  assert.ok(await mcpLink.isVisible(), 'MCP Server plugin must be visible');
   assert.equal(await mcpLink.getAttribute('href'), `${prefix}/mcp-admin/`);
   assert.equal(await mcpLink.getAttribute('target'), '_blank');
+  assert.equal(await pluginsPage.locator('#od-ha-shell-links').count(), 0, 'no floating entry buttons any more');
   const terminalSocketPromise = new Promise((resolve) => {
     context.on('page', (newPage) => {
       newPage.on('websocket', (socket) => {
-        if (socket.url().endsWith('/terminal/ws')) resolve(socket);
+        if (socket.url().endsWith('/console/ws')) resolve(socket);
       });
     });
   });
@@ -199,8 +204,8 @@ try {
     context.waitForEvent('page'),
     terminalLink.click(),
   ]);
-  await terminalPage.waitForURL((url) => url.pathname === `${prefix}/terminal/`, { timeout: 15_000 });
-  assert.equal(new URL(terminalPage.url()).pathname, `${prefix}/terminal/`);
+  await terminalPage.waitForURL((url) => url.pathname === `${prefix}/console/`, { timeout: 15_000 });
+  assert.equal(new URL(terminalPage.url()).pathname, `${prefix}/console/`);
   let terminalSocketTimeout;
   const terminalSocket = await Promise.race([
     terminalSocketPromise,
@@ -223,6 +228,7 @@ try {
   await terminalPage.keyboard.press('Enter');
   await terminalInput;
   await terminalPage.close();
+  await pluginsPage.close();
   try {
     await page.waitForFunction(
       () => !document.body.textContent.includes('Loading OpenDesign…'),

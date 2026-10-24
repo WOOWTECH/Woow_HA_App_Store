@@ -12,8 +12,8 @@ OpenDesign **0.24.1** from the shared WoowTech OpenDesign core image (the same b
 - WoowTech changes from the core: white-label UI, Traditional Chinese (zh-TW) locale fixes, export fixes, the bundled `woowtech-brand` skill, and no `brainstorming` skill.
 - No Omnigent: 0.2.1 removed the Omnigent host and the core's `woow-omnigent` plugin and skill until Omnigent is stable (see [DOCS.md](DOCS.md#omnigent-removed-in-021)).
 - OpenDesign owns installed plugins and skills in its persistent data directory. Install them from OpenDesign's **Plugins** page; the daemon stages the selected skill into the project and supplies it to whichever installed agent runtime runs that project.
-- A Home Assistant authenticated **CLI Terminal** entry lets you complete interactive logins for Claude Code, Codex, and Pi. OpenCode's additional model providers can be configured in OpenDesign **Settings → API providers**.
-- A **built-in OpenDesign MCP server** (replacing the separate *Woow OpenDesign MCP Server* add-on) serves MCP clients on `8081/tcp` with a Bearer token, or `/private_<token>/mcp` for Claude.ai connectors. It offers the same 15 tools as the WOOW PaaS OpenDesign MCP, all on by default, including the writers `create_project`, `send_message` (they run an OpenDesign agent) and `delete_project`. Its administration (token, tool permissions) is the **MCP Server** entry next to **CLI Terminal**, reachable only through HA Ingress. See [DOCS.md](DOCS.md#built-in-mcp-server).
+- A Home Assistant authenticated **CLI Terminal** (a built-in plugin on OpenDesign's **Plugins** page, at `<Ingress>/console/`) lets you complete interactive logins for Claude Code, Codex, and Pi. OpenCode's additional model providers can be configured in OpenDesign **Settings → API providers**.
+- A **built-in OpenDesign MCP server** (replacing the separate *Woow OpenDesign MCP Server* add-on) serves MCP clients on `8081/tcp` with a Bearer token, or `/private_<token>/mcp` for Claude.ai connectors. It offers the same 15 tools as the WOOW PaaS OpenDesign MCP, all on by default, including the writers `create_project`, `send_message` (they run an OpenDesign agent) and `delete_project`. Its administration (token, tool permissions) is the built-in **MCP Server** plugin on the **Plugins** page, reachable only through HA Ingress. See [DOCS.md](DOCS.md#built-in-mcp-server).
 
 [繁體中文](README_zh-TW.md) · [Add-on documentation](DOCS.md)
 
@@ -24,7 +24,7 @@ OpenDesign **0.24.1** from the shared WoowTech OpenDesign core image (the same b
 3. Install **Woow HA OpenDesign**. On its **Info** tab turn on **Watchdog** (Home Assistant leaves it off for new add-ons; without it the add-on stays stopped after an internal process exits), then start it and open **OpenDesign** from the sidebar.
 4. In **Settings**, configure API BYOK with your provider, model, and key. Those settings remain local to that browser.
 5. Open **Local AI → Rescan** after installation or image updates. In OpenDesign, open **Plugins**, install the workflow you want, then select it in a project. Its Skills and plugin context are resolved by the native OpenDesign daemon for Claude Code, Codex, Pi, or OpenCode runs.
-6. Click **CLI Terminal** in the OpenDesign page to open the authenticated terminal. Run `claude` and `/login`, `codex login --device-auth`, or `pi` and use its `/login` command. The terminal uses the persistent `/data/opendesign/home` profile. OpenCode API providers can instead be entered in **Settings → API providers**.
+6. In OpenDesign open **Plugins** (Installed) and click **Open** on the built-in **CLI Terminal** plugin; it opens the authenticated terminal in a new tab. Run `claude` and `/login`, `codex login --device-auth`, or `pi` and use its `/login` command. The terminal uses the persistent `/data/opendesign/home` profile. OpenCode API providers can instead be entered in **Settings → API providers**.
 
 There are no add-on configuration options and no host directory mappings.
 

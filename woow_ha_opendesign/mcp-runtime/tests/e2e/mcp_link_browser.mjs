@@ -54,14 +54,15 @@ try {
     localStorage.setItem('open-design:config', JSON.stringify({ onboardingCompleted: true }));
   });
   const page = await context.newPage();
-  await page.goto(`${base}${prefix}/`, { waitUntil: 'domcontentloaded', timeout: 60_000 });
-  const link = page.getByRole('link', { name: 'Open built-in MCP server administration' });
+  // MCP Server is a built-in plugin on OpenDesign's Plugins page (core w2.3).
+  await page.goto(`${base}${prefix}/plugins`, { waitUntil: 'domcontentloaded', timeout: 60_000 });
+  const link = page.getByTestId('plugins-card-open-woow-mcp-server');
   await link.waitFor({ timeout: 30_000 });
   assert.equal(await link.getAttribute('href'), `${prefix}/mcp-admin/`);
-  assert.equal(await link.textContent(), 'MCP Server');
-  assert.ok(await link.isVisible(), 'MCP Server entry must be visible on the OpenDesign page');
-  const terminal = page.getByRole('link', { name: 'Open agent CLI terminal for login' });
-  assert.ok(await terminal.isVisible(), 'CLI Terminal entry must stay visible next to it');
+  assert.ok(await link.isVisible(), 'MCP Server plugin must be visible on the Plugins page');
+  const terminal = page.getByTestId('plugins-card-open-woow-cli-terminal');
+  assert.ok(await terminal.isVisible(), 'CLI Terminal plugin must stay visible next to it');
+  assert.equal(await terminal.getAttribute('href'), `${prefix}/console/`);
   const bootstrap = context.waitForEvent('response', {
     predicate: (response) => new URL(response.url()).pathname === `${prefix}/mcp-admin/api/bootstrap`,
     timeout: 30_000,

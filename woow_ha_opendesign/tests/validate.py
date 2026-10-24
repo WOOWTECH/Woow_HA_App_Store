@@ -27,7 +27,7 @@ with (ROOT / ".github/workflows/build.yml").open() as handle:
 check(isinstance(workflow, dict) and "jobs" in workflow, "GitHub Actions workflow YAML is invalid")
 check(set(repository) == {"name", "url", "maintainer"}, "repository.yaml must have the repository contract keys")
 check(repository.get("url") == "https://github.com/WOOWTECH/Woow_ha_opendesign_add_on", "repository URL mismatch")
-check(config.get("version") == "0.2.4", "release version must be 0.2.4")
+check(config.get("version") == "0.2.5", "release version must be 0.2.5")
 check("browser-local API BYOK" in config.get("description", ""), "add-on description must describe browser-local BYOK")
 check(config.get("arch") == ["amd64"], "the core image is amd64-only; only amd64 is allowed")
 check(config.get("ingress") is True, "ingress must be enabled")
@@ -44,8 +44,8 @@ check(config.get("image") == "ghcr.io/woowtech/woow-ha-opendesign-{arch}", "arch
 # The add-on derives from the shared WoowTech OpenDesign core image. Every build
 # input names the same published core (digest for CI/Dockerfile, its immutable
 # tag for Supervisor local builds), so no build can fall back to upstream OpenDesign.
-core_image = "ghcr.io/woowtech/open-design-core:20261018.1219@sha256:f349632632e0c3fa9e546da8e83f89aa60d283d473fdf47fffa5728e01cde023"
-local_core_image = "ghcr.io/woowtech/open-design-core:20261018.1219"
+core_image = "ghcr.io/woowtech/open-design-core:20261024.0943@sha256:ffbb2bd070c488d79d960ee72fb7717f43791af6a4ae1585943598ad444a76e0"
+local_core_image = "ghcr.io/woowtech/open-design-core:20261024.0943"
 check(build.get("build_from") == {"amd64": local_core_image}, "Supervisor local builds must use the core image (tag syntax, amd64 only)")
 check("nexu-io/od" not in (ROOT / "build.yaml").read_text(), "build.yaml must not fall back to the upstream OpenDesign image")
 check(package.get("dependencies") == {"playwright-core": "1.55.0"}, "renderer dependency must remain exactly pinned")
@@ -150,7 +150,7 @@ check("mkdtemp('/tmp/ha-opendesign-chromium-')" in renderer and "XDG_CONFIG_HOME
 check("--disable-web-security" not in renderer, "renderer must not disable browser web security")
 check("redirectPdfRequest" in export_bridge and "/export/image" in export_bridge, "browser PDF/image export bridge missing")
 check("proxy_pass http://127.0.0.1:7456" in nginx, "nginx may only forward to loopback OpenDesign")
-check("proxy_pass http://127.0.0.1:7681;" in nginx and "location ^~ /terminal/" in nginx, "interactive CLI TTY must be routed only through nginx")
+check("proxy_pass http://127.0.0.1:7681;" in nginx and "location ^~ /console/" in nginx, "interactive CLI TTY must be routed only through nginx (/console/)")
 check("/tmp/ha-opendesign-nginx" in nginx, "unprivileged nginx temp paths missing")
 check("error_log stderr" in nginx and "access_log off" in nginx, "unprivileged nginx must not reopen HA Supervisor log pipes through /dev")
 check("container-smoke.sh" in workflow_text and "load: true" in workflow_text, "real amd64 container smoke lane missing")

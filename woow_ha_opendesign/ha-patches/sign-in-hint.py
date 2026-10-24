@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""HA layer: the "{agent} is not signed in" hint points at the add-on's CLI Terminal.
+"""HA layer: the "{agent} is not signed in" hint keeps only Home Assistant wording.
 
 The core image's white-label patch (paas-odoo-ci open-design/woow-patches/white-label-links.py) rewrites
-this run-error text for the WOOW PaaS: open the terminal at "<service URL>/console/" or enter an API key in
-the WoowTech platform's service settings. Neither exists in Home Assistant. Here the terminal is the
-add-on's **CLI Terminal** button (injected by ha-ingress.js, bottom right of the OpenDesign page) and API
-keys are OpenDesign's own browser-local Settings.
+this run-error text for the WOOW PaaS: open the built-in **CLI Terminal** plugin on OpenDesign's Plugins
+page (外掛／插件) or enter an API key in the WoowTech platform's service settings. The plugin exists in
+Home Assistant too, but the platform's service settings do not; API keys are OpenDesign's own
+browser-local Settings here, and Claude signs in with `claude` then `/login`.
 
 Every edit is an exact-text replacement of one i18n entry in the built web chunks and must match exactly
 once across all chunks; otherwise the build FAILS (a core change must re-check this patch, never ship the
@@ -21,29 +21,29 @@ KEY = '"chat.runError.signInMessage.other":"%s"'
 EDITS = [
     (
         "zh-TW",
-        "請在本服務網址後加上 /console/ 開啟終端機登入 {agent}（Claude 請執行 claude login），"
+        "請到「外掛」頁開啟內建的「CLI 終端機」登入 {agent}（Claude 請執行 claude login），"
         "或到 WoowTech 平台的服務設定填入 API Key；也可以到「設定 → 模型與供應商」改用 OpenCode。",
-        "請點 OpenDesign 頁面右下角的「CLI Terminal」開啟終端機登入 {agent}（Claude 請執行 claude 後輸入 /login），"
+        "請到「外掛」頁開啟內建的「CLI 終端機」登入 {agent}（Claude 請執行 claude 後輸入 /login），"
         "或到「設定 → 模型與供應商」填入 API Key 或改用 OpenCode，再重新嘗試。",
     ),
     (
         "zh-CN",
-        "请在本服务网址后加上 /console/ 打开终端登录 {agent}（Claude 请运行 claude login），"
+        "请到「插件」页打开内置的「CLI 终端」登录 {agent}（Claude 请运行 claude login），"
         "或到 WoowTech 平台的服务设置填入 API Key；也可以到「设置 → 模型与供应商」改用 OpenCode。",
-        "请点 OpenDesign 页面右下角的「CLI Terminal」打开终端登录 {agent}（Claude 请运行 claude 后输入 /login），"
+        "请到「插件」页打开内置的「CLI 终端」登录 {agent}（Claude 请运行 claude 后输入 /login），"
         "或到「设置 → 模型与供应商」填入 API Key 或改用 OpenCode，再重新尝试。",
     ),
     (
         "en",
         "Sign in to {agent} first, then try again.",
-        "Sign in to {agent} in the CLI Terminal (the button at the bottom right of the OpenDesign page; "
-        "for Claude, run claude and then /login), or add an API key or switch to OpenCode in "
-        "Settings → Models & providers, then try again.",
+        "Sign in to {agent} in the built-in CLI Terminal plugin (Plugins page; for Claude, run claude "
+        "and then /login), or add an API key or switch to OpenCode in Settings → Models & providers, "
+        "then try again.",
     ),
 ]
 
 # PaaS-only wording that must not reach a Home Assistant user.
-FORBIDDEN = ("/console/", "WoowTech 平台的服務設定", "WoowTech 平台的服务设置")
+FORBIDDEN = ("網址後加上", "网址后加上", "WoowTech 平台的服務設定", "WoowTech 平台的服务设置")
 
 
 def main(outdir):

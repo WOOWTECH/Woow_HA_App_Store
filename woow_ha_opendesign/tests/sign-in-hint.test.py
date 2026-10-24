@@ -41,15 +41,18 @@ result, files = run({"i18n.js": chunk(core + others), "other.js": "console.log(1
 check(result.returncode == 0, f"core chunk must patch cleanly: {result.stderr}")
 check(files["i18n.js"] == chunk(ha + others), "every core hint must become the HA text, other locales untouched")
 check(files["i18n.js.map"] == chunk(core), "source maps are not executed and must stay untouched")
-check(all("CLI Terminal" in text and "/console/" not in text for text in ha), "HA hints must name the CLI Terminal, never /console/")
-check(any("「CLI Terminal」" in text and "登入" in text for text in ha), "zh-TW hint must name the CLI Terminal")
+check(all(any(name in text for name in ("CLI 終端機", "CLI 终端", "CLI Terminal")) for text in ha), "HA hints must name the built-in CLI Terminal plugin")
+check(not any(bad in text for text in ha for bad in patch.FORBIDDEN), "HA hints must not keep PaaS-only wording")
+check("「外掛」頁" in ha[0] and "「CLI 終端機」" in ha[0] and "/login" in ha[0], "zh-TW hint must point at 外掛 → CLI 終端機 and claude /login")
 
 result, _ = run({"i18n.js": chunk(core[1:])})
 check(result.returncode != 0 and "zh-TW" in result.stderr, "a missing core text must fail the build")
 result, _ = run({"a.js": chunk(core), "b.js": chunk(core[:1])})
 check(result.returncode != 0, "an ambiguous core text (two matches) must fail the build")
-result, _ = run({"i18n.js": chunk(core), "help.js": '"x":"open /console/ to sign in"'})
-check(result.returncode != 0 and "/console/" in result.stderr, "remaining PaaS /console/ wording must fail the build")
+result, _ = run({"i18n.js": chunk(core), "help.js": '"x":"請在本服務網址後加上 /console/"'})
+check(result.returncode != 0 and "網址後加上" in result.stderr, "remaining PaaS wording must fail the build")
+result, _ = run({"i18n.js": chunk(core), "plugin.js": '"path":"/console/"'})
+check(result.returncode == 0, "the /console/ path itself (the CLI Terminal plugin) is allowed")
 
 if errors:
     print("\n".join(errors), file=sys.stderr)

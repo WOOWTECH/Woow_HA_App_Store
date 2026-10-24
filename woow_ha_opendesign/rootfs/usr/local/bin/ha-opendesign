@@ -223,7 +223,7 @@ start_child nginx \
   "${no_supervisor_env[@]}" su-exec ha-ingress:ha-ingress /usr/sbin/nginx -e stderr -c /etc/nginx/nginx.conf
 start_child ttyd \
   "${no_supervisor_env[@]}" su-exec open-design:open-design /usr/bin/ttyd \
-  --port 7681 --interface 127.0.0.1 --base-path /terminal \
+  --port 7681 --interface 127.0.0.1 --base-path /console \
   --writable --check-origin --max-clients 1 \
   --cwd "$HOME" /bin/bash --login
 # Built-in MCP server: starts as root only to own /data/mcp and

@@ -12,8 +12,8 @@
 - 來自 core 的 WoowTech 改動：白牌介面、繁體中文語系修正、匯出修正、內建 `woowtech-brand` skill，並移除 `brainstorming` skill。
 - 不含 Omnigent：0.2.1 起移除 Omnigent host，以及 core 內建的 `woow-omnigent` plugin 與 skill，待 Omnigent 穩定後再加回（見 [DOCS.md](DOCS.md#omnigent-removed-in-021)）。
 - 透過 OpenDesign 原生 **Plugins** 頁面安裝的插件與 Skills，會由同一個 daemon 提供給 Claude Code、Codex、Pi、OpenCode 的專案執行流程。
-- OpenDesign 頁面提供受 HA Ingress 保護的 **CLI Terminal**，可在 GUI 中完成 Claude Code、Codex、Pi 的互動登入。OpenCode 更多 API provider 可在 **Settings → API providers** 設定。
-- **內建 OpenDesign MCP server**（取代另一支「Woow OpenDesign MCP Server」附加元件）：MCP 用戶端連 `8081/tcp`＋Bearer token，Claude.ai 連接器用 `/private_<token>/mcp`。工具與 WOOW PaaS 的 OpenDesign MCP 相同共 15 支，預設全開，包含寫入工具 `create_project`、`send_message`（會執行 OpenDesign agent）與 `delete_project`。管理頁（token、工具權限）是 OpenDesign 頁面右下角 **CLI Terminal** 旁的 **MCP Server**，只能經 HA Ingress 進入。詳見 [DOCS.md](DOCS.md#built-in-mcp-server)。
+- OpenDesign「外掛」頁內建受 HA Ingress 保護的 **CLI 終端機**（`<Ingress>/console/`），可在 GUI 中完成 Claude Code、Codex、Pi 的互動登入。OpenCode 更多 API provider 可在 **Settings → API providers** 設定。
+- **內建 OpenDesign MCP server**（取代另一支「Woow OpenDesign MCP Server」附加元件）：MCP 用戶端連 `8081/tcp`＋Bearer token，Claude.ai 連接器用 `/private_<token>/mcp`。工具與 WOOW PaaS 的 OpenDesign MCP 相同共 15 支，預設全開，包含寫入工具 `create_project`、`send_message`（會執行 OpenDesign agent）與 `delete_project`。管理頁（token、工具權限）是 OpenDesign「外掛」頁內建的 **MCP Server**，只能經 HA Ingress 進入。詳見 [DOCS.md](DOCS.md#built-in-mcp-server)。
 
 [English](README.md) · [附加元件說明](DOCS.md)
 
@@ -24,7 +24,7 @@
 3. 安裝 **Woow HA OpenDesign**，在「資訊」頁籤打開 **Watchdog**（Home Assistant 新裝的附加元件預設是關的；沒開時內部程序一結束，附加元件就會停著不會自己回來），再啟動並從側邊欄開啟。
 4. 在 **設定** 設定 API BYOK 的供應商、模型與金鑰；設定只會保留在該瀏覽器。
 5. 開啟 **Local AI → Rescan** 重新掃描已預裝的 CLI。接著進入 **Plugins** 安裝工作流程，再於專案中選取；OpenDesign 會將所選 Skill stage 到專案並交給當次選用的代理。
-6. 點擊 OpenDesign 頁面上的 **CLI Terminal**，在終端執行 `claude` 後輸入 `/login`、`codex login --device-auth`，或執行 `pi` 後在 TUI 輸入 `/login`。登入狀態保存在 `/data/opendesign/home`。OpenCode API 供應商可在 **Settings → API providers** 設定。
+6. 在 OpenDesign 打開「外掛」頁（已安裝），按內建 **CLI 終端機** 的「開啟」（開新分頁），在終端執行 `claude` 後輸入 `/login`、`codex login --device-auth`，或執行 `pi` 後在 TUI 輸入 `/login`。登入狀態保存在 `/data/opendesign/home`。OpenCode API 供應商可在 **Settings → API providers** 設定。
 
 本附加元件沒有設定選項，也沒有主機目錄掛載。
 

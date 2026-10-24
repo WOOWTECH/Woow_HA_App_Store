@@ -187,12 +187,16 @@ test('nginx keeps OpenDesign 0.24.1 template-literal icon URLs and redirects on 
   assert.match(nginx, /location = \/_woow\/support \{\s*return 302 https:\/\/aiot\.woowtech\.io\/woow;/);
 });
 
-test('nginx exposes ttyd only through the ingress-prefixed terminal proxy', () => {
-  assert.match(nginx, /location \^~ \/terminal\//);
-  assert.match(nginx, /proxy_pass http:\/\/127\.0\.0\.1:7681;/);
-  assert.match(nginx, /sub_filter '\"\/terminal\/' '\"\$safe_ingress_path\/terminal\/'/);
-  assert.match(shim, /od-agent-terminal-link/);
-  assert.match(shim, /path: '\/terminal\/'/);
+test('nginx exposes ttyd only through the ingress-prefixed /console/ proxy, the PaaS path', () => {
+  assert.match(nginx, /location \^~ \/console\/ \{\s*proxy_pass http:\/\/127\.0\.0\.1:7681;/);
+  assert.match(nginx, /sub_filter '\"\/console\/' '\"\$safe_ingress_path\/console\/'/);
+  assert.match(nginx, /location = \/console \{\s*return 302 \$safe_ingress_path\/console\/;/);
+  assert.doesNotMatch(nginx, /sub_filter '\"\/terminal\//, 'ttyd assets are no longer served under /terminal/');
+});
+
+test('pre-0.2.5 /terminal links redirect to /console/', () => {
+  assert.match(nginx, /location = \/terminal \{\s*return 302 \$safe_ingress_path\/console\/;/);
+  assert.match(nginx, /location \^~ \/terminal\/ \{\s*return 302 \$safe_ingress_path\/console\/;/);
 });
 
 function mountLinks(initialPath) {
@@ -228,17 +232,18 @@ function mountLinks(initialPath) {
   return appended;
 }
 
-test('shim adds MCP Server and CLI Terminal entry points on the ingress prefix, not inside project previews', () => {
-  const [bar, ...rest] = mountLinks(`${prefix}/`);
-  assert.equal(rest.length, 0);
-  assert.equal(bar.id, 'od-ha-shell-links');
-  assert.deepEqual(bar.children.map((link) => [link.id, link.href, link.textContent, link.target, link.attributes['aria-label']]), [
-    ['od-mcp-admin-link', `${prefix}/mcp-admin/`, 'MCP Server', '_blank', 'Open built-in MCP server administration'],
-    ['od-agent-terminal-link', `${prefix}/terminal/`, 'CLI Terminal', '_blank', 'Open agent CLI terminal for login'],
-  ]);
-  assert.ok(bar.children.every((link) => link.rel === 'noopener noreferrer'));
-  assert.deepEqual(mountLinks(`${prefix}/api/projects/p1/raw/index.html`), []);
-  assert.deepEqual(mountLinks(`${prefix}/api/projects/p1/preview/s1/index.html`), []);
+test('shim adds no floating entry points; the core Plugins page provides MCP Server and CLI Terminal', () => {
+  assert.deepEqual(mountLinks(`${prefix}/`), []);
+  assert.doesNotMatch(shim, /od-ha-shell-links|od-agent-terminal-link|od-mcp-admin-link/);
+});
+
+test('plugin launcher anchors keep the ingress prefix so they open through Ingress', () => {
+  const { Element } = runIngressShim(`${prefix}/plugins`);
+  for (const path of ['/console/', '/mcp-admin/']) {
+    const anchor = new Element();
+    anchor.setAttribute('href', path);
+    assert.equal(anchor.getAttribute('href'), `${prefix}${path}`);
+  }
 });
 
 test('repeated iframe src setAttribute with the same logical URL commits once', () => {
