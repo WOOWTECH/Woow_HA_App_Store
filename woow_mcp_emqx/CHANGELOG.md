@@ -1,6 +1,14 @@
 # EMQX Changelog
 
-## 0.3.3 — 發佈候選（2026-10-24）
+## 0.3.4 — 發佈候選（2026-10-24）
+
+- **相依套件更新，對齊 WOOW PaaS**：Python MCP SDK `mcp` 1.28.1 → 1.30.0（GHSA-84m7-p3x7-pcfv：Streamable HTTP session 不會回收）、`certifi` 2026.10.19 → 2026.10.23，其他鎖定的 Python 套件升到同 major 最新（pydantic 2.14.1、pydantic-settings 2.16.1、starlette 1.9.0 等）；管理面板 UI 建置用的 Node 基底 22.23.2 → 22.23.4（安全性修正版）。
+- SDK 1.30.0 本身會在沒有請求 30 分鐘後結束 session（與 add-on 原本的閒置上限相同，client 收到 404 後依 MCP 規範重新 initialize），請求 body 預設上限 4 MiB；add-on 維持閒置 30 分鐘，並把子程序的 body 上限設為 gateway 的 16 MiB，行為與之前相同。
+- EMQX：FastMCP 3.4.5 → 3.4.11（含 GHSA-7xgj-8392-5q4r 修正；settings 只新增預設關閉、本 add-on 未使用的 `ssrf_trust_proxy`）；39 個工具與 schema 不變。
+- 接在 0.3.3 之後，本版只有相依與安全修正；0.3.2 不使用（原保留給本版，已改為 0.3.4）。沒有破壞性變更：選項、port、映像名稱、架構、工具名稱與 state schema 4 都不變，新安裝仍預設全部工具與寫入開啟；從 0.3.3 或更早的 schema 4 版本升級不需確認或遷移。退回 0.3.3 沒有資料轉換（同為 schema 4），但會失去本版的相依與安全修正，未實測。
+- 六個啟用產品共同升版。正式映像須以精確 commit 完成 container、secret/history、SBOM、CVE/license gates，發布相同 image ID 並匿名驗證 immutable digest；狀態見 [0.3.4 發佈紀錄](../../docs/operations/release-decision-0.3.4.md)。
+
+## 0.3.3 — 2026-10-24 正式 Release
 
 - 0.3.2 已由另一個獨立 dependency-update PR17 保留；本修正改用 0.3.3，避免不同 source 共用映像 tag，不合併該 PR 的相依套件變更。
 
@@ -8,7 +16,7 @@
 - schema 4、token、相依套件、child pins 與 UI 原始碼不變；新安裝保留完整功能預設。schema 1/2/3 仍須在管理員驗證的升級頁確認預選 `all_on` 或明確選擇 `preserve`。
 - 精確 source freeze／CI 與六支 0.3.3 映像驗收／掃描／發布仍待完成；[候選狀態與驗收邊界](../../docs/operations/release-decision-0.3.3.md)。0.3.1 映像與歷史證據保留，不宣稱已完成 0.3.1 正式 HAOS 升級。
 
-## 0.3.1 — 發佈候選（2026-10-24）
+## 0.3.1 — 2026-10-24 正式 Release
 
 - 管理面板新增設定已保存／待套用／已套用／套用失敗狀態；「已套用」綁定目前子程序完成的協定檢查，後端健康分開顯示。token 與端點更新不代表子程序重啟。
 - 修正設定狀態卡片初次顯示與更新時末尾出現字面 `null` 的問題，保留狀態說明與過期版本提示。

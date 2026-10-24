@@ -14,7 +14,7 @@ system-admin 才放行；token 只給管理程序，child 不繼承。此 token 
 其他版本（含之後的 patch 與 beta）整個管理面板都回 403，看起來和「不是管理員」完全一樣（add-on 紀錄也沒有訊息）；
 MCP 端點（Bearer token）不受影響。新的 Core 版本要等 add-on 發新版才支援，升級 Core 前請先對照這份清單。
 
-本產品 runtime：**vendored SDK MCP 1.28.1**（與 PaaS 版 hermes_mcp_server 相同，只多出站與錯誤防護）。**0.2.1 起完整版**（負責人 2026-10-15 決定）：上游 11 個工具全部開放，與原始 MCP server 及 PaaS 版功能一致；tools/list 用子程序自己的 inputSchema（經 provider-safe 正規化），tools/call 參數原樣轉給子程序驗證，輸出不再截斷或投影。server 本身的保護仍在：`hermes_mcp` 拒絕 stdio／command transport，`hermes_config` 拒絕危險設定鍵。逐名清單與分類見[工具表](https://github.com/WOOWTECH/Woow_ha_mcp_addons/blob/claude-delivery/docs/tool-surface.md)，轉送規則與保留的安全層見[工具範圍](https://github.com/WOOWTECH/Woow_ha_mcp_addons/blob/claude-delivery/docs/tool-expansion.md)。子程序新增但尚未分類的工具一律拒絕。
+本產品 runtime：**vendored SDK MCP 1.30.0**（0.3.4 起，之前 1.28.1；與 PaaS 版 hermes_mcp_server（woow-mcp-server a5db051）相同，只多出站與錯誤防護，以及 `hermes_mcp` add 拒絕 loopback 網址）。**0.2.1 起完整版**（負責人 2026-10-15 決定）：上游 11 個工具全部開放，與原始 MCP server 及 PaaS 版功能一致；tools/list 用子程序自己的 inputSchema（經 provider-safe 正規化），tools/call 參數原樣轉給子程序驗證，輸出不再截斷或投影。server 本身的保護仍在：`hermes_mcp` 拒絕 stdio／command transport，`hermes_config` 拒絕危險設定鍵。逐名清單與分類見[工具表](https://github.com/WOOWTECH/Woow_ha_mcp_addons/blob/claude-delivery/docs/tool-surface.md)，轉送規則與保留的安全層見[工具範圍](https://github.com/WOOWTECH/Woow_ha_mcp_addons/blob/claude-delivery/docs/tool-expansion.md)。子程序新增但尚未分類的工具一律拒絕。
 
 ## 後端與設定主權
 

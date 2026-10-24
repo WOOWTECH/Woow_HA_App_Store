@@ -1,6 +1,16 @@
 # n8n Changelog
 
-## 0.3.3 — 發佈候選（2026-10-24）
+## 0.3.4 — 發佈候選（2026-10-24）
+
+- **相依套件更新，對齊 WOOW PaaS**：`n8n-mcp` 2.91.0 → 2.96.2、MCP TypeScript SDK（npm override）1.32.0 → 1.32.2、Node 22.23.2 → 22.23.4（n8n-mcp 2.96.2 要求 `^22.23.4`）；其餘 npm 套件取現有範圍內最新，`npm audit` 0 筆（修正 body-parser GHSA-27r3-jxmh-p828、undici GHSA-4qv8-2p9j-2685／GHSA-xjj6-f33q-929c、zod GHSA-mrhx-c7xc-m3w5 與 fast-uri、ip-address 的中度公告）。gateway 的 Python 核心環境也更新 `certifi` 2026.10.23（n8n 子程序不用 Python MCP SDK）。
+- 工具不變：2.96.2 的 28 個工具定義（tools.js、tools-n8n-manager.js）與 2.91.0 逐位元相同，tools/list 與工具快照不變。上游新增的行為：節點查詢標示已淘汰的 node 版本、驗證錯誤帶 `code`、健康檢查回 `checkStatus`、多擋四個雲端 metadata IPv6 位址；內建工具參數中的 `instance` 鍵會被上游忽略（內建工具沒有這個參數）。
+- `n8n_health_check` 不再查詢 npm registry：子程序環境固定設 `N8N_MCP_VERSION_CHECK_DISABLED=true`（與 PaaS 相同），版本檢查回 `checkStatus: "disabled"`、`upToDate: null`（0.3.0–0.3.3 會連到 registry.npmjs.org 查最新版）。
+- 0.3.3 的有效參數授權（`n8n_arguments`：`output` 抽取、`exposeToMcp` 條件寫入）已對 2.96.2 重新核對：`validateExtractedArgs`、`output` 抽取與 `coerceStringifiedJsonParams` 逐位元相同，相關授權測試在 2.96.2 下通過；2.96.2 只在抽取後多丟掉頂層 `instance` 鍵，不影響授權判斷。
+- build patch（test-run 錯誤保留 n8n 自己的訊息）改為只接受 2.96.2 發佈的檔案，替換內容不變；n8n 的 4 MiB 請求預算不變。
+- 接在 0.3.3 之後，本版只有相依與安全修正；0.3.2 不使用（原保留給本版，已改為 0.3.4）。沒有破壞性變更：選項、port、映像名稱、架構、工具名稱與 state schema 4 都不變，新安裝仍預設全部工具與寫入開啟；從 0.3.3 或更早的 schema 4 版本升級不需確認或遷移。退回 0.3.3 沒有資料轉換（同為 schema 4），但會失去本版的相依與安全修正，未實測。
+- 六個啟用產品共同升版。正式映像須以精確 commit 完成 container、secret/history、SBOM、CVE/license gates，發布相同 image ID 並匿名驗證 immutable digest；狀態見 [0.3.4 發佈紀錄](../../docs/operations/release-decision-0.3.4.md)。
+
+## 0.3.3 — 2026-10-24 正式 Release
 
 - 0.3.2 已由另一個獨立 dependency-update PR17 保留；本修正改用 0.3.3，避免不同 source 共用映像 tag，不合併該 PR 的相依套件變更。
 
@@ -12,7 +22,7 @@
 - 既有狀態不需遷移，但回退舊 binary 會恢復這項授權缺陷，不能視為等效安全回復。
 - 精確 source freeze／CI 與正式映像驗收仍待完成；[候選狀態與證據範圍](../../docs/operations/release-decision-0.3.3.md)。離線 mock 重現不代表曾向正式後端寫入。
 
-## 0.3.1 — 發佈候選（2026-10-24）
+## 0.3.1 — 2026-10-24 正式 Release
 
 - 管理面板新增設定已保存／待套用／已套用／套用失敗狀態；「已套用」綁定目前子程序完成的協定檢查，後端健康分開顯示。token 與端點更新不代表子程序重啟。
 - 修正設定狀態卡片初次顯示與更新時末尾出現字面 `null` 的問題，保留狀態說明與過期版本提示。

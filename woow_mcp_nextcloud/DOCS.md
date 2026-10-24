@@ -20,7 +20,7 @@ supply-chain gate（2026-10-11），以測過的 image ID 推送、匿名拉取�
 其他版本（含之後的 patch 與 beta）整個管理面板都回 403，看起來和「不是管理員」完全一樣（add-on 紀錄也沒有訊息）；
 MCP 端點（Bearer token）不受影響。新的 Core 版本要等 add-on 發新版才支援，升級 Core 前請先對照這份清單。
 
-本產品 runtime：**FastMCP 3.4.5**，子程序是 WOOWTECH 的 MIT 套件 `nextcloud_mcp_server` v0.1.5（commit 4e09c86）
+本產品 runtime：**FastMCP 3.4.11 / MCP SDK 1.30.0**（0.3.4 起；之前 FastMCP 3.4.5），子程序是 WOOWTECH 的 MIT 套件 `nextcloud_mcp_server` v0.1.5（commit 4e09c86）
 放在 `apps/nextcloud/vendor`，對上游的修改逐檔記在 `docs/provenance/runtime-sources.json`。上游 9 個工具全部支援：
 
 | 工具 | 類型 | 預設 |
