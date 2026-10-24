@@ -31,6 +31,7 @@ from . import VERSION
 from .config import ConfigError, State, Store, strict_json
 from .policy import Denied, ToolCallRefused, UnknownMethod, authorize, filter_list
 from .ha_role import valid_user_id
+from .capabilities import ManagementOptions, capability_snapshot, observe_tools, tool_catalog
 
 MAX_REQUEST = 262144
 MAX_RESPONSE = 8 * 1024 * 1024
@@ -287,7 +288,11 @@ async def error_handler(_, exc):
 def make_apps(store: Store, tools, child: httpx.AsyncClient, *,
               verify_admin: RoleVerifier | None = None,
               child_url="http://127.0.0.1:3000/mcp", health=None, backend_changed=None,
-              server_name="woow-mcp", instructions: str | None = None):
+              server_name="woow-mcp", instructions: str | None = None,
+              management: ManagementOptions | None = None,
+              backend_check=None, restart_child=None, diagnostics=None):
+    management = management or ManagementOptions()
+    listing = None  # Builtin retains its reviewed bounded registry, without 0.2.x state migration.
     if not SERVER_NAME.fullmatch(server_name) or instructions is not None and not (
             isinstance(instructions, str) and 0 < len(instructions) <= 4096):
         raise ValueError("invalid server identity")
@@ -299,6 +304,10 @@ def make_apps(store: Store, tools, child: httpx.AsyncClient, *,
 
     def snapshot():
         return health() if health else {"management": "alive", "child": {"state": "not_started", "transport_ready": False}, "backend": "unconfigured"}
+
+    def capabilities(state, catalog):
+        return capability_snapshot(management, state, snapshot(), catalog, can_test=backend_check is not None,
+                                   can_restart=restart_child is not None, logs=diagnostics is not None)
 
     def admin_identity(request):
         # Uvicorn MUST have proxy_headers=False; request.client is the socket peer.
@@ -374,6 +383,8 @@ def make_apps(store: Store, tools, child: httpx.AsyncClient, *,
             if name == "__ui__" and hasattr(request.state, "ui_path") and request.method in ("GET", "HEAD"):
                 return ui.response(request.state.ui_path, base)
             if name == "bootstrap" and request.method == "GET":
+                catalog = tool_catalog(tools, listing, None, state)
+                schemas = {item["name"]: item.get("inputSchema") for item in catalog["items"]}
                 return JSONResponse({"base_path": base, "api_base": base + "/api", "csrf": csrf,
                     "endpoint": state.endpoint, "backend_url": state.backend_url,
                     "backend_key_set": state.backend_key is not None, "token_active": state.token is not None,
@@ -382,9 +393,43 @@ def make_apps(store: Store, tools, child: httpx.AsyncClient, *,
                     "writes_enabled": state.writes_enabled, "disabled": state.disabled,
                     "policy_contract": "woow-v3-exact-grants",
                     "enabled_write_tools": getattr(state, 'enabled_write_tools', []),
+                    "capabilities": capabilities(state, catalog),
                     "tools": {k: {"write": v.write, "write_grants": v.grants(k),
                                   "operation_parameter": v.selector, "legacy_write": v.legacy_write,
-                                  "inputSchema": v.arguments.model_json_schema()} for k, v in tools.items()}, "health": snapshot()}, headers=headers)
+                                  "inputSchema": schemas.get(k) or v.arguments.model_json_schema()} for k, v in tools.items()}, "health": snapshot()}, headers=headers)
+            if name == "capabilities" and request.method == "GET":
+                before = snapshot().get("child")
+                observed = await observe_tools(child, child_url, state)
+                await final_role(user)  # the probe awaited work; recheck before disclosure
+                # Include exits/replacements during the final awaited role lookup.
+                if before != snapshot().get("child"):
+                    observed = None
+                return JSONResponse(capabilities(state, tool_catalog(tools, listing, observed, state)), headers=headers)
+            if name == "backend/test" and request.method == "POST":
+                if backend_check is None:
+                    return JSONResponse({"error": "unsupported"}, status_code=409, headers=headers)
+                try:
+                    async with asyncio.timeout(20):
+                        result = await backend_check(state)
+                except Exception:
+                    return JSONResponse({"error": "backend_check_failed"}, status_code=503, headers=headers)
+                await final_role(user)
+                return JSONResponse(redact.redact_secrets(result, redact.secret_values(state)), headers=headers)
+            if name == "child/restart" and request.method == "POST":
+                if restart_child is None:
+                    return JSONResponse({"error": "unsupported"}, status_code=409, headers=headers)
+                # Same ownership transfer as a committed backend update. Disconnect
+                # cannot abandon stop/reap/restart or release the mutation lock early.
+                committed.set()
+                try:
+                    await restart_child(state)
+                except Exception:
+                    return JSONResponse({"error": "child_restart_failed", "health": snapshot()}, status_code=503, headers=headers)
+                return JSONResponse({"accepted": True, "apply_state": "pending", "health": snapshot()}, status_code=202, headers=headers)
+            if name == "diagnostics" and request.method == "GET":
+                if diagnostics is None:
+                    return JSONResponse({"error": "unsupported"}, status_code=409, headers=headers)
+                return JSONResponse(redact.redact_secrets(diagnostics(), redact.secret_values(state)), headers=headers)
             if name == "token/reveal" and request.method == "POST":
                 return JSONResponse({"token": store.load().token}, headers=headers)
             if name == "token/rotate" and request.method == "POST":
@@ -394,6 +439,8 @@ def make_apps(store: Store, tools, child: httpx.AsyncClient, *,
                 store.update(token=None)
                 return Response(status_code=204, headers=headers)
             if changes is not None:
+                if name == "backend" and not management.backend_can_edit:
+                    return JSONResponse({"error": "backend_fixed"}, status_code=409, headers=headers)
                 updated = store.update(**changes)
                 # No yield between durable commit and lifecycle ownership transfer.
                 # An authorized mutation is not undone by losing its HTTP caller.

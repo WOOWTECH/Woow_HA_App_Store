@@ -4,8 +4,8 @@ export class ApiError extends UiError {
   constructor(status) {
     const messages = {
       400: '設定格式不符。伺服器未確認儲存，請檢查欄位。',
-      401: '管理身分已失效。請從 Home Assistant 重新開啟。',
-      403: '你沒有管理權限，或安全驗證已失效。請由 Home Assistant 管理員重新開啟；此頁無法繞過授權。',
+      401: '管理身分已失效。請從服務入口重新開啟。',
+      403: '你沒有管理權限，或安全驗證已失效。請從原服務入口重新驗證；此頁無法繞過授權。',
       404: '此伺服器尚未提供所需管理 API。',
       409: '設定已變更或版本不相容。請重新整理後再試。',
       422: '欄位驗證未通過。請確認 URL、必要欄位與憑證格式。',
@@ -23,7 +23,7 @@ export class AdminApi {
   async request(path, options = {}) {
     let response;
     try {
-      response = await this.fetcher(path, { ...options, credentials: 'same-origin', cache: 'no-store', redirect: 'error', signal: AbortSignal.timeout(12000) });
+      response = await this.fetcher(path, { ...options, credentials: 'same-origin', cache: 'no-store', redirect: 'error', signal: AbortSignal.timeout(25000) });
     } catch { throw new UiError('連線中斷或逾時；無法確認操作結果。請重新整理狀態後再操作。'); }
     if (!response.ok) throw new ApiError(response.status); // Never reflect response bodies or submitted secrets.
     if (response.status === 204) return null;
@@ -35,17 +35,22 @@ export class AdminApi {
     return value;
   }
   async mutate(operation, payload) {
-    const allowed = ['backend', 'endpoint', 'policy', 'token/reveal', 'token/rotate', 'token/revoke'];
+    const allowed = ['backend', 'endpoint', 'policy', 'token/reveal', 'token/rotate', 'token/revoke', 'backend/test', 'child/restart'];
     if (!allowed.includes(operation)) throw new UiError('不支援的操作。');
     const fresh = await this.bootstrap();
     if (typeof fresh.csrf !== 'string' || !/^[A-Za-z0-9_-]{16,256}$/.test(fresh.csrf)) throw new UiError('缺少有效安全驗證；未送出變更。請重新開啟管理介面。');
     const token = operation.startsWith('token/');
+    const action = token || ['backend/test', 'child/restart'].includes(operation);
     const result = await this.request(`${fresh.api_base}/${operation}`, {
-      method: token ? 'POST' : 'PUT',
-      headers: { 'X-CSRF-Token': fresh.csrf, ...(token ? {} : { 'Content-Type': 'application/json' }) },
-      ...(token ? {} : { body: JSON.stringify(typeof payload === 'function' ? payload(fresh) : payload) }),
+      method: action ? 'POST' : 'PUT',
+      headers: { 'X-CSRF-Token': fresh.csrf, ...(action ? {} : { 'Content-Type': 'application/json' }) },
+      ...(action ? {} : { body: JSON.stringify(typeof payload === 'function' ? payload(fresh) : payload) }),
     });
-    if ((!token && result?.saved !== true) || (operation === 'token/revoke' && result !== null)) throw new UiError('伺服器未回傳預期確認，無法確認操作結果。請重新整理狀態。');
+    if ((!action && result?.saved !== true) || (operation === 'token/revoke' && result !== null)
+        || (operation === 'child/restart' && (result?.accepted !== true || result?.apply_state !== 'pending'))
+        || (operation === 'backend/test' && result?.tested_configuration !== 'saved')) throw new UiError('伺服器未回傳預期確認，無法確認操作結果。請重新整理狀態。');
     return result;
   }
+  async capabilities() { return this.request(`${this.mount}/api/capabilities`); }
+  async diagnostics() { return this.request(`${this.mount}/api/diagnostics`); }
 }

@@ -43,8 +43,11 @@ class OwnedWorkers:
 
 class BoundedTools(OwnedWorkers):
     def __init__(self, mcp, capacity):
+        # mcp 1.30.0 (0.2.3): tools/base.py is unchanged; func_metadata.py only inlines a root $ref of a structured
+        # output schema (_inline_root_ref), so the dispatch this wraps (is_async, call_fn_with_arg_validation) is
+        # as reviewed.
         for module, expected in ((base, '87626ba624d33218ffb7542140dc888453e33130fdefeadc8909d47bc600ca54'),
-                                 (func_metadata, '72f72f1dc9195b91280b84c2ae8db466e8c289ca3069e18dfa8dfeb0df59deb2')):
+                                 (func_metadata, 'c951a064ea3f1488c2f9685168ab049a31d9772c5ff06340f1b435399e1db18c')):
             if hashlib.sha256(Path(module.__file__).read_bytes()).hexdigest() != expected:
                 raise RuntimeError('SDK tool dispatch requires source review')
         super().__init__(capacity)

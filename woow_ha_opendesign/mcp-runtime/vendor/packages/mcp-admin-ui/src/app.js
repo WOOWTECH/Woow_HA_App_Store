@@ -1,11 +1,11 @@
 import { AdminApi, ApiError } from './api.js';
-import { products, UiError, explicitUrl, backendPayload, granularPolicy, toolRows, policyPayload, policyFingerprint, effectiveGrant, clientExample, claudeConnectorUrl } from './contracts.js';
+import { products, UiError, explicitUrl, backendPayload, granularPolicy, toolRows, policyPayload, policyFingerprint, effectiveGrant, policySummary, catalogSummary, environmentLabels, clientExample, claudeConnectorUrl } from './contracts.js';
 import './styles.css';
 
 const root = document.querySelector('#app');
 let api, state, busy = false, revealed = null, revealTimer, dialog, revealEpoch = 0;
-const routes = { overview: '總覽', backend: '後端連線', tools: '工具權限', access: '連線與權杖' };
-const icons = { overview: 'view-grid', backend: 'server-network', tools: 'shield-check', access: 'tune-variant' };
+const routes = { overview: '總覽', backend: '後端連線', tools: '工具權限', access: '連線與權杖', diagnostics: '診斷與維護' };
+const icons = { overview: 'view-grid', backend: 'server-network', tools: 'shield-check', access: 'tune-variant', diagnostics: 'text-box-search' };
 function el(tag, attrs = {}, ...children) {
   const node = document.createElement(tag);
   for (const [key, value] of Object.entries(attrs)) {
@@ -64,6 +64,8 @@ async function task(action) {
 async function reload(message) {
   hideToken();
   state = await api.bootstrap();
+  // Older servers remain usable; capability-aware servers provide the observed catalog.
+  if (state.capabilities?.schema_version === 1) state.capabilities = await api.capabilities();
   render();
   if (message) notice(message);
 }
@@ -80,7 +82,7 @@ function confirmAction(title, description, label = '確認繼續') {
   });
 }
 function renderDenied(message) {
-  root.replaceChildren(el('main', { class: 'blocked' }, icon('shield-account'), el('h1', {}, '管理介面無法使用'), p(message), p('此頁只接受 Home Assistant 的伺服器端管理員授權，不提供另一組登入密碼。'), button('重新檢查權限', () => task(() => reload()))));
+  root.replaceChildren(el('main', { class: 'blocked' }, icon('shield-account'), el('h1', {}, '管理介面無法使用'), p(message), p('請從原服務入口確認你的管理權限，再重新開啟此頁。'), button('重新檢查權限', () => task(() => reload()))));
 }
 const statusText = value => ({ alive: '管理服務可用', state_error: '設定儲存異常', running: '執行中', stopped: '已停止', starting: '啟動中', backoff: '退避等待', failed: '啟動失敗', not_started: '尚未啟動', unconfigured: '尚未設定', unreachable: '無法連線', reachable: '可連線', unknown: '未知' }[value] ?? '未知狀態');
 function overview() {
@@ -91,12 +93,24 @@ function overview() {
       card('管理服務', icon('monitor-dashboard'), el('h3', {}, statusText(health.management)), p('管理程序與設定儲存的狀態。')),
       card('MCP 子行程', icon('server-network'), el('h3', {}, statusText(child.state)), p(child.transport_ready === true ? '協定探測：已就緒' : '協定探測：尚未就緒'), p('不等同後端可連線。')),
       card('後端服務', icon('signal'), el('h3', {}, statusText(health.backend)), p('來自伺服器的獨立唯讀健康探測。'))),
-    card('從這裡開始', p('讓你的 MCP 用戶端連上需要的服務。先設定後端，再確認工具權限，最後複製手動連線範例。'),
-      el('div', { class: 'steps' }, ...[['01', '設定後端', '由此介面管理 URL 與憑證。', 'backend'], ['02', '檢查工具', '預設唯讀，逐項確認寫入授權。', 'tools'], ['03', '連接用戶端', '明確指定 MCP 端點與 Bearer。', 'access']].map(([n, title, text, target]) => el('div', {}, el('span', { class: 'step-number' }, n), el('h3', {}, title), p(text), button('前往設定', () => navigate(target)))))),
+    card('從這裡開始', p('讓你的 MCP 用戶端連上需要的服務。你可以先連線查看工具；需要後端的操作仍須完成後端設定與授權。'),
+      el('div', { class: 'steps' }, ...[['01', '設定後端', '由此介面管理 URL 與憑證。', 'backend'], ['02', '檢查工具', policySummary(state), 'tools'], ['03', '連接用戶端', '明確指定 MCP 端點與 Bearer。', 'access']].map(([n, title, text, target]) => el('div', {}, el('span', { class: 'step-number' }, n), el('h3', {}, title), p(text), button('前往設定', () => navigate(target)))))),
+    card('工具能力', p(catalogSummary(state.capabilities?.tools)), p(policySummary(state)), p('有效數量來自子行程工具清單與目前政策；不代表後端操作已驗證。')),
     card('目前設定', el('dl', { class: 'summary' }, el('dt', {}, '產品'), el('dd', {}, products[state.product].name), el('dt', {}, '後端連線'), el('dd', {}, state.connection_configured ? '已設定（憑證不顯示）' : '尚未設定'), el('dt', {}, 'MCP 端點'), el('dd', {}, safeEndpoint() ?? '尚未設定，無法產生可直接使用的連線'), el('dt', {}, '權杖'), el('dd', {}, state.token_active ? '有效' : '已撤銷 / 未啟用')),
       p('狀態來自最近一次管理 API 回應，不代表真實用戶端驗收。後端離線不應觸發容器持續重新啟動。')));
 }
+function backendTest() {
+  return state.capabilities?.backend?.can_test ? button('測試已儲存的後端', () => task(async () => {
+    const result = await api.mutate('backend/test');
+    state.health = result.health;
+    notice(`已測試伺服器儲存的設定：${statusText(result.backend)}。未儲存的表單未參與測試。${result.reason ? ` ${result.reason}` : ''}`,
+      result.backend !== 'reachable');
+  })) : null;
+}
 function backend() {
+  if (state.capabilities?.backend?.can_edit === false) return card('固定後端',
+    chip(state.connection_configured ? '已設定' : '尚未設定'), p('後端由部署環境管理，此頁無法取代或清除。'),
+    p(`後端服務：${statusText(state.health?.backend)}`), backendTest());
   const form = el('form', { autocomplete: 'off' });
   const action = el('select', { id: 'connection-action', name: 'action' },
     el('option', { value: 'preserve' }, '保留現有設定（不變更）'),
@@ -132,7 +146,7 @@ function backend() {
       await reload('伺服器已確認儲存。請等待健康探測更新，這不代表後端已連線成功。');
     });
   });
-  return card('後端連線設定', chip(state.connection_configured ? '已設定 · 憑證隱藏' : '尚未設定'), p('URL 與憑證由管理介面擁有，不由 HA Add-on options 覆寫。'), form);
+  return card('後端連線設定', chip(state.connection_configured ? '已設定 · 憑證隱藏' : '尚未設定'), p('URL 與憑證由管理介面管理。測試只使用已儲存的設定，不會送出下方表單。'), backendTest(), form);
 }
 function tools() {
   const granular = granularPolicy(state);
@@ -140,10 +154,24 @@ function tools() {
   const rows = toolRows(state);
   form.append(p('停用與授權必須由伺服器逐次檢查 tools/call。此頁的控制項不是安全邊界，也不會替你執行工具。'));
   if (!granular) form.append(el('div', { class: 'notice' }, '工具授權版本不相容，無法儲存。請重新整理；不會以舊版全域開關取代精確授權。'));
-  if (state.writes_enabled) form.append(p('注意：伺服器回報舊版全域寫入目前開啟。此頁不將它標示為唯讀。'));
+  form.append(el('div', { class: 'notice' }, policySummary(state)), p('已允許的寫入可新增、修改或刪除後端資料。下方勾選需儲存後才套用；後端帳號權限仍會限制操作。'));
+  if (state.writes_enabled && rows.some(row => row.legacy)) form.append(p('注意：伺服器回報舊版全域寫入目前開啟（新安裝的預設）。此頁不將它標示為唯讀；儲存後改以下方逐項勾選為準，未勾選的寫入即關閉。'));
   if (!rows.length) form.append(p('伺服器未提供工具清單，無法編輯權限。'));
-  for (const row of rows) {
-    const disabled = el('input', { type: 'checkbox', name: 'disabled', value: row.name, checked: state.disabled?.includes(row.name) });
+  const catalog = state.capabilities?.tools;
+  const details = new Map((catalog?.items ?? []).map(item => [item.name, item]));
+  const search = el('input', { id: 'tool-search', type: 'search', placeholder: '名稱、說明或操作', autocomplete: 'off' });
+  const found = p('');
+  found.setAttribute('role', 'status');
+  const entries = [];
+  search.addEventListener('input', () => {
+    const query = search.value.trim().toLocaleLowerCase();
+    for (const [node, text] of entries) node.hidden = !text.includes(query);
+    found.textContent = `顯示 ${entries.filter(([node]) => !node.hidden).length} / ${entries.length} 個工具`;
+  });
+  form.append(el('div', { class: 'field' }, el('label', { for: 'tool-search' }, '搜尋工具'), search), found);
+  const extra = [...details.keys()].filter(name => !rows.some(row => row.name === name)).map(name => ({ name, operations: [], classified: false }));
+  for (const row of [...rows, ...extra]) {
+    const disabled = el('input', { type: 'checkbox', name: 'disabled', value: row.name, checked: state.disabled?.includes(row.name), disabled: !state.tools?.[row.name] });
     const controls = el('div', { class: 'tool-controls' }, el('label', { class: 'check' }, disabled, '停用此工具'));
     const operations = row.operations.length ? row.operations : row.write ? [null] : [];
     for (const operation of operations) {
@@ -157,7 +185,19 @@ function tools() {
       input.disabled = disabled.checked || !granular || !row.classified;
       if (disabled.checked) input.checked = false;
     }));
-    form.append(el('article', { class: 'tool-row' }, el('div', {}, el('h3', { class: 'tool-name' }, row.name), chip(!row.classified ? '分類未知 · 不提供授權' : operations.length ? '含寫入操作' : '唯讀')), controls));
+    const detail = details.get(row.name);
+    const effective = detail?.effective === true ? '子行程有效' : detail?.effective === false ? '未生效' : '有效狀態未知';
+    const reasons = { policy_disabled: '政策停用', write_not_granted: '未授權寫入', child_unavailable: '未能取得子行程工具清單', not_registered_by_child: '子行程未註冊', not_in_registry: '尚未納入核准目錄' };
+    const schema = detail?.inputSchema ?? state.tools?.[row.name]?.inputSchema;
+    const article = el('article', { class: 'tool-row' }, el('div', {}, el('h3', { class: 'tool-name' }, row.name),
+      chip(!row.classified ? '分類未知 · 不提供授權' : operations.length ? '含寫入操作' : '唯讀'),
+      p(detail?.description || '此目錄沒有提供工具說明。'), p(`${effective}${detail?.reason ? ` · ${reasons[detail.reason] ?? '未知原因'}` : ''}`),
+      el('details', {}, el('summary', {}, '工具參數與操作詳情'),
+        p(`參數來源：${({ child: '目前子行程', pinned: '隨版本保存的工具快照', registry: '管理登錄' })[detail?.schema_source] ?? '管理登錄'}`),
+        ...(detail?.operations ?? []).map(op => p(`${op.name} · ${op.write ? '寫入' : '讀取'} · ${op.policy_enabled ? '政策允許' : '政策禁止'}`)),
+        el('pre', { tabindex: '0', 'aria-label': `${row.name} inputSchema` }, el('code', {}, schema ? JSON.stringify(schema, null, 2) : '尚未取得參數定義。')))), controls);
+    entries.push([article, `${row.name} ${detail?.description ?? ''} ${(detail?.operations ?? []).map(op => op.name).join(' ')}`.toLocaleLowerCase()]);
+    form.append(article);
   }
   form.append(el('button', { type: 'submit', class: 'primary', disabled: !rows.length || !granular }, '儲存工具權限'));
   form.addEventListener('submit', async event => {
@@ -174,7 +214,7 @@ function tools() {
       await reload('伺服器已確認儲存工具權限。此頁未執行任何工具。');
     });
   });
-  return card('工具與寫入授權', chip(`${rows.length} 個伺服器提供的工具`), form);
+  return card('工具與寫入授權', p(catalog ? catalogSummary(catalog) : `${rows.length} 個管理登錄工具`), form);
 }
 function safeEndpoint() { try { return state.endpoint ? explicitUrl(state.endpoint, true) : null; } catch { return null; } }
 async function copy(text) {
@@ -230,10 +270,10 @@ function access() {
     task(async () => { await api.mutate('endpoint', { endpoint: value }); await reload('MCP 端點已儲存。這不代表網路可達性已驗證。'); });
   });
   return el('div', { class: 'stack' }, card('明確設定你的連線端點', chip(endpoint ? '已設定端點' : '尚未設定'), form),
-    card('Add-on 權杖', chip(state.token_active ? '有效 · 預設隱藏' : '已撤銷 / 未啟用'), p('每個 Add-on 使用一把獨立 Bearer 權杖。權杖不是 HA 管理員密碼，也不會授予管理介面權限。'), el('div', { class: 'actions' }, button('顯示權杖', () => tokenAction('reveal'), { disabled: !state.token_active }), button('重新產生', () => tokenAction('rotate')), button('撤銷權杖', () => tokenAction('revoke'), { disabled: !state.token_active })), el('div', { id: 'token-secret', class: 'secret-box', hidden: true, 'aria-live': 'polite' })),
+    card('MCP 權杖', chip(state.token_active ? '有效 · 預設隱藏' : '已撤銷 / 未啟用'), p('每個 MCP 服務共用一把 Bearer 權杖。權杖不是管理員密碼，也不會授予管理介面權限。'), el('div', { class: 'actions' }, button('顯示權杖', () => tokenAction('reveal'), { disabled: !state.token_active }), button('重新產生', () => tokenAction('rotate')), button('撤銷權杖', () => tokenAction('revoke'), { disabled: !state.token_active })), el('div', { id: 'token-secret', class: 'secret-box', hidden: true, 'aria-live': 'polite' })),
     card('Claude.ai 自訂連接器', chip(endpoint && state.token_active ? '可產生 · 預設隱藏' : '尚無法產生'),
       p('Claude.ai 網頁版的自訂連接器無法帶 Authorization header，改用含權杖的專屬網址：在 Claude.ai 新增自訂連接器時貼進伺服器網址欄位，OAuth 進階設定留空。Claude.ai 從網際網路連線，上方端點必須是它連得到的 HTTPS 網址。'),
-      p('這個網址等同密碼：任何拿到網址的人都能以本 Add-on 的權限呼叫工具。只貼進 Claude.ai，不要分享、截圖或貼到聊天、Git；外洩或不再使用時請按上方「重新產生」或「撤銷權杖」，舊網址立即失效。'),
+      p('這個網址等同密碼：任何拿到網址的人都能以本 MCP 服務的權限呼叫工具。只貼進 Claude.ai，不要分享、截圖或貼到聊天、Git；外洩或不再使用時請按上方「重新產生」或「撤銷權杖」，舊網址立即失效。'),
       endpoint ? null : p('尚未設定 MCP 用戶端端點：請先在上方填寫 Claude.ai 可從網際網路連到的 https://…/mcp 網址並儲存，才能產生連線網址。'),
       endpoint && !state.token_active ? p('權杖已撤銷或未啟用：請先按「重新產生」。') : null,
       el('div', { class: 'actions' }, button('顯示 Claude.ai 連線網址', () => tokenAction('claude'), { disabled: !endpoint || !state.token_active })),
@@ -241,13 +281,32 @@ function access() {
     card('手動加入 MCP 用戶端', p('適用支援 Streamable HTTP 的用戶端；欄位名稱依用戶端而異。先填端點，再於用戶端安全地填入 Bearer。未驗證所有用戶端相容性。'),
       endpoint ? null : p('以下端點只是佔位文字，不能直接連線。'), el('pre', { tabindex: '0', 'aria-label': '不含真實權杖的連線範例' }, el('code', {}, clientExample(endpoint))), button('複製佔位範例', () => copy(clientExample(endpoint))), p('一般複製永遠使用 <YOUR_ADDON_TOKEN> 佔位文字，不含真實權杖。建議跨主機連線使用 HTTPS。')));
 }
+function diagnostics() {
+  const features = state.capabilities?.capabilities ?? {};
+  const viewer = el('div', { 'aria-live': 'polite' }, p('按下讀取，取得目前保留的日誌。'));
+  return el('div', { class: 'stack' }, card('子行程維護', p(`目前狀態：${statusText(state.health?.child?.state)}`),
+    p('重新啟動會中斷子行程的現有連線；後端、政策與權杖設定會保留。'),
+    features.restart_child ? button('重新啟動子行程', async () => {
+      if (!await confirmAction('重新啟動 MCP 子行程？', '現有連線可能中斷。啟動請求完成後仍需等候協定與後端探測。', '確認重新啟動')) return;
+      await task(async () => { await api.mutate('child/restart'); await reload('已接受重新啟動請求。請重新整理健康狀態，確認子行程是否就緒。'); });
+    }) : p('此部署未提供子行程重新啟動。')),
+  card('子行程日誌', p('僅保留記憶體內最近 200 筆、最多 128 KiB；過長行會捨棄，憑證在保留前遮蔽。此處不包含完整歷史或後端服務日誌。'),
+    features.logs ? button('讀取診斷日誌', () => task(async () => {
+      const result = await api.diagnostics();
+      const logs = result.logs;
+      if (!Array.isArray(logs?.entries) || logs.redacted !== true) throw new UiError('診斷格式不符，未顯示。');
+      viewer.replaceChildren(p(`保留 ${logs.entries.length} 筆 · 捨棄 ${logs.dropped} 筆 · ${logs.bytes} bytes`),
+        el('pre', { tabindex: '0', 'aria-label': '已遮蔽的子行程日誌' }, el('code', {},
+          logs.entries.map(entry => `${entry.at} [${entry.stream} / ${entry.generation}] ${entry.text}`).join('\n') || '尚無日誌。')));
+    })) : p('此部署未提供子行程日誌。'), viewer));
+}
 function render() {
   const current = route();
   root.replaceChildren(el('a', { href: '#main', class: 'skip' }, '跳至主要內容'),
-    el('header', { class: 'topbar' }, el('div', { class: 'brand-caption' }, icon('home-automation'), el('div', {}, el('strong', {}, 'Woow MCP'), el('span', {}, '智慧空間 · 服務管理'), el('span', { class: 'brand-accent', lang: 'en' }, 'Welcome'))), el('div', { class: 'product-label' }, products[state.product].name, chip('HA 管理介面'))),
+    el('header', { class: 'topbar' }, el('div', { class: 'brand-caption' }, icon('home-automation'), el('div', {}, el('strong', {}, 'Woow MCP'), el('span', {}, '智慧空間 · 服務管理'), el('span', { class: 'brand-accent', lang: 'en' }, 'Welcome'))), el('div', { class: 'product-label' }, products[state.product].name, chip(environmentLabels(state.capabilities).deployment))),
     el('div', { class: 'shell' }, el('aside', {}, el('p', { class: 'nav-caption' }, '工作空間'), el('nav', { 'aria-label': '管理導覽' }, ...Object.entries(routes).map(([key, label]) => el('a', { href: `${api.mount}/${key}`, 'aria-current': current === key ? 'page' : null, onclick: event => { if (!event.ctrlKey && !event.metaKey && !event.shiftKey && event.button === 0) { event.preventDefault(); if (!busy) navigate(key); } } }, icon(icons[key]), label))), el('div', { class: 'sidebar-note' }, p('設定由你掌握'), p('後端憑證只在明確更新時送出。權限由伺服器驗證。'))),
-      el('main', { id: 'main' }, el('div', { class: 'page-heading' }, el('div', {}, el('p', { class: 'eyebrow' }, `${products[state.product].name} / MANAGEMENT`), el('h1', { tabindex: '-1' }, routes[current]), p({ overview: '一眼看清連線，安心管理你的服務。', backend: '把連線留在這裡，把秘密留在伺服器。', tools: '只開啟需要的能力，每次寫入都有明確授權。', access: '給用戶端正確的入口，不混用管理網址。' }[current])), button('重新整理狀態', () => task(() => reload('已取得最新管理狀態。')))), el('div', { id: 'notice', role: 'status', tabindex: '-1', hidden: true }),
-        ({ overview, backend, tools, access })[current](), el('footer', {}, 'GUI 管理設定 · HA 管理員授權 · Streamable HTTP'))));
+      el('main', { id: 'main' }, el('div', { class: 'page-heading' }, el('div', {}, el('p', { class: 'eyebrow' }, `${products[state.product].name} / MANAGEMENT`), el('h1', { tabindex: '-1' }, routes[current]), p({ overview: '一眼看清連線，安心管理你的服務。', backend: '把連線留在這裡，把秘密留在伺服器。', tools: '只開啟需要的能力，每次寫入都有明確授權。', access: '給用戶端正確的入口，不混用管理網址。', diagnostics: '查看受限日誌與行程狀態，必要時重新啟動。' }[current])), button('重新整理狀態', () => task(() => reload('已取得最新管理狀態。')))), el('div', { id: 'notice', role: 'status', tabindex: '-1', hidden: true }),
+        ({ overview, backend, tools, access, diagnostics })[current](), el('footer', {}, `GUI 管理設定 · ${environmentLabels(state.capabilities).authority} · Streamable HTTP`))));
 }
 window.addEventListener('popstate', () => { hideToken(); if (state) render(); });
 window.addEventListener('pagehide', () => {

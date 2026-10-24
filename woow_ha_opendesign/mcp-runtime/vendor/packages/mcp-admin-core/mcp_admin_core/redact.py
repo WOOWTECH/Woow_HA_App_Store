@@ -98,3 +98,47 @@ def install():
 
     logging.setLogRecordFactory(factory)
     _installed = True
+
+
+# 0.2.0 (owner decision 2026-10-15): backend errors are relayed with their own text, as the PaaS servers do. Every
+# credential this add-on holds is replaced in every reply the gateway relays, wherever a backend or child echoes it.
+SECRET_MASK = "[REDACTED]"
+SECRET_FIELDS = ("password", "api_key", "api_secret", "master_key", "app_password", "gateway_api_key",
+                 "dashboard_password")
+BASIC_PAIRS = (("username", "password"), ("api_key", "api_secret"), ("username", "app_password"),
+               ("dashboard_username", "dashboard_password"))
+MIN_SECRET = 4  # shorter values are too common in ordinary text to replace
+
+
+def secret_values(state):
+    """The credentials of a state: the add-on and child tokens, n8n's backend key and MCP access token, every secret connection field, and
+    the Basic Authorization forms (base64 of user:secret, also URL-safe and unpadded) built from them. Longest first."""
+    import base64
+    found = {getattr(state, "token", None), getattr(state, "child_token", None), getattr(state, "backend_key", None),
+             getattr(state, "mcp_access_token", None)}  # 0.2.1: n8n's MCP access token
+    connection = getattr(state, "connection", None)
+    fields = connection.model_dump() if connection is not None else {}
+    found.update(fields.get(name) for name in SECRET_FIELDS)
+    for user, secret in BASIC_PAIRS:
+        if isinstance(fields.get(user), str) and isinstance(fields.get(secret), str):
+            raw = f"{fields[user]}:{fields[secret]}".encode()
+            for encode in (base64.b64encode, base64.urlsafe_b64encode):
+                text = encode(raw).decode()
+                found.update((text, text.rstrip("=")))
+    return tuple(sorted((v for v in found if isinstance(v, str) and len(v) >= MIN_SECRET), key=len, reverse=True))
+
+
+def redact_secrets(value, secrets):
+    """value with every occurrence of each secret replaced by [REDACTED], in every string (keys too) of a JSON value."""
+    if not secrets:
+        return value
+    if isinstance(value, str):
+        for secret in secrets:
+            if secret in value:
+                value = value.replace(secret, SECRET_MASK)
+        return value
+    if isinstance(value, list):
+        return [redact_secrets(item, secrets) for item in value]
+    if isinstance(value, dict):
+        return {redact_secrets(key, secrets): redact_secrets(item, secrets) for key, item in value.items()}
+    return value

@@ -7,12 +7,15 @@
    child/ inside it is 0700 mcp:mcp (only the gateway and its child).
 3. Irreversible drop to uid/gid 10001 with no supplementary groups, no_new_privs, then exec management.py with a
    fixed environment. Nothing is inherited: the built-in server makes no Supervisor/Core API call, so it never
-   receives SUPERVISOR_TOKEN (administration relies on Ingress login, owner decision 2026-10-14).
+   receives SUPERVISOR_TOKEN (administration relies on Ingress login, owner decision 2026-10-14). The one value
+   passed on (0.2.4) is the add-on version of the image (WOOW_ADDON_VERSION, Dockerfile), and only when it has a
+   version's shape: the capability contract reports it as product.version (runtime.management_options()).
 """
 import ctypes
 import grp
 import os
 from pathlib import Path
+import re
 import shutil
 import stat
 import sys
@@ -25,6 +28,7 @@ RUN_PARENT = '/run'
 RUN_NAME = 'ha-opendesign-mcp'
 PROXY_GROUP = 'ha-ingress'
 NOFOLLOW_DIR = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+ADDON_VERSION = re.compile(r'[0-9A-Za-z][0-9A-Za-z.+_-]{0,63}')  # ascii, at most 64 (capabilities.ManagementOptions)
 
 
 def prepare_run_dir(proxy_gid):
@@ -56,6 +60,17 @@ def prepare_run_dir(proxy_gid):
         os.close(parent)
 
 
+def management_env(environ=os.environ):
+    """The management process's fixed environment, plus the image's add-on version when it looks like one."""
+    env = {'PATH': '/usr/bin:/bin', 'HOME': '/data/mcp',
+           'PYTHONPATH': str(ROOT / 'packages/mcp-admin-core') + ':' + str(ROOT),
+           'PYTHONDONTWRITEBYTECODE': '1', 'PYTHONUNBUFFERED': '1'}
+    version = environ.get('WOOW_ADDON_VERSION', '')
+    if ADDON_VERSION.fullmatch(version):
+        env['WOOW_ADDON_VERSION'] = version
+    return env
+
+
 def main():
     if len(sys.argv) != 1 or os.geteuid() != 0:
         raise RuntimeError('root bootstrap required')
@@ -70,9 +85,7 @@ def main():
     if ctypes.CDLL(None, use_errno=True).prctl(38, 1, 0, 0, 0) != 0:  # PR_SET_NO_NEW_PRIVS
         raise RuntimeError('no_new_privs unavailable')
     python = str(ROOT / '.venv/bin/python')
-    env = {'PATH': '/usr/bin:/bin', 'HOME': '/data/mcp',
-           'PYTHONPATH': str(ROOT / 'packages/mcp-admin-core') + ':' + str(ROOT),
-           'PYTHONDONTWRITEBYTECODE': '1', 'PYTHONUNBUFFERED': '1'}
+    env = management_env()
     os.chdir(ROOT)
     os.execve(python, [python, str(ROOT / 'ha_opendesign_mcp/management.py')], env)
 

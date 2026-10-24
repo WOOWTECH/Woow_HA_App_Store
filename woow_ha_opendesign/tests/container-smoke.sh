@@ -137,6 +137,36 @@ except urllib.error.HTTPError as error:
 else:
     raise SystemExit("built-in MCP accepted a request without a token")
 '
+# 0.2.4: the MCP Server page reports the add-on version (the image's
+# WOOW_ADDON_VERSION, which the root bootstrap passes to the management process)
+# and the MCP runtime version. Read over the administration socket, as nginx
+# reaches it for the Supervisor Ingress peer.
+expected_version=$(docker exec "$container" printenv WOOW_ADDON_VERSION)
+test -n "$expected_version"
+docker exec "$container" /opt/woow/.venv/bin/python -c '
+import sys
+import time
+import httpx
+transport = httpx.HTTPTransport(uds="/run/ha-opendesign-mcp/admin.sock")
+with httpx.Client(transport=transport, base_url="http://localhost", timeout=30, trust_env=False) as client:
+    for attempt in range(30):
+        try:
+            response = client.get("/api/capabilities", headers={
+                "X-Remote-User-Id": "0123456789abcdef0123456789abcdef",
+                "X-Ingress-Path": "/api/hassio_ingress/smoke/mcp-admin"})
+            break
+        except httpx.TransportError:
+            if attempt == 29:
+                raise
+            time.sleep(1)
+response.raise_for_status()
+body = response.json()
+product = body["product"]
+assert product == {"id": "opendesign", "version": sys.argv[1], "runtime_version": "0.1.14"}, product
+assert body["deployment"] == {"kind": "builtin"} and body["admin"] == {"authority": "ha-ingress"}, body
+assert body["backend"]["mode"] == "fixed" and body["backend"]["can_edit"] is False, body["backend"]
+assert body["tools"]["catalog_count"] == 15, body["tools"]["catalog_count"]
+' "$expected_version"
 
 docker exec "$container" sh -ceu '
   # PID 1 is root only to prepare the Supervisor root-owned /data mount.

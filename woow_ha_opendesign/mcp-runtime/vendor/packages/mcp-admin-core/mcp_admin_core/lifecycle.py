@@ -6,8 +6,11 @@ import os
 from pathlib import Path
 import random
 import signal
+import re
 
 import anyio
+
+from .diagnostics import ChildLogs
 
 
 async def _join_transition(operation):
@@ -49,6 +52,7 @@ class Supervisor:
         self.ready = False
         self._lock = asyncio.Lock()
         self._stop = asyncio.Event()
+        self.logs = ChildLogs()
 
     def _start_child(self):
         if self.task is None and self.process is not None:
@@ -96,14 +100,21 @@ class Supervisor:
     async def _run(self):
         try:
             for attempt in range(self.retries + 1):
+                readers = []
                 self.starts += 1
                 self.status = "starting"
                 try:
                     self.process = await asyncio.create_subprocess_exec(
                         *self.spec.argv, env=self.spec.env, cwd=self.spec.cwd,
-                        stdin=asyncio.subprocess.DEVNULL, stdout=asyncio.subprocess.DEVNULL,
-                        stderr=asyncio.subprocess.DEVNULL, start_new_session=True,
+                        stdin=asyncio.subprocess.DEVNULL, stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE, start_new_session=True,
                     )
+                    # Freeze this generation's credentials. Old output cannot be scrubbed
+                    # against a replacement backend after restart/rotation.
+                    sensitive = tuple(value for key, value in self.spec.env.items()
+                                      if re.search(r"TOKEN|PASSWORD|PASSWD|SECRET|KEY|AUTH|COOKIE", key, re.I))
+                    readers = [asyncio.create_task(self.logs.collect(reader, stream, self.starts, sensitive))
+                               for stream, reader in (("stdout", self.process.stdout), ("stderr", self.process.stderr))]
                     self.status = "running"
                     exited = asyncio.create_task(self.process.wait())
                     stopped = asyncio.create_task(self._stop.wait())
@@ -120,8 +131,23 @@ class Supervisor:
                 finally:
                     self.ready = False
                     if self.process is not None:
-                        await self._terminate(self.process)
-                        self.process = None
+                        try:
+                            await self._terminate(self.process)
+                            self.process = None
+                        finally:
+                            # Pipes must drain during group cleanup. Only then join/cancel
+                            # readers; inherited pipe descriptors cannot detach a task.
+                            try:
+                                async with asyncio.timeout(1):
+                                    await asyncio.gather(*readers)
+                            except TimeoutError:
+                                # Escaped descendants can keep pipes open after cleanup.
+                                # Join the readers below, then resume the state machine.
+                                pass
+                            finally:
+                                for reader in readers:
+                                    reader.cancel()
+                                await asyncio.gather(*readers, return_exceptions=True)
                 if self._stop.is_set():
                     return
                 if attempt < self.retries:
@@ -175,3 +201,6 @@ class Supervisor:
     def health(self):
         return {"state": self.status, "transport_ready": self.ready,
                 "starts": self.starts, "last_exit": self.last_exit}
+
+    def diagnostics(self):
+        return {"child": self.health(), "logs": self.logs.snapshot()}

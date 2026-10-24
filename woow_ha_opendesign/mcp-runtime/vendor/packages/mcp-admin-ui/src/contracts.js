@@ -13,7 +13,7 @@ export const products = {
 export class UiError extends Error {}
 export function mountPath(value) {
   if (typeof value !== 'string' || value.length > 512 || (value !== '' && !/^(\/[A-Za-z0-9_-]+)+$/.test(value))) {
-    throw new UiError('管理介面掛載路徑無效。請由 Home Assistant 重新開啟。');
+    throw new UiError('管理介面掛載路徑無效。請從原服務入口重新開啟。');
   }
   return value;
 }
@@ -92,6 +92,22 @@ export function policyFingerprint(b) {
 }
 export function effectiveGrant(b, row, operation) {
   return !b.disabled.includes(row.name) && (b.enabled_write_tools.includes(operation === null ? row.name : `${row.name}:${operation}`) || operation === null && row.legacy && b.writes_enabled);
+}
+export function policySummary(b) {
+  const rows = toolRows(b);
+  const grants = rows.flatMap(row => (row.write ? [null] : []).concat(row.operations)
+    .map(operation => effectiveGrant(b, row, operation)));
+  return `目前已儲存政策：停用 ${b.disabled?.length ?? 0} 個工具，允許 ${grants.filter(Boolean).length} / ${grants.length} 項寫入授權。`;
+}
+export function catalogSummary(catalog) {
+  if (!catalog) return '尚未取得工具能力快照。';
+  return `目錄 ${catalog.catalog_count} · 政策允許 ${catalog.policy_enabled_count} · 子行程有效 ${catalog.effective_count === null ? '未知' : catalog.effective_count}`;
+}
+export function environmentLabels(snapshot) {
+  return {
+    deployment: ({ 'ha-addon': 'HA 管理介面', builtin: '內建 MCP 管理', paas: 'PaaS 管理介面' })[snapshot?.deployment?.kind] ?? 'MCP 管理介面',
+    authority: ({ 'ha-admin': 'HA 管理員授權', 'ha-ingress': 'Ingress 存取授權', 'paas-password': 'PaaS 管理授權' })[snapshot?.admin?.authority] ?? '伺服器端管理授權',
+  };
 }
 export function policyPayload(bootstrap, disabled, grants) {
   if (!granularPolicy(bootstrap)) throw new UiError('工具授權版本不相容。請重新整理，未送出變更。');

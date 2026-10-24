@@ -6,8 +6,8 @@
 #   RUN sh /tmp/mcp-runtime/install.sh && rm -rf /tmp/mcp-runtime
 #
 # Layout matches the vendored source (/opt/woow, see VENDOR.json) so the vendored path logic works unchanged.
-# Both virtual environments use the base image's /usr/bin/python3 and install ONLY hash-pinned wheels whose
-# versions equal the source repository's uv.lock files (requirements/*.txt).
+# Both virtual environments use the base image's /usr/bin/python3 and install ONLY the hash-pinned wheels of
+# requirements/*.txt (versions: requirements/lock.sh).
 set -eu
 export HOME=/root PIP_NO_CACHE_DIR=1
 

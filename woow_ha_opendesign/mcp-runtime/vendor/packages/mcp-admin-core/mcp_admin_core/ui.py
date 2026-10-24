@@ -13,7 +13,7 @@ HEADERS = {
     "Referrer-Policy": "no-referrer",
     "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self'; font-src 'self'; connect-src 'self'; img-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'self'",
 }
-PAGES = {"/", "/overview", "/backend", "/tools", "/access"}
+PAGES = {"/", "/overview", "/backend", "/tools", "/access", "/diagnostics"}
 TYPES = {".js": "text/javascript", ".css": "text/css", ".woff": "font/woff", ".woff2": "font/woff2", ".ttf": "font/ttf", ".eot": "application/vnd.ms-fontobject", ".txt": "text/plain"}
 
 

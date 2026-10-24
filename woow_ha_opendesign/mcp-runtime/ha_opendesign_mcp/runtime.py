@@ -21,6 +21,7 @@ health monitor and HA admin verifier are the vendored ones. Local differences:
 """
 import asyncio
 import dataclasses
+import os
 from pathlib import Path
 import re
 import signal
@@ -31,6 +32,7 @@ from starlette.responses import JSONResponse
 
 from mcp_admin_core import redact
 from mcp_admin_core.config import ConfigError
+from mcp_admin_core.capabilities import ManagementOptions
 from mcp_admin_core.gateway import make_apps
 from mcp_admin_core.ha_role import valid_user_id
 from mcp_admin_core.health import HealthMonitor
@@ -98,6 +100,11 @@ class IngressSocketPeer:
         await self.app({**scope, 'client': INGRESS_PEER}, receive, send)
 
 
+def management_options():
+    return ManagementOptions(kind='builtin', authority='ha-ingress', backend_mode='fixed',
+                             backend_can_edit=False, product_version=os.environ.get('WOOW_ADDON_VERSION', 'unknown'))
+
+
 async def run():
     store = ProductStore(DATA_DIR, PRODUCT)
     manager = None
@@ -127,6 +134,9 @@ async def run():
 
             admin, mcp = make_apps(store, TOOLS[PRODUCT], child,
                                    verify_admin=ingress_user,
+                                   management=management_options(),
+                                   backend_check=health.test_saved, restart_child=backend_changed,
+                                   diagnostics=manager.diagnostics,
                                    health=health.snapshot, backend_changed=backend_changed,
                                    server_name='woow-mcp-' + PRODUCT, instructions=INSTRUCTIONS.get(PRODUCT))
             common = dict(proxy_headers=False, access_log=False, log_level='warning', server_header=False,

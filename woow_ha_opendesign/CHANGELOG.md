@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.2.4
+
+**Built-in MCP server: the same management as the standalone HA and PaaS MCP servers** (from #15, Codex's branch `feat/mcp-parity-20261023`; management code vendored from `WOOWTECH/Woow_ha_mcp_addons` `feat/builtin-admin-parity-20261023`, `6f420266`):
+
+- The **MCP Server** page (Ingress `/mcp-admin/`) adds tool search, each tool's accepted argument schema, how many tools the policy enables and how many the server actually offers, a check of the (fixed) OpenDesign connection, a restart of the tool process and diagnostics: its recent output, kept in memory only (at most 200 lines, 128 KiB), with tokens and passwords removed before it is kept. A tool process that cannot be observed shows *unknown*, never zero tools.
+- The authenticated `/api/capabilities` contract of the other WOOW MCP servers: deployment `builtin`, administration through Home Assistant Ingress, a fixed backend that cannot be edited; `product.version` is the add-on version (new image variable `WOOW_ADDON_VERSION`, which the MCP server's root bootstrap now passes to its management process; as merged in #15 it never arrived and every add-on reported `unknown`) and `product.runtime_version` the MCP runtime (`0.1.14`).
+- Unchanged: the 15 tools, the state (schema 3), tools an administrator turned off, the write grants, the MCP token and URLs, Ingress-only administration, the Unix sockets and the loopback OpenDesign backend. Unlike the standalone MCP add-ons' 0.2.x/0.3.0, an update from 0.2.1 or later migrates nothing and grants nothing (from 0.2.0, the one-time default grants of 0.2.1 still apply).
+
+**Built-in MCP server dependencies at their newest versions** (MCP Python SDK 1.x; 2.x is a separate migration):
+
+- `mcp` 1.28.1 → **1.30.0**, the WOOW PaaS security floor (GHSA-84m7-p3x7-pcfv / CVE-2026-59951: Streamable HTTP sessions were never reclaimed). Sessions behave as documented: one with no request for 30 minutes ends, its id answers 404 and the client initializes again; DELETE ends it at once. New: an ended session is forgotten at once, and at most 10 000 sessions exist at a time (one more initialize gets 503).
+- `certifi` 2026.7.22 → **2026.10.23** in both Python environments (GHSA-6q48-6c7w-9gw2: emSign roots whose intermediate CA keys were compromised).
+- Every other package at its newest release: pydantic 2.14.1 (pydantic-core 2.50.1; was 2.13.5 in the tool process, 2.12.5 in the gateway), pydantic-settings 2.16.1, starlette 1.9.0 (was 1.7.0 / 1.3.1), uvicorn 0.54.0 in both (the gateway had 0.38.0), rpds-py 2026.9.1, pycparser 3.12; httpx 0.28.1 and httpcore 1.0.9 are already the newest. websockets moves to the newest 16.x, 16.1.1 (was 15.0.1), as on the WOOW PaaS and in the HA MCP add-ons: major updates (websockets 17, MCP SDK 2.x) come later, together.
+- SDK 1.30.0 needs the MCP runtime's review of it: `bounded_tools.py` and `session_idle.py` come byte for byte from `Woow_ha_mcp_addons` `0e5f7de` (`mcp-runtime/vendor.sh` can now take single files from another commit, recorded in `VENDOR.json`). Without them the tool process would not start (1.30.0's tool dispatch is not the reviewed one) and the add-on's idle limit would no longer reach the SDK's session manager.
+
+**Updating from 0.2.3:** nothing to do. The OpenDesign core (`20261018.1219`) is unchanged and the update changes nothing under `/data`; MCP clients keep their token and URL.
+
 ## 0.2.3
 
 - **Same OpenDesign core as the WOOW PaaS.** The add-on now builds on core `20261018.1219` (was `20261015.0617`), the core the WOOW PaaS OpenDesign runs (paas-odoo-ci #359, approval #372), copied to `ghcr.io/woowtech/open-design-core` by digest (`sha256:f3496326…`, byte-identical to the PaaS copy). It is built from the same fork commit (`woow-od-v0.24.1-w2.2`, `1c7e697`) with the same agent CLIs (Claude Code `2.1.296`, Codex CLI `0.162.1`, Pi `1.1.0`, OpenCode `1.18.33`) and the same tools. The one change: the core sets `OD_APP_VERSION=0.24.1`, so OpenDesign's `/api/version` and the built-in MCP server's `version` tool now report the OpenDesign release `0.24.1` instead of the daemon package version `0.23.1`.
