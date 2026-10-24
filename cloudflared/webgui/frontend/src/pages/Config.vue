@@ -21,14 +21,21 @@
           <p class="text-xs text-gray-400">
             Paste a tunnel token from the Cloudflare Zero Trust dashboard to
             use a remote-managed tunnel.
-            <span class="font-medium">When a token is set, all other options
-            below are ignored</span> (identical to the original add-on).
+            <span class="font-medium">When a token is set, local hostname and
+            route options are ignored.</span> Post-Quantum, Run Parameters and
+            Log Level still apply.
           </p>
           <TokenInput
+            v-if="!configStore.options?.tunnel_token_managed_by_paas"
             :masked-value="configStore.options?.tunnel_token_masked ?? ''"
             placeholder="eyJhIjoiLi4uIiwidCI6Ii4uLiIsInMiOiIuLi4ifQ=="
             @update:token="tokenInput = $event"
           />
+          <p v-else class="rounded-lg bg-blue-50 px-4 py-3 text-sm leading-6 text-blue-900">
+            此憑證由 PaaS 自動管理。若要改用手動 token 或 Local 模式，請先到
+            <router-link to="/paas" class="font-semibold underline">PaaS 連結</router-link>
+            停止連線並解除綁定。
+          </p>
           <div class="flex items-center gap-3">
             <span
               class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium"
@@ -41,7 +48,7 @@
               {{ configStore.options?.tunnel_token_set ? 'token configured' : 'no token' }}
             </span>
             <button
-              v-if="configStore.options?.tunnel_token_set"
+              v-if="configStore.options?.tunnel_token_set && !configStore.options?.tunnel_token_managed_by_paas"
               type="button"
               class="text-xs font-medium text-red-500 hover:text-red-700"
               @click="clearToken = !clearToken"
@@ -104,6 +111,7 @@
           Route additional hostnames through the tunnel to other local
           services. DNS entries are created automatically on start.
         </p>
+        <p class="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-900">Local 模式移除網址或停用 add-on，不會自動刪除 Cloudflare DNS。請到 Cloudflare DNS 檢查該網址的 CNAME，確認不再使用後才刪除；也請檢查對應 Access 應用。</p>
         <RouteEditor :routes="form.routes" @update:routes="form.routes = $event" />
       </fieldset>
 

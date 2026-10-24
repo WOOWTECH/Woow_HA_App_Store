@@ -56,7 +56,7 @@ validateConfigAndSetVars() {
         local hostname
         local service
         for additional_host in "${additional_hosts[@]}"; do
-            bashio::log.debug "Checking host ${additional_host}..."
+            bashio::log.debug "Checking an additional host..."
             hostname=$(bashio::jq "${additional_host}" ".hostname")
             service=$(bashio::jq "${additional_host}" ".service")
             if bashio::var.is_empty "${hostname}" && bashio::var.is_empty "${service}"; then
@@ -275,7 +275,9 @@ createTunnel() {
     Please check the Cloudflare Zero Trust Dashboard for an existing tunnel with the name ${tunnel_name} and delete it:
     Visit https://one.dash.cloudflare.com, then click on Networks -> Tunnels"
 
-    bashio::log.debug "Created new tunnel: $(cat "${data_path}"/tunnel.json)"
+    # tunnel.json contains TunnelSecret; even debug logs are visible in the
+    # raw Supervisor journal, before the GUI's redaction layer runs.
+    bashio::log.debug "Created new tunnel credentials file"
 
     hasTunnel || bashio::exit.nok "Failed to create tunnel"
 }
@@ -340,11 +342,11 @@ createConfig() {
 
     # Validate config using cloudflared
     bashio::log.info "Validating config file..."
-    bashio::log.debug "Validating created config file: $(bashio::jq "${default_config}" ".")"
+    bashio::log.debug "Validating created config file"
     cloudflared tunnel --config="${default_config}" --loglevel "${CLOUDFLARED_LOG}" ingress validate ||
         bashio::exit.nok "Validation of Config failed, please check the logs above."
 
-    bashio::log.debug "Sucessfully created config file: $(bashio::jq "${default_config}" ".")"
+    bashio::log.debug "Successfully created config file"
 }
 
 # ------------------------------------------------------------------------------
@@ -416,7 +418,7 @@ main() {
     # Run service with tunnel token without creating config
     if bashio::config.has_value 'tunnel_token'; then
         bashio::log.info "Using Cloudflare Remote Management Tunnel"
-        bashio::log.info "All app (add-on) configuration options except tunnel_token will be ignored."
+        bashio::log.info "Local route options are ignored in token mode; post_quantum, run_parameters and log_level still apply."
         bashio::exit.ok
     fi
 

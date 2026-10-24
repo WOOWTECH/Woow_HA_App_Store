@@ -3,10 +3,12 @@ import Dashboard from '@/pages/Dashboard.vue'
 import Config from '@/pages/Config.vue'
 import Logs from '@/pages/Logs.vue'
 import SetupWizard from '@/pages/SetupWizard.vue'
+import PaasLink from '@/pages/PaasLink.vue'
 
 const routes = [
   { path: '/', name: 'dashboard', component: Dashboard },
   { path: '/setup', name: 'setup', component: SetupWizard },
+  { path: '/paas', name: 'paas', component: PaasLink },
   { path: '/config', name: 'config', component: Config },
   { path: '/logs', name: 'logs', component: Logs },
 ]

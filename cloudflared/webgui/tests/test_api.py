@@ -9,6 +9,47 @@ class TestHealth:
 
 
 class TestOptionsApi:
+    def test_credential_pasted_into_run_parameters_is_not_echoed(self, client):
+        secret = "acceptance-private-pasted-command"
+        res = client.put("/api/options", json={
+            "external_hostname": "ha.example.com",
+            "run_parameters": ["--token=" + secret],
+        })
+        assert res.status_code == 422
+        assert secret not in res.text
+        assert "allowed run parameter" in res.text
+
+    def test_cross_field_error_does_not_echo_body(self, client, fake_supervisor):
+        import base64
+        import json
+
+        token = base64.b64encode(json.dumps({
+            "a": "acceptance-account", "t": "acceptance-tunnel",
+            "s": "acceptance-secret",
+        }).encode()).decode()
+        before = dict(fake_supervisor.options)
+        res = client.put("/api/options", json={
+            "tunnel_token": token,
+            "catch_all_service": "http://example.internal",
+            "nginx_proxy_manager": True,
+        })
+        assert res.status_code == 422
+        assert token not in res.text
+        assert "acceptance-secret" not in res.text
+        assert "mutually exclusive" in res.json()["detail"][0]["msg"]
+        assert set(res.json()["detail"][0]) == {"type", "loc", "msg"}
+        assert fake_supervisor.options == before
+
+    def test_invalid_token_is_not_echoed_in_validation_response(self, client, fake_supervisor):
+        credential = "acceptance-invalid-secret-do-not-echo"
+        before = dict(fake_supervisor.options)
+        res = client.put("/api/options", json={"tunnel_token": credential})
+        assert res.status_code == 422
+        assert credential not in res.text
+        assert res.json()["detail"][0]["loc"] == ["body", "tunnel_token"]
+        assert "Cloudflare tunnel token" in res.json()["detail"][0]["msg"]
+        assert fake_supervisor.options == before
+
     def test_get_options_masks_token(self, client, fake_supervisor):
         fake_supervisor.options["tunnel_token"] = "s3cret"
         res = client.get("/api/options")

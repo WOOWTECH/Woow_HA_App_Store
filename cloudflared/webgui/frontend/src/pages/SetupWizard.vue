@@ -1,5 +1,11 @@
 <template>
   <div class="space-y-6">
+    <div class="rounded-2xl border border-orange-200 bg-gradient-to-r from-orange-50 to-white p-6 shadow-sm">
+      <p class="text-xs font-bold uppercase tracking-widest text-cf-orange">建議初次使用</p>
+      <h2 class="mt-2 text-xl font-bold text-gray-900">透過 WOOW PaaS 訂閱並連結</h2>
+      <p class="mt-2 max-w-2xl text-sm leading-6 text-gray-600">依序完成訂閱、網址與 Access 保護，再由此 add-on 自動領取憑證並啟用。付款及存取規則都在 PaaS 完成。</p>
+      <router-link to="/paas" class="mt-4 inline-flex rounded-lg bg-cf-orange px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-orange-600">開始 PaaS 引導 →</router-link>
+    </div>
     <h1 class="text-2xl font-bold text-gray-900">Setup</h1>
     <p class="text-sm text-gray-500">
       The add-on performs the tunnel setup automatically on every start:

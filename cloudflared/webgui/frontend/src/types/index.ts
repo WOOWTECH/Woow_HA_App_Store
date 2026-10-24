@@ -37,6 +37,7 @@ export interface OptionsRead {
   log_level: LogLevel | null
   tunnel_token_set: boolean
   tunnel_token_masked: string
+  tunnel_token_managed_by_paas: boolean
 }
 
 /**

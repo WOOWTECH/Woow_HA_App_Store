@@ -13,6 +13,7 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
 from ..instances import supervisor
 from ..models import AddonOptions, OptionsRead
 from ..supervisor import SupervisorError
+from . import paas
 
 router = APIRouter(prefix="/api", tags=["options"])
 
@@ -47,7 +48,10 @@ async def get_options() -> OptionsRead:
         options = await supervisor.get_options()
     except SupervisorError as exc:
         raise HTTPException(exc.status, str(exc)) from exc
-    return OptionsRead.from_supervisor(options)
+    result = OptionsRead.from_supervisor(options)
+    state = paas._state()
+    result.tunnel_token_managed_by_paas = bool(state.get("connection") or state.get("release_pending"))
+    return result
 
 
 @router.put("/options")
@@ -61,6 +65,18 @@ async def put_options(
         "configuration page).",
     ),
 ) -> dict:
+    # Serialize configuration writes with claim/disconnect so a concurrent
+    # save cannot reintroduce a credential after the stop has begun.
+    async with paas._connect_lock:
+        return await _save_options(body, background, restart)
+
+
+async def _save_options(body: AddonOptions, background: BackgroundTasks, restart: bool) -> dict:
+    state = paas._state()
+    if state.get("release_pending"):
+        raise HTTPException(409, "正在解除綁定；請到 PaaS 連結頁完成後再修改設定")
+    if state.get("connection") and body.tunnel_token is not None:
+        raise HTTPException(409, "Tunnel 憑證由 PaaS 管理；請先到 PaaS 連結頁停止連線並解除綁定")
     try:
         current = await supervisor.get_options()
     except SupervisorError as exc:

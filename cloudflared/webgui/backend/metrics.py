@@ -1,6 +1,6 @@
 """Query the cloudflared metrics endpoint for tunnel status.
 
-The forked run.sh always starts cloudflared with ``--metrics=0.0.0.0:36500``;
+The forked run.sh starts cloudflared with ``--metrics=127.0.0.1:36500``;
 its ``/ready`` endpoint reports connection readiness. When cloudflared is not
 running yet (e.g. the prepare script is still waiting for the Cloudflare
 login), the port is closed and the tunnel is reported as "stopped".

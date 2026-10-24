@@ -1,6 +1,6 @@
 <template>
   <nav class="border-b border-gray-200 bg-white">
-    <div class="mx-auto flex max-w-5xl items-center justify-between px-4 py-3">
+    <div class="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-3 px-4 py-3">
       <!-- Logo -->
       <div class="flex items-center gap-2">
         <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-cf-orange">
@@ -12,7 +12,7 @@
       </div>
 
       <!-- Navigation Links -->
-      <div class="flex items-center gap-1">
+      <div class="order-3 flex w-full items-center gap-1 overflow-x-auto pb-1 sm:order-none sm:w-auto sm:pb-0">
         <router-link
           v-for="link in links"
           :key="link.to"
@@ -45,6 +45,7 @@ const tunnelStore = useTunnelStore()
 
 const links = [
   { to: '/', label: 'Dashboard' },
+  { to: '/paas', label: 'PaaS 連結' },
   { to: '/setup', label: 'Setup' },
   { to: '/config', label: 'Config' },
   { to: '/logs', label: 'Logs' },
