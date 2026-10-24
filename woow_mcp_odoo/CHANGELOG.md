@@ -1,6 +1,16 @@
 # Odoo Changelog
 
-## 0.3.0 — 發佈候選（2026-10-24）
+## 0.3.1 — 發佈候選（2026-10-24）
+
+- 管理面板新增設定已保存／待套用／已套用／套用失敗狀態；「已套用」綁定目前子程序完成的協定檢查，後端健康分開顯示。token 與端點更新不代表子程序重啟。
+- 修正設定狀態卡片初次顯示與更新時末尾出現字面 `null` 的問題，保留狀態說明與過期版本提示。
+- 表單以載入時的 revision 搭配 `If-Match` 儲存；過期編輯回 409，不改資料、不重啟子程序，草稿保留至明確重新載入。管理程序重啟後也需重新載入舊表單。不帶條件 header 的舊 API client 維持相容，但沒有衝突保護。
+- 已保存但子程序替換失敗時明確回覆 `saved:true`、503 與安全失敗狀態，管理面板不誤稱儲存失敗，也不自動重送變更。
+- 共用 token 撤銷／輪替持久化後，取消進行中的 I/O、已開啟 GET/POST 串流與受阻的回應傳送，清理上游 iterator／reader／slot；不重啟子程序，已傳送內容與已送往後端的操作不會回滾。
+- schema、相依套件與 child pins 不變。新安裝仍預設全部功能開啟；既有 schema 4 保留已存政策。schema 1/2/3 沿用 0.3.0 的啟動前管理員確認，預選 `all_on`，也可明確選 `preserve`；升級前備份，等待確認時開啟面板處理，token 不會自動恢復。
+- 六支正式 0.3.1 映像尚待精確建置、container／供應鏈 gates 與匿名 immutable digest 驗證；[發佈狀態與驗收邊界](../../docs/operations/release-decision-0.3.1.md)。
+
+## 0.3.0 — 2026-10-24 正式 Release
 
 - 安全性相依套件修正：實際發布的 Python 環境鎖定 `certifi 2026.10.19`，移除受影響的 CA 信任鏈（GHSA-6q48-6c7w-9gw2）；依原 CVE/license 政策重新建置與驗收，不新增例外。
 - **舊資料啟動流程改變**：schema 1/2/3 在建立 ProductStore 與啟動 MCP 子程序前，先進入經 HA 管理員驗證的 Ingress 升級確認頁。預設選擇 `all_on`（完整功能與寫入），管理員確認後才遷移並正常啟動；無人確認時持續等待，MCP/readiness 回 503。請升級前備份，升級後開啟管理面板，比較預覽並確認。新安裝與既有 schema 4 正常啟動不變。
@@ -8,7 +18,7 @@
 - 共用 token 的重新產生／撤銷持久化後，舊權杖的後續請求失效，不重啟 MCP 子程序；既有已送往後端的操作不會回滾。升級與政策恢復不會自動復活已撤銷 token。
 - 新增離線 migration CLI 的預覽、明確套用與限制性政策恢復；恢復合併停用工具／operation，取較少寫入授權，不恢復舊 token。停 runtime 後才可操作。詳細步驟見 [migration](../../docs/operations/legacy-migration.md)。
 - schema 仍為 4，但舊二進位未實作新增 operation 限制；不可把退回 0.2.2 當作等效政策恢復。二進位回退需要另行審核相容備份與當前 token 狀態。
-- 六個啟用產品共同升版。正式映像須以精確 commit 完成 container、secret/history、SBOM、CVE/license gates，發布相同 image ID 並匿名驗證 immutable digest；狀態見 [0.3.0 發佈紀錄](../../docs/operations/release-decision-0.3.0.md)。
+- 六個啟用產品的 0.3.0 映像已完成精確 container、secret/history、SBOM、CVE/license gates 與匿名 immutable digest 驗證，正式 Release 已發布；證據與限制見 [0.3.0 發佈紀錄](../../docs/operations/release-decision-0.3.0.md)。
 
 ## 0.2.2 — 2026-10-21 正式 Release
 
