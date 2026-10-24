@@ -49,7 +49,7 @@ root PID 1 啟動器先準備 Home Assistant 以 root 掛載的 `/data`，安全
 ./tests/run.sh
 ```
 
-本機測試不需要 Docker；會檢查 YAML、禁止的主機／本機執行環境耦合、JavaScript 與 shell 語法、renderer／網路安全純函式、匯出 bridge、Ingress fixture，以及 CI 的最小權限與不可變發布政策。CI 會先實際建置 amd64 映像，透過模擬 Supervisor 路徑剝除的代理在 Chromium 中執行注入腳本與 fetch／XHR／SSE／WebSocket、PDF／圖片操作，並驗證健康檢查、持久性、renderer 與 HTTP 匯出。PR／main 建置只有 `contents: read` 權限且不登入 GHCR；amd64 映像只在 Git 標籤與 `config.yaml` 版本完全相符、且預檢確認版本標籤不存在時發布。已發布版本不可覆寫；發布失敗時必須提升 `config.yaml` 版本並建立新的相符標籤。
+本機測試不需要 Docker；會檢查 YAML、禁止的主機／本機執行環境耦合、JavaScript 與 shell 語法、renderer／網路安全純函式、匯出 bridge、Ingress fixture，以及 CI 的最小權限與不可變發布政策。CI 會先實際建置 amd64 映像，透過模擬 Supervisor 路徑剝除的代理在 Chromium 中執行注入腳本與 fetch／XHR／SSE／WebSocket、PDF／圖片操作，並驗證健康檢查、持久性、renderer 與 HTTP 匯出。PR／main 建置只有 `contents: read` 權限且不登入 GHCR；發布的方式是把提升 `config.yaml` 版本的 PR 合併到 `main`；推 Git 標籤不會發布任何東西，因為那會跳過 PR 的必要檢查。某個版本還沒有 Release 時，`main` 上第一次執行會先預檢確認映像版本標籤不存在，再發布 amd64 映像，最後由 App Store 的共用 workflow 在該 commit 建立 `v<版本>` 標籤與 Release；之後的 `main` 執行不會再動已發布的版本。已發布版本不可覆寫；發布失敗時必須再開一個提升 `config.yaml` 版本的 PR。
 
 ## 安全性
 

@@ -7,15 +7,15 @@
 # built-in Woow OpenDesign MCP server (mcp-runtime/).
 #
 # 0.2.1 removed Omnigent from the add-on (until Omnigent is stable). The pinned
-# core (20261015.0617, fork w2.2) is built with OMNIGENT=off: no omnigent CLI,
+# core (20261018.1219, fork w2.2) is built with OMNIGENT=off: no omnigent CLI,
 # no omnigent-host-entry, no bundled woow-omnigent plugin or skill. The removal
 # step below stays as a guard so an older core can never bring them back.
 #
 # The core is published as the public ghcr.io/woowtech/open-design-core,
-# copied from the PaaS registry by digest (paas-odoo-ci #332, approval #334:
+# copied from the PaaS registry by digest (paas-odoo-ci #359, approval #372:
 # OpenDesign 0.24.1 from fork woow-od-v0.24.1-w2.2 = 1c7e697). Bump with
 # .github/scripts/pin-core.sh <tag> <digest> (rewrites every pin).
-ARG BUILD_FROM=ghcr.io/woowtech/open-design-core:20261015.0617@sha256:c5496453136b5ddc1ec3376c0f7518bfb2ba5091ff1ba75bfadf645d1c52a683
+ARG BUILD_FROM=ghcr.io/woowtech/open-design-core:20261018.1219@sha256:f349632632e0c3fa9e546da8e83f89aa60d283d473fdf47fffa5728e01cde023
 
 # --- Built-in Woow OpenDesign MCP server: admin UI assets (mcp-runtime/, see mcp-runtime/README.md) ---
 # Built with the core image's own Node/npm from the vendored, lock-pinned UI sources; only dist/ is kept.
@@ -138,7 +138,7 @@ RUN sh /tmp/mcp-runtime/install.sh && rm -rf /tmp/mcp-runtime
 
 # amd64 only: the core image is built for linux/amd64.
 ARG BUILD_ARCH=amd64
-ARG BUILD_VERSION=0.2.2
+ARG BUILD_VERSION=0.2.3
 ARG BUILD_DATE
 ARG BUILD_DESCRIPTION="OpenDesign for Home Assistant"
 ARG BUILD_NAME="Woow HA OpenDesign"

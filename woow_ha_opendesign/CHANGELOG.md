@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.3
+
+- **Same OpenDesign core as the WOOW PaaS.** The add-on now builds on core `20261018.1219` (was `20261015.0617`), the core the WOOW PaaS OpenDesign runs (paas-odoo-ci #359, approval #372), copied to `ghcr.io/woowtech/open-design-core` by digest (`sha256:f3496326…`, byte-identical to the PaaS copy). It is built from the same fork commit (`woow-od-v0.24.1-w2.2`, `1c7e697`) with the same agent CLIs (Claude Code `2.1.296`, Codex CLI `0.162.1`, Pi `1.1.0`, OpenCode `1.18.33`) and the same tools. The one change: the core sets `OD_APP_VERSION=0.24.1`, so OpenDesign's `/api/version` and the built-in MCP server's `version` tool now report the OpenDesign release `0.24.1` instead of the daemon package version `0.23.1`.
+- The woow release train manifest (`woow-versions.yaml`) now tracks this core on both platforms; the HA and PaaS pins are equal again.
+
 ## 0.2.2
 
 - **Fixed: the add-on did not start after a Home Assistant backup restore.** Restoring a backup returns the add-on's `/data` without the original file owners: OpenDesign's database and project files came back as `root`, so OpenDesign (which runs as UID 1001) stopped at once with `SQLITE_READONLY` and the add-on stayed in `error` (measured on HAOS 18.1 / Supervisor 2026.09.3; 0.2.0 and 0.2.1 are affected). At every start the launcher now returns everything under `/data/opendesign` to the OpenDesign user before anything starts (symbolic links are changed themselves, never followed) and logs how many paths it fixed. A normal start changes nothing. The built-in MCP server already did this for `/data/mcp`. If 0.2.0/0.2.1 is stuck after a restore, updating to 0.2.2 starts it again with the restored data.
