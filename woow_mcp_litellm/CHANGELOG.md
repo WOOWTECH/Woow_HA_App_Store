@@ -1,6 +1,16 @@
 # LiteLLM Changelog
 
-## 0.2.2 — 準備中（未發佈）
+## 0.3.0 — 發佈候選（2026-10-24）
+
+- 安全性相依套件修正：實際發布的 Python 環境鎖定 `certifi 2026.10.19`，移除受影響的 CA 信任鏈（GHSA-6q48-6c7w-9gw2）；依原 CVE/license 政策重新建置與驗收，不新增例外。
+- **舊資料啟動流程改變**：schema 1/2/3 在建立 ProductStore 與啟動 MCP 子程序前，先進入經 HA 管理員驗證的 Ingress 升級確認頁。預設選擇 `all_on`（完整功能與寫入），管理員確認後才遷移並正常啟動；無人確認時持續等待，MCP/readiness 回 503。請升級前備份，升級後開啟管理面板，比較預覽並確認。新安裝與既有 schema 4 正常啟動不變。
+- 可明確選擇 `preserve`：保留既有停用／精確授權，新增工具及需重新審查參數的工具預設停用；不宣稱重現舊版參數限制。管理面板支援逐 operation 停用與寫入授權，顯示已保存及實際生效狀態；新安裝仍預設全部功能開啟。
+- 共用 token 的重新產生／撤銷持久化後，舊權杖的後續請求失效，不重啟 MCP 子程序；既有已送往後端的操作不會回滾。升級與政策恢復不會自動復活已撤銷 token。
+- 新增離線 migration CLI 的預覽、明確套用與限制性政策恢復；恢復合併停用工具／operation，取較少寫入授權，不恢復舊 token。停 runtime 後才可操作。詳細步驟見 [migration](../../docs/operations/legacy-migration.md)。
+- schema 仍為 4，但舊二進位未實作新增 operation 限制；不可把退回 0.2.2 當作等效政策恢復。二進位回退需要另行審核相容備份與當前 token 狀態。
+- 六個啟用產品共同升版。正式映像須以精確 commit 完成 container、secret/history、SBOM、CVE/license gates，發布相同 image ID 並匿名驗證 immutable digest；狀態見 [0.3.0 發佈紀錄](../../docs/operations/release-decision-0.3.0.md)。
+
+## 0.2.2 — 2026-10-21 正式 Release
 
 - **後端未設定或連不上時也能連線**（使用者 2026-10-16 核准）：0.2.1 以前沒有後端時 initialize 回 HTTP 502（沒有子程序可轉送），Claude.ai 連接器加不上去。現在 initialize、`notifications/initialized`、tools/list 一律成功，tools/list 回完整工具清單與 schema（依停用與寫入授權過濾，與有後端時相同）；tools/call 回 JSON-RPC 錯誤說明原因，不轉給子程序。
 - 未設定：沒有後端時沒有子程序，gateway 自己回 initialize、`notifications/initialized`、ping 與 tools/list（完整 40 個工具），tools/call 回 `-32603 Backend not configured`。
