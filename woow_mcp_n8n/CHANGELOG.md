@@ -1,5 +1,17 @@
 # n8n Changelog
 
+## 0.3.3 — 發佈候選（2026-10-24）
+
+- 0.3.2 已由另一個獨立 dependency-update PR17 保留；本修正改用 0.3.3，避免不同 source 共用映像 tag，不合併該 PR 的相依套件變更。
+
+- 全部 28 個 n8n 工具在操作 deny／grant 檢查前正規化 pinned child 的一層有效 `output` JSON，並轉送相同參數，修正六個混合工具的外層讀取／內層寫入覆蓋。第二層仍可被 child 解包的 wrapper 以歧義參數拒絕；重複授權保持相同結果，原有輸入預算先行檢查。
+- 修正條件式寫入授權：`n8n_workflow_versions` 的讀取模式若有效參數為 `exposeToMcp=true`，可能同時更新 workflow 的 MCP 曝露設定。除原工具／操作權限外，轉送前還須確認既有 `n8n_update_partial_workflow` 工具已啟用且具有有效寫入 grant；`n8n_test_workflow` 的曝露請求也遵守相同依賴。
+- 停用或撤銷 updater 必須阻擋這類間接寫入，涵蓋 pinned child 接受的 boolean／output wrapper 表示法；省略或關閉曝露的讀取維持不變，完整授權仍可使用曝露功能。
+- 保持 28 個工具、33 個寫入 grants、schema 4 與完整功能預設；沒有新增 grant、自動授權、token 重寫、相依套件、child pins 或 UI 原始碼變更。舊 schema 1/2/3 的管理員升級確認流程不變。
+- 新增 `conditional_writes` capability metadata，說明曝露參數、既有 updater 依賴及其有效狀態；沿用現有 UI 寫入授權控制，不新增持久化權限。
+- 既有狀態不需遷移，但回退舊 binary 會恢復這項授權缺陷，不能視為等效安全回復。
+- 精確 source freeze／CI 與正式映像驗收仍待完成；[候選狀態與證據範圍](../../docs/operations/release-decision-0.3.3.md)。離線 mock 重現不代表曾向正式後端寫入。
+
 ## 0.3.1 — 發佈候選（2026-10-24）
 
 - 管理面板新增設定已保存／待套用／已套用／套用失敗狀態；「已套用」綁定目前子程序完成的協定檢查，後端健康分開顯示。token 與端點更新不代表子程序重啟。
