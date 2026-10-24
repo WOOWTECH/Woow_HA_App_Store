@@ -330,10 +330,12 @@
     "WOOWTECH/Woow_ha_emqx": {
       "default_branch": "main",
       "required_workflows": [
-        ".github/workflows/release.yml"
+        ".github/workflows/release.yml",
+        ".github/workflows/release-train.yml"
       ],
       "observe_workflow_names": [
-        "Release"
+        "Release",
+        "Release train"
       ],
       "ref_policy": "release",
       "branch_rules": {
@@ -377,10 +379,12 @@
     "WOOWTECH/Woow_ha_hermes_add_on": {
       "default_branch": "main",
       "required_workflows": [
-        ".github/workflows/publish-hermes-addon-images.yml"
+        ".github/workflows/publish-hermes-addon-images.yml",
+        ".github/workflows/release-train.yml"
       ],
       "observe_workflow_names": [
-        "Publish Hermes add-on image"
+        "Publish Hermes add-on image",
+        "Release train"
       ],
       "ref_policy": "release",
       "branch_rules": {
@@ -515,10 +519,12 @@
     "WOOWTECH/Woow_ha_mcp_addons": {
       "default_branch": "claude-delivery",
       "required_workflows": [
-        ".github/workflows/woow-addon-release.yml"
+        ".github/workflows/woow-addon-release.yml",
+        ".github/workflows/release-train.yml"
       ],
       "observe_workflow_names": [
-        "WOOW addon release"
+        "WOOW addon release",
+        "Release train"
       ],
       "ref_policy": "release",
       "branch_rules": {
@@ -660,10 +666,12 @@
     "WOOWTECH/Woow_ha_n8n": {
       "default_branch": "main",
       "required_workflows": [
-        ".github/workflows/publish-n8n-addon-images.yml"
+        ".github/workflows/publish-n8n-addon-images.yml",
+        ".github/workflows/release-train.yml"
       ],
       "observe_workflow_names": [
-        "Publish n8n add-on images"
+        "Publish n8n add-on images",
+        "Release train"
       ],
       "ref_policy": "release",
       "branch_rules": {
@@ -796,10 +804,12 @@
     "WOOWTECH/Woow_ha_opendesign_add_on": {
       "default_branch": "main",
       "required_workflows": [
-        ".github/workflows/build.yml"
+        ".github/workflows/build.yml",
+        ".github/workflows/release-train.yml"
       ],
       "observe_workflow_names": [
-        "Validate, build, and publish"
+        "Validate, build, and publish",
+        "Release train"
       ],
       "ref_policy": "release",
       "branch_rules": {
