@@ -1,6 +1,18 @@
 # Odoo Changelog
 
-## 0.3.4 — 發佈候選（2026-10-24）
+## 0.4.0 — 發佈候選（2026-10-25）
+
+- **MCP SDK 2 遷移（對齊 WOOW PaaS，issue #21）**：Python MCP SDK `mcp` 1.30.0 → 2.3.0（另加 `mcp-types` 2.3.0），子程序對後端的連線仍用 HTTPX 0.28.1；管理面板 UI 建置用的 Node 基底 22.23.4 → 26.12.1（2026-10-28 起 Active LTS）。
+- Odoo：`odoo-mcp` 1.1.0 → 1.3.0（與 PaaS 相同；兩個 build patch 原樣套用、重新核對）；41 個工具的名稱、標註與寫入授權不變，10 個工具的參數多了說明（型別與必填不變）。`execute_method` 遇到 Odoo 已執行並提交、只是 None 回傳值無法經 XML-RPC 傳回時，改回成功並附警告（原本回錯誤，容易誘發重試）。新版的 `<欄位>_from_path` 本機檔案上傳、寫入前詢問 client 與 OAuth 都維持關閉。
+- **破壞性變更（見 [upgrade-notes.yaml](../../upgrade-notes.yaml)）**：13 個工具（accounting_health_across_instances、accounting_health_summary、aggregate_across_instances、build_domain、cancel_async_task、get_async_task、index_knowledge、knowledge_stats、list_async_tasks、receivable_payable_aging、search_across_instances、search_knowledge、submit_async_task）的 `structuredContent` 不再包一層 `result`，直接是結果物件；文字內容不變。讀 `structuredContent.result.<欄位>` 的 client 要改讀 `structuredContent.<欄位>`。
+- 同步工具仍一次只跑一個（SDK 2 預設會丟到多條工作緒並行；add-on 的單一 worker 照舊序列執行，寫入也一樣）。
+- 工具說明與 add-on 的實際行為一致：odoo-mcp 1.3.0 對模型說 `execute_method` 不能直接 create／write／unlink、`chatter_post` 預設要先預覽拿 approval token，但本 add-on 兩者都直接執行（`ODOO_MCP_ALLOW_DIRECT_WRITES=1`、`MCP_CHATTER_DIRECT=1`，0.2.0 起不變），模型因此會改走三步驟核准流程或等一個不會出現的預覽。直接寫入的 build patch 現在讓這兩段說明跟著同一組開關改寫（行為不變）。
+- 行為維持：工具失敗時 client 看到的錯誤文字與 0.3.4 相同（SDK 2 原本只回 `Error executing tool <名稱>`，add-on 補回原因）；閒置 30 分鐘結束 session、請求內容上限 16 MiB 照舊。
+- client 相容：仍走 2025 世代的 initialize 握手；gateway 照舊自己回 `server/discover`（JSON-RPC -32601），且不再把 client 的 `MCP-Protocol-Version` 標頭帶進 initialize（SDK 2 子程序會拒絕這種 initialize）；raw JSON-RPC、Python MCP SDK 1.30 與 2.3、TypeScript SDK 1.32 的 client 經 gateway 連線、列工具、呼叫都已實測。
+- 接在 0.3.4 之後。選項、port、映像名稱、架構、工具名稱與 state schema 4 都不變，從 0.3.4 或更早的 schema 4 版本升級不需確認或遷移；退回 0.3.4 不需資料轉換（同為 schema 4），未實測。
+- 六個啟用產品共同升版。正式映像須以精確 commit 完成 container、secret/history、SBOM、CVE/license gates，發布相同 image ID 並匿名驗證 immutable digest；狀態見 [0.4.0 發佈紀錄](../../docs/operations/release-decision-0.4.0.md)。
+
+## 0.3.4 — 2026-10-24 正式 Release
 
 - **相依套件更新，對齊 WOOW PaaS**：Python MCP SDK `mcp` 1.28.1 → 1.30.0（GHSA-84m7-p3x7-pcfv：Streamable HTTP session 不會回收）、`certifi` 2026.10.19 → 2026.10.23，其他鎖定的 Python 套件升到同 major 最新（pydantic 2.14.1、pydantic-settings 2.16.1、starlette 1.9.0 等）；管理面板 UI 建置用的 Node 基底 22.23.2 → 22.23.4（安全性修正版）。
 - SDK 1.30.0 本身會在沒有請求 30 分鐘後結束 session（與 add-on 原本的閒置上限相同，client 收到 404 後依 MCP 規範重新 initialize），請求 body 預設上限 4 MiB；add-on 維持閒置 30 分鐘，並把子程序的 body 上限設為 gateway 的 16 MiB，行為與之前相同。

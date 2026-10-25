@@ -1,6 +1,14 @@
 # n8n Changelog
 
-## 0.3.4 — 發佈候選（2026-10-24）
+## 0.4.0 — 發佈候選（2026-10-25）
+
+- **Node 22.23.4 → 26.12.1**（2026-10-28 起 Active LTS；n8n-mcp 2.96.2 支援）：子程序與管理面板 UI 的 Node 都換成 26。Node 26 官方執行檔需要 `libatomic.so.1`，映像把 node 階段的 Debian libatomic1 函式庫與 node 一起複製（與 libstdc++、libgcc_s 相同做法），並立刻檢查 `node --version`。
+- n8n-mcp 2.96.2、MCP TypeScript SDK 1.32.2 與 28 個工具不變；仍用 sql.js（`npm ci --ignore-scripts`，不建置 better-sqlite3 原生模組，與之前相同）。
+- 共用 gateway 隨 MCP SDK 2 遷移調整：照舊自己回 `server/discover`（-32601），且不再把 client 的 `MCP-Protocol-Version` 標頭帶進 initialize。n8n 子程序本來就忽略該標頭，行為不變。
+- 接在 0.3.4 之後。選項、port、映像名稱、架構、工具名稱與 state schema 4 都不變，從 0.3.4 或更早的 schema 4 版本升級不需確認或遷移；退回 0.3.4 不需資料轉換（同為 schema 4），未實測。
+- 六個啟用產品共同升版。正式映像須以精確 commit 完成 container、secret/history、SBOM、CVE/license gates，發布相同 image ID 並匿名驗證 immutable digest；狀態見 [0.4.0 發佈紀錄](../../docs/operations/release-decision-0.4.0.md)。
+
+## 0.3.4 — 2026-10-24 正式 Release
 
 - **相依套件更新，對齊 WOOW PaaS**：`n8n-mcp` 2.91.0 → 2.96.2、MCP TypeScript SDK（npm override）1.32.0 → 1.32.2、Node 22.23.2 → 22.23.4（n8n-mcp 2.96.2 要求 `^22.23.4`）；其餘 npm 套件取現有範圍內最新，`npm audit` 0 筆（修正 body-parser GHSA-27r3-jxmh-p828、undici GHSA-4qv8-2p9j-2685／GHSA-xjj6-f33q-929c、zod GHSA-mrhx-c7xc-m3w5 與 fast-uri、ip-address 的中度公告）。gateway 的 Python 核心環境也更新 `certifi` 2026.10.23（n8n 子程序不用 Python MCP SDK）。
 - 工具不變：2.96.2 的 28 個工具定義（tools.js、tools-n8n-manager.js）與 2.91.0 逐位元相同，tools/list 與工具快照不變。上游新增的行為：節點查詢標示已淘汰的 node 版本、驗證錯誤帶 `code`、健康檢查回 `checkStatus`、多擋四個雲端 metadata IPv6 位址；內建工具參數中的 `instance` 鍵會被上游忽略（內建工具沒有這個參數）。
