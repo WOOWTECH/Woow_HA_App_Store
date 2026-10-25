@@ -15,21 +15,21 @@ import uuid
 
 import httpx
 from backend_policy import sync_client, backend_errors
-from mcp.server.fastmcp import FastMCP
+from mcp.server.mcpserver import MCPServer
 
 OD_API_BASE = os.environ["OD_API_BASE"]
 
 # Chat operations can take minutes (AI agent generates code)
 CHAT_TIMEOUT = float(os.environ.get("OD_CHAT_TIMEOUT", "300"))
 
-mcp = FastMCP("Open Design MCP Server")
+mcp = MCPServer("Open Design MCP Server")
 _client: httpx.Client | None = None
 
 
 def _get_client() -> httpx.Client:
     global _client
     if _client is None:
-        _client = sync_client(base_url=OD_API_BASE, timeout=5.0)
+        _client = sync_client(base_url=OD_API_BASE, timeout=httpx.Timeout(60.0, connect=5.0))  # 0.2.0: upstream's 60 s
     return _client
 
 
@@ -172,6 +172,7 @@ def list_agents() -> dict:
 
 
 @mcp.tool()
+@backend_errors
 def list_connectors() -> dict:
     """List available external connectors (GitHub, etc.) and their tools."""
     return _api_get("/api/connectors")
@@ -201,6 +202,7 @@ def get_project(project_id: str) -> dict:
 
 
 @mcp.tool()
+@backend_errors
 def create_project(prompt: str, agent_id: str = "claude") -> dict:
     """Create a new design project by sending an initial prompt to an AI agent.
 
@@ -261,6 +263,7 @@ def list_project_files(project_id: str) -> dict:
 
 
 @mcp.tool()
+@backend_errors
 def read_file(project_id: str, file_path: str) -> str:
     """Read the raw content of a file from a project.
 
@@ -295,6 +298,7 @@ def get_file_info(project_id: str, file_path: str) -> dict:
 
 
 @mcp.tool()
+@backend_errors
 def send_message(
     project_id: str,
     prompt: str,
@@ -325,8 +329,7 @@ def send_message(
 @backend_errors
 def list_runs() -> dict:
     """List all active and completed AI agent runs."""
-    from output_policy import rows
-    return rows(_api_get("/api/runs"), 'runs', ('id', 'projectId', 'status'))
+    return _api_get("/api/runs")
 
 
 # ═══════════════════════════════════════════════════════════════════

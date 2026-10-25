@@ -8,6 +8,7 @@ system Python.
   list_connectors  project_connectors(): a positive projection of GET /api/connectors
   create_project,  ChatStream: the OpenDesign 0.24.1 /api/chat event stream (measured 2026-10-15) parsed with
   send_message     bounded time, bytes and agent text into a projected result (chat_result())
+  list_runs        run_rows(): 0.2.6, the 0.2.1-0.2.5 projection of GET /api/runs (see below)
 """
 import fnmatch
 import json
@@ -23,7 +24,7 @@ FILE_PATH = re.compile(r'[A-Za-z0-9_. /-]{1,256}')
 AGENT_ID_PATTERN = r'^[a-z][a-z0-9-]{0,63}$'
 AGENT_ID = re.compile(AGENT_ID_PATTERN[1:-1])
 DEFAULT_AGENT = 'claude'  # the PaaS server's default
-PROMPT_MAX = 20000  # characters; the gateway accepts request bodies up to 256 KiB
+PROMPT_MAX = 20000  # characters; the gateway accepts request bodies up to 16 MiB (256 KiB until 0.2.5)
 
 # Secret-like names read_file refuses, on top of OpenDesign's own rules (it already refuses '..' and symlinks that
 # leave the project). Compared case-insensitively with EVERY path segment, so a folder named like this is refused too.
@@ -138,11 +139,44 @@ def project_connectors(body):
     return {'total': len(items), 'connectors': connectors, 'truncated': len(items) > CONNECTOR_LIMIT}
 
 
+# --- list_runs ---------------------------------------------------------------------------------------------------------
+
+# 0.2.1-0.2.5 answered list_runs with the vendored apps/runtime/output_policy.rows(body, 'runs', RUN_FIELDS); the
+# runtime pinned since 0.2.6 returns GET /api/runs unprojected (each run's error text, log paths...) and no longer has
+# output_policy.py, so the same projection is kept here, line for line.
+RUN_FIELDS = ('id', 'projectId', 'status')
+RUN_LIMIT = 100
+RUN_TEXT_LIMIT = 256
+
+
+def run_rows(body):
+    """{'runs': [only RUN_FIELDS of the first RUN_LIMIT runs], 'truncated': bool}: a field that is a string (shortened
+    to RUN_TEXT_LIMIT), a number, a boolean or null is kept, anything else left out."""
+    values = body.get('runs') if isinstance(body, dict) else body
+    if not isinstance(values, list):
+        raise ValueError('unexpected metadata envelope')
+    return {'runs': [_run(row) for row in values[:RUN_LIMIT]], 'truncated': len(values) > RUN_LIMIT}
+
+
+def _run(body):
+    if not isinstance(body, dict):
+        raise ValueError('unexpected metadata record')
+    result = {}
+    for key in RUN_FIELDS:
+        value = body.get(key)
+        if value is None or type(value) in (bool, int, float):
+            result[key] = value
+        elif type(value) is str:
+            result[key] = value[:RUN_TEXT_LIMIT]
+    return result
+
+
 # --- create_project / send_message: the /api/chat event stream --------------------------------------------------------
 
-# The gateway ends every MCP response stream after 120 s (vendored gateway.STREAM_SECONDS). OpenDesign writes a
-# keepalive comment every 25 s and the child reads with a 30 s timeout, so a run is followed for at most about
-# CHAT_SECONDS + 30 s, then the project is registered (5 s timeout): inside the gateway's limit.
+# Until 0.2.5 the gateway ended every MCP response stream after 120 s (vendored gateway.STREAM_SECONDS); since 0.2.6
+# (runtime 0.4.0) a tools/call reply may take up to gateway.CALL_SECONDS (330 s). OpenDesign writes a keepalive comment
+# every 25 s and the child reads with a 30 s timeout, so a run is followed for at most about CHAT_SECONDS + 30 s, then
+# the project is registered (the vendored client's timeouts: 5 s connect, 60 s read since 0.2.6): inside that limit.
 CHAT_SECONDS = 75.0
 CHAT_READ_SECONDS = 30.0
 CHAT_MAX_BYTES = 8 * 1024 * 1024  # the whole event stream (agent stderr can be chatty)

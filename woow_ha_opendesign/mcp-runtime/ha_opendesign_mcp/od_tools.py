@@ -3,8 +3,9 @@
 The vendored server (vendor/apps/opendesign/vendor/opendesign_mcp_server/od_mcp_server.py) registers all 15 tools, but
 its list_connectors, read_file, create_project and send_message return raw daemon data and raw errors, and its
 /api/chat parser does not understand OpenDesign 0.24.1's events (an error whose `error` is a string, failures reported
-only in `end`/`run_retry_finished`). install() replaces exactly those four handlers on the FastMCP server, before
-BoundedTools wraps the synchronous tools, keeping their names and parameters (the PaaS server's):
+only in `end`/`run_retry_finished`). install() replaces exactly those handlers on the server (MCP Python SDK 2's
+MCPServer since 0.2.6, FastMCP of SDK 1.x until 0.2.5), before BoundedTools wraps the synchronous tools, keeping their
+names and parameters (the PaaS server's):
 
   list_connectors()                          od_rules.project_connectors() of GET /api/connectors
   read_file(project_id, file_path)           only a regular file the project's own file list shows, not secret-like,
@@ -13,9 +14,14 @@ BoundedTools wraps the synchronous tools, keeping their names and parameters (th
   send_message(project_id, prompt, agent_id) size (od_rules.ChatStream); projected result; create_project registers
                                              the project (vendored _register_project) so list_projects shows it;
                                              send_message only for an existing project
+  list_runs()                                0.2.6: od_rules.run_rows() of GET /api/runs, the projection the vendored
+                                             server applied until 0.2.5 (the runtime pinned since 0.2.6 returns the
+                                             runs unprojected and no longer has output_policy.py)
 
 Every failure is a fixed public code (vendored backend_policy.backend_errors / public_backend_error, or one of
-REFUSALS): never a daemon message, path, URL or token. At most CHAT_SLOTS agent runs are followed at a time.
+REFUSALS): never a daemon message, path, URL or token. At most CHAT_SLOTS agent runs are followed at a time. With SDK 2
+the client reads that text only through the vendored tool_error_text.keep_error_text(), which child.setup() applies
+last ('Error executing tool <name>: <code>', as with SDK 1.x).
 """
 import threading
 import uuid
@@ -29,7 +35,7 @@ CHAT_SLOTS = 2
 _chats = threading.BoundedSemaphore(CHAT_SLOTS)
 REFUSALS = ('FILE_PATH_REFUSED', 'FILE_NOT_FOUND', 'FILE_TOO_LARGE', 'FILE_NOT_TEXT', 'PROJECT_NOT_FOUND',
             'INVALID_ARGUMENTS', 'BACKEND_BUSY')
-REPLACED = ('list_connectors', 'read_file', 'create_project', 'send_message')
+REPLACED = ('list_connectors', 'read_file', 'create_project', 'send_message', 'list_runs')
 
 
 class Refused(BackendFailure):
@@ -49,6 +55,9 @@ class Server:
 
     def client(self):
         return self.od._get_client()
+
+    def api_get(self, path):
+        return self.od._api_get(path)  # looked up at call time, as the vendored tools do
 
     def chat_client(self):
         return sync_client(base_url=self.od.OD_API_BASE,
@@ -157,8 +166,13 @@ def make_handlers(server):
             raise
         return _chat(server, project_id, prompt, agent_id)
 
+    @backend_errors
+    def list_runs() -> dict:
+        """List all active and completed AI agent runs."""
+        return od_rules.run_rows(server.api_get('/api/runs'))
+
     return {'list_connectors': list_connectors, 'read_file': read_file, 'create_project': create_project,
-            'send_message': send_message}
+            'send_message': send_message, 'list_runs': list_runs}
 
 
 def _chat(server, project_id, prompt, agent_id):
@@ -196,8 +210,8 @@ def _chat(server, project_id, prompt, agent_id):
 
 
 def install(mcp, od):
-    """Replace the vendored handlers of REPLACED on the FastMCP server (same names, same parameters)."""
-    from mcp.server.fastmcp.tools.base import Tool
+    """Replace the vendored handlers of REPLACED on the MCPServer (same names, same parameters, same descriptions)."""
+    from mcp.server.mcpserver.tools.base import Tool  # MCP Python SDK 2 (0.2.6); mcp.server.fastmcp in SDK 1.x
     tools = mcp._tool_manager._tools
     handlers = make_handlers(Server(od))
     for name in REPLACED:

@@ -10,8 +10,10 @@
 #
 # A <vendored file>=<commit-sha> argument replaces that one file (it must be one of the files copied above) with
 # its copy at another commit of the same repository, again with `git archive`; VENDOR.json records it in
-# file_sources. 0.2.4 uses this for the two runtime files the source repository reviewed for MCP Python SDK
-# 1.30.0 on another branch (see README.md).
+# file_sources. 0.2.4 used this for the two runtime files the source repository reviewed for MCP Python SDK
+# 1.30.0 on another branch; 0.2.6 keeps apps/runtime/backend_policy.py of the 0.2.5 pin (public error codes only,
+# see README.md). 0.2.6 also copies apps/runtime/tool_error_text.py (MCP SDK 2) and no longer output_policy.py
+# (gone from the source; the HA overlay keeps the list_runs projection).
 set -Eeuo pipefail
 
 if (( $# < 2 )); then
@@ -52,7 +54,7 @@ paths=(
   apps/runtime/backend_policy.py
   apps/runtime/bounded_tools.py
   apps/runtime/session_idle.py
-  apps/runtime/output_policy.py
+  apps/runtime/tool_error_text.py
   apps/opendesign/launch.py
   apps/opendesign/vendor
   packaging/entrypoint.py

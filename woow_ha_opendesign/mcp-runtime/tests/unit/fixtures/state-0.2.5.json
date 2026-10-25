@@ -1,0 +1,33 @@
+{
+ "ha-tool-defaults.json": {
+  "granted": [
+   "create_project",
+   "delete_project",
+   "send_message"
+  ],
+  "left_disabled": [],
+  "record": "woow-ha-opendesign 0.2.1: OpenDesign writers on by default",
+  "schema": 1
+ },
+ "recorded": "v0.2.5 (b33d13d): vendored products.ProductStore + ha_opendesign_mcp runtime.pin_backend, defaults.apply, then an administrator's edits (list_skills off, delete_project revoked, endpoint saved); tokens replaced by fixed fake values",
+ "state.json": {
+  "backend_key": null,
+  "backend_url": null,
+  "child_token": "fake-child-token-not-a-secret-0123456789abc",
+  "connection": {
+   "url": "http://127.0.0.1:7456"
+  },
+  "disabled": [
+   "list_skills"
+  ],
+  "enabled_write_tools": [
+   "create_project",
+   "send_message"
+  ],
+  "endpoint": "https://od-mcp.example.invalid/mcp",
+  "product": "opendesign",
+  "schema_version": 3,
+  "token": "fake-addon-token-not-a-secret-0123456789abc",
+  "writes_enabled": false
+ }
+}

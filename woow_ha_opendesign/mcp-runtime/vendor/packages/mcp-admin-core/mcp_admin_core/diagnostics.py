@@ -13,7 +13,7 @@ MAX_BYTES = 128 * 1024
 MAX_ENTRIES = 200
 ANSI = re.compile(r"\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|$))")
 AUTH = re.compile(r"(?i)\b(Bearer|Basic)\s+[^\s\"'<>]+")
-ASSIGNMENT = re.compile(r'''(?ix)((?:[\w-]*(?:token|password|passwd|secret|api[_-]?key|authorization|cookie)[\w-]*)["']?\s*[:=]\s*)(?:"[^"\r\n]*"|'[^'\r\n]*'|[^\s,;&]+)''')
+ASSIGNMENT = re.compile(r'''(?ix)(\b[\w-]{0,64}(?:token|password|passwd|secret|api[_-]?key|authorization|cookie)[\w-]{0,64}["']?\s*[:=]\s*)(?:"[^"\r\n]*"|'[^'\r\n]*'|[^\s,;&]+)''')
 USERINFO = re.compile(r"(?i)(https?://)[^/\s@]+@")
 
 
@@ -26,7 +26,11 @@ def scrub_line(text, secrets=()):
             continue
         variants.update((value, quote(value, safe=""), json.dumps(value)[1:-1],
                          base64.b64encode(value.encode()).decode()))
-    text = redact.redact_secrets(text, sorted(variants, key=len, reverse=True))
+    if variants:
+        # One substitution pass: short credentials must not recursively replace
+        # letters in the mask emitted for a previous credential.
+        pattern = "|".join(re.escape(value) for value in sorted(variants, key=len, reverse=True))
+        text = re.sub(pattern, lambda _: redact.SECRET_MASK, text)
     text = redact.redact(text)
     text = AUTH.sub(r"\1 [REDACTED]", text)
     text = ASSIGNMENT.sub(r"\1[REDACTED]", text)

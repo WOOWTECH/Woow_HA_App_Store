@@ -7,6 +7,8 @@ No legacy SSE /sse or /messages endpoints are exposed. The MCP endpoint is /mcp 
 from __future__ import annotations
 
 import asyncio
+from collections import OrderedDict
+import copy
 import functools
 import hashlib
 import hmac
@@ -14,6 +16,7 @@ from http import HTTPStatus
 import json
 import re
 import secrets
+import time
 from typing import Awaitable, Callable
 
 import anyio
@@ -26,16 +29,33 @@ from starlette.routing import Route, request_response
 from starlette.middleware import Middleware
 
 from . import redact, ui
+from .access import AccessChanged, LeasedResponse, TokenAccess
 
 from . import VERSION
 from .config import ConfigError, State, Store, strict_json
-from .policy import Denied, ToolCallRefused, UnknownMethod, authorize, filter_list
-from .ha_role import valid_user_id
+from .configuration import ConfigurationState
+from .policy import Denied, ToolCallRefused, UnknownMethod, authorize, filter_list, validate_operation_denies
+from .admin_auth import AdminAuthority, BadRequest, prefix
 from .capabilities import ManagementOptions, capability_snapshot, observe_tools, tool_catalog
+from .request_limits import McpRequestLimits, RequestLimitError
 
-MAX_REQUEST = 262144
+# 0.2.0: 16 MiB (was 256 KiB). The full Nextcloud surface uploads up to 10 MiB as base64 (about 13.4 MiB of JSON) and
+# writes text files up to 1 MiB; a body is read only after the token check. BODY_SECONDS bounds the read.
+MAX_REQUEST = 16 * 1024 * 1024
+# n8n-mcp uses the SDK's low-level Server, so the SDK 1.32.0 McpServer input-element option does not protect it.
+# Bound only authenticated n8n ingress here; other products retain MAX_REQUEST for large inputs such as Nextcloud.
+N8N_MAX_REQUEST = 4 * 1024 * 1024
+N8N_MAX_ARGUMENT_ELEMENTS = 10_000
+N8N_MAX_ARGUMENT_DEPTH = 64
+N8N_REQUEST_LIMITS = McpRequestLimits(N8N_MAX_REQUEST, N8N_MAX_ARGUMENT_ELEMENTS, N8N_MAX_ARGUMENT_DEPTH)
+BODY_SECONDS = 60
 MAX_RESPONSE = 8 * 1024 * 1024
 STREAM_SECONDS = 120
+# 0.2.2 (test VM 2026-10-16, G2): a tools/call reply may take as long as its child allows. Each child bounds its own
+# backend calls; the longest is a Hermes chat turn (hermes_chat, 300 s: free models took 28-30 s, past the former 30 s).
+# A tools/call reply may be idle (between bytes) and take in total up to CALL_SECONDS; every other request keeps the 30 s
+# idle and STREAM_SECONDS total limits. The call holds one of the 32 slots meanwhile.
+CALL_SECONDS = 330
 EVENT_BOUNDARY = re.compile(rb"\r?\n\r?\n")
 FORWARDED_HEADERS = {"mcp-session-id": re.compile(r"[\x21-\x7e]{1,256}"),
                      "mcp-protocol-version": re.compile(r"[\x21-\x7e]{1,256}"),
@@ -57,6 +77,14 @@ PROTOCOL_VERSIONS = frozenset({"2024-11-05", "2025-03-26", "2025-06-18", "2025-1
 SESSION_END_SECONDS = 2
 # 0.1.8 (0.1.6 R1 F6): the name the initialize answer gives when the caller names no product.
 SERVER_NAME = re.compile(r"[a-z0-9][a-z0-9-]{0,63}")
+# 0.2.2: sessions the gateway opens itself when no child can answer (make_apps listing=). Idle ones end after 30 minutes,
+# as the children's (GATEWAY-3); at most LOCAL_SESSION_LIMIT, the least recently used ending first.
+LOCAL_SESSION_SECONDS = 30 * 60
+LOCAL_SESSION_LIMIT = 256
+# 0.2.2: how long an initialize waits for a child that is starting (connection refused) before the gateway answers it.
+CHILD_WAIT_SECONDS = 10
+CHILD_RETRY_SECONDS = .25
+CHILD_UP = ("running", "starting")
 
 
 def sse_frame(frame: bytes):
@@ -146,6 +174,7 @@ class UpstreamOwner:
         self.slots = slots
         self.response = None
         self.reader = None
+        self.iterator = None
         self.closed = False
         self.overflowed = False  # chunks() stopped at MAX_RESPONSE, not at the end of the reply
         self.end_session = None  # 0.1.6 (R2): set while the child's new session id is withheld from the client
@@ -162,6 +191,10 @@ class UpstreamOwner:
                         if not self.reader.done():
                             self.reader.cancel()
                         await asyncio.gather(self.reader, return_exceptions=True)
+                    if self.iterator is not None:
+                        # A send can be cancelled while iteration is paused at a
+                        # yield, with no pending anext task left to cancel.
+                        await self.iterator.aclose()
                     if self.response is not None:
                         await self.response.aclose()
             except (TimeoutError, httpx.HTTPError):
@@ -204,6 +237,20 @@ class OwnedStreamingResponse(StreamingResponse):
             await self.owner.close()
 
 
+class OwnedInitializeResponse:
+    """Retain the new-session cleanup obligation until its complete answer is sent."""
+    def __init__(self, response, owner):
+        self.response, self.owner = response, owner
+        self.status_code = response.status_code
+
+    async def __call__(self, scope, receive, send):
+        try:
+            await self.response(scope, receive, send)
+            self.owner.end_session = None
+        finally:
+            await self.owner.close()
+
+
 class AnyMethod:
     """An ASGI endpoint, so Starlette hands every method to the handler: the Bearer check comes first, then 405."""
     def __init__(self, handler):
@@ -213,15 +260,10 @@ class AnyMethod:
         await self.app(scope, receive, send)
 
 
-class BadRequest(Exception):
-    def __init__(self, status=400):
-        self.status = status
-
-
 async def body(request: Request):
     content = bytearray()
     try:
-        async with asyncio.timeout(10):
+        async with asyncio.timeout(BODY_SECONDS):
             async for chunk in request.stream():
                 content.extend(chunk)
                 if len(content) > MAX_REQUEST:
@@ -245,14 +287,8 @@ async def json_body(request):
         raise BadRequest() from None
 
 
-def prefix(request):
-    values = request.headers.getlist("x-ingress-path")
-    if len(values) > 1:
-        raise BadRequest()
-    value = values[0] if values else ""
-    if value and (not re.fullmatch(r"(?:/[A-Za-z0-9_-]+)+", value) or len(value) > 512):
-        raise BadRequest()
-    return value
+def request_limit_reply(error):
+    return json_reply(error.payload, error.status, {"Cache-Control": "no-store"})
 
 
 def token_valid(request, state):
@@ -289,16 +325,33 @@ def make_apps(store: Store, tools, child: httpx.AsyncClient, *,
               verify_admin: RoleVerifier | None = None,
               child_url="http://127.0.0.1:3000/mcp", health=None, backend_changed=None,
               server_name="woow-mcp", instructions: str | None = None,
-              management: ManagementOptions | None = None,
-              backend_check=None, restart_child=None, diagnostics=None):
-    management = management or ManagementOptions()
-    listing = None  # Builtin retains its reviewed bounded registry, without 0.2.x state migration.
+              listing=None, availability=None, management: ManagementOptions | None = None,
+              backend_check=None, restart_child=None, diagnostics=None, configuration=None):
+    """listing (0.2.2): the product's tools/list tools as its child lists them (surface.listing). With it, a client
+    connects whatever the backend's state: when no child can answer (no backend configured, so no child; a child that is
+    not up) the gateway answers initialize, notifications/initialized, ping and tools/list itself, from listing through
+    the same filter_list, in a session of its own, and refuses tools/call with a JSON-RPC error; a tool that
+    requires_backend is refused without a configured backend (-32603 Backend not configured; n8n's child, which runs
+    without one, still answers its documentation tools) and while the last health check finds the backend unreachable
+    (-32603 Backend unreachable, with the check's reason). availability() is HealthMonitor.availability. Without listing
+    (Odoo Manage, older tests) nothing changes."""
     if not SERVER_NAME.fullmatch(server_name) or instructions is not None and not (
             isinstance(instructions, str) and 0 < len(instructions) <= 4096):
         raise ValueError("invalid server identity")
+    n8n_request_bounds = getattr(store, "product", None) == "n8n"
+    management = management or ManagementOptions()
+    if listing is not None:
+        listing = copy.deepcopy(list(listing))
+        if not all(isinstance(tool, dict) and isinstance(tool.get("name"), str) for tool in listing):
+            raise ValueError("invalid tool listing")
+    if availability is None:
+        def availability():
+            return {"child": "running", "ready": True, "backend": "unknown", "reason": None}
+    local_sessions = OrderedDict()  # 0.2.2: session id -> last use (time.monotonic())
     redact.install()  # 0.1.12: a request path may now carry the token; no log record may show it
-    csrf_key = secrets.token_bytes(32)
     mutation_lock = asyncio.Lock()
+    token_access = TokenAccess(store)
+    configuration = configuration or ConfigurationState(store)
     slots = asyncio.Semaphore(32)
     admin_slots = asyncio.Semaphore(16)
 
@@ -309,32 +362,9 @@ def make_apps(store: Store, tools, child: httpx.AsyncClient, *,
         return capability_snapshot(management, state, snapshot(), catalog, can_test=backend_check is not None,
                                    can_restart=restart_child is not None, logs=diagnostics is not None)
 
-    def admin_identity(request):
-        # Uvicorn MUST have proxy_headers=False; request.client is the socket peer.
-        if not request.client or request.client.host != "172.30.32.2" or verify_admin is None:
-            raise BadRequest(403)
-        identities = request.headers.getlist("x-remote-user-id")
-        if len(identities) != 1 or not valid_user_id(identities[0]):
-            raise BadRequest(403)
-        user = identities[0]
-        base = prefix(request)
-        csrf = hmac.new(csrf_key, (user + "\0" + base).encode(), hashlib.sha256).hexdigest()
-        if request.method not in ("GET", "HEAD"):
-            values = request.headers.getlist("x-csrf-token")
-            if len(values) != 1 or not hmac.compare_digest(values[0].encode(), csrf.encode()):
-                raise BadRequest(403)
-            if request.headers.get("sec-fetch-site") == "cross-site":
-                raise BadRequest(403)
-        return user, base, csrf
-
-    async def final_role(user):
-        try:
-            async with asyncio.timeout(3):
-                allowed = await verify_admin(user)
-        except Exception:
-            allowed = False
-        if allowed is not True:
-            raise BadRequest(403)
+    authority = AdminAuthority(verify_admin)
+    admin_identity = authority.identity
+    final_role = authority.verify
 
     async def admin_action(request, user, base, csrf, value, peer_disconnected, committed):
         name = request.path_params["operation"]
@@ -354,9 +384,16 @@ def make_apps(store: Store, tools, child: httpx.AsyncClient, *,
                         raise ValueError()
                     if name == "backend":
                         if getattr(state, 'product', 'n8n') == 'n8n':
-                            if set(value) != {"url", "key"}:
+                            # 0.2.1: optional mcp_access_token (n8n's instance-level MCP key); the whole set is
+                            # replaced, so leaving it out (or clearing) removes a stored token.
+                            if set(value) not in ({"url", "key"}, {"url", "key", "mcp_access_token"}):
                                 raise ValueError()
                             changes = dict(backend_url=value["url"], backend_key=value["key"])
+                            if hasattr(state, "mcp_access_token"):
+                                token = value.get("mcp_access_token")
+                                changes["mcp_access_token"] = None if value["url"] is None else token
+                            elif value.get("mcp_access_token") is not None:
+                                raise ValueError()
                         else:
                             if set(value) != {"connection"}:
                                 raise ValueError()
@@ -366,12 +403,16 @@ def make_apps(store: Store, tools, child: httpx.AsyncClient, *,
                             raise ValueError()
                         changes = value
                     else:
-                        if (set(value) not in ({"writes_enabled", "disabled"}, {"writes_enabled", "disabled", "enabled_write_tools"}) or not isinstance(value["disabled"], list)
+                        if (not {"writes_enabled", "disabled"} <= set(value)
+                                or set(value) - {"writes_enabled", "disabled", "enabled_write_tools", "denied_operations"}
+                                or not isinstance(value["disabled"], list)
                                 or any(not isinstance(t, str) or t not in tools for t in value["disabled"])):
                             raise ValueError()
                         changes = value
                     # Validate without writing. Store.update revalidates on commit.
-                    type(state).model_validate({**state.model_dump(), **changes})
+                    candidate = type(state).model_validate({**state.model_dump(), **changes})
+                    if name == 'policy' and 'denied_operations' in changes:
+                        validate_operation_denies(candidate.denied_operations, tools, state)
                 except ValueError:
                     raise BadRequest() from None
             if peer_disconnected.is_set():
@@ -380,23 +421,35 @@ def make_apps(store: Store, tools, child: httpx.AsyncClient, *,
             if peer_disconnected.is_set():
                 raise BadRequest(403)
             # No awaited work between this final decision and disclosure/commit.
+            headers['ETag'] = configuration.etag(state)
+            if changes is not None or name in ('token/rotate', 'token/revoke', 'child/restart'):
+                matches = request.headers.getlist('if-match')
+                if matches and (len(matches) != 1 or matches[0] != headers['ETag']):
+                    return JSONResponse({'detail': {'code': 'config_conflict'}}, status_code=409, headers=headers)
             if name == "__ui__" and hasattr(request.state, "ui_path") and request.method in ("GET", "HEAD"):
                 return ui.response(request.state.ui_path, base)
             if name == "bootstrap" and request.method == "GET":
                 catalog = tool_catalog(tools, listing, None, state)
                 schemas = {item["name"]: item.get("inputSchema") for item in catalog["items"]}
                 return JSONResponse({"base_path": base, "api_base": base + "/api", "csrf": csrf,
+                    "configuration": configuration.snapshot(state),
                     "endpoint": state.endpoint, "backend_url": state.backend_url,
                     "backend_key_set": state.backend_key is not None, "token_active": state.token is not None,
+                    "mcp_access_token_set": getattr(state, "mcp_access_token", None) is not None,
                     "product": getattr(state, 'product', 'n8n'),
                     "connection_configured": getattr(state, 'configured', bool(state.backend_url and state.backend_key)),
                     "writes_enabled": state.writes_enabled, "disabled": state.disabled,
                     "policy_contract": "woow-v3-exact-grants",
                     "enabled_write_tools": getattr(state, 'enabled_write_tools', []),
+                    **({"denied_operations": state.denied_operations} if hasattr(state, 'denied_operations') else {}),
                     "capabilities": capabilities(state, catalog),
                     "tools": {k: {"write": v.write, "write_grants": v.grants(k),
                                   "operation_parameter": v.selector, "legacy_write": v.legacy_write,
+                                  "default_operation": v.default_operation,
+                                  "operations": [{"name": op, "write": op in v.write_operations} for op in v.operations],
                                   "inputSchema": schemas.get(k) or v.arguments.model_json_schema()} for k, v in tools.items()}, "health": snapshot()}, headers=headers)
+            if name == "configuration" and request.method == "GET":
+                return JSONResponse({'configuration': configuration.snapshot(state)}, headers=headers)
             if name == "capabilities" and request.method == "GET":
                 before = snapshot().get("child")
                 observed = await observe_tools(child, child_url, state)
@@ -424,8 +477,10 @@ def make_apps(store: Store, tools, child: httpx.AsyncClient, *,
                 try:
                     await restart_child(state)
                 except Exception:
-                    return JSONResponse({"error": "child_restart_failed", "health": snapshot()}, status_code=503, headers=headers)
-                return JSONResponse({"accepted": True, "apply_state": "pending", "health": snapshot()}, status_code=202, headers=headers)
+                    return JSONResponse({"error": "child_restart_failed", "detail": {"code": "config_apply_failed"},
+                                         "configuration": configuration.snapshot(state), "health": snapshot()}, status_code=503, headers=headers)
+                return JSONResponse({"accepted": True, "apply_state": "pending", "health": snapshot(),
+                                     "configuration": configuration.snapshot(state)}, status_code=202, headers=headers)
             if name == "diagnostics" and request.method == "GET":
                 if diagnostics is None:
                     return JSONResponse({"error": "unsupported"}, status_code=409, headers=headers)
@@ -434,9 +489,13 @@ def make_apps(store: Store, tools, child: httpx.AsyncClient, *,
                 return JSONResponse({"token": store.load().token}, headers=headers)
             if name == "token/rotate" and request.method == "POST":
                 updated = store.update(token=secrets.token_urlsafe(32))
+                token_access.committed()
+                headers['ETag'] = configuration.etag(updated)
                 return JSONResponse({"token": updated.token}, headers=headers)
             if name == "token/revoke" and request.method == "POST":
-                store.update(token=None)
+                updated = store.update(token=None)
+                token_access.committed()
+                headers['ETag'] = configuration.etag(updated)
                 return Response(status_code=204, headers=headers)
             if changes is not None:
                 if name == "backend" and not management.backend_can_edit:
@@ -445,9 +504,14 @@ def make_apps(store: Store, tools, child: httpx.AsyncClient, *,
                 # No yield between durable commit and lifecycle ownership transfer.
                 # An authorized mutation is not undone by losing its HTTP caller.
                 committed.set()
+                headers['ETag'] = configuration.etag(updated)
                 if (name == "backend" or (name == "policy" and getattr(state, 'product', 'n8n') in ('emqx', 'litellm', 'nextcloud'))) and backend_changed:
-                    await backend_changed(updated)
-                return JSONResponse({"saved": True}, headers=headers)
+                    try:
+                        await backend_changed(updated)
+                    except Exception:
+                        return JSONResponse({'saved': True, 'detail': {'code': 'config_apply_failed'},
+                                             'configuration': configuration.snapshot(updated)}, status_code=503, headers=headers)
+                return JSONResponse({"saved": True, 'configuration': configuration.snapshot(updated)}, headers=headers)
             return Response(status_code=404)
         finally:
             mutation_lock.release()
@@ -534,23 +598,19 @@ def make_apps(store: Store, tools, child: httpx.AsyncClient, *,
         except ConfigError:
             return False
 
-    async def chunks(owner, token):
-        """Bound total bytes/time; poll revocation even while upstream is idle."""
-        iterator = owner.response.aiter_bytes()
+    async def chunks(owner, lease, seconds=None):
+        """Bound total bytes/time (seconds, default STREAM_SECONDS); poll revocation even while upstream is idle."""
+        iterator = owner.iterator = owner.response.aiter_bytes()
         total = 0
         try:
-            async with asyncio.timeout(STREAM_SECONDS):
+            async with asyncio.timeout(seconds or STREAM_SECONDS):
                 while True:
-                    pending = owner.reader = asyncio.create_task(anext(iterator))
-                    while not pending.done():
-                        await asyncio.wait({pending}, timeout=0.2)
-                        if not still_authorized(token):
-                            return
+                    async def read_one():
+                        owner.reader = asyncio.create_task(anext(iterator))
+                        return await owner.reader
                     try:
-                        chunk = pending.result()
+                        chunk = await lease.run(read_one)
                     except StopAsyncIteration:
-                        return
-                    if not still_authorized(token):
                         return
                     total += len(chunk)
                     if total > MAX_RESPONSE:
@@ -577,7 +637,7 @@ def make_apps(store: Store, tools, child: httpx.AsyncClient, *,
         except Exception:
             pass
 
-    async def initialize_reply(owner, token, is_sse, ident):
+    async def initialize_reply(owner, lease, is_sse, ident):
         """Read the child's reply to initialize: (outcome, message, SSE frame lines other than data).
 
         outcome is "ok", "missing" or "invalid". Stops at the JSON-RPC response with the request's id
@@ -593,7 +653,7 @@ def make_apps(store: Store, tools, child: httpx.AsyncClient, *,
             return "ok" if one_reply(value) else "invalid"
 
         pending = bytearray()
-        reader = chunks(owner, token)
+        reader = chunks(owner, lease)
         try:
             async for chunk in reader:
                 start = max(0, len(pending) - 3)  # only new bytes, plus a boundary split across chunks
@@ -634,13 +694,13 @@ def make_apps(store: Store, tools, child: httpx.AsyncClient, *,
         outcome = reply(value)
         return ("ok", value, None) if outcome == "ok" else ("invalid" if outcome else "missing", None, None)
 
-    async def stream(owner, token, request=None):
+    async def stream(owner, lease, request=None, seconds=None):
         """Relay a child's SSE 200 (the only stream the caller hands over). request is the (id, method) of the POST
-        this stream answers, None for a GET stream."""
+        this stream answers, None for a GET stream; seconds bounds it (chunks)."""
         # Every event is rebuilt from the lines the gateway understood (sse_frame), so nothing it did not filter
         # can reach a client as data.
         pending = bytearray()
-        async for chunk in chunks(owner, token):
+        async for chunk in chunks(owner, lease, seconds):
             start = max(0, len(pending) - 3)  # only new bytes, plus a boundary split across chunks
             pending.extend(chunk)
             while match := EVENT_BOUNDARY.search(pending, start):
@@ -674,7 +734,9 @@ def make_apps(store: Store, tools, child: httpx.AsyncClient, *,
                             # and no pinned child keeps an event store.
                             continue
                         else:
-                            checked = gateway_reply(value, request[1])
+                            # 0.2.0: backend errors carry their own text; no credential the add-on holds leaves
+                            checked = redact.redact_secrets(gateway_reply(value, request[1]),
+                                                            redact.secret_values(store.load()))
                             if (isinstance(checked.get("result"), dict)
                                     and {"tools", "capabilities"} & checked["result"].keys()):
                                 checked = filter_list(checked, tools, store.load())
@@ -689,11 +751,55 @@ def make_apps(store: Store, tools, child: httpx.AsyncClient, *,
                     return  # a duplicate reply or anything after it is never relayed
         # A truncated SSE event is intentionally not dispatched.
 
+    def local_session(session):
+        """0.2.2: whether session is a live session the gateway opened itself (its last use is renewed)."""
+        now = time.monotonic()
+        while local_sessions and now - next(iter(local_sessions.values())) >= LOCAL_SESSION_SECONDS:
+            local_sessions.popitem(last=False)
+        if session not in local_sessions:
+            return False
+        local_sessions[session] = now
+        local_sessions.move_to_end(session)
+        return True
+
+    def local_initialize(message):
+        """0.2.2: the initialize answer the gateway gives itself: the same result a child's answer is rebuilt into, the
+        client's protocolVersion when it is a reviewed one (else the newest reviewed one), and a new session of its own."""
+        local_session(None)  # ends idle sessions first
+        session = "woow-local-" + secrets.token_hex(16)
+        local_sessions[session] = time.monotonic()
+        while len(local_sessions) > LOCAL_SESSION_LIMIT:
+            local_sessions.popitem(last=False)
+        requested = message["params"]["protocolVersion"]
+        result = {"protocolVersion": requested if requested in PROTOCOL_VERSIONS else max(PROTOCOL_VERSIONS),
+                  "capabilities": {"tools": {}}, "serverInfo": {"name": server_name, "version": VERSION},
+                  **({"instructions": instructions} if instructions else {})}
+        return json_reply({"jsonrpc": "2.0", "id": message["id"], "result": result}, 200,
+                          {"Cache-Control": "no-store", "mcp-session-id": session})
+
+    def listed_reply(ident, state):
+        """0.2.2: tools/list answered from listing, filtered exactly as a child's answer (redact, then filter_list)."""
+        value = {"jsonrpc": "2.0", "id": ident, "result": {"tools": copy.deepcopy(listing)}}
+        value = filter_list(redact.redact_secrets(value, redact.secret_values(state)), tools, state)
+        return json_reply(value, 200, {"Cache-Control": "no-store"})
+
     async def mcp(request):
-        return await serve(request, None)
+        return await leased_serve(request, None)
 
     async def private_mcp(request):
-        return await serve(request, request.path_params["secret"])
+        return await leased_serve(request, request.path_params["secret"])
+
+    async def leased_serve(request, secret):
+        def refused():
+            return BadRequest(401) if secret is None else HTTPException(404)
+        try:
+            response = await serve(request, secret)
+        except AccessChanged:
+            raise refused() from None
+        lease = getattr(request.state, "token_lease", None)
+        if lease is None or response.status_code in (401, 404):
+            return response
+        return LeasedResponse(response, lease, refused)
 
     async def serve(request, secret):
         """secret is None on /mcp (Bearer header) and the path segment on /private_<secret>/mcp.
@@ -721,9 +827,69 @@ def make_apps(store: Store, tools, child: httpx.AsyncClient, *,
             """0.1.14: a refused well-formed tools/call is answered as JSON-RPC (ToolCallRefused.error()), not 403."""
             return json_reply({"jsonrpc": "2.0", "id": ident, "error": refusal.error()}, 200, {"Cache-Control": "no-store"})
 
+        def session_gone():
+            """0.2.2: the session is no longer served (its child stopped, or the gateway's own session ends because the
+            child is up): 404, as a child answers for a session it does not know; MCP clients then initialize again."""
+            if request.method == "POST" and isinstance(message, dict) and "id" in message:
+                return child_status_reply(message["id"], 404, {"Cache-Control": "no-store"})
+            return Response(status_code=404, headers={"Cache-Control": "no-store"})
+
+        def backend_refusal(available, configured):
+            """0.2.2: a tools/call no child is asked: None when it may be forwarded."""
+            name = message["params"]["name"]
+            tool = tools[name]
+            if not tool.requires_backend:
+                return None
+            if not configured:
+                return tool_refusal(message["id"], ToolCallRefused("backend_not_configured", name))
+            if available["ready"] and available["backend"] == "unreachable":
+                return tool_refusal(message["id"], ToolCallRefused("backend_unreachable", name, reason=available["reason"]))
+            return None
+
+        def without_child():
+            """0.2.2 (listing only): the answers the gateway gives itself, before a slot or the child; None forwards."""
+            state = store.load()  # reading the body yielded: a revoked token is refused as on any other path
+            if not authorized(state):
+                return unauthorized()
+            available = availability()
+            configured = getattr(state, "configured", bool(state.backend_url and state.backend_key))
+            child_up = available["child"] in CHILD_UP
+            if method == "initialize":
+                return None if child_up else local_initialize(message)
+            session = headers["mcp-session-id"]
+            if local_session(session):
+                if available["ready"]:
+                    local_sessions.pop(session, None)  # the child answers now: the client opens a session with it
+                    return session_gone()
+                if request.method == "DELETE":
+                    local_sessions.pop(session, None)
+                    return Response(status_code=200, headers={"Cache-Control": "no-store"})
+                if request.method == "GET":  # no server-to-client stream (MCP: 405 when a server offers none)
+                    return Response(status_code=405, headers={"Allow": "POST, DELETE", "Cache-Control": "no-store"})
+                if method == "notifications/initialized":
+                    return Response(status_code=202, headers={"Cache-Control": "no-store"})
+                if method == "ping":
+                    return json_reply({"jsonrpc": "2.0", "id": message["id"], "result": {}}, 200, {"Cache-Control": "no-store"})
+                if method == "tools/list":
+                    return listed_reply(message["id"], state)
+                name = message["params"]["name"]  # tools/call: authorize allows nothing else here
+                if not configured and tools[name].requires_backend:
+                    return tool_refusal(message["id"], ToolCallRefused("backend_not_configured", name))
+                reason = (available["reason"] if available["backend"] == "unreachable" and available["reason"] else
+                          "MCP_SERVER_NOT_READY: the add-on's MCP server is " + available["child"] + "; try again shortly")
+                return tool_refusal(message["id"], ToolCallRefused("backend_unreachable", name, reason=reason))
+            if not child_up:
+                return session_gone()  # a child session: it ended with the child
+            if request.method == "POST" and method == "tools/list" and not configured:
+                return listed_reply(message["id"], state)  # n8n: its unconfigured child lists only documentation tools
+            if request.method == "POST" and method == "tools/call":
+                return backend_refusal(available, configured)
+            return None
+
         state = store.load()
         if not authorized(state):
             return unauthorized()
+        lease = request.state.token_lease = token_access.lease(state.token)
         if request.method not in ("GET", "POST", "DELETE"):  # any other method, only after the token check
             return Response(status_code=405, headers={"Allow": "GET, POST, DELETE"})
         if secret is None and request.headers.get("origin") is not None:
@@ -733,7 +899,28 @@ def make_apps(store: Store, tools, child: httpx.AsyncClient, *,
         method = message = refusal = None
         content = b""
         if request.method == "POST":
-            message = await json_body(request)
+            if n8n_request_bounds:
+                if request.headers.get("content-type", "").split(";")[0] != "application/json":
+                    raise BadRequest(415)
+                try:
+                    async with asyncio.timeout(BODY_SECONDS):
+                        limited_body = await lease.run(lambda: N8N_REQUEST_LIMITS.read_body(request))
+                    N8N_REQUEST_LIMITS.parse_and_check(limited_body)
+                    try:
+                        message = strict_json(limited_body)
+                        # Preserve HA's duplicate/nonfinite checks and reject lone surrogates before any dispatch.
+                        json.dumps(message, ensure_ascii=False).encode("utf-8")
+                    except (ValueError, RecursionError):  # UnicodeEncodeError is a ValueError
+                        raise RequestLimitError(
+                            "Invalid or excessively nested JSON", status=400, code=-32700) from None
+                except RequestLimitError as error:
+                    return request_limit_reply(error)
+                except ClientDisconnect:
+                    raise BadRequest(403) from None
+                except TimeoutError:
+                    raise BadRequest(408) from None
+            else:
+                message = await lease.run(lambda: json_body(request))
             try:
                 method = authorize(message, tools, state)
             except ToolCallRefused as refused_call:
@@ -750,8 +937,21 @@ def make_apps(store: Store, tools, child: httpx.AsyncClient, *,
                                   200, {"Cache-Control": "no-store"})
             except Denied:
                 raise BadRequest(403) from None
-        elif await body(request):
-            raise BadRequest()
+        else:
+            if n8n_request_bounds:
+                try:
+                    async with asyncio.timeout(BODY_SECONDS):
+                        nonempty = await lease.run(lambda: N8N_REQUEST_LIMITS.read_body(request))
+                except RequestLimitError as error:
+                    return request_limit_reply(error)
+                except ClientDisconnect:
+                    raise BadRequest(403) from None
+                except TimeoutError:
+                    raise BadRequest(408) from None
+            else:
+                nonempty = await lease.run(lambda: body(request))
+            if nonempty:
+                raise BadRequest()
         headers = {"Authorization": "Bearer " + state.child_token, "Content-Type": "application/json",
                    "Accept": "application/json, text/event-stream",  # fixed: the gateway reads both itself
                    "Accept-Encoding": "identity"}
@@ -759,7 +959,11 @@ def make_apps(store: Store, tools, child: httpx.AsyncClient, *,
             values = request.headers.getlist(name)
             if len(values) > 1 or (values and (len(values[0]) > 256 or not re.fullmatch(r"[\x21-\x7e]+", values[0]))):
                 raise BadRequest(403 if refusal is not None else 400)
-            if values:
+            # 0.4.0: never on an initialize. The body's protocolVersion negotiates; mcp 1.x children ignored the header
+            # there, but MCP SDK 2 (2.3.0) routes any request whose header is not an initialize-handshake revision
+            # (2026-07-28, a typo) to its 2026-07-28 handling, which refuses an initialize (HTTP 400), so a client that
+            # still sends its server/discover header could no longer connect.
+            if values and not (name == "mcp-protocol-version" and method == "initialize"):
                 headers[name] = values[0]
         if refusal is not None and "mcp-session-id" not in headers:
             raise BadRequest(403)  # a refused call without a session: unchanged from 0.1.13
@@ -788,6 +992,10 @@ def make_apps(store: Store, tools, child: httpx.AsyncClient, *,
                 return tool_refusal(message["id"], refused_call)
             except Denied:
                 raise BadRequest(403) from None
+        if listing is not None:
+            answer = without_child()
+            if answer is not None:
+                return answer
         try:
             async with asyncio.timeout(1):
                 await slots.acquire()
@@ -816,10 +1024,36 @@ def make_apps(store: Store, tools, child: httpx.AsyncClient, *,
                     # child must not expect any, whatever the real client declared.
                     forwarded = {**message, "params": {**message["params"], "capabilities": {}}}
                 content = json.dumps(forwarded, separators=(",", ":")).encode()
-            outgoing = child.build_request(request.method, child_url, headers=headers, content=content,
-                                           timeout=httpx.Timeout(30, connect=3, pool=3))
-            async with asyncio.timeout(35):
-                upstream = owner.response = await child.send(outgoing, stream=True, follow_redirects=False)
+            waited = time.monotonic() + CHILD_WAIT_SECONDS
+            call_seconds = CALL_SECONDS if method == "tools/call" else None  # 0.2.2: see CALL_SECONDS
+            async with asyncio.timeout(call_seconds + 5 if call_seconds else 35):
+                while True:
+                    lease.check()
+                    outgoing = child.build_request(request.method, child_url, headers=headers, content=content,
+                                                   timeout=httpx.Timeout(call_seconds or 30, connect=3, pool=3))
+                    try:
+                        async def send_owned():
+                            owner.response = await child.send(outgoing, stream=True, follow_redirects=False)
+                            # Adopt a newly opened session before the lease's post-I/O check:
+                            # revocation may race the arrival of initialize headers.
+                            session = owner.response.headers.get("mcp-session-id")
+                            if (method == "initialize" and session is not None
+                                    and FORWARDED_HEADERS["mcp-session-id"].fullmatch(session)
+                                    and session != headers.get("mcp-session-id")):
+                                owner.end_session = functools.partial(end_session, state.child_token, session)
+                            return owner.response
+                        upstream = await lease.run(send_owned)
+                        break
+                    except httpx.ConnectError:
+                        # 0.2.2 (listing only): nothing listens on the child's port. Its sessions ended with it; an
+                        # initialize waits for a child that is starting, then the gateway answers it itself.
+                        if listing is None:
+                            raise
+                        if method != "initialize":
+                            return session_gone()
+                        if time.monotonic() >= waited or availability()["child"] not in CHILD_UP:
+                            return local_initialize(message)
+                        await lease.run(lambda: asyncio.sleep(CHILD_RETRY_SECONDS))
             # Only well-formed values of four headers are forwarded (a non-Latin-1 value from a child could
             # not be encoded into the reply); session/protocol values follow the same rule as request headers.
             response_headers = {k: v for k, v in upstream.headers.items()
@@ -863,7 +1097,7 @@ def make_apps(store: Store, tools, child: httpx.AsyncClient, *,
                         return backend_unavailable(message.get("id"))  # the child sent no reply
                     raise BadRequest(502)
             if method == "initialize" and upstream.status_code == 200:
-                outcome, value, frame = await initialize_reply(owner, state.token, is_sse, message.get("id"))
+                outcome, value, frame = await initialize_reply(owner, lease, is_sse, message.get("id"))
                 if not still_authorized(state.token):
                     raise refused()
                 if outcome == "missing":
@@ -898,13 +1132,13 @@ def make_apps(store: Store, tools, child: httpx.AsyncClient, *,
                     # The child's event framing (id/event/retry lines) with the filtered data.
                     frame.append(b"data: " + json.dumps(value, separators=(",", ":")).encode())
                     answer = Response(b"\n".join(frame) + b"\n\n", status_code=200, headers=response_headers)
-                owner.end_session = None  # the answer hands the session id over: ending it is the client's call
-                return answer
+                handed_off = True
+                return OwnedInitializeResponse(answer, owner)
             if request_id and not is_sse and upstream.status_code == 200:
                 # Every JSON reply is parsed, must answer this request, is filtered and re-serialized: a child
                 # cannot hand a client an unfiltered list under another request's id or in a batch.
                 result = bytearray()
-                async for chunk in chunks(owner, state.token):
+                async for chunk in chunks(owner, lease, call_seconds):
                     result.extend(chunk)
                 if not still_authorized(state.token):
                     raise refused()
@@ -914,13 +1148,17 @@ def make_apps(store: Store, tools, child: httpx.AsyncClient, *,
                     value = strict_json(bytes(result))
                     if not (one_reply(value) and same_id(value.get("id"), message.get("id"))):
                         raise ValueError("not this request's reply")
-                    value = filter_list(gateway_reply(value, method), tools, store.load())
+                    current = store.load()
+                    # 0.2.0: backend errors carry their own text; no credential the add-on holds leaves
+                    value = filter_list(redact.redact_secrets(gateway_reply(value, method), redact.secret_values(current)),
+                                        tools, current)
                 except (ValueError, RecursionError):
                     raise BadRequest(502) from None
                 return json_reply(value, 200, response_headers)
             if not (is_sse and upstream.status_code == 200):
                 raise BadRequest(502)  # unreachable (R1 #8): every other success body was answered or refused above
-            response = OwnedStreamingResponse(stream(owner, state.token, (message.get("id"), method) if request_id else None),
+            response = OwnedStreamingResponse(stream(owner, lease, (message.get("id"), method) if request_id else None,
+                                                     call_seconds),
                                               owner=owner, status_code=200, headers=response_headers)
             # This answer hands any session id it carries over to the client, so the end of its stream must never
             # DELETE that session (an initialize never streams today: it is answered or refused above).

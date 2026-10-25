@@ -147,8 +147,8 @@ else:
 '
 # 0.2.4: the MCP Server page reports the add-on version (the image's
 # WOOW_ADDON_VERSION, which the root bootstrap passes to the management process)
-# and the MCP runtime version. Read over the administration socket, as nginx
-# reaches it for the Supervisor Ingress peer.
+# and the MCP runtime version (0.4.0 since 0.2.6). Read over the administration
+# socket, as nginx reaches it for the Supervisor Ingress peer.
 expected_version=$(docker exec "$container" printenv WOOW_ADDON_VERSION)
 test -n "$expected_version"
 docker exec "$container" /opt/woow/.venv/bin/python -c '
@@ -170,11 +170,70 @@ with httpx.Client(transport=transport, base_url="http://localhost", timeout=30, 
 response.raise_for_status()
 body = response.json()
 product = body["product"]
-assert product == {"id": "opendesign", "version": sys.argv[1], "runtime_version": "0.1.14"}, product
+assert product == {"id": "opendesign", "version": sys.argv[1], "runtime_version": "0.4.0"}, product
 assert body["deployment"] == {"kind": "builtin"} and body["admin"] == {"authority": "ha-ingress"}, body
 assert body["backend"]["mode"] == "fixed" and body["backend"]["can_edit"] is False, body["backend"]
 assert body["tools"]["catalog_count"] == 15, body["tools"]["catalog_count"]
 ' "$expected_version"
+
+# 0.2.6: the MCP Python SDK 2.3 child behind the gateway, in this image, with the
+# real OpenDesign daemon: server/discover (sent first by Claude.ai and the SDK 2
+# client) gets the gateway's own JSON-RPC -32601; the 2025 handshake works, also
+# with a 2026-07-28 MCP-Protocol-Version header (no longer forwarded with an
+# initialize: an SDK 2 child refuses it); the 15 tools are listed exactly as
+# 0.2.5 listed them; a call works and a failure keeps its 0.2.5 text. The add-on
+# token is read inside the container and never printed.
+docker exec -i "$container" /opt/woow/.venv/bin/python -c '
+import json
+import sys
+import time
+import httpx
+listed = json.load(sys.stdin)["gateway"]["listed"]["granted"]
+with open("/data/mcp/state.json") as stream:
+    token = json.load(stream)["token"]
+accept = {"Accept": "application/json, text/event-stream", "Authorization": "Bearer " + token}
+modern = "2026-07-28"
+def reply(response, ident):
+    if response.headers.get("content-type", "").startswith("text/event-stream"):
+        for line in response.text.splitlines():
+            if line.startswith("data:") and json.loads(line[5:]).get("id") == ident:
+                return json.loads(line[5:])
+        raise SystemExit("no reply %d" % ident)
+    return response.json()
+with httpx.Client(base_url="http://127.0.0.1:8081", timeout=60, trust_env=False) as client:
+    discover = {"jsonrpc": "2.0", "id": 0, "method": "server/discover", "params": {"_meta": {
+        "io.modelcontextprotocol/protocolVersion": modern}}}
+    answer = client.post("/mcp", json=discover, headers={**accept, "MCP-Protocol-Version": modern})
+    assert answer.status_code == 200 and "mcp-session-id" not in answer.headers, answer.status_code
+    assert answer.json() == {"jsonrpc": "2.0", "id": 0, "error": {"code": -32601, "message": "Method not found"}}, answer.text
+    init = {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": "2025-11-25",
+            "capabilities": {}, "clientInfo": {"name": "smoke", "version": "0"}}}
+    for attempt in range(90):  # the child may still be starting
+        answer = client.post("/mcp", json=init, headers={**accept, "MCP-Protocol-Version": modern})
+        if answer.status_code == 200:
+            break
+        time.sleep(1)
+    assert answer.status_code == 200, answer.status_code
+    result = reply(answer, 1)["result"]
+    assert result["protocolVersion"] == "2025-11-25", result
+    assert result["serverInfo"] == {"name": "woow-mcp-opendesign", "version": "0.4.0"}, result["serverInfo"]
+    headers = {**accept, "Mcp-Session-Id": answer.headers["mcp-session-id"], "MCP-Protocol-Version": "2025-11-25"}
+    assert client.post("/mcp", json={"jsonrpc": "2.0", "method": "notifications/initialized"},
+                       headers=headers).status_code == 202
+    tools = reply(client.post("/mcp", json={"jsonrpc": "2.0", "id": 2, "method": "tools/list"}, headers=headers), 2)
+    assert tools["result"] == listed, [tool["name"] for tool in tools["result"]["tools"]]
+    def call(ident, name, arguments):
+        return reply(client.post("/mcp", headers=headers, json={"jsonrpc": "2.0", "id": ident, "method": "tools/call",
+                                 "params": {"name": name, "arguments": arguments}}), ident)["result"]
+    health = call(3, "health", {})
+    assert not health.get("isError") and json.loads(health["content"][0]["text"])["ok"] is True, health
+    missing = call(4, "get_project", {"project_id": "00000000-0000-4000-8000-000000000000"})
+    assert missing.get("isError") is True, missing
+    assert [item["text"] for item in missing["content"]] == [
+        "Error executing tool get_project: BACKEND_HTTP_ERROR status=404"], missing
+    assert client.delete("/mcp", headers=headers).status_code in (200, 204)
+print("built-in MCP on SDK 2: server/discover -32601, 2025 handshake, 15 tools as 0.2.5, call and failure text")
+' < mcp-runtime/tests/unit/fixtures/surface-0.2.5.json
 
 docker exec "$container" sh -ceu '
   # PID 1 is root only to prepare the Supervisor root-owned /data mount.

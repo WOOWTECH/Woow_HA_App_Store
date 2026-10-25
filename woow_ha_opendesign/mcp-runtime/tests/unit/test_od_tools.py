@@ -1,5 +1,9 @@
-"""0.2.1 child side: the four bounded OpenDesign handlers (od_tools.py) on the vendored FastMCP server, against a fake
-OpenDesign daemon on loopback (no network; the vendored backend_policy transport is used unchanged).
+"""0.2.1 child side: the bounded OpenDesign handlers (od_tools.py) on the vendored server, against a fake OpenDesign
+daemon on loopback (no network; the vendored backend_policy transport is used unchanged).
+
+0.2.6: the server is MCP Python SDK 2's MCPServer, built by child.setup() (the child's real entry: od_tools, BoundedTools,
+then the vendored keep_error_text, so a failed call reads 'Error executing tool <name>: <code>' as with SDK 1.x), and
+list_runs is the fifth replaced handler (the 0.2.1-0.2.5 projection, od_rules.run_rows).
 
 HA_OD_MCP_CODE / HA_OD_MCP_VENDOR: as in test_surface.py.
 """
@@ -103,38 +107,45 @@ sys.path[:0] = [str(VENDOR / 'apps' / 'opendesign' / 'vendor'), str(VENDOR / 'ap
 sys.path.append(CODE)
 
 import launch  # noqa: E402  vendored
-from bounded_tools import BoundedTools  # noqa: E402  vendored
+import opendesign_mcp_server.od_mcp_server as od  # noqa: E402  vendored
 
-from ha_opendesign_mcp import od_rules, od_tools  # noqa: E402
+from ha_opendesign_mcp import child, od_rules, od_tools  # noqa: E402
 
 logging.getLogger('httpx').setLevel(logging.WARNING)
-HANDLERS = od_tools.install(launch.mcp, launch.od)
-WORKERS = BoundedTools(launch.mcp, capacity=4)
+APP, CLIENT, WORKERS = child.setup()
 
 
 def call(name, arguments):
-    """Through the FastMCP server (the BoundedTools-wrapped handler): (is_error, text)."""
+    """Through the MCPServer (BoundedTools, then keep_error_text around the handler): (is_error, text)."""
     async def run():
         return await launch.mcp.call_tool(name, arguments)
     try:
         result = asyncio.run(run())
-    except Exception as error:  # FastMCP's ToolError: "Error executing tool <name>: <public code>"
+    except Exception as error:  # the SDK's ToolError: "Error executing tool <name>: <public code>"
         return True, str(error)
-    content = result[0] if isinstance(result, tuple) else result
-    return False, ''.join(getattr(item, 'text', '') for item in content)
+    content = result[0] if isinstance(result, tuple) else getattr(result, 'content', result)
+    return bool(getattr(result, 'is_error', False)), ''.join(getattr(item, 'text', '') for item in content)
 
 
 class Surface(unittest.TestCase):
-    def test_fifteen_tools_four_replaced(self):
+    def test_fifteen_tools_five_replaced(self):
+        from mcp.server.mcpserver import MCPServer
+        self.assertIsInstance(launch.mcp, MCPServer)
         tools = {tool.name: tool for tool in launch.mcp._tool_manager.list_tools()}
         self.assertEqual(len(tools), 15)
-        for name in od_tools.REPLACED:
-            self.assertEqual(tools[name].fn.__wrapped__.__module__, 'ha_opendesign_mcp.od_tools', name)
+        self.assertEqual(od_tools.REPLACED, ('list_connectors', 'read_file', 'create_project', 'send_message',
+                                             'list_runs'))
+        for name, tool in tools.items():
+            self.assertTrue(tool.is_async, name)  # BoundedTools: every tool runs on the owned workers
+            self.assertTrue(getattr(tool.fn, '_woow_keeps_error_text', False), name)  # keep_error_text, last
+            module = 'ha_opendesign_mcp.od_tools' if name in od_tools.REPLACED else 'opendesign_mcp_server.od_mcp_server'
+            self.assertEqual(tool.fn.__wrapped__.__module__, module, name)
         self.assertEqual(sorted(tools['send_message'].parameters['properties']), ['agent_id', 'project_id', 'prompt'])
         self.assertEqual(sorted(tools['read_file'].parameters['properties']), ['file_path', 'project_id'])
         self.assertEqual(tools['create_project'].parameters['required'], ['prompt'])
+        self.assertEqual(tools['list_runs'].description, 'List all active and completed AI agent runs.')
         with self.assertRaises(RuntimeError):
-            od_tools.install(launch.mcp, launch.od)  # the handlers are async (wrapped) now: never replaced twice
+            od_tools.install(launch.mcp, od)  # the handlers are async (wrapped) now: never replaced twice
 
 
 class Tools(unittest.TestCase):
@@ -151,9 +162,9 @@ class Tools(unittest.TestCase):
         self.assertNotIn('tok-secret', text)
         self.assertNotIn('example.invalid', text)
 
-    def test_list_runs_vendored_projection(self):
-        # 0.2.1 fix: 0.2.0 did not vendor apps/runtime/output_policy.py, so list_runs always failed
-        # (BACKEND_UNAVAILABLE). It is vendored now; the handler is the vendored one.
+    def test_list_runs_projection(self):
+        # 0.2.1-0.2.5: the vendored output_policy projection; 0.2.6: the same projection in od_rules.run_rows (the
+        # runtime pinned since 0.2.6 returns the runs unprojected: error texts and log paths).
         error, text = call('list_runs', {})
         self.assertFalse(error, text)
         self.assertEqual(json.loads(text), {'runs': [{'id': 'e9138737-f40d-4766-9153-ddb8407177f9',
@@ -257,4 +268,5 @@ if __name__ == '__main__':
         unittest.main(verbosity=1)
     finally:
         WORKERS.close()
+        CLIENT.close()
         SERVER.shutdown()

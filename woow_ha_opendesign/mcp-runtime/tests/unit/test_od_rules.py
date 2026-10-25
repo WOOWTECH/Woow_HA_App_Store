@@ -136,6 +136,32 @@ class Connectors(unittest.TestCase):
             od_rules.project_connectors({'error': 'x'})
 
 
+class Runs(unittest.TestCase):
+    """0.2.6: list_runs' projection, kept from the vendored output_policy.rows of 0.2.1-0.2.5."""
+
+    def test_projection(self):
+        body = {'runs': [{'id': 'r1', 'projectId': PROJECT, 'status': 'failed', 'error': 'auth failed at /data/x',
+                          'eventsLogPath': '/data/opendesign/runs/r1/events.jsonl', 'agentId': 'claude'},
+                         {'id': 'r2', 'projectId': None, 'status': 7, 'extra': {'nested': True}},
+                         {'id': ['not', 'kept'], 'status': 'x' * 300}],
+                'awaitingInputProjectIds': [PROJECT]}
+        self.assertEqual(od_rules.run_rows(body), {'runs': [
+            {'id': 'r1', 'projectId': PROJECT, 'status': 'failed'},
+            {'id': 'r2', 'projectId': None, 'status': 7},
+            {'projectId': None, 'status': 'x' * 256}], 'truncated': False})
+        self.assertNotIn('/data', json.dumps(od_rules.run_rows(body)))
+
+    def test_bounds(self):
+        many = od_rules.run_rows({'runs': [{'id': str(n)} for n in range(101)]})
+        self.assertEqual(len(many['runs']), 100)
+        self.assertTrue(many['truncated'])
+        self.assertEqual(od_rules.run_rows([{'id': 'a'}]), {'runs': [{'id': 'a', 'projectId': None, 'status': None}],
+                                                           'truncated': False})
+        for body in ({}, {'runs': {}}, 'x', None, {'runs': ['x']}):
+            with self.subTest(body=body), self.assertRaises(ValueError):
+                od_rules.run_rows(body)
+
+
 class ChatStreamParser(unittest.TestCase):
     def assert_clean(self, result):
         text = json.dumps(result)

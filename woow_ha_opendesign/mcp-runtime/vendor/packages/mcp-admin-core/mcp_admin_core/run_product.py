@@ -14,11 +14,14 @@ import uvicorn
 
 from . import redact
 from .config import ConfigError
+from .configuration import ConfigurationState
+from .capabilities import ManagementOptions
 from .gateway import make_apps
 from .ha_role import make_ha_admin_verifier
 from .health import HealthMonitor
 from .lifecycle import Supervisor
 from .products import INSTRUCTIONS, PRODUCTS, ProductStore, TOOLS, child_spec
+from .surface import FULL_PRODUCTS, listing
 
 
 class Listener(uvicorn.Server):
@@ -28,32 +31,45 @@ class Listener(uvicorn.Server):
 
 
 async def run(args):
+    from .upgrade import run_upgrade_review
+    if not await run_upgrade_review(args, args.product):
+        return
     store = ProductStore(args.data, args.product)
     manager = None
     loop = asyncio.get_running_loop()
     stop = asyncio.Event()
     try:
-        manager = Supervisor(child_spec(store.load(), store.directory))
+        manager = Supervisor(None)
         for sig in (signal.SIGINT, signal.SIGTERM):
             loop.add_signal_handler(sig, stop.set)
         async with httpx.AsyncClient(trust_env=False, follow_redirects=False,
                                     timeout=httpx.Timeout(10, connect=3),
                                     limits=httpx.Limits(max_connections=40)) as child:
             health = HealthMonitor(store, manager, child)
+            configuration = ConfigurationState(store, manager, health)
 
             async def backend_changed(state):
+                configuration.begin(state)
                 health.backend = 'unknown'
-                # Stop BEFORE validating the replacement spec: an invalid/dirty
-                # launch must not leave the previous backend serving new state.
-                # Credential changes invalidate upstream sessions/cookie caches.
-                await manager.stop()
-                manager.spec = child_spec(state, store.directory)
-                await manager.start()
+                try:
+                    # Stop before validating a replacement: old credentials must
+                    # never continue serving newly saved state after a failure.
+                    await manager.stop()
+                    manager.spec = child_spec(state, store.directory)
+                    await manager.start()
+                except Exception:
+                    configuration.failed('child_start_failed')
+                    raise
 
             admin, mcp = make_apps(store, TOOLS[args.product], child,
                                   verify_admin=make_ha_admin_verifier(),
-                                  health=health.snapshot, backend_changed=backend_changed,
-                                  server_name='woow-mcp-' + args.product, instructions=INSTRUCTIONS.get(args.product))
+                                  health=health.snapshot, backend_changed=backend_changed, configuration=configuration,
+                                  management=ManagementOptions(kind="ha-addon", authority="ha-admin"),
+                                  backend_check=getattr(health, "test_saved", None), restart_child=backend_changed, diagnostics=getattr(manager, "diagnostics", None),
+                                  server_name='woow-mcp-' + args.product, instructions=INSTRUCTIONS.get(args.product),
+                                  # 0.2.2: clients connect without a backend or a running child (Odoo Manage: unchanged)
+                                  listing=listing(args.product) if args.product in FULL_PRODUCTS else None,
+                                  availability=health.availability)
             servers = [Listener(uvicorn.Config(app, host=args.host, port=port,
                 proxy_headers=False, access_log=False, log_level='warning', server_header=False,
                 lifespan='off', limit_concurrency=64, timeout_keep_alive=5))
@@ -63,7 +79,12 @@ async def run(args):
             # again by uvicorn's handlers.
             redact.install()
             redact.guard_handlers(*redact.UVICORN_LOGGERS)
-            await manager.start()
+            try:
+                await backend_changed(store.load())
+            except Exception:
+                # Keep authenticated management available to report/retry a
+                # fixed launch failure; never echo third-party exception text.
+                pass
             tasks = [asyncio.create_task(server.serve()) for server in servers]
             monitor = asyncio.create_task(health.run())
             stopping = asyncio.create_task(stop.wait())

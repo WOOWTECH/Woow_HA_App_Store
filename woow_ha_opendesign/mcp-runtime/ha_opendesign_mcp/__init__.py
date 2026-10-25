@@ -1,8 +1,9 @@
 """Built-in Woow OpenDesign MCP server for the Woow HA OpenDesign add-on.
 
 Everything here is local glue around the pinned copy of WOOWTECH/Woow_ha_mcp_addons in ../vendor (see
-../VENDOR.json). The vendored gateway, policy, state store, child supervision, health monitor, HA admin
-verifier, admin UI and OpenDesign tool handlers are used unchanged.
+../VENDOR.json). The vendored gateway, policy, store primitive, child supervision, health monitor, admin UI and
+OpenDesign tool server are used unchanged; the HA overlay sets the 15-tool table (surface.py), keeps the schema 3
+state (state.py, 0.2.6) and replaces five tool handlers in the child (od_tools.py).
 """
 from pathlib import Path
 

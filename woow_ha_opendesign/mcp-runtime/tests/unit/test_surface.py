@@ -1,5 +1,5 @@
 """0.2.1 gateway side: the 15-tool OpenDesign table, its argument models and the default grants, with the vendored
-policy, store and gateway (management virtual environment).
+policy and gateway and (0.2.6) the HA schema 3 store, state.BuiltinStore (management virtual environment).
 
 HA_OD_MCP_CODE: the directory holding ha_opendesign_mcp; HA_OD_MCP_VENDOR: the directory holding packages/ and apps/
 (defaults: this repository's mcp-runtime and mcp-runtime/vendor; /opt/woow for both in the image).
@@ -16,11 +16,12 @@ CODE = os.environ.get('HA_OD_MCP_CODE', str(HERE.parents[1]))
 VENDOR = os.environ.get('HA_OD_MCP_VENDOR', str(HERE.parents[1] / 'vendor'))
 sys.path[:0] = [str(Path(VENDOR) / 'packages' / 'mcp-admin-core'), CODE]
 
-from mcp_admin_core import policy  # noqa: E402
+from mcp_admin_core import policy, products  # noqa: E402
 from mcp_admin_core.config import ConfigError  # noqa: E402
-from mcp_admin_core.products import TOOLS, ProductStore  # noqa: E402
+from mcp_admin_core.products import TOOLS  # noqa: E402
 
 from ha_opendesign_mcp import defaults, surface  # noqa: E402
+from ha_opendesign_mcp.state import BuiltinStore  # noqa: E402  0.2.6: the schema 3 store
 
 surface.install()
 TABLE = TOOLS['opendesign']
@@ -41,15 +42,34 @@ class Table(unittest.TestCase):
         self.assertEqual(len(TABLE), 15)
         self.assertEqual({name for name, tool in TABLE.items() if tool.write}, WRITERS)
         self.assertIs(surface.install(), TABLE)  # idempotent
+        self.assertEqual(list(TABLE), list(surface.TABLE))
+        self.assertTrue(all(TABLE[name] is tool for name, tool in surface.TABLE.items()))
+
+    def test_bounded_models_not_the_vendored_full_surface(self):
+        # 0.2.6: the pinned runtime's own TOOLS['opendesign'] is the standalone add-on's full surface (any JSON object,
+        # the child's schema). This table keeps the bounded models: the 11 of products.BOUNDED_TOOLS plus ADDED.
+        self.assertFalse(any(tool.child_schema for tool in TABLE.values()))
+        self.assertTrue(all(TABLE[name] is tool for name, tool in products.BOUNDED_TOOLS['opendesign'].items()))
+        self.assertEqual(list(products.BOUNDED_TOOLS['opendesign']), list(surface.BOUNDED))
+        full = products.full_tools('opendesign')
+        self.assertEqual(set(full), set(TABLE))  # same names, other models
+        self.assertTrue(all(tool.child_schema for tool in full.values()))
 
     def test_conflicting_pin_refused(self):
-        saved = TABLE['read_file']
-        TABLE['read_file'] = policy.Tool(saved.arguments)
+        bounded = products.BOUNDED_TOOLS['opendesign']
+        bounded['read_file'] = policy.Tool(surface.ReadFile)  # a pin that defines one of the four itself
         try:
             with self.assertRaises(RuntimeError):
-                surface.install()
+                surface.table()
         finally:
-            TABLE['read_file'] = saved
+            del bounded['read_file']
+        saved = bounded.pop('list_runs')  # a pin without one of the 11
+        try:
+            with self.assertRaises(RuntimeError):
+                surface.table()
+        finally:
+            bounded['list_runs'] = saved
+        self.assertEqual(list(surface.table()), list(surface.TABLE))
 
     def test_declared_schemas_are_plain_objects(self):
         for name, tool in TABLE.items():
@@ -64,7 +84,7 @@ class Table(unittest.TestCase):
 class Arguments(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
-        self.store = ProductStore(Path(self.tmp.name), 'opendesign')
+        self.store = BuiltinStore(Path(self.tmp.name))
         self.store.update(connection={'url': 'http://127.0.0.1:7456'})
         defaults.apply(self.store)
         self.state = self.store.load()
@@ -122,7 +142,7 @@ class Arguments(unittest.TestCase):
 
 
 class Defaults(unittest.TestCase):
-    """Fresh install, a 0.2.0 state, an administrator's disable, and the one-time marker, on the vendored store."""
+    """Fresh install, a 0.2.0 state, an administrator's disable, and the one-time marker, on the schema 3 store."""
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -140,7 +160,7 @@ class Defaults(unittest.TestCase):
         return {tool['name'] for tool in policy.filter_list(child, TABLE, store.load())['result']['tools']}
 
     def test_fresh_install_all_fifteen(self):
-        store = ProductStore(self.dir, 'opendesign')
+        store = BuiltinStore(self.dir)
         try:
             self.assertEqual(self.enabled(store), READS)  # what 0.2.0's rules give a new state: 12 reads
             defaults.apply(store)
@@ -151,7 +171,7 @@ class Defaults(unittest.TestCase):
 
     def write_020_state(self, **fields):
         """A 0.2.0 state: schema 3, the same fields; only 0.2.0's grants (none, or delete_project) possible."""
-        store = ProductStore(self.dir, 'opendesign')
+        store = BuiltinStore(self.dir)
         try:
             store.update(connection={'url': 'http://127.0.0.1:7456'}, **fields)
         finally:
@@ -159,7 +179,7 @@ class Defaults(unittest.TestCase):
 
     def test_existing_020_state(self):
         self.write_020_state(enabled_write_tools=['delete_project'], disabled=['list_skills'])
-        store = ProductStore(self.dir, 'opendesign')
+        store = BuiltinStore(self.dir)
         try:
             record = defaults.apply(store)
             self.assertEqual(record['granted'], ['create_project', 'send_message'])
@@ -173,7 +193,7 @@ class Defaults(unittest.TestCase):
 
     def test_admin_disabled_writer_respected(self):
         self.write_020_state(disabled=['delete_project'])
-        store = ProductStore(self.dir, 'opendesign')
+        store = BuiltinStore(self.dir)
         try:
             defaults.apply(store)
             self.assertEqual(self.enabled(store), READS | {'create_project', 'send_message'})
@@ -182,28 +202,28 @@ class Defaults(unittest.TestCase):
             store.close()
 
     def test_admin_revocation_survives_restart(self):
-        store = ProductStore(self.dir, 'opendesign')
+        store = BuiltinStore(self.dir)
         try:
             defaults.apply(store)
             store.update(enabled_write_tools=[], writes_enabled=False)  # PUT /api/policy: every grant removed
         finally:
             store.close()
-        store = ProductStore(self.dir, 'opendesign')  # next start
+        store = BuiltinStore(self.dir)  # next start
         try:
             self.assertIsNone(defaults.apply(store))
             self.assertEqual(self.enabled(store), READS)
         finally:
             store.close()
 
-    def test_grants_need_the_overlay(self):
-        """Why surface.install() runs before the store opens: without it the vendored table refuses the grants."""
-        store = ProductStore(self.dir, 'opendesign')
-        saved = TABLE.pop('create_project')
+    def test_grants_are_this_tables_writers(self):
+        """The state accepts grants for the three writers of this table only (0.2.6: checked against surface.TABLE)."""
+        store = BuiltinStore(self.dir)
         try:
-            with self.assertRaises(ConfigError):
-                defaults.apply(store)
+            for grants in (['list_projects'], ['create_project', 'create_project'], ['n8n_delete_workflow']):
+                with self.subTest(grants=grants), self.assertRaises(ConfigError):
+                    store.update(enabled_write_tools=grants)
+            self.assertEqual(store.load().enabled_write_tools, [])
         finally:
-            TABLE['create_project'] = saved
             store.close()
 
 

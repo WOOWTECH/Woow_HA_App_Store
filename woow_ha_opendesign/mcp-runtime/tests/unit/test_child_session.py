@@ -1,12 +1,15 @@
-"""0.2.4 child side: MCP sessions of the built-in child on MCP Python SDK 1.30.0, built by child.setup() (the child's
-real entry, without uvicorn) and driven through the SDK's own Streamable HTTP app (httpx ASGI transport, no network).
+"""0.2.4 child side: MCP sessions of the built-in child, built by child.setup() (the child's real entry, without
+uvicorn) and driven through the SDK's own Streamable HTTP app (httpx ASGI transport, no network). 0.2.6: on MCP Python
+SDK 2.3.0 (MCPServer), checked the way WOOWTECH/Woow_ha_mcp_addons 0.4.0 checks its children (tests/test_session_idle.py
+there).
 
 What the runtime documents (vendored apps/runtime/session_idle.py, gateway.end_session): a session that sees no
 request for the limit (30 minutes; WOOW_MCP_SESSION_IDLE_SECONDS in tests) is ended and its id answers 404, so the
-client initializes again; a session in use stays; DELETE ends it. mcp 1.30.0's FastMCP passes its own 30-minute default
-explicitly, which the 0.2.4 session_idle replaces with the add-on limit (the 0.2.3 one only replaced None). 1.30.0 also
-caps the sessions at 10 000 (503 beyond) and limits request bodies: session_idle sets BODY_BYTES, never below the
-largest body the vendored gateway forwards (gateway.MAX_REQUEST).
+client initializes again; a session in use stays; DELETE ends it. The SDK (1.30.0 and 2.3.0) passes its own 30-minute
+default explicitly, which session_idle replaces with the add-on limit. The SDK also caps the sessions at 10 000 (503
+beyond) and limits request bodies (4 MiB by default): session_idle sets BODY_BYTES, the largest body the vendored
+gateway forwards (gateway.MAX_REQUEST, 16 MiB since 0.2.6), so a body just under it reaches the child and one over it
+gets 413.
 
 HA_OD_MCP_CODE / HA_OD_MCP_VENDOR: as in test_surface.py.
 """
@@ -41,10 +44,20 @@ from ha_opendesign_mcp import child  # noqa: E402
 APP, CLIENT, WORKERS = child.setup()
 for name in ('httpx', 'mcp'):
     logging.getLogger(name).setLevel(logging.WARNING)
+logging.getLogger('asyncio').setLevel(logging.ERROR)  # the test loop's debug mode calls the 16 MiB body's encoding slow
 MANAGER = launch.mcp.session_manager
 INIT = {'jsonrpc': '2.0', 'id': 1, 'method': 'initialize',
         'params': {'protocolVersion': '2025-03-26', 'capabilities': {}, 'clientInfo': {'name': 'session-test', 'version': '0'}}}
 HEADERS = {'Accept': 'application/json, text/event-stream', 'Content-Type': 'application/json'}
+
+
+def constant(node):
+    """An integer written as a constant or a product of constants (0.2.6: gateway.MAX_REQUEST = 16 * 1024 * 1024)."""
+    if isinstance(node, ast.Constant) and type(node.value) is int:
+        return node.value
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Mult):
+        return constant(node.left) * constant(node.right)
+    raise AssertionError('not an integer constant: ' + ast.dump(node))
 
 
 def gateway_max_request():
@@ -52,7 +65,7 @@ def gateway_max_request():
     tree = ast.parse((VENDOR / 'packages/mcp-admin-core/mcp_admin_core/gateway.py').read_text())
     for node in tree.body:
         if isinstance(node, ast.Assign) and [getattr(t, 'id', None) for t in node.targets] == ['MAX_REQUEST']:
-            return ast.literal_eval(node.value)
+            return constant(node.value)
     raise AssertionError('gateway.MAX_REQUEST not found')
 
 
@@ -66,12 +79,15 @@ def reply(response):
 
 class Settings(unittest.TestCase):
     def test_the_manager_gets_the_add_on_limits(self):
-        self.assertEqual(MANAGER.session_idle_timeout, LIMIT)  # the env limit replaced FastMCP's explicit default
+        from mcp.server.mcpserver import MCPServer
+        self.assertIsInstance(launch.mcp, MCPServer)  # 0.2.6: MCP Python SDK 2
+        self.assertEqual(MANAGER.session_idle_timeout, LIMIT)  # the env limit replaced MCPServer's explicit default
         self.assertFalse(MANAGER.stateless)
         self.assertEqual(MANAGER.max_sessions, DEFAULT_MAX_SESSIONS)
         self.assertEqual(DEFAULT_MAX_SESSIONS, 10000)
         self.assertEqual(MANAGER.max_request_body_size, session_idle.BODY_BYTES)
-        self.assertGreaterEqual(session_idle.BODY_BYTES, gateway_max_request())
+        self.assertEqual(session_idle.BODY_BYTES, gateway_max_request())
+        self.assertEqual(session_idle.BODY_BYTES, 16 * 1024 * 1024)
 
     def test_a_production_child_ends_idle_sessions_after_30_minutes(self):
         # A fresh child process without the test variable, as the add-on starts it (setup(), no uvicorn).
@@ -132,6 +148,19 @@ class Sessions(unittest.IsolatedAsyncioTestCase):
                 second, headers = await initialize()
                 self.assertNotEqual(second, first)
                 self.assertEqual((await tools(headers, 10)).status_code, 200)
+                # The request body ceiling (0.2.6, as the HA MCP add-ons 0.4.0 check it): a ping whose _meta pads it
+                # to just under BODY_BYTES reaches the child (the SDK's own 4 MiB limit would answer 413); one byte
+                # over the limit does not.
+                padding = 'A' * (session_idle.BODY_BYTES - 4096)
+                big = {'jsonrpc': '2.0', 'id': 12, 'method': 'ping', 'params': {'_meta': {'padding': padding}}}
+                self.assertLess(len(json.dumps(big)), session_idle.BODY_BYTES)
+                response = await client.post('/mcp', headers=headers, json=big)
+                self.assertEqual(response.status_code, 200, response.text[:200])
+                self.assertEqual(reply(response)['result'], {})
+                over = json.dumps({'jsonrpc': '2.0', 'id': 13, 'method': 'ping',
+                                   'params': {'_meta': {'padding': 'A' * session_idle.BODY_BYTES}}})
+                response = await client.post('/mcp', headers=headers, content=over)
+                self.assertEqual(response.status_code, 413)
                 # DELETE ends a session at once.
                 self.assertEqual((await client.delete('/mcp', headers=headers)).status_code, 200)
                 self.assertEqual((await tools(headers, 11)).status_code, 404)

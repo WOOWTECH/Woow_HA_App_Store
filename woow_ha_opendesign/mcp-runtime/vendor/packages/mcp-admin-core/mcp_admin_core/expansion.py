@@ -112,8 +112,26 @@ class UpdatePartner(Record):
     values: PartnerValues
 
 
+class ChatterKwargs(Args):
+    body: str = Field(min_length=1, max_length=4000)
+    message_type: Literal['comment']
+
+
+# The approval object chatter_post's preview returns is {model, method, record_ids, kwargs, instance, token}, and the
+# child's text says to re-call with "the returned approval" and confirm=true. Up to 0.1.14 only {token} was accepted
+# (additionalProperties false), so following that text was always -32602. The echoed members are optional, bounded to
+# the preview's own shape and must agree with this call (Chatter.same_call); they are then dropped (exclude=True): only
+# the token reaches the child, which checks it against the payload it rebuilds from this call's own arguments
+# (odoo_mcp tools_write.chatter_post reads approval['token'] only). The docstring below is client-facing schema text.
 class Approval(Args):
+    """The approval object returned by the chatter_post preview. Send it back unchanged (or only its token) with
+    confirm=true and the same model, record_id and body."""
     token: str = Field(pattern=r'^odoo-write:[a-f0-9]{32}$')
+    model: Literal['res.partner'] | None = Field(default=None, exclude=True)
+    method: Literal['message_post'] | None = Field(default=None, exclude=True)
+    record_ids: list[Positive] | None = Field(default=None, min_length=1, max_length=1, exclude=True)
+    kwargs: ChatterKwargs | None = Field(default=None, exclude=True)
+    instance: Literal['default'] | None = Field(default=None, exclude=True)
 
 
 class Chatter(Record):
@@ -125,6 +143,19 @@ class Chatter(Record):
     approval: Approval | None = None
     confirm: bool = False
     instance: Literal['default'] | None = None
+
+    @model_validator(mode='after')
+    def same_call(self):
+        # The preview's canonical payload (tools_write._build_chatter_payload): the stripped body, this record, the
+        # resolved instance. A member that disagrees is a stale or foreign preview; the token would not match either.
+        a = self.approval
+        if a is not None and ((a.model is not None and a.model != self.model)
+                              or (a.record_ids is not None and a.record_ids != [self.record_id])
+                              or (a.kwargs is not None and (a.kwargs.body != self.body.strip()
+                                                            or a.kwargs.message_type != self.message_type))
+                              or (a.instance is not None and a.instance != (self.instance or 'default'))):
+            raise ValueError('approval does not match this call, run the preview again')
+        return self
 
 
 class Skill(Args):

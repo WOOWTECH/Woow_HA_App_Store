@@ -6,7 +6,7 @@ import json
 from . import VERSION, redact
 from .health import SESSION_ID, protocol_reply
 from .lifecycle import _join_transition
-from .policy import enabled, has_grant
+from .policy import enabled, has_grant, operation_enabled, policy_enabled
 
 
 @dataclass(frozen=True)
@@ -113,10 +113,12 @@ def tool_catalog(registry, pinned, observed, state):
     for name in names:
         tool = registry.get(name)
         metadata = actual.get(name, catalog.get(name, {}))
-        allowed = enabled(name, registry, state)
+        whole_tool = enabled(name, registry, state)
+        allowed = policy_enabled(name, registry, state)
         effective = (name in actual and allowed) if observed is not None else (None if allowed else False)
         reason = ("not_in_registry" if tool is None else "policy_disabled" if name in state.disabled
-                  else "write_not_granted" if not allowed else "child_unavailable" if observed is None
+                  else "write_not_granted" if not whole_tool else "operations_not_permitted" if not allowed
+                  else "child_unavailable" if observed is None
                   else "not_registered_by_child" if name not in actual else None)
         item = {"name": name, "description": metadata.get("description", ""),
                 "policy_enabled": allowed, "effective": effective}
@@ -131,25 +133,39 @@ def tool_catalog(registry, pinned, observed, state):
         if tool is not None:
             item["write"] = tool.write
             item["write_grants"] = tool.grants(name)
+            if tool.exposure_write_tool:
+                item['conditional_writes'] = [{'parameter': 'exposeToMcp',
+                    'requires_tool': tool.exposure_write_tool,
+                    'policy_enabled': policy_enabled(tool.exposure_write_tool, registry, state)}]
             item["operation_parameter"] = tool.selector
+            item["default_operation"] = tool.default_operation
+            item["denied_operations"] = getattr(state, 'denied_operations', {}).get(name, [])
             item["operations"] = [{"name": op, "write": op in tool.write_operations,
-                                   "policy_enabled": allowed and (op in getattr(tool, "read_operations", ()) or
-                                       f"{name}:{op}" in getattr(state, "enabled_write_tools", ()))}
-                                  for op in (*getattr(tool, "read_operations", ()), *tool.write_operations)]
+                                   "denied": op in item["denied_operations"],
+                                   "policy_enabled": whole_tool and operation_enabled(name, tool, op, state),
+                                   "effective": (False if not whole_tool or not operation_enabled(name, tool, op, state)
+                                                 else None if observed is None else name in actual)}
+                                  for op in tool.operations]
+            item["stale_denied_operations"] = [op for op in item["denied_operations"] if op not in tool.operations]
             if tool.write:
                 item["write_enabled"] = allowed and has_grant(name, tool, state)
         items.append(item)
+    operations = [op for item in items for op in item.get('operations', ())]
     return {"catalog_count": len(items), "policy_enabled_count": sum(i["policy_enabled"] for i in items),
             "effective_count": sum(i["effective"] is True for i in items) if observed is not None else None,
+            "operation_count": len(operations),
+            "policy_enabled_operation_count": sum(op['policy_enabled'] for op in operations),
+            "effective_operation_count": sum(op['effective'] is True for op in operations) if observed is not None else None,
             "status": "observed" if observed is not None else "unknown", "items": items}
 
 
 def capability_snapshot(options, state, health, catalog, *, can_test=False, can_restart=False, logs=False):
     return {"schema_version": 1, "deployment": {"kind": options.kind},
-            "product": {"id": getattr(state, "product", "n8n"), "version": options.product_version or VERSION, "runtime_version": VERSION},
+            "product": {"id": getattr(state, "product", "n8n"), "version": options.product_version or VERSION},
             "admin": {"authority": options.authority},
             "backend": {"mode": options.backend_mode, "can_test": can_test, "can_edit": options.backend_can_edit},
             "capabilities": {"tool_schema": True, "effective_tools": True, "operation_policy": True,
+                             "operation_denies": hasattr(state, 'denied_operations'),
                              "logs": logs, "restart_child": can_restart, "revoke_token": True},
             "health": {"management": "ready" if health.get("management") == "alive" else health.get("management", "unknown"),
                        "child": health.get("child", {}).get("state", "unknown"),

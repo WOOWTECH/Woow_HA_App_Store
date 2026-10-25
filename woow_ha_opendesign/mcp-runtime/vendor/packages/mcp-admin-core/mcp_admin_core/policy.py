@@ -33,28 +33,37 @@ class ToolCallRefused(Denied):
     Still a Denied with the former text, so a caller that does not tell them apart keeps refusing it.
 
     kind is one of KINDS. error() carries the tool name and, for invalid arguments, sanitized pydantic errors: never
-    an argument value (argument_errors), a backend address, a credential or a token."""
-    KINDS = {"unknown_tool": "tool not permitted", "invalid_params": "invalid tool arguments",
-             "operation_not_permitted": "operation not permitted", "backend_not_configured": "configured backend required"}
+    an argument value (argument_errors), a backend address, a credential or a token.
 
-    def __init__(self, kind, tool, errors=()):
+    0.2.2: "backend_unreachable" is raised by the gateway itself, never by authorize: a configured backend its health
+    check last found unreachable, or an MCP server (child) that is not up. reason is the health check's own text
+    (credentials replaced by [REDACTED]) or the gateway's fixed MCP_SERVER_NOT_READY text."""
+    KINDS = {"unknown_tool": "tool not permitted", "invalid_params": "invalid tool arguments",
+             "operation_not_permitted": "operation not permitted", "backend_not_configured": "configured backend required",
+             "backend_unreachable": "backend unreachable"}
+
+    def __init__(self, kind, tool, errors=(), reason=None):
         super().__init__(self.KINDS[kind])
         self.kind = kind
         self.tool = tool
         self.errors = list(errors)
+        self.reason = reason
 
     def error(self):
         """The JSON-RPC error object. -32602 (invalid params, MCP's code for an unknown tool or invalid arguments) when
         the request itself must change; -32603 (internal error) for a backend the add-on has not been configured with:
-        the arguments are valid and no other call would succeed until an administrator configures the add-on."""
+        the arguments are valid and no other call would succeed until an administrator configures the add-on (0.2.2: or
+        until the backend is reachable again, "Backend unreachable" with data.reason)."""
         if self.kind == "unknown_tool":
             # The same answer for a tool that does not exist and one that is disabled or lacks its write grant.
             return {"code": -32602, "message": "Unknown tool", "data": {"tool": self.tool[:TOOL_NAME_LIMIT]}}
         if self.kind == "invalid_params":
             return {"code": -32602, "message": "Invalid params", "data": {"tool": self.tool, "errors": self.errors}}
         if self.kind == "operation_not_permitted":
-            return {"code": -32602, "message": "Operation not permitted", "data": {"tool": self.tool, "reason": (
+            return {"code": -32602, "message": "Operation not permitted", "data": {"tool": self.tool, "reason": self.reason or (
                 "write operation disabled by the add-on policy; an administrator can enable it in the add-on panel")}}
+        if self.kind == "backend_unreachable":
+            return {"code": -32603, "message": "Backend unreachable", "data": {"tool": self.tool, "reason": self.reason}}
         return {"code": -32603, "message": "Backend not configured", "data": {"tool": self.tool}}
 
 
@@ -182,8 +191,23 @@ class Tool:
     # Opt-in only: local tools and previously reviewed API behavior stay intact.
     requires_backend: bool = False
     backend_required_operations: tuple[str, ...] = ()
+    # 0.2.0 (full surface, surface.full_tools): the child validates arguments and tools/list
+    # shows the child's own inputSchema. read_operations are the selector values that only read; default_operation is
+    # the source's default (a read) when the selector is omitted, None when the child requires it.
+    child_schema: bool = False
+    read_operations: tuple[str, ...] = ()
+    default_operation: str | None = None
+    # n8n's pinned child may replace the entire argument object from output JSON.
+    n8n_arguments: bool = False
+    # n8n's exposeToMcp flag can update a workflow while executing a read mode.
+    # Reuse the existing updater permission; this adds no persisted grant.
+    exposure_write_tool: str | None = None
 
     def __post_init__(self):
+        operations = self.operations
+        if (operations and not self.selector or len(set(operations)) != len(operations)
+                or self.default_operation is not None and self.default_operation not in operations):
+            raise ValueError('operations require an audited selector and matching default')
         if self.backend_required_operations:
             field = self.arguments.model_fields.get(self.selector)
             if (field is None or get_origin(field.annotation) is not Literal
@@ -192,6 +216,11 @@ class Tool:
 
     def grants(self, name):
         return ([name] if self.write else []) + [f'{name}:{op}' for op in self.write_operations]
+
+    @property
+    def operations(self):
+        """Explicitly audited operations only; never infer from arbitrary schema enums."""
+        return (*self.read_operations, *self.write_operations)
 
 
 def has_grant(name, tool, state):
@@ -202,11 +231,51 @@ def enabled(name: str, tools: Mapping[str, Tool], state: State) -> bool:
     return name in tools and name not in state.disabled and (not tools[name].write or has_grant(name, tools[name], state))
 
 
+def operation_enabled(name, tool, operation, state):
+    return (operation in tool.operations
+            and operation not in getattr(state, 'denied_operations', {}).get(name, ())
+            and (operation not in tool.write_operations
+                 or f'{name}:{operation}' in getattr(state, 'enabled_write_tools', ())))
+
+
+def policy_enabled(name, tools, state):
+    """Whether at least one audited call can pass policy (not backend readiness)."""
+    if not enabled(name, tools, state):
+        return False
+    tool = tools[name]
+    if tool.operations and (tool.child_schema or tool.read_operations):
+        return any(operation_enabled(name, tool, op, state) for op in tool.operations)
+    return bool(tool.operations) or not getattr(state, 'denied_operations', {}).get(name)
+
+
+def check_operation_denies(name, tool, arguments, state):
+    denied = getattr(state, 'denied_operations', {}).get(name, ())
+    if not denied:
+        return
+    operation = arguments.get(tool.selector, tool.default_operation)
+    # A restricted tool requires a positively audited operation. Missing required
+    # selectors, explicit null, malformed/unknown values, or removed metadata may
+    # otherwise bypass a deny via a child's coercion/default or a new write path.
+    if type(operation) is not str or operation not in tool.operations or operation in denied:
+        raise ToolCallRefused('operation_not_permitted', name, reason=(
+            'operation restricted by the add-on policy; use an allowed audited operation or ask an administrator'))
+
+
+def validate_operation_denies(denied, tools, state):
+    """The state model validates shape first. API additions require audited metadata;
+    persisted stale entries may be retained or removed, never newly introduced."""
+    saved = getattr(state, 'denied_operations', {})
+    for name, operations in denied.items():
+        audited = tools[name].operations if name in tools else ()
+        if any(op not in audited and op not in saved.get(name, ()) for op in operations):
+            raise ValueError('unknown operation deny')
+
+
 def authorize(message, tools: Mapping[str, Tool], state: State) -> str:
     """Authorize, replacing tool arguments with the reviewed model's wire values.
 
     Defaults and field-specific omission rules are applied before dispatch;
-    repeated authorization is idempotent. Invalid calls are never normalized.
+    repeated authorization is idempotent. Only authorized calls may be dispatched.
     """
     if not isinstance(message, dict) or set(message) - {"jsonrpc", "id", "method", "params"}:
         raise Denied("single JSON-RPC request required")
@@ -248,6 +317,9 @@ def authorize(message, tools: Mapping[str, Tool], state: State) -> str:
         # 0.1.14: the four refusals of a well-formed call are ToolCallRefused (answered as JSON-RPC errors).
         if not enabled(name, tools, state):
             raise ToolCallRefused("unknown_tool", name)
+        if tools[name].child_schema:
+            child_call(name, tools[name], params, state, tools)
+            return method
         model = tools[name].arguments
         try:
             arguments = model.model_validate(params.get("arguments", {}))
@@ -255,6 +327,7 @@ def authorize(message, tools: Mapping[str, Tool], state: State) -> str:
             raise ToolCallRefused("invalid_params", name, argument_errors(model, error, params.get("arguments"))) from None
         normalized = arguments.model_dump(mode="json")
         tool = tools[name]
+        check_operation_denies(name, tool, normalized, state)
         if tool.selector and normalized.get(tool.selector) in tool.write_operations:
             if f'{name}:{normalized[tool.selector]}' not in getattr(state, 'enabled_write_tools', ()):
                 raise ToolCallRefused("operation_not_permitted", name)
@@ -266,6 +339,44 @@ def authorize(message, tools: Mapping[str, Tool], state: State) -> str:
     else:  # unreachable: every other method is UnknownMethod above
         raise Denied("method not permitted")
     return method
+
+
+def child_call(name, tool, params, state, tools):
+    """A full-surface tool's child validates arguments and answers its own errors.
+
+    Arguments must be a JSON object (or absent). n8n calls first
+    normalize their reviewed wrapper/boolean forms, idempotently; other child
+    arguments are forwarded unchanged.
+    """
+    arguments = params.get("arguments", {})
+    if not isinstance(arguments, dict):
+        raise ToolCallRefused("invalid_params", name, [{"field": "arguments", "message": "Input should be a valid dictionary",
+                                                        "type": "dict_type"}])
+    if tool.n8n_arguments:
+        from .n8n_arguments import normalize
+        try:
+            arguments = normalize(name, arguments)
+        except ValueError:
+            raise ToolCallRefused('invalid_params', name, [{
+                'field': 'arguments', 'message': 'Use one unambiguous argument object',
+                'type': 'value_error'}]) from None
+        params['arguments'] = arguments
+    if (tool.exposure_write_tool and arguments.get('exposeToMcp') is True
+            and not policy_enabled(tool.exposure_write_tool, tools, state)):
+        raise ToolCallRefused('operation_not_permitted', name,
+            reason='exposeToMcp requires the enabled n8n_update_partial_workflow write grant')
+    check_operation_denies(name, tool, arguments, state)
+    if tool.write_operations:
+        granted = getattr(state, "enabled_write_tools", ())
+        operation = arguments.get(tool.selector, tool.default_operation)
+        if operation in tool.write_operations:
+            needed = [operation]
+        elif operation is None or type(operation) is str and operation in tool.read_operations:
+            needed = []  # a read, or a required selector left out (the child refuses the call)
+        else:  # not a string or a value this add-on has not classified: it could be a new write
+            needed = list(tool.write_operations)
+        if any(f"{name}:{value}" not in granted for value in needed):
+            raise ToolCallRefused("operation_not_permitted", name)
 
 
 # The four MCP hint annotations and their cautious values. A client may relax its own checks on the other value (Claude
@@ -552,6 +663,20 @@ def _names(names):
     return names[0] if len(names) == 1 else ", ".join(names[:-1]) + " and " + names[-1]
 
 
+def child_input_schema(schema):
+    """0.2.0: the child's own inputSchema, made provider-safe like a local one (flat_schema: a top-level object without
+    oneOf/anyOf/allOf/enum/const/not/$ref, which Claude and GPT refuse for a whole request). A schema that is not an
+    object, or that flat_schema cannot read, is listed as a plain object: the child still validates every call."""
+    if not isinstance(schema, dict):
+        return {"type": "object"}
+    try:
+        flat = flat_schema(schema)
+        json.dumps(flat)
+    except Exception:
+        return {"type": "object"}
+    return flat
+
+
 def listed_tool(tool, local):
     """A listed tool rebuilt from known members (0.1.6, 0.1.5 RC review F3). The name and inputSchema are the gateway's
     own (0.1.6 AI Stage 0: the declared form of the locally pinned argument model, declared_schema()); title,
@@ -561,7 +686,8 @@ def listed_tool(tool, local):
     the Python client fetched a child $ref URL) and refuses every call to a tool whose execution.taskSupport is
     "required"; icons are child-chosen URLs."""
     read_only = not (local.write or local.legacy_write or local.write_operations)
-    listed = {"name": tool["name"], "inputSchema": declared_schema(local.arguments)}
+    listed = {"name": tool["name"], "inputSchema": child_input_schema(tool.get("inputSchema")) if local.child_schema
+              else declared_schema(local.arguments)}
     listed.update({key: tool[key] for key in ("title", "description") if isinstance(tool.get(key), str)})
     annotations = tool.get("annotations")
     if isinstance(annotations, dict):
@@ -586,7 +712,7 @@ def filter_list(message, tools: Mapping[str, Tool], state: State):
         for tool in result["tools"]:
             # The first entry per name only (0.1.6 R1 #5): LLM providers refuse duplicate function names.
             if (isinstance(tool, dict) and isinstance(tool.get("name"), str) and tool["name"] not in names
-                    and enabled(tool["name"], tools, state)):
+                    and policy_enabled(tool["name"], tools, state)):
                 names.add(tool["name"])
                 listed.append(listed_tool(tool, tools[tool["name"]]))
         # The result is rebuilt as well (0.1.6 R1 #4): the tools and a string nextCursor, nothing else from the child.

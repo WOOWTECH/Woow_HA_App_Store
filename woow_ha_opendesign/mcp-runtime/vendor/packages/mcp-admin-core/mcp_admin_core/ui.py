@@ -17,7 +17,9 @@ PAGES = {"/", "/overview", "/backend", "/tools", "/access", "/diagnostics"}
 TYPES = {".js": "text/javascript", ".css": "text/css", ".woff": "font/woff", ".woff2": "font/woff2", ".ttf": "font/ttf", ".eot": "application/vnd.ms-fontobject", ".txt": "text/plain"}
 
 
-def response(path, base):
+def response(path, base, *, entrypoint="app"):
+    if entrypoint not in ("app", "upgrade"):
+        raise ValueError("unknown UI entrypoint")
     page = path in PAGES
     relative = "index.html" if page else path.lstrip("/")
     if not page and (not path.startswith(("/assets/", "/licenses/")) or
@@ -48,6 +50,8 @@ def response(path, base):
             content = content.decode("utf-8")
             if "__MCP_UI_BASE__" not in content:
                 return Response(status_code=503)
+            if entrypoint == "upgrade":
+                content = content.replace("/assets/app.js", "/assets/upgrade.js")
             content = content.replace("__MCP_UI_BASE__", base)
         return Response(content, media_type="text/html" if page else TYPES[Path(relative).suffix])
     except (OSError, UnicodeError):

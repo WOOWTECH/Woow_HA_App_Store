@@ -21,6 +21,12 @@ class ConfigError(RuntimeError):
     pass
 
 
+# Owner decision 2026-10-15: a new installation (products.ProductStore) starts with every reviewed write enabled (the
+# legacy global switch and every exact write grant). The administrator can still turn each one off in the panel; that
+# saved choice is kept across restarts and upgrades because an existing state is never re-seeded.
+FRESH_WRITES_ENABLED = True
+
+
 def http_url(value: str) -> str:
     if len(value) > 2048 or any(ord(c) < 33 or ord(c) == 127 for c in value):
         raise ValueError("invalid URL")
@@ -41,6 +47,8 @@ class State(BaseModel):
     backend_url: str | None = None
     backend_key: str | None = Field(default=None, repr=False)
     endpoint: str | None = None
+    # The model default is not the fresh-install default: a stored state must carry every key (Store._decode), and a
+    # new product state gets ProductStore._initial_state, which turns writes on (owner decision 2026-10-15).
     writes_enabled: bool = False
     disabled: list[str] = Field(default_factory=list)
 
@@ -158,6 +166,8 @@ class Store:
             raise ConfigError("state unavailable or incompatible; manual recovery required") from None
 
     def _initial_state(self):
+        # The v1 (pre-product) state: production always runs ProductStore, whose _initial_state applies
+        # FRESH_WRITES_ENABLED; a plain v1 Store is only a migration source and test fixture, so it keeps writes off.
         return State(token=secrets.token_urlsafe(32), child_token=secrets.token_urlsafe(32))
 
     def _decode(self, value):

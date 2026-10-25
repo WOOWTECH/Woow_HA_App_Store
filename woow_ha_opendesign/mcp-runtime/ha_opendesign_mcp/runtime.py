@@ -18,6 +18,12 @@ health monitor and HA admin verifier are the vendored ones. Local differences:
    on /private_<token>/mcp where the pinned gateway supports it.
 5. 0.2.1: the OpenDesign tool table is the PaaS server's 15 tools (surface.install(), before the store is opened),
    and the three writers are granted once by default (defaults.apply(), before any listener starts).
+6. 0.2.6 (runtime 0.4.0): the state stays schema 3 (state.BuiltinStore, never the vendored ProductStore, which
+   migrates to schema 4 with every write granted and every disabled tool enabled again); the gateway gets no tool
+   listing of its own (listing=None: a client always reaches the real child, as before); the child is started as the
+   vendored run_product starts it (through backend_changed, which records the configuration being applied for the
+   MCP Server page; a start failure leaves administration up); product.runtime_version stays in the capability
+   contract (capability_snapshot below).
 """
 import asyncio
 import dataclasses
@@ -30,20 +36,34 @@ import httpx
 import uvicorn
 from starlette.responses import JSONResponse
 
-from mcp_admin_core import redact
+from mcp_admin_core import VERSION, capabilities, gateway, redact
 from mcp_admin_core.config import ConfigError
 from mcp_admin_core.capabilities import ManagementOptions
+from mcp_admin_core.configuration import ConfigurationState
 from mcp_admin_core.gateway import make_apps
 from mcp_admin_core.ha_role import valid_user_id
 from mcp_admin_core.health import HealthMonitor
 from mcp_admin_core.lifecycle import Supervisor
-from mcp_admin_core.products import INSTRUCTIONS, ProductStore, TOOLS, child_spec
+from mcp_admin_core.products import INSTRUCTIONS, TOOLS, child_spec
 from mcp_admin_core.run_product import Listener
 
 from . import ADMIN_SOCKET, BACKEND_URL, CHILD_SOCKET, DATA_DIR, INGRESS_PEER, MCP_HOST, MCP_PORT, PRODUCT
 from . import defaults, surface
+from .state import BuiltinStore
 
 surface.install()
+VENDORED_SNAPSHOT = capabilities.capability_snapshot
+
+
+def capability_snapshot(options, state, health, catalog, **kwargs):
+    """0.2.4: product.runtime_version, the pinned runtime's version (mcp_admin_core.VERSION, 0.4.0 since 0.2.6), next to
+    product.version (the add-on's own, WOOW_ADDON_VERSION). The runtime pinned since 0.2.6 reports id and version only
+    (the shared v1 contract); the built-in contract keeps the field it documents."""
+    snapshot = VENDORED_SNAPSHOT(options, state, health, catalog, **kwargs)
+    return {**snapshot, 'product': {**snapshot['product'], 'runtime_version': VERSION}}
+
+
+gateway.capability_snapshot = capability_snapshot  # the name make_apps' capabilities() looks up when it answers
 
 CHILD_ENTRY = Path(__file__).with_name('child.py')
 BACKEND_WRITE = re.compile(r'(?:^|/)api/backend$')
@@ -106,17 +126,17 @@ def management_options():
 
 
 async def run():
-    store = ProductStore(DATA_DIR, PRODUCT)
+    store = BuiltinStore(DATA_DIR)
     manager = None
     loop = asyncio.get_running_loop()
     stop = asyncio.Event()
     try:
-        state = pin_backend(store)
+        pin_backend(store)
         record = defaults.apply(store)
         if record is not None:
             print('[ha-opendesign-mcp] tool defaults applied: granted %s; left disabled %s'
                   % (','.join(record['granted']) or 'none', ','.join(record['left_disabled']) or 'none'), flush=True)
-        manager = Supervisor(builtin_child_spec(state, store.directory))
+        manager = Supervisor(None)  # started below through backend_changed, as the vendored run_product does
         for sig in (signal.SIGINT, signal.SIGTERM):
             loop.add_signal_handler(sig, stop.set)
         # With an explicit transport, connection limits belong to the transport (as run_product's client limits).
@@ -124,19 +144,26 @@ async def run():
         async with httpx.AsyncClient(transport=transport, trust_env=False, follow_redirects=False,
                                      timeout=httpx.Timeout(10, connect=3)) as child:
             health = HealthMonitor(store, manager, child)
+            configuration = ConfigurationState(store, manager, health)
 
             async def backend_changed(new_state):
-                # Unreachable for the built-in server (PUT /api/backend is refused); kept as run_product's.
+                # The first start and the MCP Server page's restart; a backend change is unreachable for the built-in
+                # server (PUT /api/backend is refused). As the vendored run_product's.
+                configuration.begin(new_state)
                 health.backend = 'unknown'
-                await manager.stop()
-                manager.spec = builtin_child_spec(new_state, store.directory)
-                await manager.start()
+                try:
+                    await manager.stop()
+                    manager.spec = builtin_child_spec(new_state, store.directory)
+                    await manager.start()
+                except Exception:
+                    configuration.failed('child_start_failed')
+                    raise
 
             admin, mcp = make_apps(store, TOOLS[PRODUCT], child,
                                    verify_admin=ingress_user,
                                    management=management_options(),
                                    backend_check=health.test_saved, restart_child=backend_changed,
-                                   diagnostics=manager.diagnostics,
+                                   diagnostics=manager.diagnostics, configuration=configuration,
                                    health=health.snapshot, backend_changed=backend_changed,
                                    server_name='woow-mcp-' + PRODUCT, instructions=INSTRUCTIONS.get(PRODUCT))
             common = dict(proxy_headers=False, access_log=False, log_level='warning', server_header=False,
@@ -146,7 +173,12 @@ async def run():
             # The path of /private_<token>/mcp is a secret: scrub every log record (vendored redact).
             redact.install()
             redact.guard_handlers(*redact.UVICORN_LOGGERS)
-            await manager.start()
+            try:
+                await backend_changed(store.load())
+            except Exception:
+                # Administration stays up to report the failed start (the MCP Server page) and retry it; no exception
+                # text is shown (vendored run_product).
+                pass
             tasks = [asyncio.create_task(server.serve()) for server in servers]
             monitor = asyncio.create_task(health.run())
             stopping = asyncio.create_task(stop.wait())

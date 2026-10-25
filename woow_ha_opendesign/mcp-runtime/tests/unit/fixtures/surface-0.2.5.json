@@ -1,0 +1,1857 @@
+{
+ "child": {
+  "calls": {
+   "create_project": {
+    "content": [
+     {
+      "text": "{\n  \"projectId\": \"62720fb2-1795-474e-ab8c-f03657706bed\",\n  \"runId\": \"29a8b67a-faaf-44ae-b66f-8bf2479b5442\",\n  \"status\": \"succeeded\",\n  \"agentResponse\": \"Hi! What would you like to design today?\\n\\n\",\n  \"registered\": true\n}",
+      "type": "text"
+     }
+    ],
+    "isError": false
+   },
+   "create_project/agent-auth": {
+    "content": [
+     {
+      "text": "{\n  \"projectId\": \"<generated>\",\n  \"runId\": \"e9138737-f40d-4766-9153-ddb8407177f9\",\n  \"status\": \"failed\",\n  \"agentResponse\": \"Not logged in \u00b7 Please run /login\",\n  \"errorCode\": \"AGENT_AUTH_REQUIRED\",\n  \"failureCategory\": \"auth\",\n  \"hint\": \"The agent is not signed in. Sign in from the add-on's CLI Terminal (or OpenDesign settings), or use another agent_id from list_agents.\",\n  \"registered\": true\n}",
+      "type": "text"
+     }
+    ],
+    "isError": false
+   },
+   "create_project/busy": {
+    "content": [
+     {
+      "text": "Error executing tool create_project: BACKEND_BUSY",
+      "type": "text"
+     }
+    ],
+    "isError": true
+   },
+   "create_project/invalid": {
+    "content": [
+     {
+      "text": "Error executing tool create_project: INVALID_ARGUMENTS",
+      "type": "text"
+     }
+    ],
+    "isError": true
+   },
+   "create_project/refused": {
+    "content": [
+     {
+      "text": "Error executing tool create_project: BACKEND_HTTP_ERROR status=400",
+      "type": "text"
+     }
+    ],
+    "isError": true
+   },
+   "create_project/unknown-agent": {
+    "content": [
+     {
+      "text": "{\n  \"projectId\": \"<generated>\",\n  \"runId\": null,\n  \"status\": \"failed\",\n  \"errorCode\": \"AGENT_UNAVAILABLE\",\n  \"hint\": \"Unknown or unavailable agent_id: call list_agents and use an id whose available is true.\"\n}",
+      "type": "text"
+     }
+    ],
+    "isError": false
+   },
+   "daemon-500/create_project": {
+    "content": [
+     {
+      "text": "Error executing tool create_project: BACKEND_HTTP_ERROR status=500",
+      "type": "text"
+     }
+    ],
+    "isError": true
+   },
+   "daemon-500/delete_project": {
+    "content": [
+     {
+      "text": "Error executing tool delete_project: BACKEND_HTTP_ERROR status=500",
+      "type": "text"
+     }
+    ],
+    "isError": true
+   },
+   "daemon-500/get_file_info": {
+    "content": [
+     {
+      "text": "Error executing tool get_file_info: BACKEND_HTTP_ERROR status=500",
+      "type": "text"
+     }
+    ],
+    "isError": true
+   },
+   "daemon-500/get_project": {
+    "content": [
+     {
+      "text": "Error executing tool get_project: BACKEND_HTTP_ERROR status=500",
+      "type": "text"
+     }
+    ],
+    "isError": true
+   },
+   "daemon-500/health": {
+    "content": [
+     {
+      "text": "Error executing tool health: BACKEND_HTTP_ERROR status=500",
+      "type": "text"
+     }
+    ],
+    "isError": true
+   },
+   "daemon-500/list_agents": {
+    "content": [
+     {
+      "text": "Error executing tool list_agents: BACKEND_HTTP_ERROR status=500",
+      "type": "text"
+     }
+    ],
+    "isError": true
+   },
+   "daemon-500/list_connectors": {
+    "content": [
+     {
+      "text": "Error executing tool list_connectors: BACKEND_HTTP_ERROR status=500",
+      "type": "text"
+     }
+    ],
+    "isError": true
+   },
+   "daemon-500/list_plugins": {
+    "content": [
+     {
+      "text": "Error executing tool list_plugins: BACKEND_HTTP_ERROR status=500",
+      "type": "text"
+     }
+    ],
+    "isError": true
+   },
+   "daemon-500/list_project_files": {
+    "content": [
+     {
+      "text": "Error executing tool list_project_files: BACKEND_HTTP_ERROR status=500",
+      "type": "text"
+     }
+    ],
+    "isError": true
+   },
+   "daemon-500/list_projects": {
+    "content": [
+     {
+      "text": "Error executing tool list_projects: BACKEND_HTTP_ERROR status=500",
+      "type": "text"
+     }
+    ],
+    "isError": true
+   },
+   "daemon-500/list_runs": {
+    "content": [
+     {
+      "text": "Error executing tool list_runs: BACKEND_HTTP_ERROR status=500",
+      "type": "text"
+     }
+    ],
+    "isError": true
+   },
+   "daemon-500/list_skills": {
+    "content": [
+     {
+      "text": "Error executing tool list_skills: BACKEND_HTTP_ERROR status=500",
+      "type": "text"
+     }
+    ],
+    "isError": true
+   },
+   "daemon-500/read_file": {
+    "content": [
+     {
+      "text": "Error executing tool read_file: BACKEND_HTTP_ERROR status=500",
+      "type": "text"
+     }
+    ],
+    "isError": true
+   },
+   "daemon-500/send_message": {
+    "content": [
+     {
+      "text": "Error executing tool send_message: BACKEND_HTTP_ERROR status=500",
+      "type": "text"
+     }
+    ],
+    "isError": true
+   },
+   "daemon-500/version": {
+    "content": [
+     {
+      "text": "Error executing tool version: BACKEND_HTTP_ERROR status=500",
+      "type": "text"
+     }
+    ],
+    "isError": true
+   },
+   "daemon-down/create_project": {
+    "content": [
+     {
+      "text": "Error executing tool create_project: BACKEND_UNAVAILABLE",
+      "type": "text"
+     }
+    ],
+    "isError": true
+   },
+   "daemon-down/delete_project": {
+    "content": [
+     {
+      "text": "Error executing tool delete_project: BACKEND_UNAVAILABLE",
+      "type": "text"
+     }
+    ],
+    "isError": true
+   },
+   "daemon-down/get_file_info": {
+    "content": [
+     {
+      "text": "Error executing tool get_file_info: BACKEND_UNAVAILABLE",
+      "type": "text"
+     }
+    ],
+    "isError": true
+   },
+   "daemon-down/get_project": {
+    "content": [
+     {
+      "text": "Error executing tool get_project: BACKEND_UNAVAILABLE",
+      "type": "text"
+     }
+    ],
+    "isError": true
+   },
+   "daemon-down/health": {
+    "content": [
+     {
+      "text": "Error executing tool health: BACKEND_UNAVAILABLE",
+      "type": "text"
+     }
+    ],
+    "isError": true
+   },
+   "daemon-down/list_agents": {
+    "content": [
+     {
+      "text": "Error executing tool list_agents: BACKEND_UNAVAILABLE",
+      "type": "text"
+     }
+    ],
+    "isError": true
+   },
+   "daemon-down/list_connectors": {
+    "content": [
+     {
+      "text": "Error executing tool list_connectors: BACKEND_UNAVAILABLE",
+      "type": "text"
+     }
+    ],
+    "isError": true
+   },
+   "daemon-down/list_plugins": {
+    "content": [
+     {
+      "text": "Error executing tool list_plugins: BACKEND_UNAVAILABLE",
+      "type": "text"
+     }
+    ],
+    "isError": true
+   },
+   "daemon-down/list_project_files": {
+    "content": [
+     {
+      "text": "Error executing tool list_project_files: BACKEND_UNAVAILABLE",
+      "type": "text"
+     }
+    ],
+    "isError": true
+   },
+   "daemon-down/list_projects": {
+    "content": [
+     {
+      "text": "Error executing tool list_projects: BACKEND_UNAVAILABLE",
+      "type": "text"
+     }
+    ],
+    "isError": true
+   },
+   "daemon-down/list_runs": {
+    "content": [
+     {
+      "text": "Error executing tool list_runs: BACKEND_UNAVAILABLE",
+      "type": "text"
+     }
+    ],
+    "isError": true
+   },
+   "daemon-down/list_skills": {
+    "content": [
+     {
+      "text": "Error executing tool list_skills: BACKEND_UNAVAILABLE",
+      "type": "text"
+     }
+    ],
+    "isError": true
+   },
+   "daemon-down/read_file": {
+    "content": [
+     {
+      "text": "Error executing tool read_file: BACKEND_UNAVAILABLE",
+      "type": "text"
+     }
+    ],
+    "isError": true
+   },
+   "daemon-down/send_message": {
+    "content": [
+     {
+      "text": "Error executing tool send_message: BACKEND_UNAVAILABLE",
+      "type": "text"
+     }
+    ],
+    "isError": true
+   },
+   "daemon-down/version": {
+    "content": [
+     {
+      "text": "Error executing tool version: BACKEND_UNAVAILABLE",
+      "type": "text"
+     }
+    ],
+    "isError": true
+   },
+   "daemon-not-json/delete_project": {
+    "content": [
+     {
+      "text": "Error executing tool delete_project: BACKEND_INVALID_RESPONSE",
+      "type": "text"
+     }
+    ],
+    "isError": true
+   },
+   "daemon-not-json/get_file_info": {
+    "content": [
+     {
+      "text": "Error executing tool get_file_info: BACKEND_INVALID_RESPONSE",
+      "type": "text"
+     }
+    ],
+    "isError": true
+   },
+   "daemon-not-json/get_project": {
+    "content": [
+     {
+      "text": "Error executing tool get_project: BACKEND_INVALID_RESPONSE",
+      "type": "text"
+     }
+    ],
+    "isError": true
+   },
+   "daemon-not-json/health": {
+    "content": [
+     {
+      "text": "Error executing tool health: BACKEND_INVALID_RESPONSE",
+      "type": "text"
+     }
+    ],
+    "isError": true
+   },
+   "daemon-not-json/list_agents": {
+    "content": [
+     {
+      "text": "Error executing tool list_agents: BACKEND_INVALID_RESPONSE",
+      "type": "text"
+     }
+    ],
+    "isError": true
+   },
+   "daemon-not-json/list_connectors": {
+    "content": [
+     {
+      "text": "Error executing tool list_connectors: BACKEND_INVALID_RESPONSE",
+      "type": "text"
+     }
+    ],
+    "isError": true
+   },
+   "daemon-not-json/list_plugins": {
+    "content": [
+     {
+      "text": "Error executing tool list_plugins: BACKEND_INVALID_RESPONSE",
+      "type": "text"
+     }
+    ],
+    "isError": true
+   },
+   "daemon-not-json/list_project_files": {
+    "content": [
+     {
+      "text": "Error executing tool list_project_files: BACKEND_INVALID_RESPONSE",
+      "type": "text"
+     }
+    ],
+    "isError": true
+   },
+   "daemon-not-json/list_projects": {
+    "content": [
+     {
+      "text": "Error executing tool list_projects: BACKEND_INVALID_RESPONSE",
+      "type": "text"
+     }
+    ],
+    "isError": true
+   },
+   "daemon-not-json/list_runs": {
+    "content": [
+     {
+      "text": "Error executing tool list_runs: BACKEND_INVALID_RESPONSE",
+      "type": "text"
+     }
+    ],
+    "isError": true
+   },
+   "daemon-not-json/list_skills": {
+    "content": [
+     {
+      "text": "Error executing tool list_skills: BACKEND_INVALID_RESPONSE",
+      "type": "text"
+     }
+    ],
+    "isError": true
+   },
+   "daemon-not-json/read_file": {
+    "content": [
+     {
+      "text": "Error executing tool read_file: BACKEND_INVALID_RESPONSE",
+      "type": "text"
+     }
+    ],
+    "isError": true
+   },
+   "daemon-not-json/send_message": {
+    "content": [
+     {
+      "text": "Error executing tool send_message: BACKEND_INVALID_RESPONSE",
+      "type": "text"
+     }
+    ],
+    "isError": true
+   },
+   "daemon-not-json/version": {
+    "content": [
+     {
+      "text": "Error executing tool version: BACKEND_INVALID_RESPONSE",
+      "type": "text"
+     }
+    ],
+    "isError": true
+   },
+   "delete_project": {
+    "content": [
+     {
+      "text": "{\n  \"ok\": true\n}",
+      "type": "text"
+     }
+    ],
+    "isError": false
+   },
+   "delete_project/unknown-project": {
+    "content": [
+     {
+      "text": "Error executing tool delete_project: BACKEND_HTTP_ERROR status=404",
+      "type": "text"
+     }
+    ],
+    "isError": true
+   },
+   "get_file_info": {
+    "content": [
+     {
+      "text": "{\n  \"name\": \"index.html\",\n  \"path\": \"index.html\",\n  \"type\": \"file\",\n  \"size\": 12,\n  \"mime\": \"text/html\"\n}",
+      "type": "text"
+     }
+    ],
+    "isError": false
+   },
+   "get_file_info/missing": {
+    "content": [
+     {
+      "text": "{\n  \"error\": \"File 'nope.txt' not found in project\"\n}",
+      "type": "text"
+     }
+    ],
+    "isError": false
+   },
+   "get_project": {
+    "content": [
+     {
+      "text": "{\n  \"project\": {\n    \"id\": \"62720fb2-1795-474e-ab8c-f03657706bed\",\n    \"name\": \"Demo\"\n  },\n  \"resolvedDir\": \"/data/opendesign/projects/x\"\n}",
+      "type": "text"
+     }
+    ],
+    "isError": false
+   },
+   "get_project/unknown-project": {
+    "content": [
+     {
+      "text": "Error executing tool get_project: BACKEND_HTTP_ERROR status=404",
+      "type": "text"
+     }
+    ],
+    "isError": true
+   },
+   "health": {
+    "content": [
+     {
+      "text": "{\n  \"ok\": true,\n  \"version\": \"0.24.1\"\n}",
+      "type": "text"
+     }
+    ],
+    "isError": false
+   },
+   "list_agents": {
+    "content": [
+     {
+      "text": "{\n  \"available_agents\": [\n    {\n      \"id\": \"claude\",\n      \"name\": \"Claude Code\",\n      \"available\": true,\n      \"version\": \"2.1.296\",\n      \"path\": \"/usr/local/bin/claude\"\n    }\n  ],\n  \"total_defined\": 2,\n  \"total_available\": 1\n}",
+      "type": "text"
+     }
+    ],
+    "isError": false
+   },
+   "list_connectors": {
+    "content": [
+     {
+      "text": "{\n  \"total\": 1,\n  \"connectors\": [\n    {\n      \"id\": \"github\",\n      \"name\": \"GitHub\",\n      \"provider\": null,\n      \"category\": null,\n      \"status\": \"available\",\n      \"configured\": false,\n      \"toolCount\": 1,\n      \"tools\": [\n        \"github.github_get_issue\"\n      ]\n    }\n  ],\n  \"truncated\": false\n}",
+      "type": "text"
+     }
+    ],
+    "isError": false
+   },
+   "list_plugins": {
+    "content": [
+     {
+      "text": "{\n  \"total\": 1,\n  \"plugins\": [\n    {\n      \"id\": \"woow-mcp-server\",\n      \"title\": \"MCP Server\",\n      \"source\": \"bundled\",\n      \"trust\": \"official\"\n    }\n  ]\n}",
+      "type": "text"
+     }
+    ],
+    "isError": false
+   },
+   "list_project_files": {
+    "content": [
+     {
+      "text": "{\n  \"files\": [\n    {\n      \"name\": \"index.html\",\n      \"path\": \"index.html\",\n      \"type\": \"file\",\n      \"size\": 12,\n      \"mime\": \"text/html\"\n    },\n    {\n      \"name\": \"bin.dat\",\n      \"path\": \"bin.dat\",\n      \"type\": \"file\",\n      \"size\": 6,\n      \"mime\": \"application/octet-stream\"\n    },\n    {\n      \"name\": \"big.txt\",\n      \"path\": \"big.txt\",\n      \"type\": \"file\",\n      \"size\": 1048577,\n      \"mime\": \"application/octet-stream\"\n    }\n  ]\n}",
+      "type": "text"
+     }
+    ],
+    "isError": false
+   },
+   "list_project_files/unknown-project": {
+    "content": [
+     {
+      "text": "Error executing tool list_project_files: BACKEND_HTTP_ERROR status=404",
+      "type": "text"
+     }
+    ],
+    "isError": true
+   },
+   "list_projects": {
+    "content": [
+     {
+      "text": "{\n  \"projects\": [\n    {\n      \"id\": \"62720fb2-1795-474e-ab8c-f03657706bed\",\n      \"name\": \"Demo\",\n      \"createdAt\": 1760000000000\n    }\n  ]\n}",
+      "type": "text"
+     }
+    ],
+    "isError": false
+   },
+   "list_runs": {
+    "content": [
+     {
+      "text": "{\n  \"runs\": [\n    {\n      \"id\": \"e9138737-f40d-4766-9153-ddb8407177f9\",\n      \"projectId\": \"62720fb2-1795-474e-ab8c-f03657706bed\",\n      \"status\": \"failed\"\n    }\n  ],\n  \"truncated\": false\n}",
+      "type": "text"
+     }
+    ],
+    "isError": false
+   },
+   "list_skills": {
+    "content": [
+     {
+      "text": "{\n  \"total\": 1,\n  \"skills\": [\n    {\n      \"id\": \"woowtech-brand\",\n      \"name\": \"WoowTech brand\",\n      \"description\": \"Brand rules\",\n      \"mode\": \"design\",\n      \"surface\": \"web\",\n      \"triggers\": [\n        \"a\",\n        \"b\",\n        \"c\",\n        \"d\",\n        \"e\"\n      ]\n    }\n  ]\n}",
+      "type": "text"
+     }
+    ],
+    "isError": false
+   },
+   "read_file": {
+    "content": [
+     {
+      "text": "<h1>hi</h1>\n",
+      "type": "text"
+     }
+    ],
+    "isError": false,
+    "structuredContent": {
+     "result": "<h1>hi</h1>\n"
+    }
+   },
+   "read_file/binary": {
+    "content": [
+     {
+      "text": "Error executing tool read_file: FILE_NOT_TEXT",
+      "type": "text"
+     }
+    ],
+    "isError": true
+   },
+   "read_file/missing": {
+    "content": [
+     {
+      "text": "Error executing tool read_file: FILE_NOT_FOUND",
+      "type": "text"
+     }
+    ],
+    "isError": true
+   },
+   "read_file/secret": {
+    "content": [
+     {
+      "text": "Error executing tool read_file: FILE_PATH_REFUSED",
+      "type": "text"
+     }
+    ],
+    "isError": true
+   },
+   "read_file/too-large": {
+    "content": [
+     {
+      "text": "Error executing tool read_file: FILE_TOO_LARGE",
+      "type": "text"
+     }
+    ],
+    "isError": true
+   },
+   "read_file/unknown-project": {
+    "content": [
+     {
+      "text": "Error executing tool read_file: BACKEND_HTTP_ERROR status=404",
+      "type": "text"
+     }
+    ],
+    "isError": true
+   },
+   "send_message": {
+    "content": [
+     {
+      "text": "{\n  \"projectId\": \"62720fb2-1795-474e-ab8c-f03657706bed\",\n  \"runId\": \"29a8b67a-faaf-44ae-b66f-8bf2479b5442\",\n  \"status\": \"succeeded\",\n  \"agentResponse\": \"Hi! What would you like to design today?\\n\\n\"\n}",
+      "type": "text"
+     }
+    ],
+    "isError": false
+   },
+   "send_message/invalid": {
+    "content": [
+     {
+      "text": "Error executing tool send_message: INVALID_ARGUMENTS",
+      "type": "text"
+     }
+    ],
+    "isError": true
+   },
+   "send_message/unknown-project": {
+    "content": [
+     {
+      "text": "Error executing tool send_message: PROJECT_NOT_FOUND",
+      "type": "text"
+     }
+    ],
+    "isError": true
+   },
+   "version": {
+    "content": [
+     {
+      "text": "{\n  \"version\": \"0.24.1\",\n  \"channel\": \"stable\",\n  \"platform\": \"linux\",\n  \"arch\": \"x64\"\n}",
+      "type": "text"
+     }
+    ],
+    "isError": false
+   }
+  },
+  "sdk": "1.30.0",
+  "tools": {
+   "tools": [
+    {
+     "description": "Check Open Design daemon health status and version.",
+     "inputSchema": {
+      "properties": {},
+      "title": "healthArguments",
+      "type": "object"
+     },
+     "name": "health"
+    },
+    {
+     "description": "Get detailed daemon version info (version, channel, platform, arch).",
+     "inputSchema": {
+      "properties": {},
+      "title": "versionArguments",
+      "type": "object"
+     },
+     "name": "version"
+    },
+    {
+     "description": "List all available AI agent CLIs (Claude Code, OpenCode, BYOK).\n\nReturns agent IDs, names, versions, availability status, and paths.\n",
+     "inputSchema": {
+      "properties": {},
+      "title": "list_agentsArguments",
+      "type": "object"
+     },
+     "name": "list_agents"
+    },
+    {
+     "description": "List OpenDesign's external connectors (GitHub, Notion, Google Drive...) with their status and tool names.\n\nOnly ids, names, provider, category, status, whether it is configured and tool names are returned.",
+     "inputSchema": {
+      "properties": {},
+      "title": "list_connectorsArguments",
+      "type": "object"
+     },
+     "name": "list_connectors"
+    },
+    {
+     "description": "List all design projects with their status, creation time, and metadata.",
+     "inputSchema": {
+      "properties": {},
+      "title": "list_projectsArguments",
+      "type": "object"
+     },
+     "name": "list_projects"
+    },
+    {
+     "description": "Get detailed information about a specific project by ID.\n\nArgs:\n    project_id: UUID of the project (e.g. '38c010dc-f7c8-4a35-a325-89d6f56e45a4')\n",
+     "inputSchema": {
+      "properties": {
+       "project_id": {
+        "title": "Project Id",
+        "type": "string"
+       }
+      },
+      "required": [
+       "project_id"
+      ],
+      "title": "get_projectArguments",
+      "type": "object"
+     },
+     "name": "get_project"
+    },
+    {
+     "description": "Create a new design project by sending an initial prompt to an OpenDesign AI agent.\n\nThis runs the agent (it may use paid model credits of the signed-in account). The call follows the run for\nabout 75 seconds at most; a longer run keeps going in OpenDesign (status \"running\": check list_runs or\nlist_project_files later). The result has projectId, runId, status (succeeded, failed, cancelled, running,\nunknown), the agent's text (shortened) and, on failure, errorCode with a hint.\n\nArgs:\n    prompt: The initial design prompt (e.g. 'Create a landing page for a coffee shop')\n    agent_id: Agent id from list_agents (e.g. 'claude', 'codex', 'opencode'). Default: 'claude'\n",
+     "inputSchema": {
+      "properties": {
+       "agent_id": {
+        "default": "claude",
+        "title": "Agent Id",
+        "type": "string"
+       },
+       "prompt": {
+        "title": "Prompt",
+        "type": "string"
+       }
+      },
+      "required": [
+       "prompt"
+      ],
+      "title": "create_projectArguments",
+      "type": "object"
+     },
+     "name": "create_project"
+    },
+    {
+     "description": "Permanently delete a project and all its files. This action cannot be undone.\n\nArgs:\n    project_id: UUID of the project to delete\n",
+     "inputSchema": {
+      "properties": {
+       "project_id": {
+        "title": "Project Id",
+        "type": "string"
+       }
+      },
+      "required": [
+       "project_id"
+      ],
+      "title": "delete_projectArguments",
+      "type": "object"
+     },
+     "name": "delete_project"
+    },
+    {
+     "description": "List all files in a project directory with metadata (name, size, type, mime).\n\nArgs:\n    project_id: UUID of the project\n",
+     "inputSchema": {
+      "properties": {
+       "project_id": {
+        "title": "Project Id",
+        "type": "string"
+       }
+      },
+      "required": [
+       "project_id"
+      ],
+      "title": "list_project_filesArguments",
+      "type": "object"
+     },
+     "name": "list_project_files"
+    },
+    {
+     "description": "Read a text file of a project (UTF-8, at most 1 MiB).\n\nOnly files shown by list_project_files can be read; hidden files and secret-like names (keys, certificates,\ncredentials, .env...) are refused, and so are binary files.\n\nArgs:\n    project_id: UUID of the project\n    file_path: Relative path of the file within the project (e.g. 'index.html')\n",
+     "inputSchema": {
+      "properties": {
+       "file_path": {
+        "title": "File Path",
+        "type": "string"
+       },
+       "project_id": {
+        "title": "Project Id",
+        "type": "string"
+       }
+      },
+      "required": [
+       "project_id",
+       "file_path"
+      ],
+      "title": "read_fileArguments",
+      "type": "object"
+     },
+     "name": "read_file",
+     "outputSchema": {
+      "properties": {
+       "result": {
+        "title": "Result",
+        "type": "string"
+       }
+      },
+      "required": [
+       "result"
+      ],
+      "title": "read_fileOutput",
+      "type": "object"
+     }
+    },
+    {
+     "description": "Get metadata about a specific file (size, mime type, artifact info).\n\nArgs:\n    project_id: UUID of the project\n    file_path: Relative path of the file\n",
+     "inputSchema": {
+      "properties": {
+       "file_path": {
+        "title": "File Path",
+        "type": "string"
+       },
+       "project_id": {
+        "title": "Project Id",
+        "type": "string"
+       }
+      },
+      "required": [
+       "project_id",
+       "file_path"
+      ],
+      "title": "get_file_infoArguments",
+      "type": "object"
+     },
+     "name": "get_file_info"
+    },
+    {
+     "description": "Send a follow-up message to an existing project's OpenDesign AI agent.\n\nThis runs the agent (it may use paid model credits of the signed-in account). The call follows the run for\nabout 75 seconds at most; a longer run keeps going in OpenDesign (status \"running\"). The result has the\nsame fields as create_project.\n\nArgs:\n    project_id: UUID of the project to continue\n    prompt: The message to send to the AI agent\n    agent_id: Agent id from list_agents. Default: 'claude'\n",
+     "inputSchema": {
+      "properties": {
+       "agent_id": {
+        "default": "claude",
+        "title": "Agent Id",
+        "type": "string"
+       },
+       "project_id": {
+        "title": "Project Id",
+        "type": "string"
+       },
+       "prompt": {
+        "title": "Prompt",
+        "type": "string"
+       }
+      },
+      "required": [
+       "project_id",
+       "prompt"
+      ],
+      "title": "send_messageArguments",
+      "type": "object"
+     },
+     "name": "send_message"
+    },
+    {
+     "description": "List all active and completed AI agent runs.",
+     "inputSchema": {
+      "properties": {},
+      "title": "list_runsArguments",
+      "type": "object"
+     },
+     "name": "list_runs"
+    },
+    {
+     "description": "List all available plugins and templates (video, design, etc.).",
+     "inputSchema": {
+      "properties": {},
+      "title": "list_pluginsArguments",
+      "type": "object"
+     },
+     "name": "list_plugins"
+    },
+    {
+     "description": "List all available design skills and their triggers.",
+     "inputSchema": {
+      "properties": {},
+      "title": "list_skillsArguments",
+      "type": "object"
+     },
+     "name": "list_skills"
+    }
+   ]
+  }
+ },
+ "gateway": {
+  "listed": {
+   "granted": {
+    "tools": [
+     {
+      "description": "Check Open Design daemon health status and version.",
+      "inputSchema": {
+       "additionalProperties": false,
+       "properties": {},
+       "title": "Arguments",
+       "type": "object"
+      },
+      "name": "health"
+     },
+     {
+      "description": "Get detailed daemon version info (version, channel, platform, arch).",
+      "inputSchema": {
+       "additionalProperties": false,
+       "properties": {},
+       "title": "Arguments",
+       "type": "object"
+      },
+      "name": "version"
+     },
+     {
+      "description": "List all available AI agent CLIs (Claude Code, OpenCode, BYOK).\n\nReturns agent IDs, names, versions, availability status, and paths.\n",
+      "inputSchema": {
+       "additionalProperties": false,
+       "properties": {},
+       "title": "Arguments",
+       "type": "object"
+      },
+      "name": "list_agents"
+     },
+     {
+      "description": "List OpenDesign's external connectors (GitHub, Notion, Google Drive...) with their status and tool names.\n\nOnly ids, names, provider, category, status, whether it is configured and tool names are returned.",
+      "inputSchema": {
+       "additionalProperties": false,
+       "properties": {},
+       "title": "Arguments",
+       "type": "object"
+      },
+      "name": "list_connectors"
+     },
+     {
+      "description": "List all design projects with their status, creation time, and metadata.",
+      "inputSchema": {
+       "additionalProperties": false,
+       "properties": {},
+       "title": "Arguments",
+       "type": "object"
+      },
+      "name": "list_projects"
+     },
+     {
+      "description": "Get detailed information about a specific project by ID.\n\nArgs:\n    project_id: UUID of the project (e.g. '38c010dc-f7c8-4a35-a325-89d6f56e45a4')\n",
+      "inputSchema": {
+       "additionalProperties": false,
+       "properties": {
+        "project_id": {
+         "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+         "title": "Project Id",
+         "type": "string"
+        }
+       },
+       "required": [
+        "project_id"
+       ],
+       "title": "Project",
+       "type": "object"
+      },
+      "name": "get_project"
+     },
+     {
+      "description": "Create a new design project by sending an initial prompt to an OpenDesign AI agent.\n\nThis runs the agent (it may use paid model credits of the signed-in account). The call follows the run for\nabout 75 seconds at most; a longer run keeps going in OpenDesign (status \"running\": check list_runs or\nlist_project_files later). The result has projectId, runId, status (succeeded, failed, cancelled, running,\nunknown), the agent's text (shortened) and, on failure, errorCode with a hint.\n\nArgs:\n    prompt: The initial design prompt (e.g. 'Create a landing page for a coffee shop')\n    agent_id: Agent id from list_agents (e.g. 'claude', 'codex', 'opencode'). Default: 'claude'\n",
+      "inputSchema": {
+       "additionalProperties": false,
+       "properties": {
+        "agent_id": {
+         "default": "claude",
+         "description": "OpenDesign agent id from list_agents (e.g. claude, codex, opencode). The agent must be signed in or configured in OpenDesign.",
+         "pattern": "^[a-z][a-z0-9-]{0,63}$",
+         "title": "Agent Id",
+         "type": "string"
+        },
+        "prompt": {
+         "description": "What the OpenDesign agent should do (plain text, at most 20000 characters).",
+         "maxLength": 20000,
+         "minLength": 1,
+         "title": "Prompt",
+         "type": "string"
+        }
+       },
+       "required": [
+        "prompt"
+       ],
+       "title": "CreateProject",
+       "type": "object"
+      },
+      "name": "create_project"
+     },
+     {
+      "description": "Permanently delete a project and all its files. This action cannot be undone.\n\nArgs:\n    project_id: UUID of the project to delete\n",
+      "inputSchema": {
+       "additionalProperties": false,
+       "properties": {
+        "project_id": {
+         "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+         "title": "Project Id",
+         "type": "string"
+        }
+       },
+       "required": [
+        "project_id"
+       ],
+       "title": "Project",
+       "type": "object"
+      },
+      "name": "delete_project"
+     },
+     {
+      "description": "List all files in a project directory with metadata (name, size, type, mime).\n\nArgs:\n    project_id: UUID of the project\n",
+      "inputSchema": {
+       "additionalProperties": false,
+       "properties": {
+        "project_id": {
+         "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+         "title": "Project Id",
+         "type": "string"
+        }
+       },
+       "required": [
+        "project_id"
+       ],
+       "title": "Project",
+       "type": "object"
+      },
+      "name": "list_project_files"
+     },
+     {
+      "description": "Read a text file of a project (UTF-8, at most 1 MiB).\n\nOnly files shown by list_project_files can be read; hidden files and secret-like names (keys, certificates,\ncredentials, .env...) are refused, and so are binary files.\n\nArgs:\n    project_id: UUID of the project\n    file_path: Relative path of the file within the project (e.g. 'index.html')\n",
+      "inputSchema": {
+       "additionalProperties": false,
+       "properties": {
+        "file_path": {
+         "maxLength": 256,
+         "minLength": 1,
+         "pattern": "^[A-Za-z0-9_. /-]+$",
+         "title": "File Path",
+         "type": "string"
+        },
+        "project_id": {
+         "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+         "title": "Project Id",
+         "type": "string"
+        }
+       },
+       "required": [
+        "project_id",
+        "file_path"
+       ],
+       "title": "ReadFile",
+       "type": "object"
+      },
+      "name": "read_file"
+     },
+     {
+      "description": "Get metadata about a specific file (size, mime type, artifact info).\n\nArgs:\n    project_id: UUID of the project\n    file_path: Relative path of the file\n",
+      "inputSchema": {
+       "additionalProperties": false,
+       "properties": {
+        "file_path": {
+         "maxLength": 256,
+         "minLength": 1,
+         "pattern": "^[A-Za-z0-9_. /-]+$",
+         "title": "File Path",
+         "type": "string"
+        },
+        "project_id": {
+         "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+         "title": "Project Id",
+         "type": "string"
+        }
+       },
+       "required": [
+        "project_id",
+        "file_path"
+       ],
+       "title": "FileInfo",
+       "type": "object"
+      },
+      "name": "get_file_info"
+     },
+     {
+      "description": "Send a follow-up message to an existing project's OpenDesign AI agent.\n\nThis runs the agent (it may use paid model credits of the signed-in account). The call follows the run for\nabout 75 seconds at most; a longer run keeps going in OpenDesign (status \"running\"). The result has the\nsame fields as create_project.\n\nArgs:\n    project_id: UUID of the project to continue\n    prompt: The message to send to the AI agent\n    agent_id: Agent id from list_agents. Default: 'claude'\n",
+      "inputSchema": {
+       "additionalProperties": false,
+       "properties": {
+        "agent_id": {
+         "default": "claude",
+         "description": "OpenDesign agent id from list_agents (e.g. claude, codex, opencode). The agent must be signed in or configured in OpenDesign.",
+         "pattern": "^[a-z][a-z0-9-]{0,63}$",
+         "title": "Agent Id",
+         "type": "string"
+        },
+        "project_id": {
+         "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+         "title": "Project Id",
+         "type": "string"
+        },
+        "prompt": {
+         "description": "What the OpenDesign agent should do (plain text, at most 20000 characters).",
+         "maxLength": 20000,
+         "minLength": 1,
+         "title": "Prompt",
+         "type": "string"
+        }
+       },
+       "required": [
+        "project_id",
+        "prompt"
+       ],
+       "title": "SendMessage",
+       "type": "object"
+      },
+      "name": "send_message"
+     },
+     {
+      "description": "List all active and completed AI agent runs.",
+      "inputSchema": {
+       "additionalProperties": false,
+       "properties": {},
+       "title": "Args",
+       "type": "object"
+      },
+      "name": "list_runs"
+     },
+     {
+      "description": "List all available plugins and templates (video, design, etc.).",
+      "inputSchema": {
+       "additionalProperties": false,
+       "properties": {},
+       "title": "Arguments",
+       "type": "object"
+      },
+      "name": "list_plugins"
+     },
+     {
+      "description": "List all available design skills and their triggers.",
+      "inputSchema": {
+       "additionalProperties": false,
+       "properties": {},
+       "title": "Arguments",
+       "type": "object"
+      },
+      "name": "list_skills"
+     }
+    ]
+   },
+   "list_skills-disabled-no-grant": {
+    "tools": [
+     {
+      "description": "Check Open Design daemon health status and version.",
+      "inputSchema": {
+       "additionalProperties": false,
+       "properties": {},
+       "title": "Arguments",
+       "type": "object"
+      },
+      "name": "health"
+     },
+     {
+      "description": "Get detailed daemon version info (version, channel, platform, arch).",
+      "inputSchema": {
+       "additionalProperties": false,
+       "properties": {},
+       "title": "Arguments",
+       "type": "object"
+      },
+      "name": "version"
+     },
+     {
+      "description": "List all available AI agent CLIs (Claude Code, OpenCode, BYOK).\n\nReturns agent IDs, names, versions, availability status, and paths.\n",
+      "inputSchema": {
+       "additionalProperties": false,
+       "properties": {},
+       "title": "Arguments",
+       "type": "object"
+      },
+      "name": "list_agents"
+     },
+     {
+      "description": "List OpenDesign's external connectors (GitHub, Notion, Google Drive...) with their status and tool names.\n\nOnly ids, names, provider, category, status, whether it is configured and tool names are returned.",
+      "inputSchema": {
+       "additionalProperties": false,
+       "properties": {},
+       "title": "Arguments",
+       "type": "object"
+      },
+      "name": "list_connectors"
+     },
+     {
+      "description": "List all design projects with their status, creation time, and metadata.",
+      "inputSchema": {
+       "additionalProperties": false,
+       "properties": {},
+       "title": "Arguments",
+       "type": "object"
+      },
+      "name": "list_projects"
+     },
+     {
+      "description": "Get detailed information about a specific project by ID.\n\nArgs:\n    project_id: UUID of the project (e.g. '38c010dc-f7c8-4a35-a325-89d6f56e45a4')\n",
+      "inputSchema": {
+       "additionalProperties": false,
+       "properties": {
+        "project_id": {
+         "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+         "title": "Project Id",
+         "type": "string"
+        }
+       },
+       "required": [
+        "project_id"
+       ],
+       "title": "Project",
+       "type": "object"
+      },
+      "name": "get_project"
+     },
+     {
+      "description": "List all files in a project directory with metadata (name, size, type, mime).\n\nArgs:\n    project_id: UUID of the project\n",
+      "inputSchema": {
+       "additionalProperties": false,
+       "properties": {
+        "project_id": {
+         "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+         "title": "Project Id",
+         "type": "string"
+        }
+       },
+       "required": [
+        "project_id"
+       ],
+       "title": "Project",
+       "type": "object"
+      },
+      "name": "list_project_files"
+     },
+     {
+      "description": "Read a text file of a project (UTF-8, at most 1 MiB).\n\nOnly files shown by list_project_files can be read; hidden files and secret-like names (keys, certificates,\ncredentials, .env...) are refused, and so are binary files.\n\nArgs:\n    project_id: UUID of the project\n    file_path: Relative path of the file within the project (e.g. 'index.html')\n",
+      "inputSchema": {
+       "additionalProperties": false,
+       "properties": {
+        "file_path": {
+         "maxLength": 256,
+         "minLength": 1,
+         "pattern": "^[A-Za-z0-9_. /-]+$",
+         "title": "File Path",
+         "type": "string"
+        },
+        "project_id": {
+         "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+         "title": "Project Id",
+         "type": "string"
+        }
+       },
+       "required": [
+        "project_id",
+        "file_path"
+       ],
+       "title": "ReadFile",
+       "type": "object"
+      },
+      "name": "read_file"
+     },
+     {
+      "description": "Get metadata about a specific file (size, mime type, artifact info).\n\nArgs:\n    project_id: UUID of the project\n    file_path: Relative path of the file\n",
+      "inputSchema": {
+       "additionalProperties": false,
+       "properties": {
+        "file_path": {
+         "maxLength": 256,
+         "minLength": 1,
+         "pattern": "^[A-Za-z0-9_. /-]+$",
+         "title": "File Path",
+         "type": "string"
+        },
+        "project_id": {
+         "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+         "title": "Project Id",
+         "type": "string"
+        }
+       },
+       "required": [
+        "project_id",
+        "file_path"
+       ],
+       "title": "FileInfo",
+       "type": "object"
+      },
+      "name": "get_file_info"
+     },
+     {
+      "description": "List all active and completed AI agent runs.",
+      "inputSchema": {
+       "additionalProperties": false,
+       "properties": {},
+       "title": "Args",
+       "type": "object"
+      },
+      "name": "list_runs"
+     },
+     {
+      "description": "List all available plugins and templates (video, design, etc.).",
+      "inputSchema": {
+       "additionalProperties": false,
+       "properties": {},
+       "title": "Arguments",
+       "type": "object"
+      },
+      "name": "list_plugins"
+     }
+    ]
+   }
+  },
+  "requests": {
+   "granted": {
+    "create_project": {
+     "forwarded": {
+      "agent_id": "claude",
+      "prompt": "A landing page"
+     }
+    },
+    "create_project/agent": {
+     "forwarded": {
+      "agent_id": "byok-opencode",
+      "prompt": "x"
+     }
+    },
+    "create_project/bad-agent": {
+     "error": {
+      "code": -32602,
+      "data": {
+       "errors": [
+        {
+         "field": "agent_id",
+         "message": "String should match pattern '^[a-z][a-z0-9-]{0,63}$'",
+         "type": "string_pattern_mismatch"
+        }
+       ],
+       "tool": "create_project"
+      },
+      "message": "Invalid params"
+     }
+    },
+    "create_project/empty": {
+     "error": {
+      "code": -32602,
+      "data": {
+       "errors": [
+        {
+         "field": "prompt",
+         "message": "String should have at least 1 character",
+         "type": "string_too_short"
+        }
+       ],
+       "tool": "create_project"
+      },
+      "message": "Invalid params"
+     }
+    },
+    "create_project/not-text": {
+     "error": {
+      "code": -32602,
+      "data": {
+       "errors": [
+        {
+         "field": "prompt",
+         "message": "Input should be a valid string",
+         "type": "string_type"
+        }
+       ],
+       "tool": "create_project"
+      },
+      "message": "Invalid params"
+     }
+    },
+    "create_project/too-long": {
+     "error": {
+      "code": -32602,
+      "data": {
+       "errors": [
+        {
+         "field": "prompt",
+         "message": "String should have at most 20000 characters",
+         "type": "string_too_long"
+        }
+       ],
+       "tool": "create_project"
+      },
+      "message": "Invalid params"
+     }
+    },
+    "delete_project": {
+     "forwarded": {
+      "project_id": "76c45d7a-3147-45cf-a3f4-295ee256e48e"
+     }
+    },
+    "get_file_info": {
+     "forwarded": {
+      "file_path": "src/index.html",
+      "project_id": "76c45d7a-3147-45cf-a3f4-295ee256e48e"
+     }
+    },
+    "get_file_info/traversal": {
+     "error": {
+      "code": -32602,
+      "data": {
+       "errors": [
+        {
+         "field": "file_path",
+         "message": "Value error, relative non-traversing path required",
+         "type": "value_error"
+        }
+       ],
+       "tool": "get_file_info"
+      },
+      "message": "Invalid params"
+     }
+    },
+    "get_project": {
+     "forwarded": {
+      "project_id": "76c45d7a-3147-45cf-a3f4-295ee256e48e"
+     }
+    },
+    "get_project/missing": {
+     "error": {
+      "code": -32602,
+      "data": {
+       "errors": [
+        {
+         "field": "project_id",
+         "message": "Field required",
+         "type": "missing"
+        }
+       ],
+       "tool": "get_project"
+      },
+      "message": "Invalid params"
+     }
+    },
+    "get_project/not-a-uuid": {
+     "error": {
+      "code": -32602,
+      "data": {
+       "errors": [
+        {
+         "field": "project_id",
+         "message": "String should match pattern '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'",
+         "type": "string_pattern_mismatch"
+        }
+       ],
+       "tool": "get_project"
+      },
+      "message": "Invalid params"
+     }
+    },
+    "health": {
+     "forwarded": {}
+    },
+    "health/extra": {
+     "error": {
+      "code": -32602,
+      "data": {
+       "errors": [
+        {
+         "field": "*",
+         "message": "Extra inputs are not permitted",
+         "type": "extra_forbidden"
+        }
+       ],
+       "tool": "health"
+      },
+      "message": "Invalid params"
+     }
+    },
+    "list_connectors/extra": {
+     "error": {
+      "code": -32602,
+      "data": {
+       "errors": [
+        {
+         "field": "*",
+         "message": "Extra inputs are not permitted",
+         "type": "extra_forbidden"
+        }
+       ],
+       "tool": "list_connectors"
+      },
+      "message": "Invalid params"
+     }
+    },
+    "list_runs": {
+     "forwarded": {}
+    },
+    "read_file": {
+     "forwarded": {
+      "file_path": "src/index.html",
+      "project_id": "76c45d7a-3147-45cf-a3f4-295ee256e48e"
+     }
+    },
+    "read_file/characters": {
+     "error": {
+      "code": -32602,
+      "data": {
+       "errors": [
+        {
+         "field": "file_path",
+         "message": "String should match pattern '^[A-Za-z0-9_. /-]+$'",
+         "type": "string_pattern_mismatch"
+        }
+       ],
+       "tool": "read_file"
+      },
+      "message": "Invalid params"
+     }
+    },
+    "read_file/key": {
+     "error": {
+      "code": -32602,
+      "data": {
+       "errors": [
+        {
+         "field": "file_path",
+         "message": "Value error, secret-like file name refused",
+         "type": "value_error"
+        }
+       ],
+       "tool": "read_file"
+      },
+      "message": "Invalid params"
+     }
+    },
+    "read_file/secret": {
+     "error": {
+      "code": -32602,
+      "data": {
+       "errors": [
+        {
+         "field": "file_path",
+         "message": "Value error, secret-like file name refused",
+         "type": "value_error"
+        }
+       ],
+       "tool": "read_file"
+      },
+      "message": "Invalid params"
+     }
+    },
+    "send_message": {
+     "forwarded": {
+      "agent_id": "claude",
+      "project_id": "76c45d7a-3147-45cf-a3f4-295ee256e48e",
+      "prompt": "Make it blue"
+     }
+    },
+    "send_message/no-project": {
+     "error": {
+      "code": -32602,
+      "data": {
+       "errors": [
+        {
+         "field": "project_id",
+         "message": "Field required",
+         "type": "missing"
+        }
+       ],
+       "tool": "send_message"
+      },
+      "message": "Invalid params"
+     }
+    },
+    "unknown_tool": {
+     "error": {
+      "code": -32602,
+      "data": {
+       "tool": "no_such_tool"
+      },
+      "message": "Unknown tool"
+     }
+    }
+   },
+   "list_skills-disabled-no-grant": {
+    "create_project": {
+     "error": {
+      "code": -32602,
+      "data": {
+       "tool": "create_project"
+      },
+      "message": "Unknown tool"
+     }
+    },
+    "create_project/agent": {
+     "error": {
+      "code": -32602,
+      "data": {
+       "tool": "create_project"
+      },
+      "message": "Unknown tool"
+     }
+    },
+    "create_project/bad-agent": {
+     "error": {
+      "code": -32602,
+      "data": {
+       "tool": "create_project"
+      },
+      "message": "Unknown tool"
+     }
+    },
+    "create_project/empty": {
+     "error": {
+      "code": -32602,
+      "data": {
+       "tool": "create_project"
+      },
+      "message": "Unknown tool"
+     }
+    },
+    "create_project/not-text": {
+     "error": {
+      "code": -32602,
+      "data": {
+       "tool": "create_project"
+      },
+      "message": "Unknown tool"
+     }
+    },
+    "create_project/too-long": {
+     "error": {
+      "code": -32602,
+      "data": {
+       "tool": "create_project"
+      },
+      "message": "Unknown tool"
+     }
+    },
+    "delete_project": {
+     "error": {
+      "code": -32602,
+      "data": {
+       "tool": "delete_project"
+      },
+      "message": "Unknown tool"
+     }
+    },
+    "get_file_info": {
+     "forwarded": {
+      "file_path": "src/index.html",
+      "project_id": "76c45d7a-3147-45cf-a3f4-295ee256e48e"
+     }
+    },
+    "get_file_info/traversal": {
+     "error": {
+      "code": -32602,
+      "data": {
+       "errors": [
+        {
+         "field": "file_path",
+         "message": "Value error, relative non-traversing path required",
+         "type": "value_error"
+        }
+       ],
+       "tool": "get_file_info"
+      },
+      "message": "Invalid params"
+     }
+    },
+    "get_project": {
+     "forwarded": {
+      "project_id": "76c45d7a-3147-45cf-a3f4-295ee256e48e"
+     }
+    },
+    "get_project/missing": {
+     "error": {
+      "code": -32602,
+      "data": {
+       "errors": [
+        {
+         "field": "project_id",
+         "message": "Field required",
+         "type": "missing"
+        }
+       ],
+       "tool": "get_project"
+      },
+      "message": "Invalid params"
+     }
+    },
+    "get_project/not-a-uuid": {
+     "error": {
+      "code": -32602,
+      "data": {
+       "errors": [
+        {
+         "field": "project_id",
+         "message": "String should match pattern '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'",
+         "type": "string_pattern_mismatch"
+        }
+       ],
+       "tool": "get_project"
+      },
+      "message": "Invalid params"
+     }
+    },
+    "health": {
+     "forwarded": {}
+    },
+    "health/extra": {
+     "error": {
+      "code": -32602,
+      "data": {
+       "errors": [
+        {
+         "field": "*",
+         "message": "Extra inputs are not permitted",
+         "type": "extra_forbidden"
+        }
+       ],
+       "tool": "health"
+      },
+      "message": "Invalid params"
+     }
+    },
+    "list_connectors/extra": {
+     "error": {
+      "code": -32602,
+      "data": {
+       "errors": [
+        {
+         "field": "*",
+         "message": "Extra inputs are not permitted",
+         "type": "extra_forbidden"
+        }
+       ],
+       "tool": "list_connectors"
+      },
+      "message": "Invalid params"
+     }
+    },
+    "list_runs": {
+     "forwarded": {}
+    },
+    "read_file": {
+     "forwarded": {
+      "file_path": "src/index.html",
+      "project_id": "76c45d7a-3147-45cf-a3f4-295ee256e48e"
+     }
+    },
+    "read_file/characters": {
+     "error": {
+      "code": -32602,
+      "data": {
+       "errors": [
+        {
+         "field": "file_path",
+         "message": "String should match pattern '^[A-Za-z0-9_. /-]+$'",
+         "type": "string_pattern_mismatch"
+        }
+       ],
+       "tool": "read_file"
+      },
+      "message": "Invalid params"
+     }
+    },
+    "read_file/key": {
+     "error": {
+      "code": -32602,
+      "data": {
+       "errors": [
+        {
+         "field": "file_path",
+         "message": "Value error, secret-like file name refused",
+         "type": "value_error"
+        }
+       ],
+       "tool": "read_file"
+      },
+      "message": "Invalid params"
+     }
+    },
+    "read_file/secret": {
+     "error": {
+      "code": -32602,
+      "data": {
+       "errors": [
+        {
+         "field": "file_path",
+         "message": "Value error, secret-like file name refused",
+         "type": "value_error"
+        }
+       ],
+       "tool": "read_file"
+      },
+      "message": "Invalid params"
+     }
+    },
+    "send_message": {
+     "error": {
+      "code": -32602,
+      "data": {
+       "tool": "send_message"
+      },
+      "message": "Unknown tool"
+     }
+    },
+    "send_message/no-project": {
+     "error": {
+      "code": -32602,
+      "data": {
+       "tool": "send_message"
+      },
+      "message": "Unknown tool"
+     }
+    },
+    "unknown_tool": {
+     "error": {
+      "code": -32602,
+      "data": {
+       "tool": "no_such_tool"
+      },
+      "message": "Unknown tool"
+     }
+    }
+   }
+  }
+ },
+ "recorded": "v0.2.5 (b33d13d, mcp 1.30.0): tests/unit/surface_capture.py with HA_OD_MCP_CODE/HA_OD_MCP_VENDOR on that tree and its requirements/child.txt, then tests/unit/gateway_capture.py on the result with its requirements/management.txt; recorded 2026-10-25 for 0.2.6"
+}

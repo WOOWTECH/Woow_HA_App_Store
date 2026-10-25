@@ -55,25 +55,33 @@ chmod -R u=rwX,go=rX "$root"
 chmod 0755 "$root/bin/ha-opendesign-mcp"
 
 # Import-time checks of the vendored code: management imports; child imports run backend_policy.check_sources()
-# (pinned httpx/httpcore sources) and launch.py's FastMCP server; BoundedTools checks the pinned MCP SDK sources.
-# 0.2.1: importing the runtime applies the HA overlay (surface.install): the gateway table is the 15 PaaS tools; the
-# child's four replaced handlers (od_tools.install) come from the overlay.
+# (pinned httpx/httpcore sources) and launch.py's MCPServer (MCP Python SDK 2 since 0.2.6); BoundedTools and
+# keep_error_text check the pinned MCP SDK sources.
+# 0.2.1: importing the runtime applies the HA overlay (surface.install): the gateway table is the 15 PaaS tools with the
+# bounded argument models (0.2.6: not the pinned runtime's full surface), checked by the schema 3 state; the child's
+# replaced handlers (od_tools.install) come from the overlay. child.setup() is the child's real entry.
 PYTHONPATH="$root/packages/mcp-admin-core:$root" "$root/.venv/bin/python" -c '
 import mcp_admin_core.run_product, ha_opendesign_mcp.runtime
 from mcp_admin_core.products import TOOLS
+from ha_opendesign_mcp import surface
+from ha_opendesign_mcp.state import BuiltinState
 assert len(TOOLS["opendesign"]) == 15, sorted(TOOLS["opendesign"])
+assert all(TOOLS["opendesign"][name] is tool for name, tool in surface.TABLE.items())
+assert not any(tool.child_schema for tool in TOOLS["opendesign"].values())
+assert BuiltinState.model_fields["schema_version"].default == 3
 '
 OD_API_BASE=http://127.0.0.1:7456 PYTHONPATH="$root/apps/opendesign/vendor:$root/apps/runtime:$root/apps/opendesign" \
   "$root/apps/opendesign/.venv/bin/python" -c '
 import sys
 sys.path.append("/opt/woow")
 import launch
-from bounded_tools import BoundedTools
-from ha_opendesign_mcp import od_tools
-od_tools.install(launch.mcp, launch.od)
-workers = BoundedTools(launch.mcp, capacity=1)
+from ha_opendesign_mcp import child
+app, client, workers = child.setup()
 workers.close()
-assert len(launch.mcp._tool_manager.list_tools()) == 15
+client.close()
+tools = launch.mcp._tool_manager.list_tools()
+assert len(tools) == 15
+assert all(tool.is_async and getattr(tool.fn, "_woow_keeps_error_text", False) for tool in tools)
 '
 # The overlay's unit tests with the image's own interpreters and pinned packages (loopback fake daemon, no network).
 HA_OD_MCP_CODE="$root" HA_OD_MCP_VENDOR="$root" sh "$src/tests/unit/run.sh" "$root/.venv/bin/python" \
