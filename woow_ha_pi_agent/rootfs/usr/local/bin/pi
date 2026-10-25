@@ -36,7 +36,16 @@ if [ -z "${CLI}" ]; then
   exit 127
 fi
 
+# Omnigent gives each session its own provider/model directory. An inherited
+# image env script may set the container default; preserve the caller's value.
+pi_session_dir_set="${PI_CODING_AGENT_DIR+x}"
+pi_session_dir="${PI_CODING_AGENT_DIR-}"
 # shellcheck source=/dev/null
 [ -r /usr/local/bin/pi-agent-env.sh ] && source /usr/local/bin/pi-agent-env.sh
+
+if [ "${pi_session_dir_set}" = x ]; then
+  export PI_CODING_AGENT_DIR="${pi_session_dir}"
+fi
+unset pi_session_dir_set pi_session_dir
 
 exec node "${CLI}" "$@"
