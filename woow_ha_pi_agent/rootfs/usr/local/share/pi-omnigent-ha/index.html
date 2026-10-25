@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="omnigent-token" content="__CSRF_TOKEN__"><title>Omnigent · Pi Agent</title>
+<link rel="stylesheet" href="__INGRESS_PREFIX__/omnigent/style.css">
+<script src="__INGRESS_PREFIX__/omnigent/app.js" defer></script></head>
+<body><main><header><a id="back" href="__INGRESS_PREFIX__/">← Pi Agent</a><h1>Omnigent</h1>
+<p>連結目前已安裝的 Claude Code、Codex 與 Pi Agent。</p></header>
+<p id="notice" role="status" aria-live="polite">正在讀取狀態…</p>
+<section><h2>連線</h2><p id="connection"></p><nav><a id="open" hidden target="_blank" rel="noopener noreferrer">開啟 Omnigent</a> <a id="onboarding" hidden>連線設定對話</a></nav>
+<form id="setup"><fieldset><legend>登入或重新設定</legend>
+<label>Server URL<input name="server" type="url" placeholder="https://omnigent.example.com" maxlength="2048" required></label>
+<label>帳號<input name="username" autocomplete="username" maxlength="256" required></label>
+<label>密碼<input name="password" type="password" autocomplete="current-password" maxlength="4096" required></label>
+<p>每次新設定都需輸入網址及帳密。密碼直接用於登入，不寫入對話或插件狀態。</p>
+<button type="submit">登入並連線</button></fieldset></form></section>
+<section><h2>引擎與模型</h2><div id="engines"></div>
+<p>Omnigent 登入與模型供應商授權分開。Claude Code／Codex 可在 Pi Agent 終端完成官方登入；Pi 可在 Models 設定供應商。</p>
+<code>claude auth login --claudeai</code><br><code>codex login --device-auth</code>
+<p>以下驗證會建立短測試對話並使用模型額度；登入及重新整理不發送模型訊息。</p>
+<form id="verify"><label>引擎<select id="engine"><option value="">全部已安裝引擎</option></select></label>
+<label>模型<select id="model"><option value="">預設模型</option></select></label><button type="submit">驗證實際對話</button></form></section>
+<section class="actions"><button id="refresh">重新整理</button><button id="disconnect">取消此主機連線</button></section>
+<p>本頁由 HA addon 提供，保持 Pi Web 0.12.0。可在 Pi Web Plugins 停用或移除 Omnigent；重啟不會將移除的插件裝回。</p>
+</main></body></html>
