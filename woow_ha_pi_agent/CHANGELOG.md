@@ -1,3 +1,9 @@
+## 0.15.10
+
+- Bundle public, checksum-verified Omnigent 0.3.21. Its bounded native package recheck prevents a temporary settings read failure from hiding a connected plugin in Pi Web; explicit disable remains immediate.
+- Retain the 0.15.9 file-icon Ingress fix, Paseo 0.1.10, Pi Web 0.12.0 and previously authorized host identity. The native Omnigent UI adapter is unchanged from 0.3.20.
+- No add-on options, ports, architectures, image names, provider credentials or session formats change. Provider login and real conversations still require operator verification on each installation.
+
 ## 0.15.9
 
 - Fix Catppuccin file icons in the HA Supervisor ingress panel. The Pi Web settings patch already adds the ingress prefix to these CSS icon URLs; nginx was rewriting the same quoted `/icons/` literal in the compiled JavaScript, producing a duplicate prefix and 404 responses. Keep the icon path split in the compiled patch so nginx leaves that runtime expression intact.
