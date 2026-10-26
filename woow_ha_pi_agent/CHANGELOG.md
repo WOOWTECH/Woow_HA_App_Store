@@ -1,3 +1,7 @@
+## 0.15.4
+
+- Bundle checksum-verified Omnigent plugin 0.3.16. Previously authorized hosts can resume after restart when the saved server, host identity, account and token still match; expired authorization returns to the settings conversation. Keep Pi Web 0.12.0, native Settings integration and existing engines.
+
 ## 0.15.3
 
 - Bundle checksum-verified Omnigent plugin 0.3.15. The plugin now supports Paseo 0.1.9 in compatible Pi Web installs while retaining the 0.3.14 terminal diagnostics. This HA add-on keeps Pi Web 0.12.0, its native Omnigent settings integration and existing engines.
