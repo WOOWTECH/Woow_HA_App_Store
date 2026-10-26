@@ -133,3 +133,23 @@ bridge continues to use the HTTP gateway API.
 OAuth issuer validation now follows upstream. A server that advertises one
 issuer but returns another must correct its OAuth metadata or callback, then
 be reconnected. The old permissive issuer override is not reapplied.
+
+
+<a id="paseo-remote-plugin-ha-ingress"></a>
+
+## Paseo 插件與 Dashboard 重載（0.1.11 起）
+
+附加元件包含 Paseo 的主機介面。插件仍由使用者在 Hermes 的 **Plugins** 頁安裝及啟用，不會因升級附加元件而自動新增插件、開放工具或要求更換模型帳號。
+
+1. 更新附加元件並確認啟動正常。若從 HA 側欄使用 Paseo，在此附加元件的「設定」填入 **Paseo 的 Home Assistant 網址**（`paseo_ingress_url`），例如 `https://ha.example.com` 或 `http://homeassistant.local:8123`。這必須是瀏覽器實際開啟 HA 的來源，不含 `/lovelace`、`/api/hassio_ingress/…`、帳密、query 或 fragment。保存後重啟此附加元件一次。
+2. 保留 **儀表板公開網址**（`public_url`）供 LAN 及 MCP OAuth 使用。兩個入口不同時，不要用 HA 網址取代它。僅使用 LAN Dashboard 時可以留空 `paseo_ingress_url`。
+3. 進入 Hermes → **Plugins**，在 Git URL or owner/repo 填入 `WOOWTECH/hermes-paseo-plugin`，安裝 `0.1.4-rc.3` 或後續含 HA Ingress 支援的版本並啟用。來源為公開 GitHub，不需要 GitHub token。若 Hermes 顯示執行程序的 caution，先核對來源及權限說明，再使用原生確認選項。
+4. 點 **Paseo**。首次安裝後若後端尚未載入，在此頁點 **重載 Dashboard → 確認重載**；等頁面恢復，不需進入 PaaS 或重新啟動整台 HA。
+5. 待 runtime 下載及啟動完成，產生配對連結，再點 **開啟 Paseo**。官方介面在新分頁開啟；配對連結具有存取能力，請勿公開貼出。
+6. 在官方 Paseo 選擇本機 Hermes、已登入且有額度的模型和模式，再建立對話。配對成功與模型可回覆是兩個獨立檢查；模型帳號仍由 Hermes 管理。
+
+停用或移除插件時，從 Hermes 原生 Plugins 頁操作，主機先停止插件擁有的 Paseo daemon。從 CLI 移除時請先執行 `/paseo stop`。手動停止狀態、配對、模型登入與對話保存在 `/opt/data`，附加元件重啟會保留。原生 `file` 工具集需管理者另行開啟，安裝插件不會自動擴大模型權限。
+
+若配對／重載回報拒絕，先確認 `paseo_ingress_url` 的 scheme、主機與 port 全部符合目前瀏覽器網址，並重新啟動附加元件使設定生效。不要關閉來源驗證或把 ingress token 填進設定。錯誤或缺少模型憑證、額度不足，不會因重載 Dashboard 而修復。
+
+完整插件教學與目前驗收範圍：[Hermes Paseo plugin](https://github.com/WOOWTECH/hermes-paseo-plugin)。

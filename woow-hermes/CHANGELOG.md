@@ -1,3 +1,10 @@
+## 0.1.11
+
+- Include the reviewed Paseo Dashboard adapter: an enabled Paseo plugin can reload the Dashboard from Hermes, recover after restart, and stop its owned daemon before native Web disable/removal.
+- Add optional `paseo_ingress_url` for the exact Home Assistant browser origin. The existing public Dashboard URL, LAN/OAuth behavior and login remain in place; foreign origins are still rejected.
+- Preserve native plugin installation and explicit enablement; the add-on does not install the Paseo plugin or grant extra agent file tools automatically.
+- Existing ports, architecture, user configuration and persistent data remain compatible. Use the updated Hermes Paseo plugin for HA Ingress support; see DOCS.
+
 ## 0.1.10
 
 - Upgrade Hermes Agent to stable **v0.22.5**, commit `bf0203a794a07aac3ff764972ab9087baa4e4f4e`, using the immutable upstream image digest `sha256:9c5561579f3ffdf333401797094ac3a743738d6c25d40f4331c7bf77b694238d`.

@@ -17,6 +17,9 @@ configuration:
   minimax_api_key:
     name: MiniMax API key
     description: Written to Hermes only when you change it here, so keys you edit in the dashboard are kept.
+  paseo_ingress_url:
+    name: Home Assistant URL for Paseo
+    description: To use Paseo in the HA sidebar, enter the exact Home Assistant origin, e.g. https://ha.example.com or http://homeassistant.local:8123. No page path or ingress token. The Dashboard public URL remains separate for LAN and OAuth. Restart the add-on after changing this setting.
   openrouter_api_key:
     name: OpenRouter API key
     description: Same rule as the MiniMax key.
