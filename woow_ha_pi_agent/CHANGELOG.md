@@ -1,3 +1,9 @@
+## 0.15.7
+
+- Bundle public, checksum-verified Omnigent 0.3.19 while retaining Pi Web 0.12.0, Paseo 0.1.9 and existing provider/session data.
+- Restore an already authorized host after a container restart when an unrelated process under another UID reuses its old PID, but only with complete saved/current kernel boot and process-start proof. Never signal that process; unverifiable identity still fails closed.
+- Keep the first-home Omnigent setup auto-open and fresh URL/account/password flow from 0.15.6. No options, ports, architectures or data formats change.
+
 ## 0.15.6
 
 - Bundle public, checksum-verified Omnigent 0.3.18 and preserve Paseo 0.1.9 from 0.15.5.
