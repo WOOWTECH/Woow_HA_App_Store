@@ -26,7 +26,7 @@ try {
   assert.equal(pkg.version, '0.3.16');
   assert.equal(JSON.parse(fs.readFileSync('/usr/local/lib/node_modules/@agegr/pi-web/package.json', 'utf8')).version, '0.12.0');
   console.log('SMOKE: loading registered image plugin');
-  seed(); const plugin = await loadPlugin(); assert.equal((await plugin.lifecycle()).active, true);
+  seed(); const plugin = await loadPlugin(); assert.equal(typeof plugin.runtime.resumeAuthorizedHost, 'function'); assert.equal((await plugin.lifecycle()).active, true);
   const first = await plugin.web.ensureOnboarding(); const second = await plugin.web.ensureOnboarding();
   assert.equal(first.status, 'created'); assert.equal(second.sessionId, first.sessionId);
   const sdk = await plugin.web.loadPiSdk();

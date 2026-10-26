@@ -11,28 +11,29 @@ import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 
-const marker = '\n/* woow-ha-omnigent-settings-v1 */\n';
+const marker = '\n/* woow-ha-omnigent-paseo-settings-v2 */\n';
 const sections = '["general","models","skills","agents","plugins","mcp"]';
-const expanded = '["general","models","skills","agents","plugins","mcp","omnigent"]';
+const expanded = '["general","models","skills","agents","plugins","mcp","omnigent","paseo"]';
 const prefix = '(typeof window==="undefined"?"":window.__INGRESS_PATH__||"")';
 const frame = '(0,r.jsx)("iframe",{title:"Omnigent",src:' + prefix + '+"/omnigent?embedded=1",style:{display:"block",width:"100%",height:"100%",border:0},referrerPolicy:"no-referrer"})';
+const paseoFrame = frame.replaceAll("Omnigent", "Paseo").replace("/omnigent?", "/paseo/setup?");
 const specs = {
   client: {
     sha256: 'f273303c76f7ab856768e315526cdc7cd485fba7f930e649337c57289d96093f',
     replacements: [
       [sections, expanded],
-      ['{id:"mcp",label:h("settings.mcp")}', '{id:"mcp",label:h("settings.mcp")},{id:"omnigent",label:"Omnigent"}'],
+      ['{id:"mcp",label:h("settings.mcp")}', '{id:"mcp",label:h("settings.mcp")},{id:"omnigent",label:"Omnigent"},{id:"paseo",label:"Paseo"}'],
       ['k("mcp",(0,r.jsx)(mb,{embedded:!0,cwd:t,trust:d,onTrustProject:u,onProjectTrustChanged:p,onClose:s},t??""))',
-        'k("mcp",(0,r.jsx)(mb,{embedded:!0,cwd:t,trust:d,onTrustProject:u,onProjectTrustChanged:p,onClose:s},t??"")),f==="omnigent"&&k("omnigent",' + frame + ')'],
+        'k("mcp",(0,r.jsx)(mb,{embedded:!0,cwd:t,trust:d,onTrustProject:u,onProjectTrustChanged:p,onClose:s},t??"")),f==="omnigent"&&k("omnigent",' + frame + '),f==="paseo"&&k("paseo",' + paseoFrame + ')'],
     ],
   },
   server: {
     sha256: 'a1205fad45252a602e50e13a3c5c2fd21c7968b002d54ad939984052953a2d71',
     replacements: [
       [sections, expanded],
-      ['{id:"mcp",label:k("settings.mcp")}', '{id:"mcp",label:k("settings.mcp")},{id:"omnigent",label:"Omnigent"}'],
+      ['{id:"mcp",label:k("settings.mcp")}', '{id:"mcp",label:k("settings.mcp")},{id:"omnigent",label:"Omnigent"},{id:"paseo",label:"Paseo"}'],
       ['u("mcp",(0,r.jsx)(zG,{embedded:!0,cwd:a,trust:h,onTrustProject:i,onProjectTrustChanged:j,onClose:d},a??""))',
-        'u("mcp",(0,r.jsx)(zG,{embedded:!0,cwd:a,trust:h,onTrustProject:i,onProjectTrustChanged:j,onClose:d},a??"")),l==="omnigent"&&u("omnigent",' + frame + ')'],
+        'u("mcp",(0,r.jsx)(zG,{embedded:!0,cwd:a,trust:h,onTrustProject:i,onProjectTrustChanged:j,onClose:d},a??"")),l==="omnigent"&&u("omnigent",' + frame + '),l==="paseo"&&u("paseo",' + paseoFrame + ')'],
     ],
   },
 };

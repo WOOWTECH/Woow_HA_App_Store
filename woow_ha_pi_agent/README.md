@@ -393,3 +393,7 @@ Bundled upstream packages retain their own licenses (`@agegr/pi-web` MIT, `@eare
 既有自訂插件來源、連線資料與原生 Plugins 停用狀態都保留；移除插件後重啟不會自動裝回。需要恢復時在 Plugins 新增本機來源 `/opt/woow/pi-omnigent-plugin`，或安裝公開 GitHub source。來源與首次註冊記錄位於 `/data/pi-agent/omnigent-plugin/image-seed.json`。底層套件、host 身分及設定沿用原插件路徑並包含於 HA 備份。
 
 本頁經由原有 Supervisor ingress 驗證與 nginx 來源限制，後端只監聽 `/data/pi-agent/omnigent-ha.sock`。不新增 LAN 連接埠。映像不包含 server 憑證或模型登入，不自動安裝或更新缺少的引擎。
+
+## Paseo managed web client (0.15.5 candidate)
+
+See [HA integration, Ingress and upgrade notes](docs/PASEO_HA.md). The candidate bundles Paseo 0.1.9 and Omnigent 0.3.16, adds Paseo beside Omnigent and retains Pi Web 0.12.0.

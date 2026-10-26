@@ -4,22 +4,22 @@
     "woow_ha_pi_agent": {
       "id": "woow_ha_pi_agent",
       "name": "Woow HA Pi Agent",
-      "version": "0.15.4",
+      "version": "0.15.5",
       "repository": "WOOWTECH/Woow_ha_pi_agent_add_on",
-      "source_sha": "966776ac567b96ae987a2455fca15972541288eb",
+      "source_sha": "664a800b87c07b6e4d1491d7754b9499febbe0bb",
       "source_path": ".",
       "config_file": "config.yaml",
-      "config_sha256": "sha256:52c699c5af142a03daad1aa9315aa281cb0936adc207ec720cfab0973d8ea856",
-      "archive_sha256": "sha256:e23d802467c4efafe7099bd889b84371bc1b5b3ea404edeee37b2fb52ad74080",
-      "context_fingerprint": "sha256:5560666b900f3bd0a16c41aa9dc525e935aa5157f54976cd7547d4b56ae0a0fd",
-      "material_fingerprint": "sha256:ba7af0f3655d5f20de75327bf72d64d8428a51834f0cc84994834b82fe2bc43a",
+      "config_sha256": "sha256:363d8a9f2d311fd205f896bd20b54e57a8d571d5a3b79c107380cf0132901857",
+      "archive_sha256": "sha256:c50fe81cfa99f8f9e698b4727d6f108a4823ec4158868ee92a13b7f22ec104da",
+      "context_fingerprint": "sha256:5c1826f005566379ae0fc2b4f95585b91c8c1afad780cc914c6343b4146b5cd7",
+      "material_fingerprint": "sha256:b74f61791aa7b7e237bb4f15e98d1678139701ac389964669204f9d4d77b1727",
       "architectures": [
         "amd64",
         "aarch64"
       ],
       "config": {
         "name": "Woow HA Pi Agent",
-        "version": "0.15.4",
+        "version": "0.15.5",
         "slug": "woow_ha_pi_agent",
         "description": "pi-web 0.12.0 + pi coding agent SDK, with a browser terminal, AI providers configured inside the pi-web UI, and a video pipeline (ffmpeg / Playwright / edge-tts / rclone)",
         "url": "https://github.com/WOOWTECH/Woow_ha_pi_agent_add_on",
@@ -81,21 +81,21 @@
       "source_build_supported": true,
       "images": {
         "amd64": {
-          "reference": "ghcr.io/woowtech/woow-ha-pi-agent-amd64:0.15.4",
-          "index_digest": "sha256:0d9baf8e8460d71f2ef85b27e62cd356fbf652743a1ea2f0f79f38f465283222",
-          "digest": "sha256:0d9baf8e8460d71f2ef85b27e62cd356fbf652743a1ea2f0f79f38f465283222",
-          "source_revision": "966776ac567b96ae987a2455fca15972541288eb"
+          "reference": "ghcr.io/woowtech/woow-ha-pi-agent-amd64:0.15.5",
+          "index_digest": "sha256:9ad1178794aea25fe44e688589de51c0639e81b6a7705e593e7b24f08bd9e84e",
+          "digest": "sha256:9ad1178794aea25fe44e688589de51c0639e81b6a7705e593e7b24f08bd9e84e",
+          "source_revision": "664a800b87c07b6e4d1491d7754b9499febbe0bb"
         },
         "aarch64": {
-          "reference": "ghcr.io/woowtech/woow-ha-pi-agent-aarch64:0.15.4",
-          "index_digest": "sha256:496d85c47db1b7b304743d05eb51767f1dd08e02b2b154077cbec698567e3461",
-          "digest": "sha256:496d85c47db1b7b304743d05eb51767f1dd08e02b2b154077cbec698567e3461",
-          "source_revision": "966776ac567b96ae987a2455fca15972541288eb"
+          "reference": "ghcr.io/woowtech/woow-ha-pi-agent-aarch64:0.15.5",
+          "index_digest": "sha256:e92faf73b5806fca8b433bfe367eba4303944f773f5d4fd6b3f97813d2c31e54",
+          "digest": "sha256:e92faf73b5806fca8b433bfe367eba4303944f773f5d4fd6b3f97813d2c31e54",
+          "source_revision": "664a800b87c07b6e4d1491d7754b9499febbe0bb"
         }
       },
       "delivery": "published-image",
       "validation": "manifest+architecture-images+configured-CI",
-      "publisher_run_id": "40316865505",
+      "publisher_run_id": "40318791137",
       "channel": "stable",
       "store_path": "woow_ha_pi_agent"
     },
@@ -3626,5 +3626,5 @@
       "store_path": "woow_mcp_nextcloud"
     }
   },
-  "catalog_id": "sha256:d8b9776362c020e1cf26e6b2c9276213f2bfcd0ed5f668db669e2d613af42fe2"
+  "catalog_id": "sha256:69a42516036fd80cecfcb509a6e5c4514e436ebbd5ab3b0b7a37564551af2aa3"
 }
