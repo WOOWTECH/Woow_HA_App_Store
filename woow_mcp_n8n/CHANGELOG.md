@@ -1,5 +1,10 @@
 # n8n Changelog
 
+## 0.4.1 — 發佈候選（2026-10-25）
+
+- 管理面板的工具權限頁顯示 `exposeToMcp: true` 的條件寫入、既有 `n8n_update_partial_workflow` 相依授權，以及已儲存政策允許／禁止／未知。原有 28 工具、33 grant、有效參數正規化、預設與後端行為不變。
+- 0.4.0 → 0.4.1 不需資料遷移；六個啟用產品的新映像仍須通過精確映像、匿名拉取與 Store gate，見[0.4.1 發佈決策](../../docs/operations/release-decision-0.4.1.md)。
+
 ## 0.4.0 — 發佈候選（2026-10-25）
 
 - **Node 22.23.4 → 26.12.1**（2026-10-28 起 Active LTS；n8n-mcp 2.96.2 支援）：子程序與管理面板 UI 的 Node 都換成 26。Node 26 官方執行檔需要 `libatomic.so.1`，映像把 node 階段的 Debian libatomic1 函式庫與 node 一起複製（與 libstdc++、libgcc_s 相同做法），並立刻檢查 `node --version`。
