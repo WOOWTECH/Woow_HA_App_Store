@@ -1,3 +1,7 @@
+## 0.15.3
+
+- Bundle checksum-verified Omnigent plugin 0.3.15. The plugin now supports Paseo 0.1.9 in compatible Pi Web installs while retaining the 0.3.14 terminal diagnostics. This HA add-on keeps Pi Web 0.12.0, its native Omnigent settings integration and existing engines.
+
 ## 0.15.2
 
 - Bundle checksum-verified Omnigent plugin 0.3.14, fixing terminal removal handling and connection verification diagnostics while retaining Pi Web 0.12.0 and the installed engines.
