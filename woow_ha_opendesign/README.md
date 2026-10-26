@@ -63,6 +63,6 @@ Renderer HTML is model-generated, so Chromium applies a request policy before ev
 
 ## Upstream and license
 
-The runtime derives from the publicly available WoowTech OpenDesign core image (OpenDesign 0.24.1 built from the WoowTech fork). The Dockerfile default and release/CI builds pin `ghcr.io/woowtech/open-design-core:20261026.0712@sha256:366e337dc7ea192526468de33ad3f2f0ce97be3ffba9b8382a0c1d9ab88b1404`. Home Assistant's local add-on builder rejects digest syntax in `build.yaml`, so that development path uses the published immutable tag `ghcr.io/woowtech/open-design-core:20261026.0712`, which identifies the same core image.
+The runtime derives from the publicly available WoowTech OpenDesign core image (OpenDesign 0.24.1 built from the WoowTech fork). The Dockerfile default and release/CI builds pin `ghcr.io/woowtech/open-design-core:20261026.1751@sha256:14601a0b5c935b09193e7217daf603f2d3dbca2d9a9f3ba6f80d2fe2a406dbe2`. Home Assistant's local add-on builder rejects digest syntax in `build.yaml`, so that development path uses the published immutable tag `ghcr.io/woowtech/open-design-core:20261026.1751`, which identifies the same core image.
 
 OpenDesign is licensed under Apache-2.0; the core image carries its license and a notice of the WoowTech changes. The add-on packaging and integration code in this repository is MIT licensed; see [LICENSE](LICENSE). The image is therefore labelled `Apache-2.0 AND MIT`.
