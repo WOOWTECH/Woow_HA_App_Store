@@ -48,6 +48,12 @@
     return `${prefix}${pathname}`;
   };
 
+  // Native od.launch opens a new tab directly; it never creates a DOM href.
+  if (window.open) {
+    const nativeOpen = window.open.bind(window);
+    window.open = (url, ...args) => nativeOpen(url == null ? url : rewrite(url), ...args);
+  }
+
   const originalFetch = window.fetch.bind(window);
   window.fetch = (input, init) => {
     if (typeof input === 'string' || input instanceof URL) {

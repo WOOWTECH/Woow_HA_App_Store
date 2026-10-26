@@ -3,8 +3,8 @@ set -Eeuo pipefail
 
 readonly DATA_DIR=/data/opendesign
 readonly NGINX_TMP=/tmp/ha-opendesign-nginx
-readonly SHUTDOWN_GRACE_SECONDS=5
-# Supervised children (OpenDesign, nginx, ttyd and the built-in MCP server). Every process started with start_child is required:
+readonly SHUTDOWN_GRACE_SECONDS=25
+# Supervised children (OpenDesign, nginx, ttyd, Paseo and the built-in MCP server). Every process started with start_child is required:
 # when any one exits, the launcher stops the others and exits so Supervisor
 # restarts the complete set. Add a process with one more start_child call below.
 child_pids=()
@@ -165,11 +165,27 @@ owned_dirs=(
   "$DATA_DIR/shared/workspaces"
   "$DATA_DIR/export-render"
   "$DATA_DIR/export-pdf"
+  "$DATA_DIR/paseo"
 )
 for dir in "${owned_dirs[@]}"; do
   prepare_owned_dir "$dir"
 done
 repair_data_ownership
+# Private bridge socket: its setgid parent gives nginx access to the socket
+# without making provider state or the HTTP bridge public. /run is ephemeral.
+prepare_owned_dir /run/ha-opendesign-paseo open-design:ha-ingress
+chmod 2750 /run/ha-opendesign-paseo
+chmod 0700 "$DATA_DIR/paseo"
+# Only a validated native return path and fixed label leave the root launcher.
+# Metadata failure must not prevent startup. This directory is not child-writable.
+prepare_owned_dir /run/ha-opendesign-return root:ha-ingress
+chmod 0750 /run/ha-opendesign-return
+if ! python3 /usr/local/libexec/ha-opendesign-return.py > /run/ha-opendesign-return/back-link.conf 2>/dev/null; then
+  # shellcheck disable=SC2016 # These are nginx variables, not shell variables.
+  printf 'set $ha_return_path "/";\nset $ha_return_label "← 返回 Home Assistant";\n' > /run/ha-opendesign-return/back-link.conf
+fi
+chown root:ha-ingress /run/ha-opendesign-return/back-link.conf
+chmod 0640 /run/ha-opendesign-return/back-link.conf
 # nginx runs as its own UID (ha-ingress): besides the built-in MCP server it is
 # the only process that may open the MCP administration socket, which
 # OpenDesign, its agents and the ttyd shell (UID 1001) cannot.
@@ -186,13 +202,18 @@ done
 retire_omnigent_state
 # Agent CLI config homes (CODEX_HOME etc. below). Codex warns when its home is
 # missing, so create the absent ones. Existing entries are the user's and are
-# left exactly as they are (including symlinks): this never fails startup.
+# not replaced; the private credential check below refuses unsafe links.
 for dir in "$DATA_DIR/home/.claude" "$DATA_DIR/home/.codex" "$DATA_DIR/home/.config" \
   "$DATA_DIR/home/.pi" "$DATA_DIR/home/.pi/agent"; do
   if [[ ! -e "$dir" && ! -L "$dir" && -d "${dir%/*}" && ! -L "${dir%/*}" ]]; then
     mkdir -- "$dir" && chown -h open-design:open-design "$dir"
   fi
 done
+# Native restore can return private CLI files as 0644; ownership repair alone
+# does not restore privacy. Run the narrow descriptor/no-follow policy as the
+# agent UID, before any service starts, without Supervisor credentials.
+/usr/bin/env -u SUPERVISOR_TOKEN -u HASSIO_TOKEN su-exec open-design:open-design \
+  python3 /usr/local/libexec/ha-opendesign-credentials.py
 remove_obsolete_credentials
 
 export OD_DATA_DIR="$DATA_DIR"
@@ -217,6 +238,16 @@ no_supervisor_env=(/usr/bin/env -u SUPERVISOR_TOKEN -u HASSIO_TOKEN)
 
 start_child opendesign \
   "${no_supervisor_env[@]}" su-exec open-design:open-design /usr/local/bin/node /opt/ha-opendesign/headless-entry.mjs
+# Shared runtime runs as a required sibling, in the same PID namespace and
+# provider home as OpenDesign. Its internal supervisor preserves manual stop.
+start_child paseo \
+  "${no_supervisor_env[@]}" su-exec open-design:open-design /usr/bin/env \
+  OPENDESIGN_PASEO_TRANSPORT=ha-ingress \
+  OPENDESIGN_PASEO_SOCKET=/run/ha-opendesign-paseo/bridge.sock \
+  OPENDESIGN_PASEO_DATA_DIR="$DATA_DIR" \
+  OPENDESIGN_PASEO_BUNDLED_PLUGIN=/app/plugins/_official/woow/woow-paseo \
+  OPENDESIGN_PASEO_NATIVE_PORT=7456 OPENDESIGN_PASEO_AUTO_ENABLE=1 \
+  /usr/local/bin/node /opt/opendesign-paseo/bin/serve.mjs
 # `-e stderr` uses the inherited descriptor directly; reopening /dev/stderr is
 # denied when HA's root PID 1 drops to an unprivileged UID under its procfs.
 start_child nginx \
@@ -242,6 +273,8 @@ set -e
 if (( stopping )); then
   # TERM/INT interrupted the wait; the trap has already stopped every child.
   echo "[ha-opendesign] stop requested (status=$status); all processes stopped" >&2
+  # Supervisor must see an intentional stop, not a failed container (143/130).
+  exit 0
 else
   echo "[ha-opendesign] required process $(child_name "${exited_pid:-}") exited (status=$status); stopping its peers" >&2
   terminate_children

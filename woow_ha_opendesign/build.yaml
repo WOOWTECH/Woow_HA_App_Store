@@ -4,7 +4,7 @@
 # development path needs a tag: the core's immutable GHCR tag (same image as
 # the digest in Dockerfile / CI, which pin the core by digest). amd64 only.
 build_from:
-  amd64: ghcr.io/woowtech/open-design-core:20261024.0943
+  amd64: ghcr.io/woowtech/open-design-core:20261026.0712
 labels:
   org.opencontainers.image.title: Woow HA OpenDesign
   org.opencontainers.image.description: OpenDesign 0.24.1 (WoowTech core) for Home Assistant Ingress

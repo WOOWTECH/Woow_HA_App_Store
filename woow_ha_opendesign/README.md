@@ -8,7 +8,8 @@ OpenDesign **0.24.1** from the shared WoowTech OpenDesign core image (the same b
 - OpenDesign project and application state is persisted under `/data/opendesign` and is included in cold backups.
 - System Chromium, Playwright and Noto CJK/emoji fonts provide headless HTML rendering.
 - Downloads supported by the pinned upstream application: standalone HTML, ZIP, screenshot PDF, PNG/JPEG, and screenshot-based PPTX. **Editable PPTX is unsupported** and returns a clear error.
-- The core image provides Claude Code `2.1.296`, Codex CLI `0.162.1`, Pi Coding Agent `1.1.0`, and OpenCode `1.18.33` (OpenDesign's native `byok-opencode` API runtime). The add-on build asserts each version as UID 1001; no Paseo plugin or first-use CLI download is required.
+- The native **Paseo** plugin opens a protected setup page through HA Ingress. Its managed runtime, login state and onboarding conversation survive add-on restarts; manual stop remains stopped. See [setup and persistence](DOCS.md#paseo-setup-and-persistence).
+- The core image provides Claude Code `2.1.296`, Codex CLI `0.162.1`, Pi Coding Agent `1.1.0`, and OpenCode `1.18.33` (OpenDesign's native `byok-opencode` API runtime). The add-on build asserts each version as UID 1001; these agent CLIs do not require a first-use download.
 - WoowTech changes from the core: white-label UI, Traditional Chinese (zh-TW) locale fixes, export fixes, the bundled `woowtech-brand` skill, and no `brainstorming` skill.
 - No Omnigent: 0.2.1 removed the Omnigent host and the core's `woow-omnigent` plugin and skill until Omnigent is stable (see [DOCS.md](DOCS.md#omnigent-removed-in-021)).
 - OpenDesign owns installed plugins and skills in its persistent data directory. Install them from OpenDesign's **Plugins** page; the daemon stages the selected skill into the project and supplies it to whichever installed agent runtime runs that project.
@@ -24,7 +25,8 @@ OpenDesign **0.24.1** from the shared WoowTech OpenDesign core image (the same b
 3. Install **Woow HA OpenDesign**. On its **Info** tab turn on **Watchdog** (Home Assistant leaves it off for new add-ons; without it the add-on stays stopped after an internal process exits), then start it and open **OpenDesign** from the sidebar.
 4. In **Settings**, configure API BYOK with your provider, model, and key. Those settings remain local to that browser.
 5. Open **Local AI → Rescan** after installation or image updates. In OpenDesign, open **Plugins**, install the workflow you want, then select it in a project. Its Skills and plugin context are resolved by the native OpenDesign daemon for Claude Code, Codex, Pi, or OpenCode runs.
-6. In OpenDesign open **Plugins** (Installed) and click **Open** on the built-in **CLI Terminal** plugin; it opens the authenticated terminal in a new tab. Run `claude` and `/login`, `codex login --device-auth`, or `pi` and use its `/login` command. The terminal uses the persistent `/data/opendesign/home` profile. OpenCode API providers can instead be entered in **Settings → API providers**.
+6. In OpenDesign open **Plugins → Expert suites → Personal** and click **Open** on the built-in **CLI Terminal** plugin; it opens the authenticated terminal in a new tab. Run `claude` and `/login`, `codex login --device-auth`, or `pi` and use its `/login` command. The terminal uses the persistent `/data/opendesign/home` profile. OpenCode API providers can instead be entered in **Settings → API providers**.
+7. On the same **Plugins → Expert suites → Personal** page, open **Paseo** for its connection setup, provider login, model selection and service controls. See [Paseo setup and persistence](DOCS.md#paseo-setup-and-persistence).
 
 There are no add-on configuration options and no host directory mappings.
 
@@ -61,4 +63,6 @@ Renderer HTML is model-generated, so Chromium applies a request policy before ev
 
 ## Upstream and license
 
-The runtime derives from the WoowTech OpenDesign core image, published as `ghcr.io/woowtech/open-design-core` (OpenDesign 0.24.1 built from the WoowTech fork). The Dockerfile and release/CI builds pin it by digest; until the core digest is published the default is a deliberate all-zero placeholder and builds pass `BUILD_FROM` explicitly. Home Assistant's local add-on builder does not accept digest syntax in `build.yaml`, so that development-only path uses a tag (also a placeholder for now). OpenDesign is licensed under Apache-2.0; the core image carries its license and a notice of the WoowTech changes. The add-on packaging and integration code in this repository is MIT licensed; see [LICENSE](LICENSE). The image is therefore labelled `Apache-2.0 AND MIT`.
+The runtime derives from the publicly available WoowTech OpenDesign core image (OpenDesign 0.24.1 built from the WoowTech fork). The Dockerfile default and release/CI builds pin `ghcr.io/woowtech/open-design-core:20261026.0712@sha256:366e337dc7ea192526468de33ad3f2f0ce97be3ffba9b8382a0c1d9ab88b1404`. Home Assistant's local add-on builder rejects digest syntax in `build.yaml`, so that development path uses the published immutable tag `ghcr.io/woowtech/open-design-core:20261026.0712`, which identifies the same core image.
+
+OpenDesign is licensed under Apache-2.0; the core image carries its license and a notice of the WoowTech changes. The add-on packaging and integration code in this repository is MIT licensed; see [LICENSE](LICENSE). The image is therefore labelled `Apache-2.0 AND MIT`.

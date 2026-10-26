@@ -8,7 +8,7 @@ import test from 'node:test';
 const launcher = await readFile(new URL('../rootfs/usr/local/bin/ha-opendesign', import.meta.url), 'utf8');
 
 test('launcher bounds TERM shutdown before KILL and reap', () => {
-  assert.match(launcher, /readonly SHUTDOWN_GRACE_SECONDS=5/);
+  assert.match(launcher, /readonly SHUTDOWN_GRACE_SECONDS=25/);
   const term = launcher.indexOf('kill -TERM');
   const deadline = launcher.indexOf('deadline=$((SECONDS + SHUTDOWN_GRACE_SECONDS))');
   const kill = launcher.indexOf('kill -KILL');
@@ -226,7 +226,7 @@ test('no supervised child inherits the Supervisor token; nginx and MCP run under
   assert.equal(env.status, 0, env.stderr);
   assert.equal(env.stdout.trim(), 'unset unset kept');
   const starts = launcher.match(/^start_child \w+ \\\n  .*$/gm);
-  assert.equal(starts.length, 4);
+  assert.equal(starts.length, 5);
   for (const start of starts) assert.match(start, /\n  "\$\{no_supervisor_env\[@\]\}" /);
   assert.match(launcher, /start_child nginx \\\n  "\$\{no_supervisor_env\[@\]\}" su-exec ha-ingress:ha-ingress \/usr\/sbin\/nginx/);
   assert.match(launcher, /start_child mcp \\\n  "\$\{no_supervisor_env\[@\]\}" \/opt\/woow\/bin\/ha-opendesign-mcp$/m);

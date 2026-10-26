@@ -1,5 +1,5 @@
 name: Woow HA OpenDesign
-version: "0.2.6"
+version: "0.2.7"
 slug: woow_ha_opendesign
 description: OpenDesign 0.24.1 (WoowTech core) with browser-local API BYOK, headless exports and a built-in MCP server
 url: https://github.com/WOOWTECH/Woow_ha_opendesign_add_on
@@ -8,6 +8,7 @@ arch:
 startup: application
 boot: auto
 init: false
+timeout: 30
 ingress: true
 ingress_port: 8099
 ingress_stream: true
@@ -16,6 +17,11 @@ panel_title: OpenDesign
 panel_admin: true
 watchdog: http://[HOST]:[PORT:8099]/api/health
 backup: cold
+# Recreated from the image's pinned lock on enabled startup. Keep npm cache,
+# provider installations, credentials, projects and all Paseo daemon state.
+backup_exclude:
+  - "/data/apps/data/*/opendesign/paseo/packages/runtime"
+  - "/data/addons/data/*/opendesign/paseo/packages/runtime"
 # Built-in OpenDesign MCP server: optional LAN MCP endpoint (Bearer token or
 # /private_<token>/mcp). Not mapped by default; map a host port in the add-on's
 # Network settings. Never administration (that is Ingress /mcp-admin/ only).

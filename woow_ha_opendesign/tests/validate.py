@@ -27,7 +27,7 @@ with (ROOT / ".github/workflows/build.yml").open() as handle:
 check(isinstance(workflow, dict) and "jobs" in workflow, "GitHub Actions workflow YAML is invalid")
 check(set(repository) == {"name", "url", "maintainer"}, "repository.yaml must have the repository contract keys")
 check(repository.get("url") == "https://github.com/WOOWTECH/Woow_ha_opendesign_add_on", "repository URL mismatch")
-check(config.get("version") == "0.2.6", "release version must be 0.2.6")
+check(config.get("version") == "0.2.7", "release version must be 0.2.7")
 check("browser-local API BYOK" in config.get("description", ""), "add-on description must describe browser-local BYOK")
 check(config.get("arch") == ["amd64"], "the core image is amd64-only; only amd64 is allowed")
 check(config.get("ingress") is True, "ingress must be enabled")
@@ -44,8 +44,8 @@ check(config.get("image") == "ghcr.io/woowtech/woow-ha-opendesign-{arch}", "arch
 # The add-on derives from the shared WoowTech OpenDesign core image. Every build
 # input names the same published core (digest for CI/Dockerfile, its immutable
 # tag for Supervisor local builds), so no build can fall back to upstream OpenDesign.
-core_image = "ghcr.io/woowtech/open-design-core:20261024.0943@sha256:ffbb2bd070c488d79d960ee72fb7717f43791af6a4ae1585943598ad444a76e0"
-local_core_image = "ghcr.io/woowtech/open-design-core:20261024.0943"
+core_image = "ghcr.io/woowtech/open-design-core:20261026.0712@sha256:366e337dc7ea192526468de33ad3f2f0ce97be3ffba9b8382a0c1d9ab88b1404"
+local_core_image = "ghcr.io/woowtech/open-design-core:20261026.0712"
 check(build.get("build_from") == {"amd64": local_core_image}, "Supervisor local builds must use the core image (tag syntax, amd64 only)")
 check("nexu-io/od" not in (ROOT / "build.yaml").read_text(), "build.yaml must not fall back to the upstream OpenDesign image")
 check(package.get("dependencies") == {"playwright-core": "1.55.0"}, "renderer dependency must remain exactly pinned")
@@ -74,7 +74,7 @@ check(re.search(r"^USER root$", dockerfile, re.M), "PID 1 must start as root to 
 check("su-exec open-design:open-design" in launcher, "launcher must drop OpenDesign and ttyd to UID/GID 1001")
 check("su-exec ha-ingress:ha-ingress /usr/sbin/nginx" in launcher, "launcher must run nginx as its own ha-ingress UID")
 check("no_supervisor_env=(/usr/bin/env -u SUPERVISOR_TOKEN -u HASSIO_TOKEN)" in launcher, "children must not inherit Supervisor credentials")
-check(len(re.findall(r'^start_child \w+ \\\n  "\$\{no_supervisor_env\[@\]\}" ', launcher, re.M)) == len(re.findall(r"^start_child ", launcher, re.M)) == 4, "every supervised child must start without Supervisor credentials")
+check(len(re.findall(r'^start_child \w+ \\\n  "\$\{no_supervisor_env\[@\]\}" ', launcher, re.M)) == len(re.findall(r"^start_child ", launcher, re.M)) == 5, "every supervised child must start without Supervisor credentials")
 check('"${no_supervisor_env[@]}" /opt/woow/bin/ha-opendesign-mcp' in launcher, "launcher must start the built-in MCP server")
 check("RUN python3 /tmp/ha-patches/sign-in-hint.py /app/apps/web/out" in dockerfile, "HA sign-in hint patch must run on the core web build")
 check("sh /tmp/mcp-runtime/install.sh" in dockerfile and "FROM ${BUILD_FROM} AS woow-mcp-ui" in dockerfile, "built-in MCP install missing")
@@ -85,7 +85,7 @@ for setting in ["HA_OPENDESIGN_HOME=", "CLAUDE_CONFIG_DIR=", "CODEX_HOME=", "PI_
     check(setting in launcher, f"launcher must pin the CLI config location: {setting}")
 check((ROOT / "rootfs/usr/local/bin/ha-opendesign-agents").exists(), "shared agent status/sync CLI is missing")
 check((ROOT / "tests/shared-agents.test.mjs").exists(), "shared agent integration tests are missing")
-check("paseo" not in dockerfile.lower() and "paseo" not in launcher.lower(), "retired Paseo runtime must not be installed or injected")
+check("sh /tmp/paseo-runtime/install.sh" in dockerfile and "start_child paseo" in launcher, "shared Paseo runtime must be installed and supervised")
 # 0.2.1: Omnigent is removed from the add-on (until it is stable).
 check(not (ROOT / "rootfs/etc/omnigent-host").exists() and not (ROOT / "rootfs/etc/profile.d/omnigent-host.sh").exists(), "the retired omnigent-host kit must not be shipped")
 check("omnigent" not in (ROOT / "rootfs/etc/profile.d/ha-opendesign-cli-help.sh").read_text().lower(), "CLI help must not mention Omnigent")

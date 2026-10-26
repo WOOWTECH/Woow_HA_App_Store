@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.2.7
+
+- 原生備份還原後，在服務啟動前恢復已知 CLI 憑證／設定檔的 0600 與
+  provider 私有目錄的 0700；不改寫內容、不改專案權限，拒絕不安全的連結。
+
+- Return from Paseo setup to the native Home Assistant OpenDesign app page,
+  avoiding a top-level `/plugins` URL that fails on reload. The installed slug
+  is discovered through a bounded root-only Supervisor self lookup; missing
+  metadata returns to Home Assistant instead. Runtime package bytes are unchanged.
+
+- Cold backups exclude only the reconstructible Paseo `packages/runtime`
+  directory through native `backup_exclude`, avoiding runtime binary hardlinks
+  that fail Supervisor's streaming restore. Credentials, projects, sessions,
+  daemon identity, enabled intent, provider installations and npm cache are
+  retained. Enabled startup or a later GUI start rebuilds from the bundled
+  exact lock; package-source connectivity is required (offline recovery is
+  not guaranteed). Existing archives are not rewritten.
+
+- Report successful exit after a requested TERM/INT has stopped all supervised processes. The previous launcher propagated the interrupted wait's 143/130 and Supervisor showed `error` after a successful native stop. Unexpected required-process exits still stop peers and return failure. Cold backup had succeeded; restore failure is not claimed.
+- Add the shared native Paseo launcher and supervised runtime with first-install onboarding, official provider login, model testing and pairing setup through HA Ingress.
+- Persist runtime state and explicit manual stop beneath `/data`; share the existing provider home and preserve OpenDesign projects and other MCP entries through the native per-entry CAS API.
+- Protect setup/API routes behind the actual Supervisor peer and a private Unix socket. Validate authenticated user, origin and Ingress subpath; discard forwarded-header claims. Keep native new-tab launches beneath the Ingress prefix.
+- Increase graceful shutdown to 25 seconds with a 30-second Supervisor timeout. No option, public port, architecture, image name or stored data format is removed. Upgrade from 0.2.6 retains existing data; first Paseo activation needs package-registry access and target-local provider login.
+- Pins the reviewed w2.5 core `20261026.0712` (`sha256:366e337d…`, native fork `c8ae390`), copied to public GHCR without changing its digest. Candidate image smoke and native HA acceptance remain release gates.
+
 ## 0.2.6
 
 **Built-in MCP server on MCP Python SDK 2.3, the runtime of the HA MCP add-ons 0.4.0** (the joint SDK 2 round with the WOOW PaaS, woow-mcp-server #82; vendored from `WOOWTECH/Woow_ha_mcp_addons` `claude-delivery` `40a8e9e7`, release 0.4.0, #22):

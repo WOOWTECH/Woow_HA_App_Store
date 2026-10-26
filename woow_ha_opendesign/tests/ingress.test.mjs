@@ -86,7 +86,9 @@ function runIngressShim(initialPath) {
       this._attrs.set('src', String(value));
     },
   });
+  const openCalls = [];
   const window = {
+    open: (...args) => { openCalls.push(args); return "opened"; },
     __OD_INGRESS_PATH__: prefix,
     location,
     fetch() {},
@@ -107,7 +109,7 @@ function runIngressShim(initialPath) {
     URL,
     Request,
   });
-  return { history, historyCalls, location, replaceCalls, Element, HTMLIFrameElement, originalSetAttributeCalls, iframeSetterCalls, mutationObservers };
+  return { window, openCalls, history, historyCalls, location, replaceCalls, Element, HTMLIFrameElement, originalSetAttributeCalls, iframeSetterCalls, mutationObservers };
 }
 
 test('representative initial HTML rewrite matches the fixture', async () => {
@@ -322,4 +324,17 @@ test('early shim covers root-relative streaming, navigation, and dynamic URLs', 
   assert.match(shim, /url\.protocol !== 'http:' && url\.protocol !== 'https:'/,
     'blob/data/about URLs used by browser downloads must not be ingress-rewritten');
   assert.ok(shim.includes('Service workers are disabled'), 'must not register a root-scoped service worker on HA');
+});
+
+
+test('native launcher new tabs retain ingress scope and external auth links stay external', () => {
+  const f = runIngressShim(`${prefix}/plugins`);
+  assert.equal(f.window.open('/paseo/setup/', '_blank', 'noopener,noreferrer'), 'opened');
+  f.window.open('http://localhost/paseo/setup/', '_blank');
+  f.window.open(`${prefix}/console/`, '_blank');
+  f.window.open('https://app.paseo.sh/', '_blank');
+  assert.deepEqual(f.openCalls.map(call => call[0]), [
+    `${prefix}/paseo/setup/`, `${prefix}/paseo/setup/`, `${prefix}/console/`, 'https://app.paseo.sh/',
+  ]);
+  assert.deepEqual(f.openCalls[0].slice(1), ['_blank', 'noopener,noreferrer']);
 });
