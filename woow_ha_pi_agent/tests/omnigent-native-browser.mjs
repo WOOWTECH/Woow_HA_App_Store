@@ -24,11 +24,40 @@ const home = fs.mkdtempSync(path.join(evidence, 'browser-home-'));
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE ? pathToFileURL(process.env.PLAYWRIGHT_MODULE).href : 'playwright');
 const prefix = '/api/hassio_ingress/nativefixture0123456789';
 const nginx = fs.readFileSync(path.join(root, 'rootfs/etc/nginx/nginx.conf'), 'utf8');
+const sdk = await import(pathToFileURL(path.join(web, 'node_modules/@earendil-works/pi-coding-agent/dist/index.js')).href);
+const fixturePrompt = 'Omnigent setup: enter your server URL, username and password in Settings > Omnigent. No server or account has been supplied.';
+const sessionDirectory = path.join(home, '.pi/agent/sessions', `--${home.replace(/^\//, '').replaceAll('/', '-')}--`);
+function savedConversation(name, message) {
+  const session = sdk.SessionManager.create(home, sessionDirectory);
+  session.appendSessionInfo(name);
+  session.appendMessage({ role: 'user', content: message, timestamp: Date.now() });
+  return { id: session.getSessionId(), file: session.getSessionFile() };
+}
+const omniSession = savedConversation('Omnigent setup', fixturePrompt);
+const paseoSession = savedConversation('Paseo setup', 'Paseo fixture setup; do not select this automatically.');
+const originalConversationBytes = Object.fromEntries(fs.readdirSync(sessionDirectory).map(name => [name, fs.readFileSync(path.join(sessionDirectory, name), 'utf8')]));
+function assertConversationHistory() {
+  assert.deepEqual(fs.readdirSync(sessionDirectory).sort(), Object.keys(originalConversationBytes).sort(), 'opening setup cannot create a replacement conversation');
+  const additions = [];
+  for (const [name, original] of Object.entries(originalConversationBytes)) {
+    const actual = fs.readFileSync(path.join(sessionDirectory, name), 'utf8');
+    assert.ok(actual.startsWith(original), 'original session history remains byte-for-byte intact');
+    const types = actual.slice(original.length).trim().split('\n').filter(Boolean).map(line => JSON.parse(line).type);
+    additions.push(...types);
+    assert.ok(types.every(type => ['model_change', 'thinking_level_change', 'custom'].includes(type)), `only native runtime metadata may append: ${types}`);
+  }
+  return additions;
+}
+const stateDir = path.join(home, '.pi/agent/omnigent-plugin');
+fs.mkdirSync(stateDir, { recursive: true });
 const calls = [];
-const current = { phase: 'needs-login', loginConfirmed: false, host: { id: 'fixture', connected: false },
+let savedOnboarding = omniSession.id;
+let firstHomeStage = true;
+let lifecycle = { active: true, registered: true };
+const current = { phase: 'needs-login', enabled: true, loginConfirmed: false, host: { id: 'fixture', connected: false },
   engines: { pi: { available: true, version: '1.1.0' } } };
-const plugin = { version: '0.3.11', lifecycle: async () => ({ active: true }), onboarding: () => ({ sessionId: 'fixture-session' }),
-  runtime: { status: async () => current,
+const plugin = { locations: () => ({ stateDir }), version: '0.3.11', lifecycle: async () => lifecycle, onboarding: () => ({ sessionId: savedOnboarding }),
+  runtime: { status: async () => { assert.equal(firstHomeStage, false, 'first-home must never call runtime.status or spawn provider probes'); return current; },
     catalog: async () => ({ data: { engines: { pi: { models: [{ id: 'test-a', displayName: 'Test A' }, { id: 'test-b', displayName: 'Test B' }] } } } }),
     initialize: async input => { calls.push({ action: 'connect', ...input }); Object.assign(current, { loginConfirmed: true, server: input.server, host: { connected: true } }); return { ok: true }; },
     verify: async input => { calls.push({ action: 'verify', ...input }); return { ok: true }; },
@@ -60,7 +89,8 @@ const child = spawn(process.execPath, [path.join(web, 'node_modules/next/dist/bi
 });
 fs.closeSync(log);
 let browser;
-const escaped = [], errors = [], results = [], failedClientAssets = [], transfers = [];
+const escaped = [], errors = [], results = [], failedClientAssets = [], transfers = [], promptRequests = [];
+let onboardingReads = 0;
 // Run the actual nginx config; only bind addresses, private socket paths and
 // temporary logs differ. The front proxy simulates Supervisor path stripping;
 // it never rewrites application response bodies or injects browser code.
@@ -80,6 +110,13 @@ const nginxLog = fs.openSync(path.join(evidence, 'nginx-process.log'), 'w');
 const proxy = spawn(process.env.NGINX_EXECUTABLE || 'nginx', ['-p', evidence, '-c', path.join(evidence, 'nginx.conf')], { stdio: ['ignore', nginxLog, nginxLog] }); fs.closeSync(nginxLog);
 const ingress = http.createServer((req, res) => {
   if (!req.url.startsWith(prefix + '/')) { escaped.push(req.url); res.writeHead(404).end(); return; }
+  const url = req.url.slice(prefix.length);
+  if (url === '/omnigent/onboarding') {
+    onboardingReads++;
+    fs.writeFileSync(path.join(stateDir, 'state.json'), JSON.stringify({ enabled: current.enabled, phase: current.phase }), { mode: 0o600 });
+    if (savedOnboarding === null) fs.rmSync(path.join(stateDir, 'onboarding.json'), { force: true });
+    else fs.writeFileSync(path.join(stateDir, 'onboarding.json'), JSON.stringify({ sessionId: savedOnboarding }), { mode: 0o600 });
+  }
   const upstream = http.request({ hostname: '127.0.0.1', port: nginxPort,
     path: req.url.slice(prefix.length), method: req.method,
     headers: { ...req.headers, 'x-ingress-path': prefix } }, response => {
@@ -96,10 +133,137 @@ try {
   }
   ingress.listen(0, '127.0.0.1'); await once(ingress, 'listening');
   const base = `http://127.0.0.1:${ingress.address().port}${prefix}`;
+  const observe = context => context.on('request', request => {
+    if (request.method() !== 'POST') return;
+    let body; try { body = request.postDataJSON(); } catch { return; }
+    if (['prompt', 'steer', 'follow_up'].includes(body?.type)) promptRequests.push(body.type);
+  });
   browser = await chromium.launch({ executablePath: process.env.CHROMIUM_EXECUTABLE, headless: true, args: ['--no-sandbox'] });
+  {
+    const context = await browser.newContext({ viewport: { width: 390, height: 844 }, locale: 'en-US' });
+    observe(context);
+    let releaseChunk;
+    const chunkGate = new Promise(resolve => { releaseChunk = resolve; });
+    await context.route(/\/page-[a-f0-9]+\.js$/, async route => { await chunkGate; await route.continue(); });
+    const page = await context.newPage();
+    await page.goto(base + '/', { waitUntil: 'commit' });
+    await page.waitForFunction(() => Boolean(window.__INGRESS_PATH__));
+    await page.mouse.click(30, 150); // A real interaction before the client chunk hydrates.
+    releaseChunk();
+    await page.locator('.sidebar-container:not(.sidebar-mobile-pending)').waitFor({ state: 'attached' });
+    await page.waitForTimeout(1800);
+    assert.notEqual(new URL(page.url()).searchParams.get('session'), omniSession.id, 'an interaction before hydration also cancels automatic opening');
+    results.push({ interactionBeforeHydration: true, existingWorkPreserved: true });
+    await context.close();
+  }
+  for (const viewport of [{ width: 1365, height: 900 }, { width: 390, height: 844 }]) {
+    const context = await browser.newContext({ viewport, locale: 'en-US' });
+    observe(context);
+    const page = await context.newPage(); page.on('pageerror', error => errors.push(error.message));
+    await page.goto(base + '/');
+    await page.waitForURL(url => url.searchParams.get('session') === omniSession.id, { timeout: 10000 });
+    await page.getByText(fixturePrompt, { exact: true }).waitFor({ state: 'visible' });
+    assert.equal(await page.evaluate(() => JSON.parse(sessionStorage.getItem('pi-web:tab-open-session')).sessionId), omniSession.id);
+    const runtimeMetadataAppended = assertConversationHistory();
+    assert.equal(calls.length, 0, 'zero-click onboarding cannot connect, verify or disconnect');
+    await page.screenshot({ path: path.join(evidence, `first-home-${viewport.width}.png`), fullPage: true });
+    results.push({ viewport, firstHome: true, exactOmnigentSelected: true, setupPromptVisible: true, clicks: 0, originalHistoryUnchanged: true, runtimeMetadataAppended });
+    await context.close();
+  }
+  {
+    savedOnboarding = null;
+    const context = await browser.newContext({ viewport: { width: 390, height: 844 }, locale: 'en-US' });
+    observe(context);
+    const page = await context.newPage();
+    await page.goto(base + '/');
+    await page.waitForTimeout(1500);
+    savedOnboarding = omniSession.id;
+    await page.waitForURL(url => url.searchParams.get('session') === omniSession.id, { timeout: 5000 });
+    await page.getByText(fixturePrompt, { exact: true }).waitFor({ state: 'visible' });
+    assertConversationHistory();
+    results.push({ lateOnboarding: true, exactOmnigentSelected: true, setupPromptVisible: true, clicks: 0 });
+    await context.close();
+  }
+  const defaults = () => { current.enabled = true; current.phase = 'needs-login'; lifecycle = { active: true, registered: true }; savedOnboarding = omniSession.id; };
+  for (const scenario of [
+    { name: 'explicit-session', query: '?session=' + paseoSession.id },
+    { name: 'explicit-cwd', query: '?cwd=' + encodeURIComponent(home) },
+    { name: 'explicit-query', query: '?sidebar=collapsed' },
+    { name: 'tab-session', storage: { 'pi-web:tab-open-session': JSON.stringify({ kind: 'session', sessionId: paseoSession.id }) } },
+    { name: 'tab-composer', storage: { 'pi-web:tab-open-session': JSON.stringify({ kind: 'new', cwd: home }) } },
+    { name: 'workspace-memory', local: { 'pi-web:last-open-by-workspace': JSON.stringify({ [home]: paseoSession.id }) } },
+    { name: 'terminal-memory', storage: { 'pi-web:terminal-tabs': JSON.stringify({ tabs: [{ id: 'fixture-terminal', cwd: home }], activeId: 'fixture-terminal', open: false }) } },
+    { name: 'corrupt-workspace-memory', local: { 'pi-web:last-open-by-workspace': '{broken' } },
+    { name: 'disabled', prepare: () => { current.enabled = false; } },
+    { name: 'unregistered', prepare: () => { lifecycle.registered = false; } },
+    { name: 'inactive', prepare: () => { lifecycle.active = false; } },
+    { name: 'ready', prepare: () => { current.phase = 'ready'; } },
+    { name: 'missing-session', prepare: () => { savedOnboarding = 'nonexistent-fixture'; } },
+    { name: 'typing-during-boot', prepare: () => { savedOnboarding = null; }, action: page => page.locator('textarea').first().fill('keep this unsent draft') },
+    { name: 'click-during-boot', prepare: () => { savedOnboarding = null; }, action: page => page.getByRole('button', { name: 'Settings', exact: true }).click() },
+    { name: 'disable-during-boot', prepare: () => { savedOnboarding = null; }, action: async () => { current.enabled = false; } },
+  ]) {
+    defaults(); scenario.prepare?.();
+    const context = await browser.newContext({ viewport: { width: 1365, height: 900 }, locale: 'en-US' });
+    await context.addInitScript(({ storage, local }) => {
+      for (const [key, value] of Object.entries(storage || {})) sessionStorage.setItem(key, value);
+      for (const [key, value] of Object.entries(local || {})) localStorage.setItem(key, value);
+    }, { storage: scenario.storage, local: scenario.local });
+    observe(context);
+    const page = await context.newPage(); page.on('pageerror', error => errors.push(error.message));
+    await page.goto(base + '/' + (scenario.query || ''));
+    await page.locator('.sidebar-container:not(.sidebar-mobile-pending)').waitFor({ state: 'attached' });
+    if (scenario.action) { await scenario.action(page); savedOnboarding = omniSession.id; }
+    await page.waitForTimeout(1600);
+    assert.notEqual(new URL(page.url()).searchParams.get('session'), omniSession.id, scenario.name);
+    if (scenario.name === 'typing-during-boot') assert.equal(await page.locator('textarea').first().inputValue(), 'keep this unsent draft');
+    const reads = onboardingReads; await page.waitForTimeout(1100);
+    if (scenario.action || ['disabled', 'unregistered', 'inactive', 'ready'].includes(scenario.name)) assert.equal(onboardingReads, reads, 'interaction/disabled/completed stops polling');
+    assertConversationHistory();
+    results.push({ scenario: scenario.name, existingWorkPreserved: true });
+    await context.close();
+  }
+  defaults();
+  {
+    const context = await browser.newContext({ viewport: { width: 390, height: 844 }, locale: 'en-US' });
+    observe(context);
+    const page = await context.newPage(); await page.goto(base + '/');
+    await page.waitForURL(url => url.searchParams.get('session') === omniSession.id);
+    await page.getByText(fixturePrompt, { exact: true }).waitFor();
+    // Return to the homepage with no saved selection; the per-tab marker still prevents a loop.
+    await page.evaluate(() => { sessionStorage.removeItem('pi-web:tab-open-session'); localStorage.removeItem('pi-web:last-open-by-workspace'); });
+    await page.goBack(); await page.waitForTimeout(1500);
+    assert.equal(new URL(page.url()).search, '');
+    const reads = onboardingReads; await page.reload(); await page.waitForTimeout(1500);
+    assert.equal(onboardingReads, reads);
+    assert.equal(new URL(page.url()).search, '');
+    results.push({ oncePerTab: true, backAndReloadNoLoop: true });
+    await context.close();
+  }
+  {
+    defaults(); savedOnboarding = null;
+    const context = await browser.newContext({ viewport: { width: 390, height: 844 }, locale: 'en-US' });
+    observe(context);
+    const page = await context.newPage();
+    const before = onboardingReads;
+    await page.goto(base + '/');
+    await page.waitForTimeout(31000);
+    const reads = onboardingReads;
+    assert.ok(reads > before && reads - before <= 30, 'cold boot retries are bounded to 30 reads / 30 seconds');
+    savedOnboarding = omniSession.id;
+    await page.waitForTimeout(1600);
+    assert.equal(onboardingReads, reads, 'deadline ends polling even if the ID appears later');
+    assert.equal(new URL(page.url()).search, '');
+    results.push({ boundedWait: true, lateAfterDeadlinePreservesHomepage: true, reads: reads - before });
+    await context.close();
+  }
+  defaults();
+  firstHomeStage = false;
+  current.enabled = false; // Independent settings cases do not need automatic navigation.
   for (const viewport of [{ width: 1365, height: 900 }, { width: 768, height: 1024 }, { width: 390, height: 844 }]) {
     const callsBefore = calls.length;
     const context = await browser.newContext({ viewport, locale: 'en-US' });
+    observe(context);
     const page = await context.newPage(); page.on('pageerror', error => errors.push(error.message));
     await page.goto(base + '/');
     // Upstream hydrates as desktop, then closes the phone drawer. Waiting on
@@ -188,7 +352,7 @@ try {
     await frame.locator('#setup button:enabled').waitFor();
     assert.equal(calls.at(-1).verify, false);
     assert.equal(await frame.locator('[name=password]').inputValue(), '');
-    assert.equal(await frame.locator('#onboarding').getAttribute('href'), `${prefix}/?session=fixture-session`);
+    assert.equal(await frame.locator('#onboarding').getAttribute('href'), `${prefix}/?session=${omniSession.id}`);
     assert.equal(await frame.locator('#onboarding').getAttribute('target'), '_parent');
     await frame.locator('#engine').selectOption('pi');
     for (const model of ['test-a', 'test-b']) {
@@ -217,8 +381,9 @@ try {
   assert.deepEqual(escaped.filter(url => url !== '/favicon.ico'), []);
   assert.deepEqual(errors, []); assert.deepEqual(failedClientAssets, []);
   assert.ok(!fs.readFileSync(path.join(evidence, 'nginx-access.log'), 'utf8').includes('fixture-pairing'), 'pair fragments never reach nginx access log');
+  assert.deepEqual(promptRequests, [], 'no prompts or provider calls');
   fs.writeFileSync(path.join(evidence, 'browser-receipt.json'), JSON.stringify({ piWeb: '0.12.0', upstream: 'npm compiled artifact', proxy: 'actual nginx + simulated HA Supervisor path stripping', modelRuntime: 'fixture only', results, errors, escaped, failedClientAssets, transfers }, null, 2));
-  console.log('PASS real nginx + managed Paseo deep links/assets/gzip + compiled Pi Web 0.12 desktop/tablet/mobile: MCP adjacency, embedded bridge, fresh credentials, model selection, disconnect, Escape, remount, Ingress fallback.');
+  console.log('PASS guarded first-home/cold-boot/interaction/once plus real nginx + managed Paseo deep links/assets/gzip + compiled Pi Web 0.12 desktop/tablet/mobile: MCP adjacency, embedded bridge, fresh credentials, model selection, disconnect, Escape, remount, Ingress fallback.');
 } finally {
   await browser?.close(); ingress.closeAllConnections(); ingress.close(); backend.closeAllConnections(); backend.close(); paseo.closeAllConnections(); paseo.close();
   proxy.kill('SIGTERM'); if (proxy.exitCode === null) await once(proxy, 'exit');

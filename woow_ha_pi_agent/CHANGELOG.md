@@ -1,3 +1,11 @@
+## 0.15.6
+
+- Bundle public, checksum-verified Omnigent 0.3.18 and preserve Paseo 0.1.9 from 0.15.5.
+- Recover the same authorized host after stale PID reuse using the common plugin launch lock and process identity checks; never signal an unrelated process.
+- Open the existing unfinished Omnigent setup conversation on an untouched first homepage, including mobile and bounded cold-boot waiting.
+- Respect explicit links, remembered work, drafts and interactions, including before hydration; preserve Ingress paths and avoid navigation loops.
+- Read local plugin metadata for eligibility without runtime probes or remote model calls.
+
 ## 0.15.5
 
 - Bundle checksum-verified Omnigent 0.3.16 with explicitly authorized host recovery on boot; credentials alone do not authorize reconnect. Bundle Paseo 0.1.9, its locked daemon and the fixed web client. Retain Pi Web 0.12.0, existing Omnigent integration, provider login, sessions and settings.

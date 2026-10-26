@@ -12,23 +12,52 @@ PI_WEB_ROOT=/path/to/pristine/package node --test patches/tests/omnigent-setting
 node patches/patch-omnigent-settings.mjs /path/to/runtime/package
 PI_WEB_ROOT=/path/to/runtime/package EVIDENCE_DIR=/path/to/test-evidence \
   PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs \
+  PASEO_PLUGIN_ROOT=/path/to/verified-paseo/package \
   node tests/omnigent-native-browser.mjs
 ```
 
 The runtime package needs its production dependencies, with the same
 `pi-codemode`, `pi-mcp` and `chord` 1.1.0 overrides as the Dockerfile. The browser
 suite starts real compiled Next.js with a fresh HOME and uses the actual bridge
-and nginx body-rewrite rules behind a local proxy. It checks desktop, tablet and
+and a real nginx process using the production Ingress configuration, behind a
+local proxy that simulates Supervisor path stripping. It checks desktop, tablet and
 phone settings, the MCP-adjacent order, blank/masked credentials, two model
 selections, disconnect confirmation, Escape, remount and the standalone page.
 The Omnigent runtime is a fixture: these tests do not validate provider logins,
-paid model responses, a running nginx server or real HA Supervisor ingress.
+paid model responses or real HA Supervisor ingress. Paseo tests use the
+checksum-verified public 0.1.9 client and cover deep links, assets and gzip.
 
 CI runs these checks with Playwright 1.62.1 and retains screenshots/receipts.
 Set `CHROMIUM_EXECUTABLE` to reuse an installed Chromium locally. Continue to
 run `tests/omnigent-browser.mjs` for the independent fallback form. A release
 also requires both architecture image builds and real Supervisor acceptance;
 the compiled browser test does not replace them.
+
+The native browser suite also saves separate Omnigent and Paseo fixture
+conversations through the real SDK. On a fresh untouched homepage it checks
+zero-click exact Omnigent selection and visible setup instructions on desktop
+and phone. It preserves all original transcript bytes; Pi Web may append its
+normal runtime metadata when opening a saved session. No prompt is submitted.
+
+Auto-open is restricted to a registered, active, enabled plugin with unfinished
+setup. A small same-origin GET exposes only that eligibility and the saved ID;
+the existing token requirement for settings and mutations is unchanged. Eligibility
+reads only regular, same-UID, 0600 local state/onboarding files; it never calls
+runtime status, dependency probes, Python, catalog or a remote Omnigent server.
+Absent state during registered cold boot may wait but cannot open a stale
+onboarding until enabled state is saved. Unreadable, malformed, unknown or
+completed state stops immediately. The
+client confirms the ID exists in the session summary catalog before navigating.
+Explicit URLs, saved tab/workspace/terminal selection, drafts and interaction
+(including before hydration) take precedence. Cold boot may retry for at most
+30 seconds/30 attempts, stopping on disable, removal, completion or interaction.
+A per-tab, Ingress-scoped marker prevents Back/reload loops. A missed deadline
+leaves the homepage and its ordinary sidebar navigation usable.
+
+These local fixtures prove selection and instruction rendering, not the real
+plugin's interactive wizard. Official HA QA must separately prove the initial
+blank URL input/setup prompt in a fresh browser after Supervisor reinstall,
+after first completing the original host's upgrade/restart persistence tests.
 
 The adapter intentionally accepts only the verified official 0.12.0 artifacts.
 For another upstream release or rebuilt artifact, inspect SettingsPanel and

@@ -370,7 +370,7 @@ MIT © [WOOWTECH](https://github.com/WOOWTECH)。完整條款見 [`LICENSE`](LIC
 
 ## Omnigent
 
-映像已包含固定的 `pi-omnigent-plugin v0.3.16`、Python 3.12 與 Omnigent SDK 0.16.0。首次啟動自動註冊插件並建立 **Omnigent 連線設定** 對話，不需先執行安裝命令。
+映像已包含固定的 `pi-omnigent-plugin v0.3.17`、Python 3.12 與 Omnigent SDK 0.16.0。首次啟動自動註冊插件並建立 **Omnigent 連線設定** 對話；在沒有既有選擇或操作的首頁，自動開啟這份未完成的設定對話，不需先執行安裝命令。
 
 1. 開啟 HA 側邊欄的 Pi Agent，進入 **Settings → Omnigent**（緊接 MCP；手機從設定下拉選單選取）。右上角 **Omnigent** 及現有 HA ingress URL 後的 `/omnigent` 仍可開啟獨立設定頁，保留 `/api/hassio_ingress/<token>` 前綴。
 2. 每次全新設定都需輸入 Server URL、帳號及密碼；不內建預設 server、不沿用另一容器的登入。密碼欄位遮罩，送出／離開頁面後清空，不存於對話。
@@ -386,4 +386,4 @@ MIT © [WOOWTECH](https://github.com/WOOWTECH)。完整條款見 [`LICENSE`](LIC
 
 ## Paseo 網頁整合（0.15.5 候選版）
 
-內建 Paseo 0.1.9 與 Omnigent 0.3.16，在設定中將 Paseo 放在 Omnigent 右側，保留 Pi Web 0.12.0。[HA Ingress、升級與驗證說明](docs/PASEO_HA.md)。
+內建 Paseo 0.1.9 與 Omnigent 0.3.17，在設定中將 Paseo 放在 Omnigent 右側，保留 Pi Web 0.12.0。[HA Ingress、升級與驗證說明](docs/PASEO_HA.md)。
