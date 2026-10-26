@@ -1,3 +1,7 @@
+## 0.15.2
+
+- Bundle checksum-verified Omnigent plugin 0.3.14, fixing terminal removal handling and connection verification diagnostics while retaining Pi Web 0.12.0 and the installed engines.
+
 ## 0.15.1
 
 - Bundle checksum-verified Omnigent plugin 0.3.13 with runtime retention, native provider-error classification and actual verification-model receipts; retain Pi Web 0.12.0 and the existing installed engines.
