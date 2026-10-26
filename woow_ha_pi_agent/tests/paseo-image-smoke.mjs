@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
+import { verifyNativeRuntime } from './paseo-native-runtime.mjs';
 const agentDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ha-paseo-image-'));
 try {
   process.env.HOME = path.join(agentDir, 'home'); fs.mkdirSync(process.env.HOME);
@@ -13,7 +14,7 @@ try {
   const lifecycle = await import('/usr/local/lib/pi-paseo-ha/lifecycle.mjs');
   await lifecycle.prepareImage(); assert.equal(lifecycle.seed().seeded, true);
   const plugin = await lifecycle.loadPlugin();
-  assert.equal(plugin.version, '0.1.9'); assert.equal(plugin.enabled, true);
+  assert.equal(plugin.version, '0.1.10'); assert.equal(plugin.enabled, true);
   const { ensureOnboarding } = await import('/opt/woow/pi-paseo-plugin/src/onboarding.mjs');
   const first = await ensureOnboarding(plugin.hooks.createOnboarding);
   const second = await ensureOnboarding(plugin.hooks.createOnboarding);
@@ -23,6 +24,7 @@ try {
   const { locations } = await import('/opt/woow/pi-paseo-plugin/src/state.mjs');
   const layout = await import('/opt/woow/pi-paseo-plugin/src/runtime-layout.mjs');
   assert.equal(layout.runtimeReady(locations()), true);
+  const native = await verifyNativeRuntime({ bundle: '/opt/woow/pi-paseo-plugin', runtimeDir: process.env.PI_PASEO_RUNTIME_DIR });
   const cli = path.join(layout.runtimeDirectory(locations()), 'node_modules/@getpaseo/cli/bin/paseo');
   assert.equal(execFileSync(process.execPath, [cli, '--version'], { encoding: 'utf8' }).trim(), '0.11.2');
   const response = await plugin.api.web(new Request('http://localhost/paseo-web/'));
@@ -31,5 +33,5 @@ try {
   assert.equal(sdk.version, '0.12.0');
   const settings = path.join(agentDir, 'settings.json'); fs.writeFileSync(settings, '{"packages":[]}');
   assert.equal(lifecycle.seed().seeded, false); assert.equal(await lifecycle.loadPlugin(), null);
-  console.log('PASS offline HA image: Paseo 0.1.9, CLI 0.11.2, fixed web, Pi Web 0.12 SDK, registration/removal.');
+  console.log('PASS offline HA image: Paseo 0.1.10, CLI 0.11.2 r3, both native writers, fixed web, Pi Web 0.12 SDK, registration/removal.', JSON.stringify(native));
 } finally { fs.rmSync(agentDir, { recursive: true, force: true }); }

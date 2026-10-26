@@ -6,18 +6,20 @@ The native desktop tabs and mobile picker are MCP → Omnigent → Paseo.
 
 ## Immutable image inputs
 
-- Paseo plugin 0.1.9, source `eed990fe06899e42bf446cf2d584ed2c26ae6bed` (public release archive verified with
-  SHA256 `31efd9184ec93aa6c6b4da85f235ac7570dc6f64e39195c21d6c23f8ce93fbdb`).
-- Paseo daemon 0.11.2, locked runtime revision `0.11.2-r2-6d8dbe515479`.
+- Paseo plugin 0.1.10, source `bd7756ec53e2a09220ddc680b30539fcd1774e80` (public release archive verified with
+  SHA256 `8aefc73fa5de1507bd7c37931ae48a42fe74e44a014a108b4939c973d4568cc6`).
+- Paseo daemon 0.11.2, locked runtime revision `0.11.2-r3-6d8dbe515479`.
 - Fixed web client 0.13.0-woow.1, source
   `68388f19198f1f696efe18906df42049e208d135`, stream repair
   `043aa8286b90418eb1f4e9982ca1a349c84f2a3d`, archive SHA256
   `7e7495f70f721e96e121f76bd91573150cf91aa112143d9f4d51a3fcf9dc8bce`.
-- Omnigent 0.3.19, source `01cb346b439e0c018c5ca0022f6f68f8f365ae1a`,
+- Omnigent 0.3.20, source `b01ced807e153160cff7dd4bc77f2cfe2b1b6325`,
   public archive SHA256
-  `6a5c84d9b04e75aa6660d2ece77d1a056d950a58e7e151b9ccc19f366d8498b1`.
-  HA 0.15.7 builds on public HA 0.15.6, preserving its Paseo integration
-  while adding guarded first-home Omnigent setup navigation.
+  `829c7353befa05a2cacceb4fe84a2f702937adb21c4533ba86b5cf92c015f5db`.
+  HA 0.15.8 builds on public HA 0.15.7, preserving its guarded first-home
+  navigation and authorized-host recovery while updating Paseo to r3.
+  The public combined adapter supports Paseo 0.1.10; HA retains its own
+  Pi Web 0.12 native integration and does not apply the 0.10 overlay.
 
 The image builds daemon dependencies for amd64 and aarch64 and downloads the
 web client at build time, checking the plugin's manifest and checksum. First
@@ -71,10 +73,28 @@ and explicit disabling are retained. Package enable/disable/removal is observed
 without restarting Pi Web. A manual service pause survives container restart;
 shutdown stops the owned supervisor without persisting a user pause.
 
+Paseo 0.1.10 uses the r3 runtime with verified patches in both native 0.11.2
+PID-lock modules. All supported writers and recovery share one persistent
+Linux flock guard. Automatic recovery requires a private proof bound to the
+installation, home, lock inode and Linux process birth; a PID or process name
+alone cannot authorize it. The existing util-linux runtime dependency provides
+flock. The offline image test exercises both patched writers and competing
+flock exclusion in a disposable home without launching a daemon or provider.
+
+When a trusted r2 runtime remains available, status and normal owned stop
+continue to work before r3 is installed. A healthy r2 daemon with r3 prepared
+returns `RESTART_REQUIRED`; use the normal stop/start lifecycle. It does not
+mint an r3 proof for the old daemon. A legacy record whose PID appears live
+but cannot be tied to its original process remains rejected without trusted
+proof and needs ownership diagnosis. Recovery does not delete that record
+or signal the foreign process. Native 0.11.2 dead-process and cross-boot checks
+remain in place. The image
+bundles r3 only; it does not copy the previous image's r2 runtime directory.
+
 New users still need to authorize the provider CLIs through their official
 login flows. This integration does not migrate or create provider credentials.
 The bundled Claude Code/Codex versions, shared skills/MCP and Omnigent bridge
-are retained. Its existing `boot` call now uses Omnigent 0.3.19 recovery: only
+are retained. Its existing `boot` call retains Omnigent 0.3.19 recovery in 0.3.20: only
 matching private authorization receipts for this installation may resume the
 recorded host. Disabled/disconnected or credential-only states do not silently
 authorize a reconnect. Existing custom plugin paths remain user-controlled and
@@ -105,9 +125,11 @@ wire size, ETag/304/HEAD, CSP and absence of pairing fragments in access logs.
 Provider responses are fixtures: this is not live HA or paid three-engine chat
 acceptance. The Docker build runs real CLI/SDK/static-client smoke tests with
 network disabled. PR builds exercise generated local-source contexts on both
-architectures and never push images. Parent integration owns the release
-version, merge, Store/local-build synchronization and live acceptance.
+architectures and never push images. Publication follows the required PR and native image gates. Post-release
+checks verify both registry manifests and Store/local-build synchronization.
+Live Supervisor and real-account model acceptance remain separate; this
+fanout does not operate live HA, VMs or Pi4.
 
 The measured local gzip runtime layer is about 164 MiB, below the 256 MiB
 changed-layer budget. This estimate does not replace the final registry manifest
-check after publication; that gate remains part of parent release verification.
+check after publication; that gate remains part of post-release verification.

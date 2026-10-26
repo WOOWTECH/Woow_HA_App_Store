@@ -68,7 +68,7 @@ const webClient = await import(pathToFileURL(path.join(paseoRoot, 'src/web-clien
 const clientState = { stateDir: path.join(evidence, 'paseo-state') };
 await webClient.ensureWebClient(clientState);
 const paseoCalls = [];
-const paseoPlugin = { enabled: true, version: '0.1.9', api: {
+const paseoPlugin = { enabled: true, version: '0.1.10', api: {
   status: async () => ({ phase: 'ready', daemon: { running: true }, webClient: { ready: true, version: '0.13.0-woow.1' }, providers: [{ provider: 'claude', status: 'ready' }, { provider: 'codex', status: 'ready' }, { provider: 'pi', status: 'ready' }] }),
   pair: async () => { paseoCalls.push('pair'); return { url: '/paseo-web/#fixture-pairing' }; },
   web: request => webClient.serveWebClient(request, clientState),

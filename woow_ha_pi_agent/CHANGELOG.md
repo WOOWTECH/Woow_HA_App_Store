@@ -1,3 +1,11 @@
+## 0.15.8
+
+- Bundle public, checksum-verified Paseo 0.1.10 and Omnigent 0.3.20. Preserve Pi Web 0.12.0, its native Ingress/settings integration, first-home navigation and the authorized-host recovery from 0.15.7.
+- Bake Paseo native 0.11.2 runtime revision `0.11.2-r3-6d8dbe515479`. Both PID writers and recovery use the same persistent Linux flock guard; recovery requires private installation/process identity proof and never signals an unrelated process.
+- Preserve trusted r2 status/stop fallback where that runtime is available. Healthy r2 activation requires a normal restart into r3; ambiguous legacy ownership fails closed without unsafe proof migration. The image bundles r3 only.
+- Verify both baked native PID modules and competing flock exclusion in each architecture's network-disabled image gate, alongside the existing CLI/SDK/onboarding and fixed web-client checks. Preserve Store notification and local source-build hooks.
+- No options, ports, architectures, image names, provider credentials or session formats change. Live Supervisor reboot and actual-account model acceptance are separate from these isolated source/image checks.
+
 ## 0.15.7
 
 - Bundle public, checksum-verified Omnigent 0.3.19 while retaining Pi Web 0.12.0, Paseo 0.1.9 and existing provider/session data.

@@ -170,8 +170,8 @@ RUN apt-get update \
 # HA already ships a pinned official Claude CLI. The SDK falls back to PATH;
 # remove its duplicate binary before any runtime COPY creates an OCI layer.
 RUN /opt/omnigent/venv/bin/python -c 'from pathlib import Path; import claude_agent_sdk; p=Path(claude_agent_sdk.__file__).parent / "_bundled" / "claude"; print("Removed duplicate Claude bytes:", p.stat().st_size if p.exists() else 0); p.unlink(missing_ok=True)'
-ARG PI_OMNIGENT_VERSION=0.3.19
-ARG PI_OMNIGENT_SHA256=6a5c84d9b04e75aa6660d2ece77d1a056d950a58e7e151b9ccc19f366d8498b1
+ARG PI_OMNIGENT_VERSION=0.3.20
+ARG PI_OMNIGENT_SHA256=829c7353befa05a2cacceb4fe84a2f702937adb21c4533ba86b5cf92c015f5db
 RUN curl --fail --silent --show-error --location --retry 3 \
       "https://github.com/WOOWTECH/pi-omnigent-plugin/releases/download/v${PI_OMNIGENT_VERSION}/woowtech-pi-omnigent-plugin-${PI_OMNIGENT_VERSION}.tgz" -o /tmp/plugin.tgz \
     && echo "${PI_OMNIGENT_SHA256}  /tmp/plugin.tgz" | sha256sum --check --strict \
@@ -182,8 +182,8 @@ RUN curl --fail --silent --show-error --location --retry 3 \
 # The HA bridge consumes the plugin API; never apply its Pi Web 0.10 overlay.
 # Build the daemon + fixed Expo client once for each native image architecture.
 FROM piweb-builder AS paseo-builder
-ARG PI_PASEO_VERSION=0.1.9
-ARG PI_PASEO_SHA256=31efd9184ec93aa6c6b4da85f235ac7570dc6f64e39195c21d6c23f8ce93fbdb
+ARG PI_PASEO_VERSION=0.1.10
+ARG PI_PASEO_SHA256=8aefc73fa5de1507bd7c37931ae48a42fe74e44a014a108b4939c973d4568cc6
 RUN curl --fail --silent --show-error --location --retry 3 \
       "https://github.com/WOOWTECH/pi-paseo-plugin/releases/download/v${PI_PASEO_VERSION}/woowtech-pi-paseo-${PI_PASEO_VERSION}.tgz" -o /tmp/paseo.tgz \
     && echo "${PI_PASEO_SHA256}  /tmp/paseo.tgz" | sha256sum --check --strict \
@@ -303,6 +303,7 @@ RUN /opt/pi-clis/claude/node_modules/.bin/claude --version | grep -q '^2.1.296' 
 COPY rootfs/ /
 COPY tests/omnigent-image-smoke.mjs /tmp/omnigent-image-smoke.mjs
 COPY tests/paseo-image-smoke.mjs /tmp/paseo-image-smoke.mjs
+COPY tests/paseo-native-runtime.mjs /tmp/paseo-native-runtime.mjs
 
 # rootfs COPY doesn't reliably preserve +x on files created outside a POSIX
 # filesystem. Explicitly re-mark every executable we ship so s6-overlay's
@@ -340,7 +341,7 @@ RUN --network=none sed 's/listen 172.30.32.1:30142/listen 127.0.0.1:30142/' /etc
     && rm /tmp/nginx-ci.conf \
     && timeout 300s node /tmp/omnigent-image-smoke.mjs \
     && timeout 120s node /tmp/paseo-image-smoke.mjs \
-    && rm /tmp/omnigent-image-smoke.mjs /tmp/paseo-image-smoke.mjs
+    && rm /tmp/omnigent-image-smoke.mjs /tmp/paseo-image-smoke.mjs /tmp/paseo-native-runtime.mjs
 
 # SHELL is what pi-web 0.9.0's browser terminal spawns:
 #     process.env.SHELL || "/bin/sh"   with argv ["-l"]
