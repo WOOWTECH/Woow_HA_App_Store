@@ -34,6 +34,21 @@ test('real compiled client and SSR patch, all flight references change, repeat i
   const before = snapshot(root); assert.ok(patchSettings(root).every(item => !item.changed));
   assert.deepEqual(snapshot(root), before);
 });
+test('client and SSR file icons retain one HA ingress prefix after nginx rewrites JS', t => {
+  const root = fixture(t);
+  const receipt = patchSettings(root);
+  const ingress = '/api/hassio_ingress/fixture01234567890123';
+  for (const item of receipt.slice(0, 2)) {
+    const compiled = fs.readFileSync(path.join(root, item.file), 'utf8');
+    // The production nginx sub_filter also matches quoted /icons/ literals in
+    // JS chunks. The runtime prefix expression must survive that byte rewrite.
+    const served = compiled.replaceAll('"/icons/', `"${ingress}/icons/`);
+    const expression = served.match(/(?:let|var)\s+[\w$]+=([^;]*catppuccin[^;]*);function\s+[\w$]+\(/)?.[1];
+    assert.ok(expression, `${item.file}: real compiled icon expression found`);
+    const actual = new Function('window', `return ${expression}`)({ __INGRESS_PATH__: ingress });
+    assert.equal(actual, `${ingress}/icons/catppuccin`, `${item.file}: one ingress prefix`);
+  }
+});
 test('changed SSR rejects without touching the compatible client or manifests', t => {
   const root = fixture(t); fs.appendFileSync(path.join(root, '.next/server/app/page.js'), '\n// upstream changed');
   const before = snapshot(root); assert.throws(() => patchSettings(root), /unsupported compiled artifact/);

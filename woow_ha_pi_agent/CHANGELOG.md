@@ -1,3 +1,8 @@
+## 0.15.9
+
+- Fix Catppuccin file icons in the HA Supervisor ingress panel. The Pi Web settings patch already adds the ingress prefix to these CSS icon URLs; nginx was rewriting the same quoted `/icons/` literal in the compiled JavaScript, producing a duplicate prefix and 404 responses. Keep the icon path split in the compiled patch so nginx leaves that runtime expression intact.
+- Verify the official Pi Web 0.12.0 client and server bundles after the nginx rewrite, and fetch a real icon through the nginx plus Supervisor path-strip browser fixture. Preserve the native Omnigent and Paseo settings, saved conversations, credentials, and existing host identity. No options, ports, architectures, image names, or stored data formats change.
+
 ## 0.15.8
 
 - Bundle public, checksum-verified Paseo 0.1.10 and Omnigent 0.3.20. Preserve Pi Web 0.12.0, its native Ingress/settings integration, first-home navigation and the authorized-host recovery from 0.15.7.

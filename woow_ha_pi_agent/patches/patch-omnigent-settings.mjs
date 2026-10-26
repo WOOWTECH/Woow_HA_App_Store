@@ -16,13 +16,16 @@ const marker = '\n/* woow-ha-omnigent-paseo-settings-v2 */\n';
 const sections = '["general","models","skills","agents","plugins","mcp"]';
 const expanded = '["general","models","skills","agents","plugins","mcp","omnigent","paseo"]';
 const prefix = '(typeof window==="undefined"?"":window.__INGRESS_PATH__||"")';
+// nginx also rewrites quoted "/icons/" in JavaScript. Keep this literal split
+// so the compiled client does not receive the ingress prefix twice.
+const iconBase = prefix + '+"/icon"+"s/catppuccin"';
 const frame = '(0,r.jsx)("iframe",{title:"Omnigent",src:' + prefix + '+"/omnigent?embedded=1",style:{display:"block",width:"100%",height:"100%",border:0},referrerPolicy:"no-referrer"})';
 const paseoFrame = frame.replaceAll("Omnigent", "Paseo").replace("/omnigent?", "/paseo/setup?");
 const specs = {
   client: {
     sha256: 'f273303c76f7ab856768e315526cdc7cd485fba7f930e649337c57289d96093f',
     replacements: [
-      ['"/icons/catppuccin"', prefix + '+"/icons/catppuccin"'],
+      ['"/icons/catppuccin"', iconBase],
       ['[nk,nw]=(0,i.useState)(()=>!nx);', '[nk,nw]=(0,i.useState)(()=>!nx);(0,i.useLayoutEffect)(' + watchOmnigentFirstHome.toString() + ',[]);'],
       [sections, expanded],
       ['{id:"mcp",label:h("settings.mcp")}', '{id:"mcp",label:h("settings.mcp")},{id:"omnigent",label:"Omnigent"},{id:"paseo",label:"Paseo"}'],
@@ -33,7 +36,7 @@ const specs = {
   server: {
     sha256: 'a1205fad45252a602e50e13a3c5c2fd21c7968b002d54ad939984052953a2d71',
     replacements: [
-      ['"/icons/catppuccin"', prefix + '+"/icons/catppuccin"'],
+      ['"/icons/catppuccin"', iconBase],
       [sections, expanded],
       ['{id:"mcp",label:k("settings.mcp")}', '{id:"mcp",label:k("settings.mcp")},{id:"omnigent",label:"Omnigent"},{id:"paseo",label:"Paseo"}'],
       ['u("mcp",(0,r.jsx)(zG,{embedded:!0,cwd:a,trust:h,onTrustProject:i,onProjectTrustChanged:j,onClose:d},a??""))',

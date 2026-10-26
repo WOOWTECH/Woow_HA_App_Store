@@ -133,6 +133,19 @@ try {
   }
   ingress.listen(0, '127.0.0.1'); await once(ingress, 'listening');
   const base = `http://127.0.0.1:${ingress.address().port}${prefix}`;
+  const pageChunks = fs.readdirSync(path.join(web, '.next/static/chunks/app')).filter(name => /^page-[a-f0-9]{16}\.js$/.test(name));
+  assert.equal(pageChunks.length, 1, 'one compiled page chunk');
+  const chunkResponse = await fetch(`${base}/_next/static/chunks/app/${pageChunks[0]}`);
+  assert.equal(chunkResponse.status, 200, 'compiled page chunk through actual nginx ingress');
+  const servedChunk = await chunkResponse.text();
+  const iconExpression = servedChunk.match(/(?:let|var)\s+[\w$]+=([^;]*catppuccin[^;]*);function\s+[\w$]+\(/)?.[1];
+  assert.ok(iconExpression, 'Catppuccin path in the served page chunk');
+  const iconBase = new Function('window', `return ${iconExpression}`)({ __INGRESS_PATH__: prefix });
+  assert.equal(iconBase, `${prefix}/icons/catppuccin`, 'nginx must not add a second ingress prefix');
+  const iconResponse = await fetch(new URL(base).origin + `${iconBase}/latte/json.svg`);
+  assert.equal(iconResponse.status, 200, 'Catppuccin icon survives the real nginx and Supervisor path strip');
+  assert.match(iconResponse.headers.get('content-type') || '', /image\/svg\+xml/);
+  results.push({ catppuccinIngressIcon: true, iconStatus: iconResponse.status });
   const observe = context => context.on('request', request => {
     if (request.method() !== 'POST') return;
     let body; try { body = request.postDataJSON(); } catch { return; }
