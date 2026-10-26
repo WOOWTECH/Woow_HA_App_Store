@@ -47,6 +47,16 @@
 
 ## 快速上手
 
+**按「安裝」或「更新」前，先確認 HAOS 資料磁碟至少有 10 GB 可用空間。**
+請從 Home Assistant 的儲存空間資訊確認，不足時先回收可安全清除的空間或擴充容量。
+映像下載與解壓縮需要暫存空間，也會與既有附加元件及映像共用資料磁碟。
+2026-10-26 的 Supervisor 實測中，僅剩 2.1 GB 時安裝 0.15.0 導致磁碟用滿並失敗。
+10 GB 是安裝前要求，不代表映像安裝後的實際大小。
+
+本機原始碼建置還需要更多空間容納相依套件、建置層與快取；HAOS 空間不足時請使用
+官方 GitHub 映像建置流程。Supervisor 會在附加元件啟動**之前**下載映像，因此插件
+啟動後的檢查無法攔住空間不足的下載，必須在操作安裝／更新之前確認。
+
 | 步驟 | 動作 |
 |---:|---|
 | 1 | **設定 → 附加元件 → 附加元件商店 → ⋮ → 儲存庫** |
@@ -358,17 +368,17 @@ MIT © [WOOWTECH](https://github.com/WOOWTECH)。完整條款見 [`LICENSE`](LIC
 </p>
 
 
-## Omnigent（0.15.0）
+## Omnigent
 
-映像已包含固定的 `pi-omnigent-plugin v0.3.11`、Python 3.12 與 Omnigent SDK 0.16.0。首次啟動自動註冊插件並建立 **Omnigent 連線設定** 對話，不需先執行安裝命令。
+映像已包含固定的 `pi-omnigent-plugin v0.3.13`、Python 3.12 與 Omnigent SDK 0.16.0。首次啟動自動註冊插件並建立 **Omnigent 連線設定** 對話，不需先執行安裝命令。
 
-1. 開啟 HA 側邊欄的 Pi Agent，按畫面右上角 **Omnigent**。也可在現有 HA ingress URL 後加 `/omnigent`（保留 `/api/hassio_ingress/<token>` 前綴）。
+1. 開啟 HA 側邊欄的 Pi Agent，進入 **Settings → Omnigent**（緊接 MCP；手機從設定下拉選單選取）。右上角 **Omnigent** 及現有 HA ingress URL 後的 `/omnigent` 仍可開啟獨立設定頁，保留 `/api/hassio_ingress/<token>` 前綴。
 2. 每次全新設定都需輸入 Server URL、帳號及密碼；不內建預設 server、不沿用另一容器的登入。密碼欄位遮罩，送出／離開頁面後清空，不存於對話。
 3. 登入後查看目前已安裝引擎與模型。缺少供應商授權時，在同一 addon 的終端完成 Claude Code／Codex 官方登入，或在 Pi Web Models 設定 Pi 模型。
 4. 選擇引擎及模型後按 **驗證實際對話**。此動作才會建立測試對話並使用模型額度；全部已安裝引擎實際回覆並停止測試後才顯示 ready。
 5. 按 **開啟 Omnigent**，在服務端選擇主機、引擎、模型與模組進行一般對話。取消連線只影響此 addon；既有歷史對話保留。
 
-此版本保留 **Pi Web 0.12.0**。HA 使用獨立 ingress 設定頁及入口，尚未加入 MCP 旁的原生設定分頁；請勿為了分頁執行只支援 Pi Web 0.10 的 `pi-omnigent install-ui`。設定對話仍由原插件提供，登入也可使用此頁的表單。
+此版本保留 **Pi Web 0.12.0**，原生 Omnigent 設定分頁與獨立頁使用相同的私有 bridge。切換離開分頁會卸載登入表單；在表單按 Escape 可關閉設定。請勿執行只支援 Pi Web 0.10 的 `pi-omnigent install-ui`。設定對話仍由原插件提供，登入也可使用此頁的表單。
 
 既有自訂插件來源、連線資料與原生 Plugins 停用狀態都保留；移除插件後重啟不會自動裝回。需要恢復時在 Plugins 新增本機來源 `/opt/woow/pi-omnigent-plugin`，或安裝公開 GitHub source。來源與首次註冊記錄位於 `/data/pi-agent/omnigent-plugin/image-seed.json`。底層套件、host 身分及設定沿用原插件路徑並包含於 HA 備份。
 

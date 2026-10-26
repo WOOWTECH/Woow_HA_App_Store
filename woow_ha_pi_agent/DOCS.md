@@ -8,6 +8,21 @@ AI providers (GLM, MiniMax, OpenAI, OpenRouter, Anthropic, DeepSeek, Groq, …) 
 
 pi-web imports `@earendil-works/pi-coding-agent` as an in-process SDK, so there is no separate agent daemon — one process handles both UI and inference.
 
+## Installation capacity
+
+Before selecting **Install** or **Update**, check the HAOS data disk and require
+at least **10 GB free**. Downloading and unpacking the image needs temporary
+space in addition to existing add-ons, backups and images. The 2026-10-26
+Supervisor test filled the disk and failed when installing 0.15.0 with only
+2.1 GB available. Recover capacity or expand storage before retrying; do not
+treat the 10 GB threshold as a measurement of the installed image size.
+
+Local source builds need more space for dependencies, build layers and caches.
+Use the official GitHub image build workflow if the HAOS disk lacks that
+capacity. Supervisor pulls the image before the add-on can start: runtime
+checks cannot guard this earlier download. Perform the check before invoking
+Supervisor's install/update operation.
+
 ## Configuration
 
 The addon settings page holds **container-level knobs only**. Everything AI-related lives inside pi-web now.
@@ -167,17 +182,17 @@ Logs from each retry show up in the addon Logs tab under the `video-tools-init` 
 - **Worktree disappeared after addon update** — should not happen since v0.10.0 (`HOME=/data/pi-agent/home`). If you upgraded from ≤v0.9.1, pre-existing worktrees were on the ephemeral rootfs and did not carry over — recreate them under `HOME` this time.
 
 
-## Omnigent（0.15.0）
+## Omnigent
 
-映像已包含固定的 `pi-omnigent-plugin v0.3.11`、Python 3.12 與 Omnigent SDK 0.16.0。首次啟動自動註冊插件並建立 **Omnigent 連線設定** 對話，不需先執行安裝命令。
+映像已包含固定的 `pi-omnigent-plugin v0.3.13`、Python 3.12 與 Omnigent SDK 0.16.0。首次啟動自動註冊插件並建立 **Omnigent 連線設定** 對話，不需先執行安裝命令。
 
-1. 開啟 HA 側邊欄的 Pi Agent，按畫面右上角 **Omnigent**。也可在現有 HA ingress URL 後加 `/omnigent`（保留 `/api/hassio_ingress/<token>` 前綴）。
+1. 開啟 HA 側邊欄的 Pi Agent，進入 **Settings → Omnigent**（緊接 MCP；手機從設定下拉選單選取）。右上角 **Omnigent** 及現有 HA ingress URL 後的 `/omnigent` 仍可開啟獨立設定頁，保留 `/api/hassio_ingress/<token>` 前綴。
 2. 每次全新設定都需輸入 Server URL、帳號及密碼；不內建預設 server、不沿用另一容器的登入。密碼欄位遮罩，送出／離開頁面後清空，不存於對話。
 3. 登入後查看目前已安裝引擎與模型。缺少供應商授權時，在同一 addon 的終端完成 Claude Code／Codex 官方登入，或在 Pi Web Models 設定 Pi 模型。
 4. 選擇引擎及模型後按 **驗證實際對話**。此動作才會建立測試對話並使用模型額度；全部已安裝引擎實際回覆並停止測試後才顯示 ready。
 5. 按 **開啟 Omnigent**，在服務端選擇主機、引擎、模型與模組進行一般對話。取消連線只影響此 addon；既有歷史對話保留。
 
-此版本保留 **Pi Web 0.12.0**。HA 使用獨立 ingress 設定頁及入口，尚未加入 MCP 旁的原生設定分頁；請勿為了分頁執行只支援 Pi Web 0.10 的 `pi-omnigent install-ui`。設定對話仍由原插件提供，登入也可使用此頁的表單。
+此版本保留 **Pi Web 0.12.0**，原生 Omnigent 設定分頁與獨立頁使用相同的私有 bridge。切換離開分頁會卸載登入表單；在表單按 Escape 可關閉設定。請勿執行只支援 Pi Web 0.10 的 `pi-omnigent install-ui`。設定對話仍由原插件提供，登入也可使用此頁的表單。
 
 既有自訂插件來源、連線資料與原生 Plugins 停用狀態都保留；移除插件後重啟不會自動裝回。需要恢復時在 Plugins 新增本機來源 `/opt/woow/pi-omnigent-plugin`，或安裝公開 GitHub source。來源與首次註冊記錄位於 `/data/pi-agent/omnigent-plugin/image-seed.json`。底層套件、host 身分及設定沿用原插件路徑並包含於 HA 備份。
 

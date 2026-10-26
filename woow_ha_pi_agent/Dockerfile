@@ -147,6 +147,11 @@ RUN set -euo pipefail; \
     && grep -q '__piChatGPTDeviceId' \
        "/opt/piweb/lib/node_modules/@agegr/pi-web/.next/server/app/api/auth/login/[provider]/route.js"
 
+# Keep the official compiled 0.12.0 UI and private Ingress bridge. Add Omnigent
+# to React's desktop/mobile settings navigation immediately after MCP. The
+# patch checks client + SSR artifact hashes and syntax before writing either.
+RUN node /opt/patches/patch-omnigent-settings.mjs /opt/piweb/lib/node_modules/@agegr/pi-web
+
 
 # Omnigent is built once per architecture, never downloaded on first activation.
 # Keep Python and the SDK in separate OCI layers for HA's transfer budget.
@@ -165,8 +170,8 @@ RUN apt-get update \
 # HA already ships a pinned official Claude CLI. The SDK falls back to PATH;
 # remove its duplicate binary before any runtime COPY creates an OCI layer.
 RUN /opt/omnigent/venv/bin/python -c 'from pathlib import Path; import claude_agent_sdk; p=Path(claude_agent_sdk.__file__).parent / "_bundled" / "claude"; print("Removed duplicate Claude bytes:", p.stat().st_size if p.exists() else 0); p.unlink(missing_ok=True)'
-ARG PI_OMNIGENT_VERSION=0.3.11
-ARG PI_OMNIGENT_SHA256=4d1565e727f8b02accfab135e7e4376dd00a2448e1f212299089d3fae7e19a01
+ARG PI_OMNIGENT_VERSION=0.3.13
+ARG PI_OMNIGENT_SHA256=b58fa618ab06c8f8d5f6a545e9a07b6e8dc706e0326ff7827682abc03eb15c2c
 RUN curl --fail --silent --show-error --location --retry 3 \
       "https://github.com/WOOWTECH/pi-omnigent-plugin/releases/download/v${PI_OMNIGENT_VERSION}/woowtech-pi-omnigent-plugin-${PI_OMNIGENT_VERSION}.tgz" -o /tmp/plugin.tgz \
     && echo "${PI_OMNIGENT_SHA256}  /tmp/plugin.tgz" | sha256sum --check --strict \

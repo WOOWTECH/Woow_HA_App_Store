@@ -1,3 +1,15 @@
+## 0.15.1
+
+- Bundle checksum-verified Omnigent plugin 0.3.13 with runtime retention, native provider-error classification and actual verification-model receipts; retain Pi Web 0.12.0 and the existing installed engines.
+
+- Add Omnigent immediately after MCP in Pi Web 0.12.0's native Settings tabs and mobile section picker. The section embeds the existing private HA settings page; the top-right entry and standalone Ingress `/omnigent` page remain available.
+- Keep credentials out of the host UI: the embedded form is unmounted when leaving its section, conversation links navigate the parent, and Escape closes Settings. The existing Unix socket, token checks, origin checks and request limit are unchanged.
+- Validate both official compiled bundles and all HTML/RSC/manifest references before patching. Rename the changed client asset using its content hash so upgrades do not reuse the old immutable browser cache. Unknown upstream builds fail before any patch is written.
+- Add real compiled Chromium coverage on desktop, tablet and phone, plus fail-closed/idempotence tests against the official npm artifact.
+- Build both PR architectures from the Store downloader's generated local source context after verifying source bytes, executable permissions, build inputs and source locks. Release builds keep their existing context.
+- Add a manual post-release check for an exact Store commit and published version: verify catalog/release provenance, compile the freshly generated amd64 source context and smoke-test the loaded runtime offline without publishing or installing anything.
+- Document the installation prerequisite of at least 10 GB free on the HAOS data disk, with additional space for source builds. Supervisor pulls images before add-on startup, so a runtime guard cannot enforce this prerequisite.
+
 ## 0.15.0
 
 - Build and run image smoke tests on native amd64 and aarch64 GitHub runners, removing QEMU overhead from the ARM release path.

@@ -23,7 +23,7 @@ process.env.PATH = `${guardDir}:${process.env.PATH}`;
 let child;
 try {
   const pkg = JSON.parse(fs.readFileSync(`${BUNDLE}/package.json`, 'utf8'));
-  assert.equal(pkg.version, '0.3.11');
+  assert.equal(pkg.version, '0.3.13');
   assert.equal(JSON.parse(fs.readFileSync('/usr/local/lib/node_modules/@agegr/pi-web/package.json', 'utf8')).version, '0.12.0');
   console.log('SMOKE: loading registered image plugin');
   seed(); const plugin = await loadPlugin(); assert.equal((await plugin.lifecycle()).active, true);
