@@ -775,9 +775,9 @@
           "lint",
           "static",
           "build (amd64)",
-          "build (aarch64)"
-        ],
-        "upgrade_comparison_pending": "#120: pilot; the ruleset requires it once Store PR #72 is merged and the caller uses @main"
+          "build (aarch64)",
+          "Upgrade comparison / compare"
+        ]
       },
       "components": [
         {
@@ -802,9 +802,9 @@
       "branch_rules": {
         "required_checks": [
           "build (amd64)",
-          "build (aarch64)"
-        ],
-        "upgrade_comparison_pending": "#120: pilot; the ruleset requires it once Store PR #72 is merged and the caller uses @main"
+          "build (aarch64)",
+          "Upgrade comparison / compare"
+        ]
       },
       "components": [
         {
