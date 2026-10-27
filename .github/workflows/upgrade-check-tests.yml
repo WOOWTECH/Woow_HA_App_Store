@@ -11,6 +11,8 @@ name: Upgrade comparison tests
     - .addon-sync/addon_sync.py
     - .addon-sync/test_addon_sync.py
     - .addon-sync/requirements.txt
+    - .addon-sync/gh_raw.sh
+    - .addon-sync/registry.json
     - .github/workflows/woow-addon-upgrade-check.yml
     - .github/workflows/upgrade-check-tests.yml
     - .github/actions/addon-sbom/**
@@ -22,6 +24,8 @@ name: Upgrade comparison tests
     - .addon-sync/addon_sync.py
     - .addon-sync/test_addon_sync.py
     - .addon-sync/requirements.txt
+    - .addon-sync/gh_raw.sh
+    - .addon-sync/registry.json
     - .github/workflows/woow-addon-upgrade-check.yml
     - .github/workflows/upgrade-check-tests.yml
     - .github/actions/addon-sbom/**

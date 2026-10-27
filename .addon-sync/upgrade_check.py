@@ -144,6 +144,17 @@ def version_cmp(a, b):
         if x==y:raise ValueError(f'cannot order versions {a!r} and {b!r}')
     return -1 if x<y else 1
 
+def _is_version(v):
+    """True when version_cmp can read `v` (PEP 440, a dotted number with a rebuild suffix, or a leading dotted number)."""
+    try:Version(v);return True
+    except InvalidVersion:return bool(re.match(r'^\d+(?:\.\d+)*',v))
+
+def latest_release(versions):
+    """The newest of `versions` by version_cmp, or None; strings that are not versions (a stray `nightly` tag) are ignored.
+    The PR check's comparison target and the Release notes' window both use this, so they cannot disagree."""
+    found=[v for v in versions if _is_version(v)]
+    return max(found,key=functools.cmp_to_key(version_cmp)) if found else None
+
 def _text(entry, field):
     """A declaration's migration or reason, stripped; '' when it is missing or blank (the declaration then does not count)."""
     return str(entry.get(field) or '').strip()
@@ -181,8 +192,7 @@ def release_notes(notes, version, released=()):
     def below(v):
         try:return version_cmp(v,version)<0
         except ValueError:return False  # a tag that is not a version (or cannot be ordered) is not a Release of this add-on
-    earlier=[v for v in released if v!=version and below(v)]
-    after=max(earlier,key=functools.cmp_to_key(version_cmp)) if earlier else None
+    after=latest_release([v for v in released if v!=version and below(v)])
     found=declarations(notes,after,version);out=[]
     for section,title,label,text_key in RELEASE_SECTIONS:
         if not found[section]:continue
@@ -315,7 +325,15 @@ def main(argv=None):
     n.add_argument('--notes',required=True,help='upgrade-notes.yaml at the released commit (may be absent)')
     n.add_argument('--version',required=True,help='version being released')
     n.add_argument('--released',nargs='*',default=[],help='versions that already have a formal Release')
+    t=sub.add_parser('latest-release',help='read Release tags on stdin, print the newest version with --prefix (nothing when none)')
+    t.add_argument('--prefix',required=True,help='tag prefix: v, or <slug>-v when a repository versions add-ons independently')
     a=p.parse_args(argv)
+    if a.command=='latest-release':
+        try:latest=latest_release([tag[len(a.prefix):] for tag in sys.stdin.read().split() if tag.startswith(a.prefix)])
+        except ValueError as e:
+            _error('Upgrade comparison failed',f'Release tags with prefix {a.prefix}: {e}');return 2
+        if latest is not None:print(latest)
+        return 0
     if a.command=='release-notes':
         try:text=release_notes(_load(a.notes,'optional'),a.version,a.released)
         except (ValueError,TypeError,OSError,yaml.YAMLError) as e:

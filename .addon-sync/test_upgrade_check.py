@@ -1,4 +1,4 @@
-import contextlib,copy,io,json,pathlib,shutil,tempfile,unittest
+import contextlib,copy,io,json,pathlib,shutil,tempfile,unittest,unittest.mock
 import yaml
 import upgrade_check as u
 
@@ -318,6 +318,27 @@ class ReleaseNotes(unittest.TestCase):
         for section,field in [('breaking','migration'),('accepted_vulnerabilities','reason')]:
             with self.subTest(section):
                 with self.assertRaises(ValueError):u.release_notes({'1.3.0':{section:[dict(NOTES['1.3.0'][section][0],**{field:' '})]}},'1.3.0')
+class LatestRelease(unittest.TestCase):
+    """The PR check's comparison target and the Release notes' window use one ordering: version_cmp."""
+    def test_orders_with_version_cmp_where_sort_v_disagrees(self):
+        # sort -V puts 1.2.0rc1 after 1.2.0 and 2026.9.1-10 is fine either way; PEP 440 says rc1 comes first.
+        self.assertEqual(u.latest_release(['1.2.0rc1','1.2.0','1.1.9']),'1.2.0')
+        self.assertEqual(u.latest_release(['2.12.4-v9','2.12.4-v10','2.12.4']),'2.12.4-v10')
+        self.assertEqual(u.latest_release(['1.9.0','1.10.0','nightly']),'1.10.0')
+        self.assertIsNone(u.latest_release(['nightly']));self.assertIsNone(u.latest_release([]))
+    def main(self,stdin,*args):
+        with contextlib.redirect_stdout(io.StringIO()) as out,unittest.mock.patch('sys.stdin',io.StringIO(stdin)):
+            code=u.main(['latest-release',*args])
+        return code,out.getvalue()
+    def test_command_reads_tags_and_prints_the_latest_version_for_the_prefix(self):
+        tags='v1.2.0rc1\nv1.2.0\none-v9.0.0\nv1.1.0\n'
+        self.assertEqual(self.main(tags,'--prefix','v'),(0,'1.2.0\n'))
+        self.assertEqual(self.main(tags,'--prefix','one-v'),(0,'9.0.0\n'))
+        self.assertEqual(self.main(tags,'--prefix','two-v'),(0,''))
+    def test_workflow_uses_the_python_ordering(self):
+        wf=yaml.safe_load((pathlib.Path(__file__).resolve().parent.parent/'.github/workflows/woow-addon-upgrade-check.yml').read_text(encoding='utf-8'))
+        plan=next(s for s in wf['jobs']['compare']['steps'] if s.get('id')=='plan')['run']
+        self.assertIn('upgrade_check.py latest-release --prefix',plan);self.assertNotIn('sort -V',plan)
 class ReleaseNotesCommand(unittest.TestCase):
     """The exact invocation Woow_ha_odoo's release.yml uses."""
     def setUp(self):
@@ -384,46 +405,116 @@ class ReusableWorkflow(unittest.TestCase):
         self.assertIn('built on the device; the vulnerability comparison for these add-ons is #90',self.step('Find the comparison targets'))
     def step(self,name):return next(s for s in self.wf['jobs']['compare']['steps'] if s.get('name')==name)['run']
     def step_env(self,name):return next(s for s in self.wf['jobs']['compare']['steps'] if s.get('name')==name)['env']
-class SkipVulnerabilityScan(unittest.TestCase):
-    """skip_vulnerability_scan: a caller whose prebuilt image is not the one it builds (knxd ships a third-party image),
-    or whose category 4 moved elsewhere, opts out with a reason; category 1 still runs and the report says why."""
-    WF=pathlib.Path(__file__).resolve().parent.parent/'.github/workflows/woow-addon-upgrade-check.yml'
-    REASON='the shipped image is third-party; category 4 for it is out of scope'
-    def setUp(self):
-        self.wf=yaml.safe_load(self.WF.read_text(encoding='utf-8'))
-        self.plan=next(s for s in self.wf['jobs']['compare']['steps'] if s.get('id')=='plan')
-    def test_optional_string_input_that_defaults_to_scanning(self):
-        inp=self.wf['on']['workflow_call']['inputs']['skip_vulnerability_scan']
-        self.assertEqual((inp['type'],inp['default']),('string',''))
-        self.assertEqual(self.plan['env']['SKIP_VULNERABILITY_SCAN'],'${{ inputs.skip_vulnerability_scan }}')
-    def _run_plan(self,skip):
-        # Runs the real "Find the comparison targets" script against a fake repo, gh stubbed (needs bash, jq, yq: CI runners).
+SHELL_TOOLS=all(shutil.which(t) for t in ('bash','jq','yq'))
+needs_shell=unittest.skipUnless(SHELL_TOOLS,'needs bash, jq and yq (present on GitHub runners)')
+class StepHarness(unittest.TestCase):
+    """Runs a real step script of the reusable workflow against a fake repository, gh stubbed (bash, jq, yq: CI runners)."""
+    STORE=pathlib.Path(__file__).resolve().parent.parent
+    WF=STORE/'.github/workflows/woow-addon-upgrade-check.yml'
+    def setUp(self):self.wf=yaml.safe_load(self.WF.read_text(encoding='utf-8'))
+    def step(self,ident):return next(s for s in self.wf['jobs']['compare']['steps'] if ident in (s.get('id'),s.get('name')))
+    def run_step(self,ident,*,policy='release',extra=None,releases='v1.0.0',old_config=True,skip='',sbom=''):
         import os,subprocess
         tmp=pathlib.Path(tempfile.mkdtemp());self.addCleanup(shutil.rmtree,tmp)
         (tmp/'tooling/.addon-sync').mkdir(parents=True);(tmp/'source/addon').mkdir(parents=True);(tmp/'bin').mkdir()
-        (tmp/'tooling/.addon-sync/registry.json').write_text(json.dumps({'providers':{'WOOWTECH/t':{'ref_policy':'release','components':[
-            {'id':'t','source_path':'addon','config_file':'config.yaml'}]}}}))
+        for f in (self.STORE/'.addon-sync').iterdir():
+            if f.suffix in ('.py','.sh'):shutil.copy(f,tmp/'tooling/.addon-sync'/f.name)
+        (tmp/'tooling/.addon-sync/registry.json').write_text(json.dumps({'providers':{'WOOWTECH/t':{'ref_policy':policy,'components':[
+            {'id':'t','source_path':'addon','config_file':'config.yaml'}],**(extra or {})}}}))
         cfg=dict(BASE,image='ghcr.io/da-anda/addon-{arch}')
         (tmp/'source/addon/config.yaml').write_text(yaml.safe_dump(dict(cfg,version='1.1.0')))
-        (tmp/'old.yaml').write_text(yaml.safe_dump(cfg))
+        (tmp/'old.yaml').write_text(yaml.safe_dump(cfg) if old_config else '')
         (tmp/'changed.tsv').write_text('t\taddon\taddon/config.yaml\t1.1.0\n')
-        gh=tmp/'bin/gh';gh.write_text('#!/bin/bash\ncase "$*" in *releases*) echo v1.0.0;; *contents*) cat "$OLD";; *) exit 1;; esac\n');gh.chmod(0o755)
-        env=dict(os.environ,PATH=f"{tmp/'bin'}{os.pathsep}{os.environ['PATH']}",OLD=str(tmp/'old.yaml'),REPO='WOOWTECH/t',BASE_SHA='b',
-            GH_TOKEN='x',SBOM_ARTIFACT='',SKIP_VULNERABILITY_SCAN=skip,RUNNER_TEMP=str(tmp),GITHUB_OUTPUT=str(tmp/'out'))
-        (tmp/'plan.sh').write_text(self.plan['run'])
-        r=subprocess.run(['bash',str(tmp/'plan.sh')],cwd=tmp,env=env,capture_output=True,text=True)
-        plan=(tmp/'plan.txt').read_text().rstrip('\n').split('\x1f') if (tmp/'plan.txt').exists() else []
+        gh=tmp/'bin/gh'
+        gh.write_text('#!/bin/bash\ncase "$*" in\n  *releases*) [ -z "$RELEASES" ] || printf "%s\\n" "$RELEASES";;\n'
+            '  *contents*) if [ -s "$OLD" ]; then cat "$OLD"; else echo "gh: Not Found (HTTP 404)" >&2; exit 1; fi;;\n  *) exit 1;;\nesac\n')
+        gh.chmod(0o755)
+        env=dict(os.environ,PATH=f"{tmp/'bin'}{os.pathsep}{os.environ['PATH']}",OLD=str(tmp/'old.yaml'),RELEASES=releases,REPO='WOOWTECH/t',BASE_SHA='b',
+            GH_TOKEN='x',SBOM_ARTIFACT=sbom,SKIP_VULNERABILITY_SCAN=skip,RUNNER_TEMP=str(tmp),RUN_ATTEMPT='1',
+            GITHUB_OUTPUT=str(tmp/'out'),GITHUB_STEP_SUMMARY=str(tmp/'summary'))
+        (tmp/'step.sh').write_text(self.step(ident)['run'])
+        r=subprocess.run(['bash',str(tmp/'step.sh')],cwd=tmp,env=env,capture_output=True,text=True)
+        plan=(tmp/'plan.txt').read_text().rstrip('\n').split('\x1f') if (tmp/'plan.txt').exists() and (tmp/'plan.txt').read_text() else []
         return r,plan,(tmp/'out').read_text() if (tmp/'out').exists() else ''
-    @unittest.skipUnless(all(shutil.which(t) for t in ('bash','jq','yq')),'needs bash, jq and yq (present on GitHub runners)')
+
+class SkipVulnerabilityScan(StepHarness):
+    """skip_vulnerability_scan: a caller whose prebuilt image is not the one it builds (knxd ships a third-party image),
+    or whose category 4 moved elsewhere, opts out with a reason; category 1 still runs and the report says why.
+    Only a provider the Store registry approves may skip (upgrade_comparison.skip_vulnerability_scan, with the reason)."""
+    REASON='the shipped image is third-party; category 4 for it is out of scope'
+    APPROVED={'upgrade_comparison':{'skip_vulnerability_scan':'#122: third-party image; category 4 moves to #90'}}
+    def test_optional_string_input_that_defaults_to_scanning(self):
+        inp=self.wf['on']['workflow_call']['inputs']['skip_vulnerability_scan']
+        self.assertEqual((inp['type'],inp['default']),('string',''))
+        for ident in ('detect','plan'):
+            with self.subTest(ident):self.assertEqual(self.step(ident)['env']['SKIP_VULNERABILITY_SCAN'],'${{ inputs.skip_vulnerability_scan }}')
+    def test_registry_approves_the_skip_only_for_knxd_and_mcp_addons(self):
+        # #122 (knxd ships a third-party image) and #123 (mcp_addons builds no PR image): category 4 moves to #90.
+        registry=json.loads((self.STORE/'.addon-sync/registry.json').read_text(encoding='utf-8'))
+        approved={repo:p['upgrade_comparison']['skip_vulnerability_scan'] for repo,p in registry['providers'].items()
+            if 'skip_vulnerability_scan' in (p.get('upgrade_comparison') or {})}
+        self.assertEqual(sorted(approved),['WOOWTECH/Woow_ha_knxd_add_on','WOOWTECH/Woow_ha_mcp_addons'])
+        self.assertIn('#122',approved['WOOWTECH/Woow_ha_knxd_add_on']);self.assertIn('#123',approved['WOOWTECH/Woow_ha_mcp_addons'])
+        for reason in approved.values():self.assertIn('#90',reason)
+    @needs_shell
+    def test_unapproved_provider_that_sets_the_skip_fails(self):
+        r,_,_=self.run_step('detect',skip=self.REASON)
+        self.assertEqual(r.returncode,1);self.assertIn('not approved',r.stdout+r.stderr)
+    @needs_shell
+    def test_approved_provider_may_skip(self):
+        r,_,out=self.run_step('detect',skip=self.REASON,extra=self.APPROVED)
+        self.assertEqual(r.returncode,0,r.stdout+r.stderr);self.assertIn('changed=true',out)
+    @needs_shell
     def test_skip_drops_category_4_and_reports_the_reason(self):
-        r,plan,out=self._run_plan(self.REASON)
+        r,plan,out=self.run_step('plan',skip=self.REASON,extra=self.APPROVED)
         self.assertEqual(r.returncode,0,r.stdout+r.stderr)
         # target still found (category 1 runs), no image ref to scan, the reason is the report's scan note
         self.assertEqual(plan[4:],['v1.0.0','',f'skipped by the caller: {self.REASON}']);self.assertIn('scan=false',out)
-    @unittest.skipUnless(all(shutil.which(t) for t in ('bash','jq','yq')),'needs bash, jq and yq (present on GitHub runners)')
+    @needs_shell
     def test_without_skip_a_prebuilt_image_still_needs_its_sbom(self):
-        r,_,_=self._run_plan('')
+        r,_,_=self.run_step('plan')
         self.assertEqual(r.returncode,1);self.assertIn('passes no sbom_artifact',r.stdout+r.stderr)
+
+class ComparisonTarget(StepHarness):
+    """"No comparison target" only when there is no formal Release (or, for ref_policy main, no config at the PR base)."""
+    @needs_shell
+    def test_release_whose_config_cannot_be_read_fails(self):
+        r,plan,_=self.run_step('plan',old_config=False,skip='x')
+        self.assertEqual(r.returncode,1);self.assertIn('v1.0.0 has no addon/config.yaml',r.stdout+r.stderr);self.assertEqual(plan,[])
+    @needs_shell
+    def test_no_formal_release_has_no_comparison_target(self):
+        r,plan,_=self.run_step('plan',releases='',old_config=False)
+        self.assertEqual(r.returncode,0,r.stdout+r.stderr);self.assertEqual(plan[4:],['','','no comparison target'])
+    @needs_shell
+    def test_ref_policy_main_without_config_at_the_base_is_a_new_add_on(self):
+        r,plan,_=self.run_step('plan',policy='main',old_config=False)
+        self.assertEqual(r.returncode,0,r.stdout+r.stderr);self.assertEqual(plan[4:],['b','','no comparison target'])
+    @needs_shell
+    def test_latest_release_is_ordered_like_the_release_notes(self):
+        # sort -V would pick v1.0.0rc1; version_cmp (PEP 440) puts the rc before 1.0.0.
+        r,plan,_=self.run_step('plan',releases='v0.9.0\nv1.0.0\nv1.0.0rc1',skip='x')
+        self.assertEqual(r.returncode,0,r.stdout+r.stderr);self.assertEqual(plan[4],'v1.0.0')
+    def test_the_raw_file_fetch_is_defined_once(self):
+        text=self.WF.read_text(encoding='utf-8')
+        self.assertNotIn('fetch() {',text);self.assertTrue((self.STORE/'.addon-sync/gh_raw.sh').exists())
+        for ident in ('detect','plan'):
+            with self.subTest(ident):self.assertIn('source tooling/.addon-sync/gh_raw.sh',self.step(ident)['run'])
+
+class SbomAttempt(unittest.TestCase):
+    """A re-run must judge the image its own build made, not an earlier attempt's SBOM."""
+    STORE=pathlib.Path(__file__).resolve().parent.parent
+    def test_artifact_name_carries_the_run_attempt(self):
+        action=yaml.safe_load((self.STORE/'.github/actions/addon-sbom/action.yml').read_text(encoding='utf-8'))
+        upload=next(s for s in action['runs']['steps'] if s.get('uses','').startswith('actions/upload-artifact@'))
+        self.assertEqual(upload['with']['name'],'upgrade-comparison-sbom-${{ inputs.component }}-attempt-${{ github.run_attempt }}')
+    def test_wait_accepts_only_this_attempts_artifact(self):
+        wf=yaml.safe_load((self.STORE/'.github/workflows/woow-addon-upgrade-check.yml').read_text(encoding='utf-8'))
+        wait=next(s for s in wf['jobs']['compare']['steps'] if s.get('name')=="Wait for the new images' SBOMs")
+        self.assertEqual(wait['env']['RUN_ATTEMPT'],'${{ github.run_attempt }}')
+        self.assertIn('n="upgrade-comparison-sbom-${id}-attempt-${RUN_ATTEMPT}"',wait['run'])
+    def test_callers_glob_still_matches(self):
+        import fnmatch
+        self.assertTrue(fnmatch.fnmatchcase('upgrade-comparison-sbom-odoo18ce-attempt-2','upgrade-comparison-sbom-*'))
 
 class Scanners(unittest.TestCase):
     ACTION=pathlib.Path(__file__).resolve().parent.parent/'.github/actions/addon-sbom'

@@ -461,6 +461,9 @@
       ]
     },
     "WOOWTECH/Woow_ha_knxd_add_on": {
+      "upgrade_comparison": {
+        "skip_vulnerability_scan": "#122: knxd ships a third-party image, not the one its CI builds; its vulnerability comparison (category 4) moves to #90"
+      },
       "default_branch": "main",
       "required_workflows": [
         ".github/workflows/release.yml"
@@ -527,6 +530,9 @@
       ]
     },
     "WOOWTECH/Woow_ha_mcp_addons": {
+      "upgrade_comparison": {
+        "skip_vulnerability_scan": "#123: mcp_addons builds no image in its PRs (only on woow-disposable-builder); its vulnerability comparison (category 4) moves to #90"
+      },
       "default_branch": "claude-delivery",
       "required_workflows": [
         ".github/workflows/woow-addon-release.yml",
