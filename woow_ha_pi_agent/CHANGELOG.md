@@ -1,4 +1,10 @@
-## 0.15.14
+## 0.15.15
+
+- Bundle Omnigent plugin 0.3.26 again, the same Settings-only plugin that the PaaS Pi Agent image `20261027.1105` ships. Installation, startup and restart bind only through Settings → Omnigent; no setup conversation is created or opened and the Settings link to one is gone. The runtime and tests return to the verified 0.15.13 behavior. Existing conversations, credentials, authorized-host recovery and model verification are unchanged.
+- Version 0.15.14 is withdrawn: it bundled plugin 0.3.27, which created a saved `Omnigent 連線設定` conversation and linked it from Settings. Updating to 0.15.15 removes the link; a conversation already saved by 0.15.14 is left in place and can be deleted from Pi Web.
+- Keep Pi Web 0.12.0, Paseo 0.1.12, add-on options, ports and architectures.
+
+## 0.15.14 (withdrawn)
 
 - Bundle Omnigent plugin 0.3.27. A fresh installation creates one retained `Omnigent 連線設定` conversation, with a direct link from Settings → Omnigent. Server URL, account and password remain in the masked Settings form; creating the conversation does not call a model.
 - Keep Pi Web 0.12.0, Paseo 0.1.12, existing sessions, provider credentials, add-on options, ports and architectures. The browser and image gates verify the new conversation and reuse on restart.

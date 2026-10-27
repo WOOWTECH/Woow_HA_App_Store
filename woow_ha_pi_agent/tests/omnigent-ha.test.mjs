@@ -77,7 +77,7 @@ test('fresh credentials go directly to runtime, never DTO or automatic chat veri
   assert.deepEqual(f.calls, [{ server: 'https://example.test', username: 'test', password: 'private-fixture', verify: false }]);
   assert.equal(view.operation.ok, true); assert.equal(JSON.stringify(view).includes('private-fixture'), false);
   assert.equal(JSON.stringify(view).includes('must-not-leak'), false); assert.equal(view.engines[2].models[0].id, 'fixture-model');
-  assert.equal(view.onboardingUrl, '/?session=test-session');
+  assert.equal('onboardingUrl' in view, false);
 });
 test('model-specific verification is successful even when another engine still needs setup', async () => {
   const f = fakePlugin(); const view = await f.bridge.act({ action: 'verify', engine: 'pi', model: 'fixture-model' });
@@ -123,6 +123,13 @@ test('private HTTP bridge checks token, body, error redaction and HA prefix for 
   assert.equal((await fetch(base + '/omnigent/../../etc/passwd')).status, 404);
   const badHeader = await (await fetch(base + '/omnigent', { headers: { 'X-Ingress-Path': '"><script>bad</script>' } })).text();
   assert.ok(!badHeader.includes('bad</script>'));
+});
+test('Settings bridge and UI never reference a setup conversation', () => {
+  const files = ['rootfs/usr/local/lib/pi-omnigent-ha/bridge.mjs', 'rootfs/usr/local/lib/pi-omnigent-ha/lifecycle.mjs',
+    'rootfs/usr/local/share/pi-omnigent-ha/app.js', 'rootfs/usr/local/share/pi-omnigent-ha/index.html'];
+  for (const file of files) {
+    assert.doesNotMatch(fs.readFileSync(path.join(root, file), 'utf8'), /onboarding|設定對話/i, `${file} must not reference a setup conversation`);
+  }
 });
 test('Pi wrapper preserves per-session provider directory across legacy env scripts', t => {
   const f = fixture(t); const cli = path.join(f.agentDir, 'cli.js');

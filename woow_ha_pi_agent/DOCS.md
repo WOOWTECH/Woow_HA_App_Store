@@ -184,7 +184,7 @@ Logs from each retry show up in the addon Logs tab under the `video-tools-init` 
 
 ## Omnigent
 
-映像已包含固定的 `pi-omnigent-plugin v0.3.27`、Python 3.12 與 Omnigent SDK 0.16.0。首次啟動自動註冊插件並建立一個「Omnigent 連線設定」對話；連線綁定資訊只在 **Settings → Omnigent** 輸入。
+映像已包含固定的 `pi-omnigent-plugin v0.3.26`、Python 3.12 與 Omnigent SDK 0.16.0。首次啟動自動註冊插件，不建立設定對話；連線綁定資訊只在 **Settings → Omnigent** 輸入。
 
 1. 開啟 HA 側邊欄的 Pi Agent，進入 **Settings → Omnigent**（緊接 MCP；手機從設定下拉選單選取）。原生設定分頁會開啟受 HA ingress 保護的設定表單。
 2. 每次全新設定都需輸入 Server URL、帳號及密碼；不內建預設 server、不沿用另一容器的登入。密碼欄位遮罩，送出／離開頁面後清空，不存於對話。

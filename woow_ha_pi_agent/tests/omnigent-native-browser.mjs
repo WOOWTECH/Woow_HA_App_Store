@@ -54,8 +54,7 @@ const calls = [];
 let lifecycle = { active: true, registered: true };
 const current = { phase: 'needs-login', enabled: true, loginConfirmed: false, host: { id: 'fixture', connected: false },
   engines: { pi: { available: true, version: '1.1.0' } } };
-const plugin = { locations: () => ({ stateDir }), version: '0.3.27', lifecycle: async () => lifecycle,
-  onboarding: () => ({ sessionId: omniSession.id }),
+const plugin = { locations: () => ({ stateDir }), version: '0.3.26', lifecycle: async () => lifecycle,
   runtime: { status: async () => current,
     catalog: async () => ({ data: { engines: { pi: { models: [{ id: 'test-a', displayName: 'Test A' }, { id: 'test-b', displayName: 'Test B' }] } } } }),
     initialize: async input => { calls.push({ action: 'connect', ...input }); Object.assign(current, { loginConfirmed: true, server: input.server, host: { connected: true } }); return { ok: true }; },
@@ -238,9 +237,6 @@ try {
     assert.equal(await frame.locator('[name=server]').inputValue(), '');
     assert.equal(await frame.locator('[name=username]').inputValue(), '');
     assert.equal(await frame.locator('[name=password]').getAttribute('type'), 'password');
-    await frame.locator('#onboarding:not([hidden])').waitFor();
-    assert.equal(await frame.locator('#onboarding').getAttribute('href'), `${prefix}/?session=${omniSession.id}`);
-    assert.equal(await frame.locator('#onboarding').getAttribute('target'), '_parent');
     assert.equal(calls.length, callsBefore, 'opening settings must not trigger model calls');
     await page.screenshot({ path: path.join(evidence, `native-top-${viewport.width}.png`), fullPage: true });
     await frame.locator('[name=password]').fill('discard-this-fixture');
@@ -256,7 +252,7 @@ try {
     await frame.locator('#setup button:enabled').waitFor();
     assert.equal(calls.at(-1).verify, false);
     assert.equal(await frame.locator('[name=password]').inputValue(), '');
-    assert.equal(await frame.locator('#onboarding').count(), 1);
+    assert.equal(await frame.locator('#onboarding').count(), 0);
     await frame.locator('#engine').selectOption('pi');
     for (const model of ['test-a', 'test-b']) {
       await frame.locator('#model').selectOption(model); await frame.locator('#verify button').click();
@@ -286,7 +282,7 @@ try {
   assert.ok(!fs.readFileSync(path.join(evidence, 'nginx-access.log'), 'utf8').includes('fixture-pairing'), 'pair fragments never reach nginx access log');
   assert.deepEqual(promptRequests, [], 'no prompts or provider calls');
   fs.writeFileSync(path.join(evidence, 'browser-receipt.json'), JSON.stringify({ piWeb: '0.12.0', upstream: 'npm compiled artifact', proxy: 'actual nginx + simulated HA Supervisor path stripping', modelRuntime: 'fixture only', results, errors, escaped, failedClientAssets, transfers }, null, 2));
-  console.log('PASS Omnigent setup link and native Settings: model selection, disconnect, Paseo and ingress work on desktop/tablet/mobile.');
+  console.log('PASS settings-only Omnigent: no startup conversation or floating link; native settings binding, model selection, disconnect, Paseo and ingress work on desktop/tablet/mobile.');
 } finally {
   await browser?.close(); ingress.closeAllConnections(); ingress.close(); backend.closeAllConnections(); backend.close(); paseo.closeAllConnections(); paseo.close();
   proxy.kill('SIGTERM'); if (proxy.exitCode === null) await once(proxy, 'exit');
