@@ -53,6 +53,14 @@ class Tests(unittest.TestCase):
                 ('options default is null',new(schema=put('db_password','password'),options=put('db_password',None)))]:
             with self.subTest(name):
                 r=run(cfg);self.assertTrue(r['blocked']);self.assertEqual(pairs(r['breaking']),[('required-added','db_password')])
+    def test_new_list_key_follows_supervisor_missing_option_rule(self):
+        # Supervisor (addons/options.py _check_missing_options): a missing list option is optional when its element
+        # schema is an optional scalar such as ["str?"]; any other list (required scalar, mapping items) is required.
+        for schema,blocked in [(['str?'],False),(['int(1,5)?'],False),(['str'],True),([{'name':'str?'}],True)]:
+            with self.subTest(schema=schema):
+                r=run(new(schema=put('tags',schema)))
+                self.assertEqual(pairs(r['breaking']),[('required-added','tags')] if blocked else [])
+        self.assertEqual(run(new(schema=put('tags',['str']),options=put('tags',[])))['breaking'],[])
     def test_nested_keys_use_the_schema_path(self):
         old=new(schema=put('database',{'host':'str','port':'port?'}),options=put('database',{'host':'db','port':5432}))
         old['version']='1.0.0'

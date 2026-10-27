@@ -20,7 +20,7 @@ Breaking changes (`change`, and the `key` it is reported under):
   made-required       `type?` became `type`
   range-narrowed      int/float/str bound added, raised (min) or lowered (max)
   enum-value-removed  a list(a|b) value removed
-  required-added      new required key with no options default (null is no default; list items have none)
+  required-added      new required key with no options default (null is no default; list items have none; ["str?"] is optional)
   arch-removed        an arch value removed                              the arch, e.g. aarch64
   port-removed        a container port/protocol removed or changed       the port, e.g. 8069/tcp
   image-changed       `image` changed, added or removed                  image
@@ -82,7 +82,9 @@ def _added(node, opts, key, path, out):
     if kind=='map':
         for k,v in node.items():_added(v,_sub(opts,key),k,path+'.'+k,out)
     elif kind=='list':
-        if not has_default:out.append(('required-added',path))
+        # Supervisor _check_missing_options: a list is optional when its element is an optional scalar, e.g. ["str?"].
+        optional=bool(node) and isinstance(node[0],str) and parse_type(node[0])[2]
+        if not has_default and not optional:out.append(('required-added',path))
     elif not parse_type(node)[2] and not has_default:out.append(('required-added',path))
 
 def _node(old, new, old_opts, new_opts, path, out):
