@@ -9,6 +9,7 @@ name: Upgrade comparison tests
     - .addon-sync/requirements.txt
     - .github/workflows/woow-addon-upgrade-check.yml
     - .github/workflows/upgrade-check-tests.yml
+    - .github/actions/addon-sbom/**
   push:
     branches: [main]
     paths:
@@ -17,6 +18,7 @@ name: Upgrade comparison tests
     - .addon-sync/requirements.txt
     - .github/workflows/woow-addon-upgrade-check.yml
     - .github/workflows/upgrade-check-tests.yml
+    - .github/actions/addon-sbom/**
 permissions:
   contents: read
 jobs:

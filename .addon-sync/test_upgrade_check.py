@@ -132,9 +132,69 @@ class Tests(unittest.TestCase):
         for version,blocked in [('2.12.5-v1',False),('2.12.4-v2',True)]:
             with self.subTest(version):self.assertEqual(run(cfg,self.notes(version),old=old,old_version='2.12.4-v2')['blocked'],blocked)
         with self.assertRaises(ValueError):run(cfg,self.notes('2.12.4-v3'),old=old,old_version='2.12.4-v2')
-    def test_scan_results_are_not_accepted_until_category_4_exists(self):
-        with self.assertRaises(ValueError):u.compare(BASE,new(),'1.0.0','1.1.0',old_scan={'matches':[]},new_scan={'matches':[]})
-        self.assertIn('Vulnerability comparison: not run',run(new())['report'])
+
+def match(vid,package,severity='High',state='fixed',versions=('1.2.3',)):
+    return {'vulnerability':{'id':vid,'severity':severity,'fix':{'state':state,'versions':list(versions)}},'artifact':{'name':package,'version':'1.0'}}
+def scan(*matches):return {'matches':list(matches)}
+OLD_SCAN=scan(match('CVE-2026-0001','openssl'))
+def vrun(new_scan,old_scan=OLD_SCAN,notes=None):
+    return u.compare(BASE,new(),'1.0.0','1.1.0',notes=notes,old_scan=old_scan,new_scan=new_scan)
+
+class Vulnerabilities(unittest.TestCase):
+    def test_new_fixable_vulnerability_blocks_and_is_listed(self):
+        r=vrun(scan(match('CVE-2026-0001','openssl'),match('CVE-2026-0002','zlib','Critical',versions=('1.3.1','1.4.0'))))
+        self.assertTrue(r['blocked'])
+        self.assertEqual(r['vulnerabilities']['new_fixable'],[{'id':'CVE-2026-0002','package':'zlib','severity':'Critical','fixed_in':['1.3.1','1.4.0'],'accepted':False}])
+        self.assertEqual((r['vulnerabilities']['old_count'],r['vulnerabilities']['new_count']),(1,2))
+        self.assertIn('| CVE-2026-0002 | zlib | Critical | 1.3.1, 1.4.0 |',r['report'])
+    def test_three_cases_that_do_not_block(self):
+        rows=[('already in the old image',match('CVE-2026-0001','openssl',state='fixed'),'already in 1.0.0'),
+            ('no fixed version',match('CVE-2026-0003','curl','Critical',state='not-fixed',versions=()),'no fixed version'),
+            ('below High',match('CVE-2026-0004','bash','Medium'),'below High')]
+        for name,m,reason in rows:
+            with self.subTest(name):
+                r=vrun(scan(m))
+                self.assertFalse(r['blocked']);self.assertEqual(r['vulnerabilities']['new_fixable'],[])
+                self.assertIn(reason,r['report'])
+    def test_severity_is_compared_case_insensitively(self):
+        self.assertTrue(vrun(scan(match('CVE-2026-0005','glibc','HIGH')))['blocked'])
+    NEW=staticmethod(lambda:scan(match('CVE-2026-0002','zlib')))
+    def accept(self,vid='CVE-2026-0002',package='zlib',reason='Upstream base image not updated yet; replaced in 1.1.1.',version='1.1.0'):
+        return {version:{'accepted_vulnerabilities':[{'id':vid,'package':package,'reason':reason}]}}
+    def test_accepted_vulnerability_passes_and_shows_the_reason(self):
+        r=vrun(self.NEW(),notes=self.accept())
+        self.assertFalse(r['blocked']);self.assertTrue(r['vulnerabilities']['new_fixable'][0]['accepted'])
+        self.assertIn('Upstream base image not updated yet; replaced in 1.1.1.',r['report'])
+    def test_acceptance_needs_the_same_id_and_package_and_a_reason(self):
+        for name,kw in [('other id',{'vid':'CVE-2026-9999'}),('other package',{'package':'zlib1g'}),('old section',{'version':'1.0.0'})]:
+            with self.subTest(name):self.assertTrue(vrun(self.NEW(),notes=self.accept(**kw))['blocked'])
+        for reason in ['',' ',None]:
+            with self.subTest(repr(reason)):
+                r=vrun(self.NEW(),notes=self.accept(reason=reason))
+                self.assertTrue(r['blocked']);self.assertEqual(r['problems'],['1.1.0: accepted CVE-2026-0002 zlib has no reason'])
+    def test_acceptance_with_no_matching_vulnerability_is_reported_only(self):
+        r=vrun(scan(),notes=self.accept())
+        self.assertFalse(r['blocked']);self.assertIn('CVE-2026-0002',r['report'])
+    def test_blocked_headline_names_the_vulnerability(self):
+        self.assertIn('new fixable vulnerability',vrun(self.NEW())['report'].splitlines()[2])
+    def test_no_scan_results_says_why(self):
+        r=u.compare(BASE,new(),'1.0.0','1.1.0',scan_note='built on the device; compared in #90')
+        self.assertFalse(r['blocked']);self.assertIsNone(r['vulnerabilities'])
+        self.assertIn('Vulnerability comparison: not run (built on the device; compared in #90).',r['report'])
+    def test_one_sided_or_malformed_scans_are_an_error(self):
+        rows=[('old scan missing',None,self.NEW()),('new scan missing',OLD_SCAN,None),('not Grype JSON',OLD_SCAN,{'results':[]}),
+            ('match without id',OLD_SCAN,scan({'vulnerability':{'severity':'High'},'artifact':{'name':'zlib'}}))]
+        for name,old_scan,new_scan in rows:
+            with self.subTest(name):
+                with self.assertRaises(ValueError):vrun(new_scan,old_scan=old_scan)
+    def test_scans_from_different_databases_are_an_error(self):
+        def db(built):return {'db':{'status':{'schemaVersion':'v6.1.10','built':built,'from':'https://grype.anchore.io/databases/v6/db.tar.zst?checksum=sha256%3A'+'b'*64,'valid':True}}}
+        old_scan=dict(OLD_SCAN,descriptor=db('2026-10-27T00:00:00Z'))
+        self.assertFalse(vrun(dict(scan(),descriptor=db('2026-10-27T00:00:00Z')),old_scan=old_scan)['blocked'])
+        with self.assertRaises(ValueError):vrun(dict(scan(),descriptor=db('2026-10-26T00:00:00Z')),old_scan=old_scan)
+    def test_no_comparison_target_with_a_scan_passes(self):
+        r=u.compare(None,new(),None,'1.1.0',new_scan=self.NEW())
+        self.assertFalse(r['blocked']);self.assertIn('no comparison target',r['report'])
 
 class CommandLine(unittest.TestCase):
     def setUp(self):
@@ -161,6 +221,16 @@ class CommandLine(unittest.TestCase):
     def test_malformed_notes_exit_2(self):
         code,out=self.main('--old',self.write('old.yaml',BASE),'--new',self.write('new.yaml',new()),'--notes',self.write('notes.yaml','1.1: {}\n'))
         self.assertEqual(code,2);self.assertIn('quoted string',out)
+    def test_new_fixable_vulnerability_exits_1_with_an_annotation(self):
+        import json
+        args=['--old',self.write('old.yaml',BASE),'--new',self.write('new.yaml',new()),'--old-scan',self.write('old.json',json.dumps(OLD_SCAN))]
+        code,out=self.main(*args,'--new-scan',self.write('new.json',json.dumps(scan(match('CVE-2026-0002','zlib')))))
+        self.assertEqual(code,1);self.assertIn('::error title=New fixable vulnerability::CVE-2026-0002 zlib',out)
+        self.assertIn('CVE-2026-0002',self.summary.read_text(encoding='utf-8'))
+        self.assertEqual(self.main(*args,'--new-scan',self.write('bad.json','{}'))[0],2)
+    def test_scan_note_explains_a_skipped_comparison(self):
+        self.main('--old',self.write('old.yaml',BASE),'--new',self.write('new.yaml',new()),'--scan-note','built on the device; compared in #90')
+        self.assertIn('not run (built on the device; compared in #90)',self.summary.read_text(encoding='utf-8'))
 class ReusableWorkflow(unittest.TestCase):
     """Shape that callers and the ruleset depend on; the shell itself is verified on pilot PRs (#89 Testing Decisions)."""
     def setUp(self):
@@ -179,5 +249,25 @@ class ReusableWorkflow(unittest.TestCase):
         self.assertLess(test,compare)
     def test_no_secrets_beyond_the_job_token(self):
         self.assertNotIn('secrets.',self.text)
+    def test_db_is_updated_once_before_scanning_and_has_an_age_limit(self):
+        steps=self.wf['jobs']['compare']['steps'];runs=[s.get('run','') for s in steps]
+        update=next(i for i,r in enumerate(runs) if 'grype" db update' in r);compare=next(i for i,r in enumerate(runs) if 'upgrade_check.py compare' in r)
+        self.assertLess(update,compare);self.assertIn('GRYPE_DB_AUTO_UPDATE=false',runs[compare])
+        self.assertEqual(self.wf['jobs']['compare']['env']['DB_MAX_AGE_HOURS'],'120')
+class Scanners(unittest.TestCase):
+    ACTION=pathlib.Path(__file__).resolve().parent.parent/'.github/actions/addon-sbom'
+    def test_pinned_versions_and_checksums(self):
+        import json,re
+        pins=json.loads((self.ACTION/'scanner-pins.json').read_text(encoding='utf-8'))
+        self.assertEqual({k:v['version'] for k,v in pins.items()},{'syft':'1.54.0','grype':'0.120.0'})
+        for name,pin in pins.items():
+            with self.subTest(name):
+                self.assertRegex(pin['sha256'],r'^[0-9a-f]{64}$');self.assertIn(f'/v{pin["version"]}/',pin['url'])
+    def test_third_party_actions_are_pinned_by_commit(self):
+        import re
+        for path in [self.ACTION/'action.yml',self.ACTION.parent.parent/'workflows/woow-addon-upgrade-check.yml']:
+            for ref in re.findall(r'uses: *([^\s#]+)',path.read_text(encoding='utf-8')):
+                with self.subTest(ref):
+                    if not ref.startswith('WOOWTECH/'):self.assertRegex(ref,r'@[0-9a-f]{40}$')
 
 if __name__=='__main__':unittest.main()

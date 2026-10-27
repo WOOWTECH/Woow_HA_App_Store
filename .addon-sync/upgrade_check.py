@@ -3,7 +3,14 @@
 
 Category 1 (configuration compatibility): every breaking change between the
 comparison target and the new config must be declared in the add-on's
-upgrade-notes.yaml, or the check blocks. No network, no Docker: the reusable
+upgrade-notes.yaml, or the check blocks.
+
+Category 4 (vulnerabilities, add-ons with a prebuilt image): Grype JSON of the
+old and new amd64 images, scanned with the same DB. A new fixable vulnerability,
+matched by (vulnerability id, package): in the new image only, severity Critical
+or High (any case), Grype fix.state `fixed`. It blocks unless accepted in
+upgrade-notes.yaml with a reason. Already in the old image, no fixed version,
+or below High: counted in the report only. No network, no Docker: the reusable
 workflow woow-addon-upgrade-check.yml fetches the inputs and calls this.
 
 Breaking changes (`change`, and the `key` it is reported under):
@@ -26,7 +33,10 @@ upgrade-notes.yaml, next to config.yaml, created only when needed:
       - change: option-removed   # same change and key as the report
         key: ssl_port
         migration: Use the 443/tcp port mapping instead.   # must not be empty
-    accepted_vulnerabilities:    # category 4 (#118): id, package, reason
+    accepted_vulnerabilities:
+      - id: CVE-2026-1234        # same id and package as the report
+        package: openssl
+        reason: Upstream base image not updated yet; replaced in 1.3.1.   # must not be empty
 """
 from __future__ import annotations
 import argparse, json, os, pathlib, re, sys
@@ -146,26 +156,69 @@ def declarations(notes, after, upto):
 def _paste(version, items):
     return '\n'.join([f'"{version}":','  breaking:']+[f'    - change: {i["change"]}\n      key: {i["key"]}\n      migration: ' for i in items])
 
-def compare(old, new, old_version, new_version, notes=None, old_scan=None, new_scan=None, name=None, notes_path='upgrade-notes.yaml'):
+BLOCKING_SEVERITIES={'critical','high'}
+
+def _findings(scan):
+    """{(vulnerability id, package): match} from Grype JSON; one entry per pair however many locations match."""
+    if not isinstance(scan,dict) or not isinstance(scan.get('matches'),list):raise ValueError('scan result is not Grype JSON (no matches list)')
+    out={}
+    for m in scan['matches']:
+        v,a=(m.get('vulnerability') or {},m.get('artifact') or {}) if isinstance(m,dict) else ({},{})
+        if not v.get('id') or not a.get('name'):raise ValueError('Grype match without vulnerability.id or artifact.name')
+        out.setdefault((v['id'],a['name']),m)
+    return out
+
+def _database(scan):
+    """The DB a Grype scan used (Grype 0.120: descriptor.db.status), or None when the JSON does not say."""
+    db=(scan.get('descriptor') or {}).get('db') or {}
+    status=db.get('status') or db
+    return (status.get('built'),status.get('from') or status.get('checksum')) if status else None
+
+def category4(old_scan, new_scan):
+    """Counts and new fixable vulnerabilities: in the new image only, Critical/High, Grype fix.state fixed."""
+    if old_scan is None or new_scan is None:raise ValueError('vulnerability comparison needs both the old and the new scan result')
+    old,new=_findings(old_scan),_findings(new_scan)
+    if _database(old_scan)!=_database(new_scan):raise ValueError(f'old and new images were scanned with different vulnerability databases ({_database(old_scan)} vs {_database(new_scan)})')
+    fixable=[];skipped={'in_old':0,'not_fixed':0,'low':0}
+    for (vid,package),m in new.items():
+        v=m['vulnerability'];fix=v.get('fix') or {}
+        if (vid,package) in old:skipped['in_old']+=1;continue
+        if str(v.get('severity','')).lower() not in BLOCKING_SEVERITIES:skipped['low']+=1;continue
+        if fix.get('state')!='fixed':skipped['not_fixed']+=1;continue
+        fixable.append({'id':vid,'package':package,'severity':v.get('severity'),'fixed_in':list(fix.get('versions') or []),'accepted':False})
+    return {'old_count':len(old),'new_count':len(new),'new_fixable':fixable,'not_blocking':skipped}
+
+def compare(old, new, old_version, new_version, notes=None, old_scan=None, new_scan=None, name=None, notes_path='upgrade-notes.yaml', scan_note='no scan results'):
     """Judge one add-on.
 
     `old`/`new`: parsed config.yaml; `old` is None when there is no comparison target (first release).
     `notes`: parsed upgrade-notes.yaml or None. `old_scan`/`new_scan`: Grype JSON for category 4 (#118), None = not scanned.
-    Returns blocked, breaking [{change, key, declared}], notices, unmatched declarations, problems, and a Markdown report."""
-    if old_scan is not None or new_scan is not None:raise ValueError('vulnerability comparison is not implemented yet (#118)')
+    `scan_note`: report text for why there are no scan results.
+    Returns blocked, vulnerabilities (None when not scanned), breaking [{change, key, declared}], notices,
+    unmatched declarations, problems, and a Markdown report."""
     name=name or new.get('slug') or 'add-on'
-    declared=declarations(notes,old_version,new_version)['breaking']
+    sections=declarations(notes,old_version,new_version);declared=sections['breaking']
     if old is None:
         report=[f'### {name} {new_version}','','**Passed**: no comparison target (no earlier formal Release), so there is nothing to compare.']
-        return {'blocked':False,'breaking':[],'notices':[],'unmatched':[],'problems':[],'report':'\n'.join(report)+'\n'}
+        return {'blocked':False,'vulnerabilities':None,'breaking':[],'notices':[],'unmatched':[],'problems':[],'report':'\n'.join(report)+'\n'}
     found,notes_only=category1(old,new)
     problems=[f'{d["version"]}: {d["change"]} {d["key"]} has no migration' for d in declared if not str(d.get('migration') or '').strip()]
     valid={(d['change'],d['key']):d for d in declared if str(d.get('migration') or '').strip()}
     breaking=[{'change':c,'key':k,'declared':(c,k) in valid} for c,k in found]
     notices=[{'change':c,'key':k,'detail':d} for c,k,d in notes_only]
     unmatched=[{'change':d['change'],'key':d['key'],'version':d['version']} for d in declared if (d['change'],d['key']) not in set(found)]
-    blocked=any(not b['declared'] for b in breaking) or bool(problems)
-    r=[f'### {name} {old_version} → {new_version}','',('**Blocked**: undeclared breaking change or invalid declaration.' if blocked else '**Passed**.'),'']
+    vulns=category4(old_scan,new_scan) if (old_scan,new_scan)!=(None,None) else None
+    if vulns is not None:
+        accepted=sections['accepted_vulnerabilities']
+        problems+=[f'{d["version"]}: accepted {d["id"]} {d["package"]} has no reason' for d in accepted if not str(d.get('reason') or '').strip()]
+        reasons={(d['id'],d['package']):str(d['reason']).strip() for d in accepted if str(d.get('reason') or '').strip()}
+        for f in vulns['new_fixable']:
+            f['accepted']=(f['id'],f['package']) in reasons
+            if f['accepted']:f['reason']=reasons[(f['id'],f['package'])]
+        listed={(f['id'],f['package']) for f in vulns['new_fixable']}
+        vulns['unmatched_accepted']=[{'id':d['id'],'package':d['package'],'version':d['version']} for d in accepted if (d['id'],d['package']) not in listed]
+    blocked=any(not b['declared'] for b in breaking) or bool(problems) or bool(vulns and any(not f['accepted'] for f in vulns['new_fixable']))
+    r=[f'### {name} {old_version} → {new_version}','',('**Blocked**: undeclared breaking change, new fixable vulnerability, or invalid declaration.' if blocked else '**Passed**.'),'']
     if breaking:
         r+=['Breaking changes (each needs an entry in `'+notes_path+'`):','','| change | key | declared | migration |','|---|---|---|---|']
         r+=[f'| `{b["change"]}` | `{b["key"]}` | {"yes" if b["declared"] else "**no**"} | {valid[(b["change"],b["key"])]["migration"].strip() if b["declared"] else ""} |' for b in breaking]
@@ -178,8 +231,19 @@ def compare(old, new, old_version, new_version, notes=None, old_scan=None, new_s
     if unmatched:
         r+=['Declarations with no matching change (check the spelling of `change` and `key`):','']+[f'- {u["version"]}: `{u["change"]}` `{u["key"]}`' for u in unmatched]+['']
     if problems:r+=['Invalid declarations:','']+[f'- {p}' for p in problems]+['']
-    r.append('Vulnerability comparison: not run (no scan results).')
-    return {'blocked':blocked,'breaking':breaking,'notices':notices,'unmatched':unmatched,'problems':problems,'report':'\n'.join(r)+'\n'}
+    if vulns is None:r.append(f'Vulnerability comparison: not run ({scan_note}).')
+    else:
+        r+=[f'Vulnerabilities (Grype, amd64): {vulns["old_count"]} in {old_version}, {vulns["new_count"]} in {new_version}.','']
+        if vulns['new_fixable']:
+            r+=['New fixable vulnerabilities (Critical/High with a fixed version, not in '+old_version+'; each blocks unless accepted in `'+notes_path+'`):','',
+                '| id | package | severity | fixed in | accepted |','|---|---|---|---|---|']
+            r+=[f'| {f["id"]} | {f["package"]} | {f["severity"]} | {", ".join(f["fixed_in"])} | {f.get("reason") if f["accepted"] else "**no**"} |' for f in vulns['new_fixable']]+['']
+        else:r+=['No new fixable vulnerabilities.','']
+        n=vulns['not_blocking']
+        if vulns['unmatched_accepted']:
+            r+=['Accepted vulnerabilities that are not new fixable ones (check `id` and `package`):','']+[f'- {d["version"]}: {d["id"]} {d["package"]}' for d in vulns['unmatched_accepted']]+['']
+        r.append(f'Report only (does not block): {n["in_old"]} already in {old_version}, {n["not_fixed"]} new with no fixed version, {n["low"]} new below High.')
+    return {'blocked':blocked,'vulnerabilities':vulns,'breaking':breaking,'notices':notices,'unmatched':unmatched,'problems':problems,'report':'\n'.join(r)+'\n'}
 
 def _load(path, kind):
     """Parsed YAML/JSON file, or None when `path` is not given or (for optional inputs) does not exist."""
@@ -195,12 +259,13 @@ def main(argv=None):
     c.add_argument('--old',help="comparison target's config.yaml; omit when there is none")
     c.add_argument('--new',required=True,help='config.yaml of this PR');c.add_argument('--notes',help='upgrade-notes.yaml next to the new config.yaml (may be absent)')
     c.add_argument('--old-scan');c.add_argument('--new-scan');c.add_argument('--name');c.add_argument('--notes-path',default='upgrade-notes.yaml')
+    c.add_argument('--scan-note',default='no scan results',help='why there are no scan results (report text)')
     c.add_argument('--summary',default=os.environ.get('GITHUB_STEP_SUMMARY'),help='Markdown file the report is appended to')
     a=p.parse_args(argv)
     try:
         old,new=_load(a.old,'yaml'),_load(a.new,'yaml')
         r=compare(old,new,old_version=str(old['version']) if old else None,new_version=str(new['version']),notes=_load(a.notes,'optional'),
-            old_scan=_load(a.old_scan,'json'),new_scan=_load(a.new_scan,'json'),name=a.name,notes_path=a.notes_path)
+            old_scan=_load(a.old_scan,'json'),new_scan=_load(a.new_scan,'json'),name=a.name,notes_path=a.notes_path,scan_note=a.scan_note)
     except (ValueError,KeyError,TypeError,OSError,yaml.YAMLError) as e:
         print(f'::error title=Upgrade comparison failed::{a.name or a.new}: {e}');return 2
     print(r['report'])
@@ -208,6 +273,8 @@ def main(argv=None):
         with open(a.summary,'a',encoding='utf-8') as f:f.write(r['report']+'\n')
     for b in r['breaking']:
         if not b['declared']:print(f'::error title=Undeclared breaking change::{b["change"]} {b["key"]} — declare it in {a.notes_path}')
+    for f in (r.get('vulnerabilities') or {}).get('new_fixable',[]):
+        if not f['accepted']:print(f'::error title=New fixable vulnerability::{f["id"]} {f["package"]} ({f["severity"]}, fixed in {", ".join(f["fixed_in"])}) — upgrade the package or accept it in {a.notes_path}')
     for problem in r['problems']:print(f'::error title=Invalid declaration::{problem}')
     return 1 if r['blocked'] else 0
 

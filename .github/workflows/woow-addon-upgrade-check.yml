@@ -8,12 +8,22 @@
 # (format and change names: the docstring of .addon-sync/upgrade_check.py).
 # A PR that changes no version passes in seconds; any tool error fails.
 #
+# Category 4 (add-ons with a prebuilt image): the caller's amd64 build hands
+# over its SBOM through the Store action .github/actions/addon-sbom; this
+# workflow pulls the comparison target's amd64 image from GHCR, makes its
+# SBOM with the same pinned Syft, updates the Grype DB once (it fails when the
+# DB is more than DB_MAX_AGE_HOURS old) and scans both SBOMs with that DB.
+# Add-ons built on the device are reported as compared in #90.
+#
 # Caller (in a workflow that also runs on push to the default branch, so
 # addon_sync's ci_gate keeps seeing a successful non-PR run; no path filter):
 #
 #   upgrade-comparison:
 #     name: Upgrade comparison
+#     needs: build-amd64                          # the job that ran addon-sbom
 #     uses: WOOWTECH/Woow_HA_App_Store/.github/workflows/woow-addon-upgrade-check.yml@main
+#     with:
+#       sbom_artifact: upgrade-comparison-sbom-*  # omit when no add-on has a prebuilt image
 #
 # GitHub names the check "<caller job> / <job>": "Upgrade comparison / compare".
 # On other events the job passes at once: the PR was already compared.
@@ -25,13 +35,20 @@ name: Upgrade comparison
         description: Store ref whose .addon-sync tooling runs; keep it equal to the ref in the uses line.
         type: string
         default: main
+      sbom_artifact:
+        description: Name or glob of the artifacts the addon-sbom action uploaded (<component>.syft.json each); empty = no category 4.
+        type: string
+        default: ''
 permissions:
   contents: read
 jobs:
   compare:
     name: compare
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 30
+    env:
+      # Grype refuses an older DB; the step after `grype db update` checks it too, with a clear reason.
+      DB_MAX_AGE_HOURS: '120'
     steps:
     - name: Not a pull request
       if: github.event_name != 'pull_request'
@@ -54,6 +71,7 @@ jobs:
         sparse-checkout: |
           .addon-sync
           .github/workflows
+          .github/actions/addon-sbom
         persist-credentials: false
     - name: Find add-ons whose version changed
       id: detect
@@ -95,9 +113,37 @@ jobs:
     - name: Test the comparison
       if: steps.detect.outputs.changed == 'true'
       run: python3 tooling/.addon-sync/test_upgrade_check.py -v
+    - name: Download the new images' SBOMs
+      if: steps.detect.outputs.changed == 'true' && inputs.sbom_artifact != ''
+      uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      with:
+        pattern: ${{ inputs.sbom_artifact }}
+        merge-multiple: true
+        path: sboms
+    - name: Install pinned Syft and Grype
+      if: steps.detect.outputs.changed == 'true' && inputs.sbom_artifact != ''
+      run: bash tooling/.github/actions/addon-sbom/install-scanners.sh "$RUNNER_TEMP/scanners" syft grype
+    - name: Update the vulnerability database
+      if: steps.detect.outputs.changed == 'true' && inputs.sbom_artifact != ''
+      run: |
+        set -euo pipefail
+        export GRYPE_DB_CACHE_DIR="$RUNNER_TEMP/grype-db" GRYPE_CHECK_FOR_APP_UPDATE=false
+        # Fetched once, alone, before any scan; both images are then scanned with this DB.
+        if ! "$RUNNER_TEMP/scanners/grype" db update; then
+          echo "::error title=Vulnerability database::grype db update failed (download or validation); re-run the check"; exit 1
+        fi
+        "$RUNNER_TEMP/scanners/grype" db status -o json > "$RUNNER_TEMP/db-status.json"
+        built="$(jq -er '.built' "$RUNNER_TEMP/db-status.json")"
+        age=$(( $(date -u +%s) - $(date -u -d "${built}" +%s) ))
+        echo "Vulnerability database built ${built} ($(( age / 3600 ))h ago, limit ${DB_MAX_AGE_HOURS}h)"
+        if [ "${age}" -gt $(( DB_MAX_AGE_HOURS * 3600 )) ]; then
+          echo "::error title=Vulnerability database::the Grype DB was built ${built}, more than ${DB_MAX_AGE_HOURS}h ago; refusing to judge with stale data"; exit 1
+        fi
     - name: Compare with the comparison target
       if: steps.detect.outputs.changed == 'true'
       env:
+        SCAN: ${{ inputs.sbom_artifact != '' }}
+        SBOM_ARTIFACT: ${{ inputs.sbom_artifact }}
         GH_TOKEN: ${{ github.token }}
         REPO: ${{ github.repository }}
         BASE_SHA: ${{ github.event.pull_request.base.sha }}
@@ -131,6 +177,41 @@ jobs:
             if [ -s "$old" ]; then args+=(--old "$old"); echo "${id}: comparing ${version} with ${target}"; else echo "${id}: no config at ${target}"; fi
           else
             echo "${id}: no formal Release yet"
+          fi
+          # Category 4: needs a prebuilt image, the new image's SBOM and a comparison target.
+          image="$(yq -r '.image // ""' "source/${path}")"
+          if [ -z "${image}" ]; then
+            args+=(--scan-note "built on the device; the vulnerability comparison for these add-ons is #90")
+          elif [ "${SCAN}" != "true" ]; then
+            args+=(--scan-note "the caller passes no SBOM of the new image (sbom_artifact)")
+          elif [ ! -s "${old}" ]; then
+            args+=(--scan-note "no comparison target")
+          elif [ ! -s "sboms/${id}.syft.json" ]; then
+            echo "::error title=Upgrade comparison failed::${id}: no sboms/${id}.syft.json in artifact ${SBOM_ARTIFACT}; run the addon-sbom action with component: ${id}"
+            status=1; continue
+          else
+            old_image="$(yq -r '.image // ""' "${old}")"
+            old_version="$(yq -r '.version' "${old}")"
+            ref="${old_image//\{arch\}/amd64}:${old_version}"
+            if [ -z "${old_image}" ]; then
+              args+=(--scan-note "the comparison target ${target} has no prebuilt image")
+            elif ! docker pull --quiet --platform linux/amd64 "${ref}"; then
+              echo "::error title=Upgrade comparison failed::${id}: cannot pull the comparison target's image ${ref} from the registry; re-run, or check that the image of ${target} exists"
+              status=1; continue
+            else
+              export GRYPE_DB_CACHE_DIR="$RUNNER_TEMP/grype-db" GRYPE_DB_AUTO_UPDATE=false GRYPE_DB_VALIDATE_AGE=true                 GRYPE_DB_MAX_ALLOWED_BUILT_AGE="${DB_MAX_AGE_HOURS}h" GRYPE_CHECK_FOR_APP_UPDATE=false SYFT_CHECK_FOR_APP_UPDATE=false
+              if ! "$RUNNER_TEMP/scanners/syft" scan "docker:${ref}" --config tooling/.github/actions/addon-sbom/syft.yaml -o "syft-json=$RUNNER_TEMP/${id}.old.syft.json"; then
+                echo "::error title=Upgrade comparison failed::${id}: Syft could not read ${ref}"; status=1; continue
+              fi
+              for side in old new; do
+                sbom="$RUNNER_TEMP/${id}.old.syft.json"; [ "${side}" = old ] || sbom="sboms/${id}.syft.json"
+                if ! "$RUNNER_TEMP/scanners/grype" "sbom:${sbom}" -o json --file "$RUNNER_TEMP/${id}.${side}.grype.json"; then
+                  echo "::error title=Upgrade comparison failed::${id}: Grype could not scan the ${side} image's SBOM"; status=1; continue 2
+                fi
+              done
+              echo "${id}: scanned ${ref} and the PR image with the same DB"
+              args+=(--old-scan "$RUNNER_TEMP/${id}.old.grype.json" --new-scan "$RUNNER_TEMP/${id}.new.grype.json")
+            fi
           fi
           rc=0; python3 tooling/.addon-sync/upgrade_check.py compare "${args[@]}" || rc=$?
           [ "${rc}" = 0 ] || status=1
