@@ -361,6 +361,7 @@ Public origin is where it works. Set `public_url` if you need any of them.
 | A link Odoo builds in the page from the address bar and that is not listed under "Links the browser builds" | Through Ingress that address is Home Assistant's | Produce the link from the Public origin |
 | A sidebar address sent to someone else, or a link to one screen | An Ingress address carries your session token and opens only for you; and the browser's address bar shows only the add-on panel, not the Odoo screen inside it, so a copied address opens the panel's start screen | Send the Public origin address of that screen |
 | The address of a tab Odoo opens in the browser for you — a survey's Test button, a link that opens a new tab, "open in new tab" — sent to someone else | The tab itself works, but it is a top-level page, and through Ingress every top-level page lives under the add-on's own address: the tab's address carries your session token and opens only for you | Open the same screen on the Public origin and send that address |
+| A tab Odoo opens from the Home Assistant Companion app on Android | The app hands the tab to the phone's browser, which is not logged in to Home Assistant, so the tab answers 401 | Open the same screen on the Public origin |
 
 Point of Sale is not on this list. It works through Ingress and keeps selling
 through a network outage there too: a till that is already open validates

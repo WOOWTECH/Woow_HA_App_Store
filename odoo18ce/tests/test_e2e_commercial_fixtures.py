@@ -59,9 +59,9 @@ class CommercialFixtureLedgerTest(unittest.TestCase):
         plan = self.ledger.plan_cleanup()
         self.assertEqual(["line", "product", "category"], [action.fixture_id for action in plan.actions])
         self.assertTrue(all(item.state == FixtureState.CLEANUP_PLANNED for item in self.ledger.fixtures.values()))
-        with self.assertRaisesRegex(LedgerError, "cannot be cleaned before dependents: \['product'\]"):
+        with self.assertRaisesRegex(LedgerError, r"cannot be cleaned before dependents: \['product'\]"):
             self.ledger.transition("category", FixtureState.CLEANED)
-        with self.assertRaisesRegex(LedgerError, "cannot be cleaned before dependents: \['line'\]"):
+        with self.assertRaisesRegex(LedgerError, r"cannot be cleaned before dependents: \['line'\]"):
             self.ledger.transition("product", FixtureState.CLEANED)
         self.ledger.transition("line", FixtureState.CLEANED)
         self.ledger.transition("product", FixtureState.CLEANED)

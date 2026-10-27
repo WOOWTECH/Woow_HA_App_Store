@@ -7,7 +7,7 @@
 # arm64 host. The weekly odoo-bump rewrites the BASE_IMAGE_TAG line the
 # way it rewrites ODOO_DEB_VERSION below; keep both lines in this shape.
 ARG BUILD_ARCH
-ARG BASE_IMAGE_TAG="bookworm-2026.08.0"
+ARG BASE_IMAGE_TAG="bookworm-2026.10.0"
 FROM ghcr.io/home-assistant/${BUILD_ARCH}-base-debian:${BASE_IMAGE_TAG}
 
 # Every RUN below pipes curl into another tool; without pipefail a failed

@@ -2865,15 +2865,15 @@
     "odoo18ce": {
       "id": "odoo18ce",
       "name": "Woow Odoo 18",
-      "version": "0.4.11",
+      "version": "0.4.12",
       "repository": "WOOWTECH/Woow_ha_odoo",
-      "source_sha": "77f248e4deae67d24e481e6fa5ba93fdc5892538",
+      "source_sha": "53b7ce9c4acf655be6c245a1659d8b89104a171a",
       "source_path": "odoo18ce",
       "config_file": "config.yaml",
-      "config_sha256": "sha256:8a0e67722fd07a706c0859f94181cc942c621019dede781e9fd8963bbb9ed251",
-      "archive_sha256": "sha256:9417231b46af7279f355f057e9b7f02bcfea63d7e153f990eaf43e07f9a17146",
-      "context_fingerprint": "sha256:b12bed94a9e52cfcf597c0c695531f9b6c434b104003028d278cd028d71b7e75",
-      "material_fingerprint": "sha256:927406af5850e161117eb4db175b710981061ca8ff26256f029a5858d928172e",
+      "config_sha256": "sha256:7bec7234aac659f6157879921d680026bb45351786b89fd7c06dffb299d6d0c2",
+      "archive_sha256": "sha256:55cf7350655eb800d8ed37881b520213e8bcbafe1d2ebedf85cd4b9af90def1a",
+      "context_fingerprint": "sha256:249b2dc138ae493acf0f0b8ebe4aceb789cb301fa0856c68b9757a741226ebbc",
+      "material_fingerprint": "sha256:8b5c0e5fc9e3d65c75e62cb58ed74b14848a7c487908966364c61b8b5d4560ed",
       "architectures": [
         "amd64",
         "aarch64"
@@ -2881,7 +2881,7 @@
       "config": {
         "name": "Woow Odoo 18",
         "description": "Odoo 18 Community Edition + PostgreSQL 16 — bundled all-in-one add-on for SME",
-        "version": "0.4.11",
+        "version": "0.4.12",
         "slug": "odoo18ce",
         "url": "https://github.com/WOOWTECH/Woow_ha_odoo",
         "image": "ghcr.io/woowtech/woow-ha-odoo-{arch}",
@@ -2975,21 +2975,21 @@
       "source_build_supported": true,
       "images": {
         "amd64": {
-          "reference": "ghcr.io/woowtech/woow-ha-odoo-amd64:0.4.11",
-          "index_digest": "sha256:996f4e2a06da3a175ca2fb0c851816a01a40db2ebc87307c06b886d07a07d1e4",
-          "digest": "sha256:996f4e2a06da3a175ca2fb0c851816a01a40db2ebc87307c06b886d07a07d1e4",
-          "source_revision": "77f248e4deae67d24e481e6fa5ba93fdc5892538"
+          "reference": "ghcr.io/woowtech/woow-ha-odoo-amd64:0.4.12",
+          "index_digest": "sha256:c6f383799b43af7b361432b3d223830fa04ebb81a49f362f36b79f10bc0167eb",
+          "digest": "sha256:c6f383799b43af7b361432b3d223830fa04ebb81a49f362f36b79f10bc0167eb",
+          "source_revision": "53b7ce9c4acf655be6c245a1659d8b89104a171a"
         },
         "aarch64": {
-          "reference": "ghcr.io/woowtech/woow-ha-odoo-aarch64:0.4.11",
-          "index_digest": "sha256:d2c296a6bf30849158e32da4f20e86730ee3d09fd7c86ef8a2f2dbb67f1775b1",
-          "digest": "sha256:d2c296a6bf30849158e32da4f20e86730ee3d09fd7c86ef8a2f2dbb67f1775b1",
-          "source_revision": "77f248e4deae67d24e481e6fa5ba93fdc5892538"
+          "reference": "ghcr.io/woowtech/woow-ha-odoo-aarch64:0.4.12",
+          "index_digest": "sha256:b772e4f936f3d0576d2e1e9d55f659170cc24db0a5fdbfdeb7bdb2b5b2cf10d2",
+          "digest": "sha256:b772e4f936f3d0576d2e1e9d55f659170cc24db0a5fdbfdeb7bdb2b5b2cf10d2",
+          "source_revision": "53b7ce9c4acf655be6c245a1659d8b89104a171a"
         }
       },
       "delivery": "published-image",
       "validation": "manifest+architecture-images+configured-CI",
-      "publisher_run_id": "37412201837",
+      "publisher_run_id": "40467240917",
       "channel": "stable",
       "store_path": "odoo18ce"
     },
@@ -3631,5 +3631,5 @@
       "store_path": "woow_mcp_nextcloud"
     }
   },
-  "catalog_id": "sha256:7f8aa9bc0bbfe983d081d409cbf2197da5940adfecabf07dac28657155d8e121"
+  "catalog_id": "sha256:caf6bb56097c97522ad601fe43f9806cfb7675b968b6252c9b14e09c8e5db705"
 }

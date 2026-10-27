@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.4.12 — 2026-10-27
+
+Only the base image changes the add-on: it sits below every layer, so this
+update is a full download of roughly 700 MiB on every host (ADR 0013). The
+rest is CI and the App Store notification workflow, none of it in the image.
+The Odoo nightly bump (#301) is not in this Release.
+
+### Changed
+- Debian base image bookworm-2026.08.0 -> bookworm-2026.10.0.
+- CI's static tier compiles every Python file with `-W error`, so an invalid
+  escape sequence fails the gate; two test regexes that had one are raw
+  strings now (pipeline workspace-tooling/116).
+
+### Added
+- `.github/workflows/woow-addon-sync.yml`: the App Store's publisher workflow.
+  Since Woow_HA_App_Store `26bb83d` (2026-10-06) the store no longer takes a
+  Release from the `repository_dispatch` alone; it reads a validated notification
+  each source repository writes to its own `woow-addon-sync` branch, and without
+  one 0.4.11 stayed at `waiting-for-source-notification`. The file is the store's
+  template as the Hermes add-on carries it, tooling pinned to `26bb83d`, with
+  `workflow_run` on `Release`. It never writes `main` and changes nothing in the
+  image (#303).
+
 ## 0.4.11 — 2026-10-06
 
 Only #271 changes the image: the gateway no longer prefixes the media dialog's
