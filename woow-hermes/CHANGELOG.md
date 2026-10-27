@@ -1,3 +1,8 @@
+## 0.1.12
+
+- Refresh the bundled Paseo host adapter provenance to plugin v0.1.4-rc.5. The four packaged host files are byte-identical to 0.1.11; the add-on does not install or update the separately managed plugin.
+- Document the current plugin release, its Hermes model selection guard, and the remaining direct Paseo Web model-verification limit. No add-on configuration or data migration is needed.
+
 ## 0.1.11
 
 - Include the reviewed Paseo Dashboard adapter: an enabled Paseo plugin can reload the Dashboard from Hermes, recover after restart, and stop its owned daemon before native Web disable/removal.
