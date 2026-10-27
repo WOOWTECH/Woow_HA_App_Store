@@ -1,5 +1,11 @@
 # EMQX Changelog
 
+## 0.4.2 — 發佈候選（2026-10-27）
+
+- 管理面板的 HA 管理員驗證（七支共用）多支援 Core 2026.10.2、2026.10.3、2026.10.4：逐檔比對被用到的 21 個 Core 檔與 4 個相鄰檔，只有 `auth/__init__.py` 改了刪除使用者時順便撤銷其 refresh token 的一段，與 `config/auth/list` 無關（[審查紀錄](../../docs/ha-role-core-contract.md)）。
+- Core 版本不在清單時（含之後的 patch 與 beta），管理面板照舊拒絕，但改顯示「這個 HA Core 版本尚未審核：<版本>」，add-on 紀錄也記一行同樣的說明（不含權杖）；MCP 端點不經這項檢查，照常服務。
+- 六個啟用產品改用新 0.4.2 映像；選項、port、工具、寫入授權與 state schema 都不變。OpenDesign 只更新商店停用的版本中繼資料。
+
 ## 0.4.1 — 發佈候選（2026-10-25）
 
 - 共用 HA 管理面板包含 n8n 條件寫入說明；EMQX 工具、授權、依賴及 state schema 不變。

@@ -3207,21 +3207,21 @@
     "woow_mcp_n8n": {
       "id": "woow_mcp_n8n",
       "name": "Woow n8n MCP Server",
-      "version": "0.4.1",
+      "version": "0.4.2",
       "repository": "WOOWTECH/Woow_ha_mcp_addons",
-      "source_sha": "337cff7673eb0b956f144a1bd5b37fb40e5eb0a8",
+      "source_sha": "0057b204e9ad37ad26fc106bd39147bce5e6afba",
       "source_path": "addons/n8n",
       "config_file": "config.yaml",
-      "config_sha256": "sha256:84914bde5d1d47f22331c8a23d859391e9a79d3a7f657ccea4ae99b98a763611",
-      "archive_sha256": "sha256:b6665c214ef9c0723dfc4a5106dee77c5ab05c4f72d3c88c4fe2e997e3113411",
-      "context_fingerprint": "sha256:bbe124abe7448e22454c7698064351bd48bab9c8292903845b916a2fb238772f",
-      "material_fingerprint": "sha256:d8c887d56a49eb544a53e696fa037401058b885af567372b1ebfa406d4f32b0f",
+      "config_sha256": "sha256:0cce5f127f8dc6e79be7b9f47a8ba08058d168896a8d5b90c81cca9e43540aa1",
+      "archive_sha256": "sha256:89067367eb59f83eeb9d1e09267252e70f09dff677592f72701da0e7c7cefd67",
+      "context_fingerprint": "sha256:79867e167291fd8a34e2890a560945bd6eb4a69f6f6cba7e494792ce6d6797ed",
+      "material_fingerprint": "sha256:0fcfc46c2c91af94eb073e75c27f3ec4e3c4092c24a2b70f78f2dde7d40ffba5",
       "architectures": [
         "amd64"
       ],
       "config": {
         "name": "Woow n8n MCP Server",
-        "version": "0.4.1",
+        "version": "0.4.2",
         "slug": "woow_mcp_n8n",
         "description": "Experimental; HA admin-role management; full tool surface; every tool and write on by default (each can be turned off in the panel).",
         "url": "https://github.com/WOOWTECH/Woow_ha_mcp_addons",
@@ -3263,36 +3263,36 @@
       "source_build_supported": false,
       "images": {
         "amd64": {
-          "reference": "ghcr.io/woowtech/amd64-mcp-n8n:0.4.1",
-          "index_digest": "sha256:fa6a8844db7b48abb1f3728fa0d1d83aa0ff42af89686ab2f920c7de2d8d589c",
-          "digest": "sha256:fa6a8844db7b48abb1f3728fa0d1d83aa0ff42af89686ab2f920c7de2d8d589c",
-          "source_revision": "99507d9f1a79b6b50bf89b38fa33df204b25db62"
+          "reference": "ghcr.io/woowtech/amd64-mcp-n8n:0.4.2",
+          "index_digest": "sha256:ba083f1101538b88436bea8f9548aa493d2340491d0f4caf78f51a8f6238c5e1",
+          "digest": "sha256:ba083f1101538b88436bea8f9548aa493d2340491d0f4caf78f51a8f6238c5e1",
+          "source_revision": "1f1924f15fe85c34bc3b22c8003d2328dc99e220"
         }
       },
       "delivery": "published-image",
       "validation": "manifest+architecture-images+configured-CI",
-      "publisher_run_id": "40272183000",
+      "publisher_run_id": "40444560875",
       "channel": "stable",
       "store_path": "woow_mcp_n8n"
     },
     "woow_mcp_odoo": {
       "id": "woow_mcp_odoo",
       "name": "Woow Odoo MCP Server",
-      "version": "0.4.1",
+      "version": "0.4.2",
       "repository": "WOOWTECH/Woow_ha_mcp_addons",
-      "source_sha": "337cff7673eb0b956f144a1bd5b37fb40e5eb0a8",
+      "source_sha": "0057b204e9ad37ad26fc106bd39147bce5e6afba",
       "source_path": "addons/odoo",
       "config_file": "config.yaml",
-      "config_sha256": "sha256:edb14b324fec617a8dceecad4cbb256cc4c7e323ed4a65061ee19322fc53a735",
-      "archive_sha256": "sha256:b6665c214ef9c0723dfc4a5106dee77c5ab05c4f72d3c88c4fe2e997e3113411",
-      "context_fingerprint": "sha256:f21047e190c68e47820d42cab7a318e2dcf9d92058d7653a8fedcd11e6b2f40b",
-      "material_fingerprint": "sha256:e0ab002f5048d9ce1beb57acf7170d14b159f280b8bfa5ef4d66d5f05f566593",
+      "config_sha256": "sha256:bea8f5e521795ea4e57b77e36fa06feae399ce087fb3b0d8d55490ec9a8b332c",
+      "archive_sha256": "sha256:89067367eb59f83eeb9d1e09267252e70f09dff677592f72701da0e7c7cefd67",
+      "context_fingerprint": "sha256:5562b34a3f0a2e095f02fad8c0bb0360ccf62d07ba36b46046f93ea2471c2edd",
+      "material_fingerprint": "sha256:f9fee8e0676f00d9c05d9d3b5ad3c64bd2b033a884ad8ad40a7348924fe583e0",
       "architectures": [
         "amd64"
       ],
       "config": {
         "name": "Woow Odoo MCP Server",
-        "version": "0.4.1",
+        "version": "0.4.2",
         "slug": "woow_mcp_odoo",
         "description": "Experimental; HA admin-role management; full tool surface; every tool and write on by default (each can be turned off in the panel).",
         "url": "https://github.com/WOOWTECH/Woow_ha_mcp_addons",
@@ -3334,36 +3334,36 @@
       "source_build_supported": false,
       "images": {
         "amd64": {
-          "reference": "ghcr.io/woowtech/amd64-mcp-odoo:0.4.1",
-          "index_digest": "sha256:530a054208f0f50f3f9f8de95c174bd1a44beaa06d8ca8815598b9c37770b0a2",
-          "digest": "sha256:530a054208f0f50f3f9f8de95c174bd1a44beaa06d8ca8815598b9c37770b0a2",
-          "source_revision": "99507d9f1a79b6b50bf89b38fa33df204b25db62"
+          "reference": "ghcr.io/woowtech/amd64-mcp-odoo:0.4.2",
+          "index_digest": "sha256:ae322c308f87388be8b7dbf486da06b35666382c46a0ba4c0f321742c6170465",
+          "digest": "sha256:ae322c308f87388be8b7dbf486da06b35666382c46a0ba4c0f321742c6170465",
+          "source_revision": "1f1924f15fe85c34bc3b22c8003d2328dc99e220"
         }
       },
       "delivery": "published-image",
       "validation": "manifest+architecture-images+configured-CI",
-      "publisher_run_id": "40272183000",
+      "publisher_run_id": "40444560875",
       "channel": "stable",
       "store_path": "woow_mcp_odoo"
     },
     "woow_mcp_hermes": {
       "id": "woow_mcp_hermes",
       "name": "Woow Hermes MCP Server",
-      "version": "0.4.1",
+      "version": "0.4.2",
       "repository": "WOOWTECH/Woow_ha_mcp_addons",
-      "source_sha": "337cff7673eb0b956f144a1bd5b37fb40e5eb0a8",
+      "source_sha": "0057b204e9ad37ad26fc106bd39147bce5e6afba",
       "source_path": "addons/hermes",
       "config_file": "config.yaml",
-      "config_sha256": "sha256:404441fd9fc4cef4a334bb1e7213de6878e15195f83dba46eadcd49cf26ee3d3",
-      "archive_sha256": "sha256:b6665c214ef9c0723dfc4a5106dee77c5ab05c4f72d3c88c4fe2e997e3113411",
-      "context_fingerprint": "sha256:2d69219b12b602a742207618d13f3fa5e257b18d3cd487d59227d2388a926e13",
-      "material_fingerprint": "sha256:98dff213456cdebbfb73631ef4cb95e7f0986a5869ddfb406786e40fa22fb18b",
+      "config_sha256": "sha256:e416b2ef8a10136468011d09ca1fa5fd1c025467dff4e1656a24409e77a13b31",
+      "archive_sha256": "sha256:89067367eb59f83eeb9d1e09267252e70f09dff677592f72701da0e7c7cefd67",
+      "context_fingerprint": "sha256:bf8fc0116287ee847e06d087250eef15f52687b6b6d406d8f4229e553ab4fff8",
+      "material_fingerprint": "sha256:156ebca317a1051aa145da6677cbd2d45c28ccac4d1ffc76472fee1c6bc458ae",
       "architectures": [
         "amd64"
       ],
       "config": {
         "name": "Woow Hermes MCP Server",
-        "version": "0.4.1",
+        "version": "0.4.2",
         "slug": "woow_mcp_hermes",
         "description": "Experimental; HA admin-role management; full tool surface; every tool and write on by default (each can be turned off in the panel).",
         "url": "https://github.com/WOOWTECH/Woow_ha_mcp_addons",
@@ -3405,36 +3405,36 @@
       "source_build_supported": false,
       "images": {
         "amd64": {
-          "reference": "ghcr.io/woowtech/amd64-mcp-hermes:0.4.1",
-          "index_digest": "sha256:f27be79e013d214c45e0cdd8980ef47626c5064f5e77d9fe07bc3c78398737fd",
-          "digest": "sha256:f27be79e013d214c45e0cdd8980ef47626c5064f5e77d9fe07bc3c78398737fd",
-          "source_revision": "99507d9f1a79b6b50bf89b38fa33df204b25db62"
+          "reference": "ghcr.io/woowtech/amd64-mcp-hermes:0.4.2",
+          "index_digest": "sha256:4711e0a72aabfc50457dfbbbd887acd34778575bbd441b2ef48f8d5bc40a8d0c",
+          "digest": "sha256:4711e0a72aabfc50457dfbbbd887acd34778575bbd441b2ef48f8d5bc40a8d0c",
+          "source_revision": "1f1924f15fe85c34bc3b22c8003d2328dc99e220"
         }
       },
       "delivery": "published-image",
       "validation": "manifest+architecture-images+configured-CI",
-      "publisher_run_id": "40272183000",
+      "publisher_run_id": "40444560875",
       "channel": "stable",
       "store_path": "woow_mcp_hermes"
     },
     "woow_mcp_emqx": {
       "id": "woow_mcp_emqx",
       "name": "Woow EMQX MCP Server",
-      "version": "0.4.1",
+      "version": "0.4.2",
       "repository": "WOOWTECH/Woow_ha_mcp_addons",
-      "source_sha": "337cff7673eb0b956f144a1bd5b37fb40e5eb0a8",
+      "source_sha": "0057b204e9ad37ad26fc106bd39147bce5e6afba",
       "source_path": "addons/emqx",
       "config_file": "config.yaml",
-      "config_sha256": "sha256:f752e4fe26ad130b16661e1d9d0008d74e7e6b439e5dc08d9ff6459e6d09191b",
-      "archive_sha256": "sha256:b6665c214ef9c0723dfc4a5106dee77c5ab05c4f72d3c88c4fe2e997e3113411",
-      "context_fingerprint": "sha256:a590cf2809a3496710c9ddf02f131332236c15423058b8726da69057a63bfee3",
-      "material_fingerprint": "sha256:867fb59d5865b858c1b4f7bc51baa8441c315e79ac024abca9fb258a364b9777",
+      "config_sha256": "sha256:037cc0fce198f23c020e30a6152cadae9fc8738cd838342aa63e4bc6fafb53e2",
+      "archive_sha256": "sha256:89067367eb59f83eeb9d1e09267252e70f09dff677592f72701da0e7c7cefd67",
+      "context_fingerprint": "sha256:69d9c06fec01bc829d9ca5e001344960e5f434634ad7238117b90817d894d641",
+      "material_fingerprint": "sha256:70fe5a2ee8d63a26508c27aa24dde3f5f99d56e3900edf83bcb5d9b552baa78b",
       "architectures": [
         "amd64"
       ],
       "config": {
         "name": "Woow EMQX MCP Server",
-        "version": "0.4.1",
+        "version": "0.4.2",
         "slug": "woow_mcp_emqx",
         "description": "Experimental; HA admin-role management; full tool surface; every tool and write on by default (each can be turned off in the panel).",
         "url": "https://github.com/WOOWTECH/Woow_ha_mcp_addons",
@@ -3476,36 +3476,36 @@
       "source_build_supported": false,
       "images": {
         "amd64": {
-          "reference": "ghcr.io/woowtech/amd64-mcp-emqx:0.4.1",
-          "index_digest": "sha256:2cf7bcf1744593e63a26e2fca4b191dde616e8362fe8ed8d01c1c8aa04420b1a",
-          "digest": "sha256:2cf7bcf1744593e63a26e2fca4b191dde616e8362fe8ed8d01c1c8aa04420b1a",
-          "source_revision": "99507d9f1a79b6b50bf89b38fa33df204b25db62"
+          "reference": "ghcr.io/woowtech/amd64-mcp-emqx:0.4.2",
+          "index_digest": "sha256:6a7651467a111443dad3a6237b9d8463bf567f97095cc56fdc7a390ebd8884bf",
+          "digest": "sha256:6a7651467a111443dad3a6237b9d8463bf567f97095cc56fdc7a390ebd8884bf",
+          "source_revision": "1f1924f15fe85c34bc3b22c8003d2328dc99e220"
         }
       },
       "delivery": "published-image",
       "validation": "manifest+architecture-images+configured-CI",
-      "publisher_run_id": "40272183000",
+      "publisher_run_id": "40444560875",
       "channel": "stable",
       "store_path": "woow_mcp_emqx"
     },
     "woow_mcp_litellm": {
       "id": "woow_mcp_litellm",
       "name": "Woow LiteLLM MCP Server",
-      "version": "0.4.1",
+      "version": "0.4.2",
       "repository": "WOOWTECH/Woow_ha_mcp_addons",
-      "source_sha": "337cff7673eb0b956f144a1bd5b37fb40e5eb0a8",
+      "source_sha": "0057b204e9ad37ad26fc106bd39147bce5e6afba",
       "source_path": "addons/litellm",
       "config_file": "config.yaml",
-      "config_sha256": "sha256:683961090505c0521081e5a975d2f705b246b3c28a6e8d1efbc0548a8ceb6c0e",
-      "archive_sha256": "sha256:b6665c214ef9c0723dfc4a5106dee77c5ab05c4f72d3c88c4fe2e997e3113411",
-      "context_fingerprint": "sha256:1827274b861e88d49b4d7eb9e6d556e1af74bec04624098ca04d7dc20c8dbd72",
-      "material_fingerprint": "sha256:7a2f7c3c73029323287fe618ed76e986870cdd0345651486e4dc6ca0a8a4f218",
+      "config_sha256": "sha256:af3df73024c2aa0bb2ef070ee0b0eb243b7e0eadabaa3ae0c091f4b6e6c5649c",
+      "archive_sha256": "sha256:89067367eb59f83eeb9d1e09267252e70f09dff677592f72701da0e7c7cefd67",
+      "context_fingerprint": "sha256:d99388611596a469bea84986f9d28c6394f50037a6d16a0b5f5e81150e2d6e53",
+      "material_fingerprint": "sha256:e1d19b916b95697ab8fd1226aac4348372470b5bb6811285ea7e34390ad40643",
       "architectures": [
         "amd64"
       ],
       "config": {
         "name": "Woow LiteLLM MCP Server",
-        "version": "0.4.1",
+        "version": "0.4.2",
         "slug": "woow_mcp_litellm",
         "description": "Experimental; HA admin-role management; full tool surface; every tool and write on by default (each can be turned off in the panel).",
         "url": "https://github.com/WOOWTECH/Woow_ha_mcp_addons",
@@ -3547,36 +3547,36 @@
       "source_build_supported": false,
       "images": {
         "amd64": {
-          "reference": "ghcr.io/woowtech/amd64-mcp-litellm:0.4.1",
-          "index_digest": "sha256:f30e39af506585eb248a0ac19ce3f5bf34a2d327d73fcb631c422b22a58dc016",
-          "digest": "sha256:f30e39af506585eb248a0ac19ce3f5bf34a2d327d73fcb631c422b22a58dc016",
-          "source_revision": "99507d9f1a79b6b50bf89b38fa33df204b25db62"
+          "reference": "ghcr.io/woowtech/amd64-mcp-litellm:0.4.2",
+          "index_digest": "sha256:b653f9879af5fa8a09a44b32b396ed86315f96ddada7cae0f52d6fd45b87cb7a",
+          "digest": "sha256:b653f9879af5fa8a09a44b32b396ed86315f96ddada7cae0f52d6fd45b87cb7a",
+          "source_revision": "1f1924f15fe85c34bc3b22c8003d2328dc99e220"
         }
       },
       "delivery": "published-image",
       "validation": "manifest+architecture-images+configured-CI",
-      "publisher_run_id": "40272183000",
+      "publisher_run_id": "40444560875",
       "channel": "stable",
       "store_path": "woow_mcp_litellm"
     },
     "woow_mcp_nextcloud": {
       "id": "woow_mcp_nextcloud",
       "name": "Woow Nextcloud MCP Server",
-      "version": "0.4.1",
+      "version": "0.4.2",
       "repository": "WOOWTECH/Woow_ha_mcp_addons",
-      "source_sha": "337cff7673eb0b956f144a1bd5b37fb40e5eb0a8",
+      "source_sha": "0057b204e9ad37ad26fc106bd39147bce5e6afba",
       "source_path": "addons/nextcloud",
       "config_file": "config.yaml",
-      "config_sha256": "sha256:14337f403b9f4dc4c4b944bd505ede6caa5f38e37f0e2d7579a4e73cf4709fae",
-      "archive_sha256": "sha256:b6665c214ef9c0723dfc4a5106dee77c5ab05c4f72d3c88c4fe2e997e3113411",
-      "context_fingerprint": "sha256:559d9d6be27cfa6f6309a0582db234dde6dd2aecfd126595fa66a06b6543f4c0",
-      "material_fingerprint": "sha256:2e064a052dfcca320ea4ba936dab0b8db8dd72d59f6b365bcd41ac8bd4b67900",
+      "config_sha256": "sha256:f4efd5b090b5865c44341c76781e4fc6f5bcac2a769b4dcf8e5a60f914058c63",
+      "archive_sha256": "sha256:89067367eb59f83eeb9d1e09267252e70f09dff677592f72701da0e7c7cefd67",
+      "context_fingerprint": "sha256:f900ea9c4e4695237455471fcf1641e6697d618f799ae95f1bdc6023d8750f76",
+      "material_fingerprint": "sha256:4756b305bf041743cabdbfcce745c0e4bcad087b2cf5dab9dc267984f128f8ec",
       "architectures": [
         "amd64"
       ],
       "config": {
         "name": "Woow Nextcloud MCP Server",
-        "version": "0.4.1",
+        "version": "0.4.2",
         "slug": "woow_mcp_nextcloud",
         "description": "Experimental; HA admin-role management; one Nextcloud account (files, calendars, tasks), every tool and write on by default (each can be turned off in the panel).",
         "url": "https://github.com/WOOWTECH/Woow_ha_mcp_addons",
@@ -3618,18 +3618,18 @@
       "source_build_supported": false,
       "images": {
         "amd64": {
-          "reference": "ghcr.io/woowtech/amd64-mcp-nextcloud:0.4.1",
-          "index_digest": "sha256:e3f22274ac79f2128750a7a75e3bde9d600002d70af34f00a95d4e831f91162d",
-          "digest": "sha256:e3f22274ac79f2128750a7a75e3bde9d600002d70af34f00a95d4e831f91162d",
-          "source_revision": "99507d9f1a79b6b50bf89b38fa33df204b25db62"
+          "reference": "ghcr.io/woowtech/amd64-mcp-nextcloud:0.4.2",
+          "index_digest": "sha256:c8190fb957c89f2e484291e731e331db192b4a075bf99b4f858d3e799f2c595f",
+          "digest": "sha256:c8190fb957c89f2e484291e731e331db192b4a075bf99b4f858d3e799f2c595f",
+          "source_revision": "1f1924f15fe85c34bc3b22c8003d2328dc99e220"
         }
       },
       "delivery": "published-image",
       "validation": "manifest+architecture-images+configured-CI",
-      "publisher_run_id": "40272183000",
+      "publisher_run_id": "40444560875",
       "channel": "stable",
       "store_path": "woow_mcp_nextcloud"
     }
   },
-  "catalog_id": "sha256:b1e233044d8faf2457f082bbe73085d106e5dfadbc49bc7dd5a1cb100fc41205"
+  "catalog_id": "sha256:5d70ca74b7948f7d7d596cdb8d6e0495c99bcc7776319a215e0b1cd4e354266a"
 }
