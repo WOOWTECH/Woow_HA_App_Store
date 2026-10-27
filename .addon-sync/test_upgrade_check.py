@@ -289,7 +289,8 @@ class ReusableWorkflow(unittest.TestCase):
         # The required check is "Upgrade comparison / compare": caller job name / this job's name.
         self.assertIn('workflow_call',self.wf['on']);self.assertEqual(list(self.wf['jobs']),['compare'])
         job=self.wf['jobs']['compare'];self.assertEqual(job['name'],'compare');self.assertNotIn('if',job)
-        self.assertEqual(self.wf['permissions'],{'contents':'read'})
+        # actions: read lets the job find this run's SBOM artifact without `needs:` on the build (user story 5).
+        self.assertEqual(self.wf['permissions'],{'contents':'read','actions':'read'})
     def test_tests_run_before_the_comparison_with_store_tooling(self):
         steps=self.wf['jobs']['compare']['steps'];runs=[s.get('run','') for s in steps]
         tooling=[s for s in steps if s.get('with',{}).get('repository')=='WOOWTECH/Woow_HA_App_Store'][0]['with']
@@ -303,6 +304,16 @@ class ReusableWorkflow(unittest.TestCase):
         update=next(i for i,r in enumerate(runs) if 'grype" db update' in r);compare=next(i for i,r in enumerate(runs) if 'upgrade_check.py compare' in r)
         self.assertLess(update,compare);self.assertIn('GRYPE_DB_AUTO_UPDATE=false',runs[compare])
         self.assertEqual(self.wf['jobs']['compare']['env']['DB_MAX_AGE_HOURS'],'120')
+    def test_new_sbom_is_awaited_in_the_same_run_not_through_needs(self):
+        # A no-version-change PR must not wait on the caller's build; only a version change waits for the SBOM,
+        # bounded by sbom_wait_minutes, and the download comes after the wait.
+        steps=self.wf['jobs']['compare']['steps'];names=[s.get('name','') for s in steps]
+        wait=names.index("Wait for the new images' SBOMs");download=names.index("Download the new images' SBOMs")
+        self.assertLess(wait,download)
+        self.assertIn("steps.detect.outputs.changed == 'true'",steps[wait]['if'])
+        self.assertIn('actions/runs/${RUN_ID}/artifacts',steps[wait]['run'])
+        self.assertEqual(self.wf['on']['workflow_call']['inputs']['sbom_wait_minutes']['default'],40)
+        self.assertGreater(self.wf['jobs']['compare']['timeout-minutes'],40)
 class Scanners(unittest.TestCase):
     ACTION=pathlib.Path(__file__).resolve().parent.parent/'.github/actions/addon-sbom'
     def test_pinned_versions_and_checksums(self):
