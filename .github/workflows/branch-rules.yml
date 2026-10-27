@@ -44,7 +44,9 @@ jobs:
       run: python3 .addon-sync/branch_rules.py --registry .addon-sync/registry.json
   # A PR that changes the check or the registry runs it without the token. It
   # checks the live repositories, so apply a new source's ruleset before adding
-  # its required_checks to the registry.
+  # its required_checks to the registry, and require "Upgrade comparison /
+  # compare" in a ruleset before removing that provider's
+  # upgrade_comparison_pending.
   check-pr:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest

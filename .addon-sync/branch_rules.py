@@ -13,6 +13,16 @@ import argparse, json, os, pathlib, sys
 from addon_sync import Blocked, GitHub, annotation
 
 REQUIRED_RULES = ['pull_request', 'required_status_checks', 'deletion', 'non_fast_forward']
+# Pipeline #89: the caller job `Upgrade comparison` of woow-addon-upgrade-check.yml (inner job `compare`).
+# Every gated provider requires it, except one still being wired, which carries
+# branch_rules.upgrade_comparison_pending with the ticket that wires it.
+UPGRADE_CHECK = 'Upgrade comparison / compare'
+
+def expected_checks(provider):
+    """Check names the provider's ruleset must require: the registry's list, plus the upgrade comparison unless pending."""
+    rules=provider['branch_rules'];names=list(rules['required_checks'])
+    if 'upgrade_comparison_pending' not in rules and UPGRADE_CHECK not in names:names.append(UPGRADE_CHECK)
+    return names
 
 def check(gh, admin_gh, repo, provider):
     """Problems with `repo`'s default-branch rules, as messages; empty when it meets the standard."""
@@ -34,7 +44,7 @@ def check(gh, admin_gh, repo, provider):
             if p.get('require_code_owner_review'):problems.append(f'{branch}: pull_request requires CODEOWNERS review, the standard has none')
     required={c['context'] for r in rules if r['type']=='required_status_checks' for c in r['parameters']['required_status_checks']}
     if 'required_status_checks' in kinds:
-        for name in provider['branch_rules']['required_checks']:
+        for name in expected_checks(provider):
             if name not in required:problems.append(f'{branch}: required check "{name}" is not required')
     # bypass_actors is only visible to a token with Administration read; without one the caller warns instead.
     if admin_gh is not None:

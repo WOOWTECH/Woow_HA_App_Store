@@ -399,8 +399,22 @@ class Tests(unittest.TestCase):
                 if 'exempt' in rules:
                     self.assertEqual(set(rules),{'exempt'});self.assertTrue(rules['exempt'].strip())
                 else:
-                    self.assertEqual(set(rules),{'required_checks'})
+                    self.assertLessEqual({'required_checks'},set(rules));self.assertLessEqual(set(rules),{'required_checks','upgrade_comparison_pending'})
                     self.assertTrue(rules['required_checks']);self.assertTrue(all(isinstance(c,str) and c for c in rules['required_checks']))
                     self.assertTrue(provider['required_workflows'])
+
+    def test_every_gated_provider_requires_the_upgrade_comparison_or_names_the_ticket_wiring_it(self):
+        # Pipeline #89: each gated repository's ruleset requires the upgrade comparison; branch_rules.py fails when one drops it.
+        # Its caller job lives in a workflow already in required_workflows (it passes at once on push), so addon_sync.ci_gate
+        # keeps seeing that file's non-PR run and required_workflows needs no new entry.
+        import branch_rules
+        registry=json.loads((pathlib.Path(__file__).resolve().parent/'registry.json').read_text(encoding='utf-8'))
+        for repo,provider in registry['providers'].items():
+            rules=provider['branch_rules']
+            if 'exempt' in rules:continue
+            with self.subTest(repo):
+                listed=branch_rules.UPGRADE_CHECK in rules['required_checks'];pending=rules.get('upgrade_comparison_pending')
+                if pending is None:self.assertTrue(listed,'lists neither the check nor upgrade_comparison_pending')
+                else:self.assertFalse(listed,'lists the check and upgrade_comparison_pending');self.assertRegex(pending,r'#\d+')
 
 if __name__=='__main__':unittest.main()

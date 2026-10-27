@@ -114,18 +114,65 @@ ha store add https://github.com/WOOWTECH/Woow_HA_App_Store
   - 一律走 PR；禁止刪除分支與強制推送（non-fast-forward）。
   - 必要檢查是該 repo 在 PR 上會跑、而且會通過的 CI job；PR 的 CI 不設 path filter，否則必要檢查會一直等不到結果。
   - 核准數 0、不用 CODEOWNERS、`bypass_actors` 為空，誰都不能繞過。
-  - 每個 repo 的 `AGENTS.md` 寫了給 agent 與人的三條規則：只能走 PR、升版 PR 必須通過必要檢查、破壞性變更要寫進 `upgrade-notes.yaml`。
+  - 每個 repo 的 `AGENTS.md` 寫了給 agent 與人的三條規則：只能走 PR、升版 PR 必須通過必要檢查（包括 `Upgrade comparison / compare`）、破壞性變更要照下面的格式寫進 `upgrade-notes.yaml`。
 - **發 Release 的方式可以不同，但都保證**：tag 不重複、每個架構的映像都已推送、Release 只發在合併後的 commit 上。`Woow_ha_odoo` 用自己的 `release.yml`，其他 repo 都用共用的 [`woow-addon-release.yml`](.github/workflows/woow-addon-release.yml)。推 tag 不會發 Release（推 tag 不經過 PR）。（OpenDesign 從推 tag 改成合併後發、Hermes 與 Nextcloud 改用共用 workflow 的 PR 在 2026-10-21 等負責人審查，合併前它們仍用舊方式。）
-- **每個來源在 registry 的 `branch_rules`**：受管的 repo 列出 `required_checks`（ruleset 裡必須有的檢查名稱），而且 `required_workflows` 不能是空的；不受管的寫 `exempt` 與原因：
+- **每個來源在 registry 的 `branch_rules`**：受管的 repo 列出 `required_checks`（ruleset 裡必須有的檢查名稱），而且 `required_workflows` 不能是空的。`required_checks` 要包含 `Upgrade comparison / compare`；還沒接上升版比對的 repo 改寫 `upgrade_comparison_pending`，內容是負責接上的 ticket（兩者只能有一個）。不受管的寫 `exempt` 與原因：
   - mirror（Dnsmasq、Frigate、Jellyfin、Matter Hub、Music Assistant）：由 `mirror-sync` 推送預設分支，不需要放行；發 Release 前的檢查見 pipeline #91。
   - `Woow_ha_ai_mcp`：上游 fork，上游帶來的 workflow 會直接推 `master`。
   - `Woow_ha_vscode_add_on`：已退役。
   
-  `test_addon_sync.py` 檢查每個來源都屬於其中一種。
-- **每日監測**：[`branch-rules.yml`](.github/workflows/branch-rules.yml)（`.addon-sync/branch_rules.py`）每天讀 registry，逐一檢查受管 repo 的預設分支規則：四條規則都在、`required_checks` 都還是必要檢查、核准數 0、不要求 CODEOWNERS 審查、預設分支沒換。不符合就讓 run 失敗，訊息列出哪個 repo、哪一條，GitHub 會寄信。`WOOWTECH` 是共用帳號，拿到它的人（包括 agent）都能改規則；這個風險已經接受，靠監測讓改動一定會被發現。
+  `test_addon_sync.py` 檢查每個來源都屬於其中一種，也檢查每個受管 repo 不是列了 `Upgrade comparison / compare`，就是寫了 `upgrade_comparison_pending`。
+
+  `required_workflows` 的意思和必要檢查不同：發布與同步前，這些 workflow 檔要在發布的 commit 上有一次成功、而且不是 PR 觸發的 run（`addon_sync.ci_gate`）。所以 `Upgrade comparison` 的呼叫端 job 要放在已經列在 `required_workflows`、push 到預設分支也會跑的 workflow 裡（odoo 的 `ci.yml`、omnigent 的 `publish-omnigent-addon-images.yml`），push 時它直接通過；不要另開只在 PR 觸發的 workflow 檔再列進 `required_workflows`，否則每次發布都會被擋。
+- **每日監測**：[`branch-rules.yml`](.github/workflows/branch-rules.yml)（`.addon-sync/branch_rules.py`）每天讀 registry，逐一檢查受管 repo 的預設分支規則：四條規則都在、`required_checks` 都還是必要檢查（沒寫 `upgrade_comparison_pending` 的 repo 一定要有 `Upgrade comparison / compare`，即使 registry 漏列）、核准數 0、不要求 CODEOWNERS 審查、預設分支沒換。不符合就讓 run 失敗，訊息列出哪個 repo、哪一條，GitHub 會寄信。`WOOWTECH` 是共用帳號，拿到它的人（包括 agent）都能改規則；這個風險已經接受，靠監測讓改動一定會被發現。
   - `bypass_actors` 只有具 Administration 讀取權的 token 看得到。它放在 `branch-rules` environment 的 secret `BRANCH_RULES_TOKEN`（fine-grained PAT，resource owner `WOOWTECH`，選所有受管的來源 repo，權限 Administration: read-only），environment 只允許 `main`。沒設時 run 不會失敗，但會警告「沒檢查 bypass」。
   - 管線工作區的 issue monitor 也顯示最近一次的結果。
-- 新增受管來源時：先在來源 repo 開 PR 讓 CI 跑一次、記下 check 名稱，套用 ruleset（照 `Woow_ha_odoo` 的形式），再在 registry 填 `required_checks`。
+- 新增受管來源時：先在來源 repo 開 PR 讓 CI 跑一次、記下 check 名稱，套用 ruleset（照 `Woow_ha_odoo` 的形式），再在 registry 填 `required_checks`。接上升版比對也一樣：呼叫端合併後，先在 ruleset 加上 `Upgrade comparison / compare`，再改 registry（拿掉 `upgrade_comparison_pending`、在 `required_checks` 加上這個名稱）；順序反過來，Store PR 的規則監測會失敗。
+
+### 升版比對與 `upgrade-notes.yaml`
+
+（管線工作區 #89，ADR-0005。）
+
+- **每個受管來源 repo 的每個 PR 都跑必要檢查 `Upgrade comparison / compare`**，由共用的 [`woow-addon-upgrade-check.yml`](.github/workflows/woow-addon-upgrade-check.yml) 提供（呼叫端 job 名稱 `Upgrade comparison`，GitHub 把檢查名稱寫成「呼叫端 job / 內部 job」）。呼叫方式寫在那個檔案開頭；不設 path filter。
+  - PR 沒有修改任何 addon 的版本：幾秒內通過。
+  - 有修改：把每個改了版本的 addon 和**比對對象**相比。比對對象是該 addon 最新的正式 Release（tag 規則同上：`v<版本>` 或 `<slug>-v<版本>`）；`ref_policy: main`、從沒有正式 Release 的 repo，是 PR base 上的版本。第一次發布的 addon 沒有比對對象，通過並在報告註明。
+  - 結果只寫在 job summary，不在 PR 上留言。檢查工具出錯（拉不到舊映像、漏洞資料庫下載失敗或超過 120 小時）時檢查失敗，不放行，重跑即可。
+- **第 1 類 設定相容性**：比較新舊 `config.yaml`。下表的破壞性變更都要在 `upgrade-notes.yaml` 宣告，否則擋下。`key` 用 schema 的路徑，例如 `database.port`。
+
+  | `change` | 意思 | `key` |
+  |---|---|---|
+  | `option-removed` | 拿掉一個舊版 `options` 有預設值的 schema key | schema 路徑 |
+  | `schema-removed` | 拿掉一個舊版 `options` 沒有預設值的 schema key | schema 路徑 |
+  | `schema-retyped` | 型別或結構改變（`match()` 的 pattern 改變也算） | schema 路徑 |
+  | `made-required` | 選填（`type?`）改成必填 | schema 路徑 |
+  | `range-narrowed` | `int`／`float`／`str` 的範圍變窄或新加上限制 | schema 路徑 |
+  | `enum-value-removed` | `list(a\|b)` 少了某個值 | schema 路徑 |
+  | `required-added` | 新增必填 key，而 `options` 沒有預設值（`null` 不算預設值） | schema 路徑 |
+  | `arch-removed` | 拿掉一個 arch | arch，例如 `aarch64` |
+  | `port-removed` | 拿掉一個 port，或改了容器端 port、通訊協定 | port，例如 `8069/tcp` |
+  | `image-changed` | `image` 改變、新增或拿掉 | `image` |
+
+  只寫進報告、不擋：預設值改變（`default-changed`）、只改主機端預設 port（`host-port-changed`）。不擋也不報告：範圍變寬、列舉加值、必填改選填、新增選填 key、新增有預設值的 key。
+- **第 4 類 漏洞比對**（只限有預先建置映像的 addon）：新映像由 repo 自己的 amd64 PR 建置，用 Store 的 [`addon-sbom`](.github/actions/addon-sbom/action.yml) 步驟交出 SBOM；舊映像從 GHCR 拉比對對象的 amd64 映像。兩邊用同一份 Grype DB 掃描（Grype、Syft 依 checksum 釘選）。以（漏洞 ID, 套件）比對，**新映像才有、嚴重度 Critical 或 High、Grype `fix.state` 是 `fixed`** 的是「新增可修補漏洞」，沒宣告接受就擋下。舊映像就有的、沒有修補版本的、嚴重度不到 High 的只算進報告的數量。在裝置上建置的 addon 不做第 4 類，報告註明交由 #90。
+- **`upgrade-notes.yaml`** 放在每個 addon 的 `config.yaml` 旁邊，只有需要宣告時才建立：
+
+  ```yaml
+  "1.3.0":                     # 新版本號，加引號
+    breaking:
+      - change: option-removed # 和報告完全相同的 change 與 key
+        key: ssl_port
+        migration: 改用 ports 設定的 443/tcp。
+    accepted_vulnerabilities:
+      - id: CVE-2026-1234      # 和報告完全相同的 ID 與套件
+        package: openssl
+        reason: 上游 base image 還沒更新，預計 1.3.1 換掉。
+  ```
+
+  - 只讀版本號在（比對對象, 新版本] 之間的段落；更早的段落不算數，不會蓋掉這次新出現的變更。
+  - 每項破壞性變更要有 `change`、`key` 完全相同的一筆；接受的漏洞要有 `id`、`package` 完全相同的一筆。`migration`、`reason` 不能是空的。報告會列出可以直接貼上的 `change`／`key`。
+  - 寫了宣告、但檢查沒找到對應的變更：只寫進報告，不擋。
+- **Release 說明**：發 Release 時，上一個正式 Release 之後各版的宣告自動整理成「破壞性變更與遷移方式」「已接受的漏洞」兩段，放在 GitHub 自動產生的說明前面；共用的 `woow-addon-release.yml` 和 `Woow_ha_odoo` 的 `release.yml` 都這樣做。沒有宣告就不加；檔案格式錯誤時不發 Release。
+- 判定規則與欄位的權威說明在 [`.addon-sync/upgrade_check.py`](.addon-sync/upgrade_check.py) 開頭；兩者不一致時以程式為準，並修正本段。
 
 ### 同步流程
 
