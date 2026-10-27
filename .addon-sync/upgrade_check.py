@@ -43,7 +43,7 @@ two sections, 破壞性變更與遷移方式 and 已接受的漏洞, and nothing
 addon_sync.release (woow-addon-release.yml) and Woow_ha_odoo's release.yml put them on the Release.
 """
 from __future__ import annotations
-import argparse, functools, json, os, pathlib, re, sys
+import argparse, functools, json, os, pathlib, re, secrets, sys
 import yaml
 from packaging.version import InvalidVersion, Version
 
@@ -142,6 +142,10 @@ def version_cmp(a, b):
         if x==y:raise ValueError(f'cannot order versions {a!r} and {b!r}')
     return -1 if x<y else 1
 
+def _text(entry, field):
+    """A declaration's migration or reason, stripped; '' when it is missing or blank (the declaration then does not count)."""
+    return str(entry.get(field) or '').strip()
+
 SECTIONS={'breaking':('change','key','migration'),'accepted_vulnerabilities':('id','package','reason')}
 
 def declarations(notes, after, upto):
@@ -182,11 +186,15 @@ def release_notes(notes, version, released=()):
         if not found[section]:continue
         lines=[]
         for e in found[section]:
-            text=str(e.get(text_key) or '').strip()
+            text=_text(e,text_key)
             if not text:raise ValueError(f'{e["version"]}.{section}: {label(e)} has no {text_key}')
             lines.append(f'- {label(e)}：'+text.replace('\n','\n  '))
         out.append(f'## {title}\n\n'+'\n'.join(lines)+'\n')
     return '\n'.join(out)
+
+def _cell(value):
+    """Text for a Markdown table cell: a | or a line break would end the cell or the row (as branch_rules.main does)."""
+    return re.sub(r'\r\n|\r|\n','<br>',str(value).replace('|','\\|'))
 
 def _paste(version, items):
     return '\n'.join([f'"{version}":','  breaking:']+[f'    - change: {i["change"]}\n      key: {i["key"]}\n      migration: ' for i in items])
@@ -237,16 +245,16 @@ def compare(old, new, old_version, new_version, notes=None, old_scan=None, new_s
         report=[f'### {name} {new_version}','','**Passed**: no comparison target (no earlier formal Release), so there is nothing to compare.']
         return {'blocked':False,'vulnerabilities':None,'breaking':[],'notices':[],'unmatched':[],'problems':[],'report':'\n'.join(report)+'\n'}
     found,notes_only=category1(old,new)
-    problems=[f'{d["version"]}: {d["change"]} {d["key"]} has no migration' for d in declared if not str(d.get('migration') or '').strip()]
-    valid={(d['change'],d['key']):d for d in declared if str(d.get('migration') or '').strip()}
+    problems=[f'{d["version"]}: {d["change"]} {d["key"]} has no migration' for d in declared if not _text(d,'migration')]
+    valid={(d['change'],d['key']):d for d in declared if _text(d,'migration')}
     breaking=[{'change':c,'key':k,'declared':(c,k) in valid} for c,k in found]
     notices=[{'change':c,'key':k,'detail':d} for c,k,d in notes_only]
     unmatched=[{'change':d['change'],'key':d['key'],'version':d['version']} for d in declared if (d['change'],d['key']) not in set(found)]
     vulns=category4(old_scan,new_scan) if (old_scan,new_scan)!=(None,None) else None
     if vulns is not None:
         accepted=sections['accepted_vulnerabilities']
-        problems+=[f'{d["version"]}: accepted {d["id"]} {d["package"]} has no reason' for d in accepted if not str(d.get('reason') or '').strip()]
-        reasons={(d['id'],d['package']):str(d['reason']).strip() for d in accepted if str(d.get('reason') or '').strip()}
+        problems+=[f'{d["version"]}: accepted {d["id"]} {d["package"]} has no reason' for d in accepted if not _text(d,'reason')]
+        reasons={(d['id'],d['package']):_text(d,'reason') for d in accepted if _text(d,'reason')}
         for f in vulns['new_fixable']:
             f['accepted']=(f['id'],f['package']) in reasons
             if f['accepted']:f['reason']=reasons[(f['id'],f['package'])]
@@ -256,13 +264,13 @@ def compare(old, new, old_version, new_version, notes=None, old_scan=None, new_s
     r=[f'### {name} {old_version} → {new_version}','',('**Blocked**: undeclared breaking change, new fixable vulnerability, or invalid declaration.' if blocked else '**Passed**.'),'']
     if breaking:
         r+=['Breaking changes (each needs an entry in `'+notes_path+'`):','','| change | key | declared | migration |','|---|---|---|---|']
-        r+=[f'| `{b["change"]}` | `{b["key"]}` | {"yes" if b["declared"] else "**no**"} | {valid[(b["change"],b["key"])]["migration"].strip() if b["declared"] else ""} |' for b in breaking]
+        r+=[f'| `{_cell(b["change"])}` | `{_cell(b["key"])}` | {"yes" if b["declared"] else "**no**"} | {_cell(_text(valid[(b["change"],b["key"])],"migration")) if b["declared"] else ""} |' for b in breaking]
         missing=[b for b in breaking if not b['declared']]
         if missing:r+=['','Add to `'+notes_path+'` and write the migration:','','```yaml',_paste(new_version,missing),'```']
         r.append('')
     else:r+=['No breaking configuration changes.','']
     if notices:
-        r+=['Report only (does not block):','','| change | key | detail |','|---|---|---|']+[f'| `{n["change"]}` | `{n["key"]}` | {n["detail"]} |' for n in notices]+['']
+        r+=['Report only (does not block):','','| change | key | detail |','|---|---|---|']+[f'| `{n["change"]}` | `{_cell(n["key"])}` | {_cell(n["detail"])} |' for n in notices]+['']
     if unmatched:
         r+=['Declarations with no matching change (check the spelling of `change` and `key`):','']+[f'- {u["version"]}: `{u["change"]}` `{u["key"]}`' for u in unmatched]+['']
     if problems:r+=['Invalid declarations:','']+[f'- {p}' for p in problems]+['']
@@ -272,7 +280,7 @@ def compare(old, new, old_version, new_version, notes=None, old_scan=None, new_s
         if vulns['new_fixable']:
             r+=['New fixable vulnerabilities (Critical/High with a fixed version, not in '+old_version+'; each blocks unless accepted in `'+notes_path+'`):','',
                 '| id | package | severity | fixed in | accepted |','|---|---|---|---|---|']
-            r+=[f'| {f["id"]} | {f["package"]} | {f["severity"]} | {", ".join(f["fixed_in"])} | {f.get("reason") if f["accepted"] else "**no**"} |' for f in vulns['new_fixable']]+['']
+            r+=[f'| {_cell(f["id"])} | {_cell(f["package"])} | {_cell(f["severity"])} | {_cell(", ".join(f["fixed_in"]))} | {_cell(f["reason"]) if f["accepted"] else "**no**"} |' for f in vulns['new_fixable']]+['']
         else:r+=['No new fixable vulnerabilities.','']
         n=vulns['not_blocking']
         if vulns['unmatched_accepted']:
@@ -287,6 +295,11 @@ def _load(path, kind):
     if kind=='optional' and not p.exists():return None
     text=p.read_text(encoding='utf-8')
     return json.loads(text) if kind=='json' else yaml.safe_load(text)
+
+def _error(title, message):
+    """An ::error workflow command; PR-controlled text is escaped the way branch_rules does (addon_sync.annotation)."""
+    from addon_sync import annotation  # addon_sync imports this module, so import it here, not at the top
+    print('::error title='+annotation(title).replace(':','%3A').replace(',','%2C')+'::'+annotation(message))
 
 def main(argv=None):
     p=argparse.ArgumentParser(description=__doc__.splitlines()[0]);sub=p.add_subparsers(dest='command',required=True)
@@ -304,22 +317,23 @@ def main(argv=None):
     if a.command=='release-notes':
         try:text=release_notes(_load(a.notes,'optional'),a.version,a.released)
         except (ValueError,TypeError,OSError,yaml.YAMLError) as e:
-            print(f'::error title=Release notes failed::{a.notes}: {e}');return 2
+            _error('Release notes failed',f'{a.notes}: {e}');return 2
         print(text,end='');return 0
     try:
         old,new=_load(a.old,'yaml'),_load(a.new,'yaml')
         r=compare(old,new,old_version=str(old['version']) if old else None,new_version=str(new['version']),notes=_load(a.notes,'optional'),
             old_scan=_load(a.old_scan,'json'),new_scan=_load(a.new_scan,'json'),name=a.name,notes_path=a.notes_path,scan_note=a.scan_note)
     except (ValueError,KeyError,TypeError,OSError,yaml.YAMLError) as e:
-        print(f'::error title=Upgrade comparison failed::{a.name or a.new}: {e}');return 2
-    print(r['report'])
+        _error('Upgrade comparison failed',f'{a.name or a.new}: {e}');return 2
+    # The report quotes PR text; GitHub must not read a line of it as a workflow command.
+    token=secrets.token_hex(16);print('::stop-commands::'+token);print(r['report']);print('::'+token+'::')
     if a.summary:
         with open(a.summary,'a',encoding='utf-8') as f:f.write(r['report']+'\n')
     for b in r['breaking']:
-        if not b['declared']:print(f'::error title=Undeclared breaking change::{b["change"]} {b["key"]} — declare it in {a.notes_path}')
+        if not b['declared']:_error('Undeclared breaking change',f'{b["change"]} {b["key"]} — declare it in {a.notes_path}')
     for f in (r.get('vulnerabilities') or {}).get('new_fixable',[]):
-        if not f['accepted']:print(f'::error title=New fixable vulnerability::{f["id"]} {f["package"]} ({f["severity"]}, fixed in {", ".join(f["fixed_in"])}) — upgrade the package or accept it in {a.notes_path}')
-    for problem in r['problems']:print(f'::error title=Invalid declaration::{problem}')
+        if not f['accepted']:_error('New fixable vulnerability',f'{f["id"]} {f["package"]} ({f["severity"]}, fixed in {", ".join(f["fixed_in"])}) — upgrade the package or accept it in {a.notes_path}')
+    for problem in r['problems']:_error('Invalid declaration',problem)
     return 1 if r['blocked'] else 0
 
 if __name__=='__main__':sys.exit(main())

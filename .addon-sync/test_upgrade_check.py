@@ -245,6 +245,38 @@ class CommandLine(unittest.TestCase):
     def test_scan_note_explains_a_skipped_comparison(self):
         self.main('--old',self.write('old.yaml',BASE),'--new',self.write('new.yaml',new()),'--scan-note','built on the device; compared in #90')
         self.assertIn('not run (built on the device; compared in #90)',self.summary.read_text(encoding='utf-8'))
+    def commands(self,out):
+        # Workflow commands GitHub would run: everything between ::stop-commands::<token> and ::<token>:: is plain text.
+        lines=[];stop=None
+        for line in out.splitlines():
+            if stop:stop=None if line=='::'+stop+'::' else stop
+            elif line.startswith('::stop-commands::'):stop=line.split('::',2)[2]
+            elif line.startswith('::'):lines.append(line)
+        return lines
+    def test_pr_controlled_text_cannot_inject_a_workflow_command(self):
+        # upgrade-notes.yaml keys and values come from the PR: a newline in them must not start a new workflow command.
+        evil='x\n::warning title=Injected::boom'
+        notes={'1.1.0':{'breaking':[{'change':'option-removed','key':evil,'migration':''}]}}
+        code,out=self.main('--old',self.write('old.yaml',BASE),'--new',self.write('new.yaml',new()),'--notes',self.write('notes.yaml',notes))
+        self.assertEqual(code,1);(line,)=self.commands(out)
+        self.assertTrue(line.startswith('::error title=Invalid declaration::'));self.assertIn('x%0A::warning',line)
+    def test_error_text_is_escaped(self):
+        code,out=self.main('--old',self.write('old.yaml',BASE),'--new',self.write('new.yaml',new()),'--name','a,b:c','--notes',self.write('notes.yaml','{"1.1.0": {"breaking": [{"change": "x"}]}}\n'))
+        self.assertEqual(code,2);(line,)=self.commands(out)
+        self.assertTrue(line.startswith('::error title=Upgrade comparison failed::a,b:c: '),line)
+        code,out=self.main('--old',self.write('old.yaml',BASE),'--new',self.write('new.yaml',new()),'--notes',self.write('notes.yaml','"1.1.0":\n  "50%\\nbreaking": []\n'))
+        self.assertEqual(code,2);(line,)=self.commands(out);self.assertIn("unknown section '50%25",line)
+class MarkdownCells(unittest.TestCase):
+    """Text from the PR goes into Markdown table cells: a | or a newline must not break the row."""
+    def test_migration_and_key_are_escaped(self):
+        old=new(schema=put('a|b','str?'));old['version']='1.0.0'
+        cfg=copy.deepcopy(old);cfg['version']='1.1.0';del cfg['schema']['a|b']
+        r=run(cfg,{'1.1.0':{'breaking':[{'change':'schema-removed','key':'a|b','migration':'Use x | y.\nThen restart.'}]}},old=old)
+        self.assertFalse(r['blocked'])
+        self.assertIn('| `schema-removed` | `a\\|b` | yes | Use x \\| y.<br>Then restart. |',r['report'])
+    def test_acceptance_reason_is_escaped(self):
+        r=vrun(scan(match('CVE-2026-0002','zlib')),notes={'1.1.0':{'accepted_vulnerabilities':[{'id':'CVE-2026-0002','package':'zlib','reason':'a | b\nc'}]}})
+        self.assertIn('| CVE-2026-0002 | zlib | High | 1.2.3 | a \\| b<br>c |',r['report'])
 # The spec's example declarations: what users read on the Release page.
 NOTES={'1.3.0':{'breaking':[{'change':'option-removed','key':'ssl_port','migration':'改用 ports 設定的 443/tcp。'}],
     'accepted_vulnerabilities':[{'id':'CVE-2026-1234','package':'openssl','reason':'上游 base image 還沒更新，預計 1.3.1 換掉。'}]}}
