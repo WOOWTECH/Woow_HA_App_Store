@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.7
+
+- When the App cannot start (for example the topology check refuses a host where `lan_interface` does not own the gateway address), it now cleans up and stops the container instead of retrying. Before, s6 restarted it about every 2.5 seconds forever, writing the log and the "啟動失敗" notification each time while the App kept showing as started.
+- Behaviour change: after a refused start the App stays stopped. Once the second cable is connected, start the App again (or reboot the host). With the Supervisor watchdog enabled, Supervisor may retry a few times before giving up.
+- Options are unchanged; normal stop is unchanged.
+
 ## 0.1.6
 
 - Change the default interfaces to LAN `enp2s0` and WAN `enp1s0`, matching the measured J6412 and N2840 hosts (`enp1s0` is the port cabled to the router). The previous defaults were `enp4s0` and `enp2s0`.

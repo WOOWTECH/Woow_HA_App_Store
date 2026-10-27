@@ -23,6 +23,8 @@ The lease timeout must remain safely greater than the heartbeat interval. Unsafe
 
 Starting the App installs an nftables guard, a Docker-compatible iptables forwarding adapter, and NAT for public IPv4 destinations. RFC1918 destinations and new WAN-to-LAN connections are blocked. Normal stop removes the App-owned rules immediately; an unclean stop loses egress when the expiring nftables lease ends.
 
+If the App cannot start, for example because `lan_interface` does not own the gateway address on a host with only one cable, it removes its rules, sends a "啟動失敗" notification and stops instead of retrying by itself. With the watchdog enabled, Supervisor may restart it a few times before giving up. Connect the cable, then start the App again.
+
 The ingress health page reports lifecycle state, lease expiry, interfaces, CIDR, rule checksum, and counters. Supervisor watchdog should remain enabled.
 
 ## Removal

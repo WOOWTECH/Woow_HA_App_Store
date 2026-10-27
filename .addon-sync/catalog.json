@@ -342,20 +342,20 @@
     "woow_lan_gateway": {
       "id": "woow_lan_gateway",
       "name": "Woow LAN Gateway",
-      "version": "0.1.6",
+      "version": "0.1.7",
       "repository": "WOOWTECH/woow-lan-gateway",
-      "source_sha": "c927eb1dae5d5c70e49b760a8be7550bb3b12815",
+      "source_sha": "a62546d87db4abe2995c5aa3e5041dca89951a0b",
       "source_path": "app",
       "config_file": "config.yaml",
-      "config_sha256": "sha256:622e2e0e4800a7c05dda3e890a7e27725cb88271870f112727185025e336c22f",
-      "archive_sha256": "sha256:ccd83c9b3419720bbf0a2181b9e4cfc3ad70def029b05f0beacd05fbf188916b",
-      "context_fingerprint": "sha256:ffe989a3a8a917d6e77e3bfccac113109f39bf227ae9958c7b0804f21fef3557",
-      "material_fingerprint": "sha256:08dc3565d714136513d7f4946bfe56bc7b1b81ea07f965990a1cd44625397441",
+      "config_sha256": "sha256:ef728dc8c51909db5b4c99e8bb5c4e2d5da3a5610bc78d9e5b578cc07ac0ba2a",
+      "archive_sha256": "sha256:61c329ad3bad3a10522ed13dcca0f549f58af62f4a7432fc0104e4367254fff2",
+      "context_fingerprint": "sha256:fea2adcee9a035cff05007a36ec2e98e1ccb005ef89cf2e50e941e4558f33583",
+      "material_fingerprint": "sha256:06804fbb104544990256169032cc26e2b11b881181196b7fc59b5c743d69aa1c",
       "architectures": [
         "amd64"
       ],
       "config": {
-        "version": "0.1.6",
+        "version": "0.1.7",
         "slug": "woow_lan_gateway",
         "name": "Woow LAN Gateway",
         "description": "Fail-closed Internet-only NAT gateway for the fixed WOOWTECH enrollment LAN.",
@@ -397,7 +397,7 @@
       "images": {},
       "delivery": "local-source-build",
       "validation": "manifest+source-context+configured-CI (runtime build not certified)",
-      "publisher_run_id": "38338312849",
+      "publisher_run_id": "40455290226",
       "channel": "stable",
       "store_path": "woow-lan-gateway"
     },
@@ -3631,5 +3631,5 @@
       "store_path": "woow_mcp_nextcloud"
     }
   },
-  "catalog_id": "sha256:5d70ca74b7948f7d7d596cdb8d6e0495c99bcc7776319a215e0b1cd4e354266a"
+  "catalog_id": "sha256:75dbdf08197b55c1d332581e44278dfa7df0d29e7d4e44209fdb5616d4535f22"
 }

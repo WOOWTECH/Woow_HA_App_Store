@@ -1,2 +1,10 @@
 #!/usr/bin/with-contenv sh
+# $1 is the exit code of run; 256 means a signal stopped it (normal shutdown).
 python3 -m gateway.cli cleanup || true
+
+# A failed start (e.g. the topology check refused) stops the container instead
+# of letting s6 restart run forever.
+if [ "$1" -ne 0 ] && [ "$1" -ne 256 ]; then
+    echo "$1" > /run/s6-linux-init-container-results/exitcode
+    exec /run/s6/basedir/bin/halt
+fi
