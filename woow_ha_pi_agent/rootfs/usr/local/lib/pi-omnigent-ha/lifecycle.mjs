@@ -68,7 +68,7 @@ export async function loadPlugin({ env = process.env, bundle = BUNDLE } = {}) {
     const web = await import(pathToFileURL(path.join(root, 'src/web.mjs')).href);
     const runtime = await import(pathToFileURL(path.join(root, 'src/runtime.mjs')).href);
     return { root, web, runtime, version: pkg.version, lifecycle: () => web.packageLifecycle({ env }),
-      locations: () => web.webLocations({ env }) };
+      locations: () => web.webLocations({ env }), onboarding: () => web.readOnboarding({ env }) };
   }
   return null;
 }

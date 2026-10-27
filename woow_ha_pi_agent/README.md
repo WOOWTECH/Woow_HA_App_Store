@@ -380,7 +380,7 @@ Bundled upstream packages retain their own licenses (`@agegr/pi-web` MIT, `@eare
 
 ## Omnigent
 
-映像已包含固定的 `pi-omnigent-plugin v0.3.26`、Python 3.12 與 Omnigent SDK 0.16.0。首次啟動自動註冊插件；Omnigent 綁定由 **Settings → Omnigent** 進行，首頁不再建立或開啟設定對話。
+映像已包含固定的 `pi-omnigent-plugin v0.3.27`、Python 3.12 與 Omnigent SDK 0.16.0。首次啟動自動註冊插件並建立一個「Omnigent 連線設定」對話；網址、帳號及密碼由 **Settings → Omnigent** 輸入。
 
 1. 開啟 HA 側邊欄的 Pi Agent，進入 **Settings → Omnigent**（緊接 MCP；手機從設定下拉選單選取）。原生設定分頁會開啟受 HA ingress 保護的設定表單。
 2. 每次全新設定都需輸入 Server URL、帳號及密碼；不內建預設 server、不沿用另一容器的登入。密碼欄位遮罩，送出／離開頁面後清空，不存於對話。
@@ -396,4 +396,4 @@ Bundled upstream packages retain their own licenses (`@agegr/pi-web` MIT, `@eare
 
 ## Paseo managed web client
 
-See [HA integration, Ingress and upgrade notes](docs/PASEO_HA.md). The image bundles Paseo 0.1.12 and Omnigent 0.3.26, keeps Paseo beside Omnigent in Settings and retains Pi Web 0.12.0. Paseo pairing begins only when the user presses the button in Settings; the add-on no longer creates or opens a setup conversation.
+See [HA integration, Ingress and upgrade notes](docs/PASEO_HA.md). The image bundles Paseo 0.1.12 and Omnigent 0.3.27, keeps Paseo beside Omnigent in Settings and retains Pi Web 0.12.0. Paseo pairing begins only when the user presses the button in Settings; Omnigent creates one setup conversation and keeps account binding in Settings.

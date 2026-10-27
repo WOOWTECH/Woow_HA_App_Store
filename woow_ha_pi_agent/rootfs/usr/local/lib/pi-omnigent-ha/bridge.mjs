@@ -16,7 +16,7 @@ function safeServer(value) {
     }
 }
 const emptyView = (installed = false) => ({ installed, active: false, version: null, phase: "unavailable", server: null,
-    loginConfirmed: false, host: { id: null, name: null, connected: false }, engines: [] });
+    loginConfirmed: false, host: { id: null, name: null, connected: false }, engines: [], onboardingUrl: null });
 /** The same operations the installed plugin exposes, projected to safe UI data. */
 export function createOmnigentBridge(load = loadPlugin) {
     async function snapshot(plugin) {
@@ -28,9 +28,12 @@ export function createOmnigentBridge(load = loadPlugin) {
         const catalog = current.loginConfirmed === true && host.connected === true ? await plugin.runtime.catalog() : {};
         const catalogEngines = record(record(catalog.data).engines);
         const engines = record(current.engines), proofs = record(current.verification);
+        const saved = record(plugin.onboarding?.());
+        const sessionId = typeof saved.sessionId === 'string' && /^[A-Za-z0-9-]{1,80}$/.test(saved.sessionId) ? saved.sessionId : null;
         return { installed: true, active: true, version: plugin.version, phase: text(current.phase) || "unknown",
             server: safeServer(current.server), loginConfirmed: current.loginConfirmed === true,
             host: { id: text(host.id), name: text(host.name), connected: host.connected === true },
+            onboardingUrl: sessionId ? `/?session=${encodeURIComponent(sessionId)}` : null,
             engines: ["claude", "codex", "pi"].map(key => {
                 const engine = record(engines[key]), proof = record(proofs[key]), inventory = record(catalogEngines[key]);
                 return { key, installed: engine.available === true, version: text(engine.version),

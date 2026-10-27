@@ -23,11 +23,11 @@ process.env.PATH = `${guardDir}:${process.env.PATH}`;
 let child;
 try {
   const pkg = JSON.parse(fs.readFileSync(`${BUNDLE}/package.json`, 'utf8'));
-  assert.equal(pkg.version, '0.3.26');
+  assert.equal(pkg.version, '0.3.27');
   assert.equal(JSON.parse(fs.readFileSync('/usr/local/lib/node_modules/@agegr/pi-web/package.json', 'utf8')).version, '0.12.0');
   console.log('SMOKE: loading registered image plugin');
   seed(); const plugin = await loadPlugin(); assert.equal(typeof plugin.runtime.resumeAuthorizedHost, 'function'); assert.equal((await plugin.lifecycle()).active, true);
-  assert.equal(typeof plugin.web.ensureOnboarding, 'undefined');
+  assert.equal(typeof plugin.web.ensureOnboarding, 'function');
   assert.equal(fs.existsSync(path.join(process.env.PI_OMNIGENT_STATE_DIR, 'onboarding.json')), false);
   const sdk = await plugin.web.loadPiSdk();
   const loader = new sdk.DefaultResourceLoader({ cwd: process.env.HOME, agentDir: temporary, noSkills: true, noPromptTemplates: true, noThemes: true, noContextFiles: true });
@@ -51,8 +51,8 @@ try {
   assert.equal(dependencies.omnigent.version, '0.16.0'); assert.equal(dependencies.changed, false);
   const current = await plugin.runtime.status(); assert.equal(current.loginConfirmed, false); assert.notEqual(current.phase, 'ready');
   assert.equal(fs.existsSync(path.join(process.env.OMNIGENT_CONFIG_HOME, 'auth.json')), false);
-  // The actual launcher must start Pi Web and leave the session list untouched.
-  console.log('SMOKE: starting real Pi Web without a setup conversation');
+  // The launcher starts Pi Web and creates one persisted setup conversation.
+  console.log('SMOKE: starting real Pi Web with one setup conversation');
   child = spawn(process.execPath, ['/usr/local/lib/pi-omnigent-ha/launch.mjs'], {
     detached: true, stdio: 'ignore', cwd: process.env.HOME,
     env: { ...process.env, PI_WEB_HOSTNAME: '127.0.0.1', PI_WEB_NO_OPEN: '1', PORT: '30141',
@@ -68,21 +68,25 @@ try {
     await new Promise(resolve => setTimeout(resolve, 1000));
   }
   assert.equal(webReady, true, 'real Pi Web starts');
-  assert.equal(fs.existsSync(path.join(process.env.PI_OMNIGENT_STATE_DIR, 'onboarding.json')), false);
-  assert.equal(fs.existsSync(path.join(temporary, 'sessions')), false);
   console.log('SMOKE: web ready; waiting for offline activation receipt');
   const bootPath = path.join(temporary, 'omnigent-plugin/boot.json');
   for (let attempt = 0; attempt < 45 && !fs.existsSync(bootPath); attempt++) await new Promise(resolve => setTimeout(resolve, 1000));
   assert.equal(fs.existsSync(bootPath), true, 'background activation completes offline');
   const boot = JSON.parse(fs.readFileSync(bootPath, 'utf8'));
   assert.equal(boot.initialization.phase, 'needs-login');
+  assert.equal(boot.onboarding.status, 'created');
+  const onboard = plugin.web.readOnboarding();
+  assert.equal(onboard.sessionId, boot.onboarding.sessionId);
+  assert.equal(fs.existsSync(onboard.sessionFile), true);
+  assert.equal((await plugin.web.ensureOnboarding()).status, 'reused');
+  assert.equal(plugin.web.readOnboarding().sessionId, onboard.sessionId);
   assert.equal(boot.startup.status, 'settings-required');
   assert.equal(fs.existsSync(installAttempts), false, 'no package manager or engine download during fresh activation');
   fs.writeFileSync(path.join(temporary, 'settings.json'), JSON.stringify({ packages: [{ source: BUNDLE, extensions: [] }] }));
   assert.equal((await plugin.lifecycle()).active, false);
   fs.writeFileSync(path.join(temporary, 'settings.json'), JSON.stringify({ packages: [] }));
   assert.equal(seed().seeded, false); assert.equal(await loadPlugin(), null);
-  console.log('Omnigent image smoke passed: Pi Web 0.12 starts, no setup conversation, no runtime install/login, opt-out retained.');
+  console.log('Omnigent image smoke passed: Pi Web 0.12 starts, one retained setup conversation, no runtime install/login, opt-out retained.');
 } finally {
   if (child?.pid) {
     try { process.kill(-child.pid, 'SIGTERM'); } catch {}

@@ -1,3 +1,8 @@
+## 0.15.14
+
+- Bundle Omnigent plugin 0.3.27. A fresh installation creates one retained `Omnigent 連線設定` conversation, with a direct link from Settings → Omnigent. Server URL, account and password remain in the masked Settings form; creating the conversation does not call a model.
+- Keep Pi Web 0.12.0, Paseo 0.1.12, existing sessions, provider credentials, add-on options, ports and architectures. The browser and image gates verify the new conversation and reuse on restart.
+
 ## 0.15.13
 
 - Bundle checksum-verified Omnigent plugin 0.3.26. After native Pi provider login, an empty authenticated model cache is refreshed on catalog or verification requests so the model picker can show available choices.

@@ -77,7 +77,7 @@ test('fresh credentials go directly to runtime, never DTO or automatic chat veri
   assert.deepEqual(f.calls, [{ server: 'https://example.test', username: 'test', password: 'private-fixture', verify: false }]);
   assert.equal(view.operation.ok, true); assert.equal(JSON.stringify(view).includes('private-fixture'), false);
   assert.equal(JSON.stringify(view).includes('must-not-leak'), false); assert.equal(view.engines[2].models[0].id, 'fixture-model');
-  assert.equal('onboardingUrl' in view, false);
+  assert.equal(view.onboardingUrl, '/?session=test-session');
 });
 test('model-specific verification is successful even when another engine still needs setup', async () => {
   const f = fakePlugin(); const view = await f.bridge.act({ action: 'verify', engine: 'pi', model: 'fixture-model' });
