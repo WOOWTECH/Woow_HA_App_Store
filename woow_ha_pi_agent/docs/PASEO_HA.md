@@ -6,20 +6,18 @@ The native desktop tabs and mobile picker are MCP → Omnigent → Paseo.
 
 ## Immutable image inputs
 
-- Paseo plugin 0.1.10, source `bd7756ec53e2a09220ddc680b30539fcd1774e80` (public release archive verified with
-  SHA256 `8aefc73fa5de1507bd7c37931ae48a42fe74e44a014a108b4939c973d4568cc6`).
+- Paseo plugin 0.1.12, source `6796e48c6b3cce06e75c86742ba7b5d3ac121855` (public release archive verified with
+  SHA256 `35eb66d3674d913cfa8e0adb795c6bd1c62ea6819fef29f3fb3757e0d9aa9b17`).
 - Paseo daemon 0.11.2, locked runtime revision `0.11.2-r3-6d8dbe515479`.
 - Fixed web client 0.13.0-woow.1, source
   `68388f19198f1f696efe18906df42049e208d135`, stream repair
   `043aa8286b90418eb1f4e9982ca1a349c84f2a3d`, archive SHA256
   `7e7495f70f721e96e121f76bd91573150cf91aa112143d9f4d51a3fcf9dc8bce`.
-- Omnigent 0.3.21, source `636e5f95049e0d53aaf0690db319d2be220cd495`,
-  public archive SHA256
-  `41a0aadfc811900f4ce83384e08700408c3ad59a931e6011b4516e200ef86b64`.
-  HA 0.15.10 builds on public HA 0.15.9, preserving its guarded first-home
-  navigation and authorized-host recovery while updating Paseo to r3.
-  The public combined adapter supports Paseo 0.1.10; HA retains its own
-  Pi Web 0.12 native integration and does not apply the 0.10 overlay.
+- Omnigent 0.3.24, source `2604e13`, public archive SHA256
+  `adc92aecf53155f23943a774f02c6d6e41c9e05518e60fca4a151eee4b105b12`.
+  HA 0.15.11 keeps authorized-host recovery and native Pi Web 0.12 settings;
+  Omnigent setup now runs only from Settings. The floating link and automatic
+  setup conversation are removed. Paseo pairing is available only through Settings.
 
 The image builds daemon dependencies for amd64 and aarch64 and downloads the
 web client at build time, checking the plugin's manifest and checksum. First
@@ -67,13 +65,13 @@ published. The Ingress URL is session-specific: reopen from HA after it expires.
 
 No options, ports, architectures, image name or existing data formats change.
 Credentials, settings and sessions are preserved. First install registers the
-bundled plugin once and creates one persisted SDK onboarding conversation without requiring a model account or spending tokens. The plugin supervisor performs initialization independently.
+bundled plugin once; it does not create or open an onboarding conversation. The plugin supervisor prepares the service independently. Pairing requires a button press in Settings → Paseo.
 A marker prevents reinstallation after removal; pre-existing package overrides
 and explicit disabling are retained. Package enable/disable/removal is observed
 without restarting Pi Web. A manual service pause survives container restart;
 shutdown stops the owned supervisor without persisting a user pause.
 
-Paseo 0.1.10 uses the r3 runtime with verified patches in both native 0.11.2
+Paseo 0.1.12 uses the r3 runtime with verified patches in both native 0.11.2
 PID-lock modules. All supported writers and recovery share one persistent
 Linux flock guard. Automatic recovery requires a private proof bound to the
 installation, home, lock inode and Linux process birth; a PID or process name
@@ -94,7 +92,7 @@ bundles r3 only; it does not copy the previous image's r2 runtime directory.
 New users still need to authorize the provider CLIs through their official
 login flows. This integration does not migrate or create provider credentials.
 The bundled Claude Code/Codex versions, shared skills/MCP and Omnigent bridge
-are retained. Its existing `boot` call retains Omnigent 0.3.19 recovery in 0.3.21: only
+are retained. Its existing `boot` call retains Omnigent authorized-host recovery in 0.3.24: only
 matching private authorization receipts for this installation may resume the
 recorded host. Disabled/disconnected or credential-only states do not silently
 authorize a reconnect. Existing custom plugin paths remain user-controlled and

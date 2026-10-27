@@ -46,7 +46,7 @@ try {
     await page.locator('#setup button').click();
     await page.waitForFunction(() => document.querySelector('#notice').textContent.includes('Server 登入完成'));
     assert.equal(await page.locator('[name=password]').inputValue(), '');
-    assert.equal(await page.locator('#onboarding').getAttribute('href'), `${prefix}/?session=fixture-session`);
+    assert.equal(await page.locator('#onboarding').count(), 0);
     await page.locator('#engine').selectOption('pi');
     for (const model of ['test-model-a', 'test-model-b']) {
       await page.locator('#model').selectOption(model);

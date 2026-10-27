@@ -1,8 +1,6 @@
 // Safe view/action bridge adapted from pi-omnigent-plugin v0.3.11 (MIT).
 // Upstream source: integrations/pi-web/adapter.patch, lib/omnigent-runtime.ts.
 import { loadPlugin } from './lifecycle.mjs';
-import fs from 'node:fs';
-import path from 'node:path';
 const record = (value) => value && typeof value === "object" && !Array.isArray(value) ? value : {};
 const text = (value) => typeof value === "string" ? value.replace(/[\x00-\x1f\x7f]/g, "").slice(0, 256) : null;
 const code = (value) => typeof value === "string" && /^[A-Z_0-9]{1,64}$/.test(value) ? value : null;
@@ -18,19 +16,7 @@ function safeServer(value) {
     }
 }
 const emptyView = (installed = false) => ({ installed, active: false, version: null, phase: "unavailable", server: null,
-    loginConfirmed: false, host: { id: null, name: null, connected: false }, engines: [], onboardingUrl: null });
-function localRecord(file) {
-    let fd;
-    try {
-        fd = fs.openSync(file, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW | fs.constants.O_NONBLOCK);
-        const stat = fs.fstatSync(fd);
-        if (!stat.isFile() || (stat.mode & 0o777) !== 0o600 || stat.uid !== process.getuid() || stat.size > 1024 * 1024) throw new Error('Unsafe plugin metadata');
-        const value = JSON.parse(fs.readFileSync(fd, 'utf8'));
-        if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Invalid plugin metadata');
-        return value;
-    } catch (error) { if (error.code === 'ENOENT') return null; throw error; }
-    finally { if (fd !== undefined) fs.closeSync(fd); }
-}
+    loginConfirmed: false, host: { id: null, name: null, connected: false }, engines: [] });
 /** The same operations the installed plugin exposes, projected to safe UI data. */
 export function createOmnigentBridge(load = loadPlugin) {
     async function snapshot(plugin) {
@@ -42,12 +28,9 @@ export function createOmnigentBridge(load = loadPlugin) {
         const catalog = current.loginConfirmed === true && host.connected === true ? await plugin.runtime.catalog() : {};
         const catalogEngines = record(record(catalog.data).engines);
         const engines = record(current.engines), proofs = record(current.verification);
-        const onboard = plugin.onboarding();
-        const sessionId = typeof onboard.sessionId === "string" && /^[a-zA-Z0-9-]{1,80}$/.test(onboard.sessionId) ? onboard.sessionId : null;
         return { installed: true, active: true, version: plugin.version, phase: text(current.phase) || "unknown",
             server: safeServer(current.server), loginConfirmed: current.loginConfirmed === true,
             host: { id: text(host.id), name: text(host.name), connected: host.connected === true },
-            onboardingUrl: sessionId ? `/?session=${encodeURIComponent(sessionId)}` : null,
             engines: ["claude", "codex", "pi"].map(key => {
                 const engine = record(engines[key]), proof = record(proofs[key]), inventory = record(catalogEngines[key]);
                 return { key, installed: engine.available === true, version: text(engine.version),
@@ -60,25 +43,6 @@ export function createOmnigentBridge(load = loadPlugin) {
             }) };
     }
     return {
-        async onboarding() {
-            const none = { sessionId: null, pending: false };
-            try {
-                const plugin = await load();
-                if (!plugin) return none;
-                const lifecycle = await plugin.lifecycle();
-                if (lifecycle.active !== true || lifecycle.registered !== true) return none;
-                const { stateDir } = plugin.locations();
-                const current = localRecord(path.join(stateDir, 'state.json'));
-                // Missing state is a registered cold boot, not permission to open
-                // an old conversation. Wait for explicit enabled saved state.
-                if (!current) return { sessionId: null, pending: true };
-                if (current.enabled !== true || current.nativeActive === false || !["new", "installing", "needs-login", "needs-verification", "error"].includes(current.phase)) return none;
-                const onboard = localRecord(path.join(stateDir, 'onboarding.json'));
-                if (!onboard) return { sessionId: null, pending: true };
-                const id = onboard.sessionId;
-                return typeof id === 'string' && /^[a-zA-Z0-9-]{1,80}$/.test(id) ? { sessionId: id, pending: true } : none;
-            } catch { return none; }
-        },
         async read() { const plugin = await load(); return plugin ? snapshot(plugin) : emptyView(); },
         async act(body) {
             const plugin = await load();
@@ -105,14 +69,6 @@ export function createOmnigentBridge(load = loadPlugin) {
                 result = await plugin.runtime.disconnect();
             else
                 throw Object.assign(new Error("Unsupported action"), { code: "INVALID_ACTION" });
-            if (result.ok === true && ["connect", "disconnect"].includes(String(body.action))) {
-                // Refresh only the plugin's saved setup conversation; that helper skips
-                // an active model turn. A UI sync failure cannot undo a successful login.
-                try {
-                    await plugin.refreshOnboarding?.();
-                }
-                catch { }
-            }
             // A targeted verification can succeed while other installed engines still
             // keep the overall setup in needs-verification. Report the operation's
             // result from this call's receipt, without changing global readiness.

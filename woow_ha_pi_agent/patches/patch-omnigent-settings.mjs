@@ -10,9 +10,8 @@ import os from 'node:os';
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
-import { watchOmnigentFirstHome } from './omnigent-first-home.mjs';
 
-const marker = '\n/* woow-ha-omnigent-paseo-settings-v2 */\n';
+const marker = '\n/* woow-ha-omnigent-paseo-settings-v3 */\n';
 const sections = '["general","models","skills","agents","plugins","mcp"]';
 const expanded = '["general","models","skills","agents","plugins","mcp","omnigent","paseo"]';
 const prefix = '(typeof window==="undefined"?"":window.__INGRESS_PATH__||"")';
@@ -26,7 +25,6 @@ const specs = {
     sha256: 'f273303c76f7ab856768e315526cdc7cd485fba7f930e649337c57289d96093f',
     replacements: [
       ['"/icons/catppuccin"', iconBase],
-      ['[nk,nw]=(0,i.useState)(()=>!nx);', '[nk,nw]=(0,i.useState)(()=>!nx);(0,i.useLayoutEffect)(' + watchOmnigentFirstHome.toString() + ',[]);'],
       [sections, expanded],
       ['{id:"mcp",label:h("settings.mcp")}', '{id:"mcp",label:h("settings.mcp")},{id:"omnigent",label:"Omnigent"},{id:"paseo",label:"Paseo"}'],
       ['k("mcp",(0,r.jsx)(mb,{embedded:!0,cwd:t,trust:d,onTrustProject:u,onProjectTrustChanged:p,onClose:s},t??""))',

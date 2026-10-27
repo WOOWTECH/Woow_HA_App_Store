@@ -6,7 +6,7 @@ import { createOmnigentBridge } from './bridge.mjs';
 
 const staticRoot = '/usr/local/share/pi-omnigent-ha';
 const files = new Map([['/omnigent', ['index.html', 'text/html']], ['/omnigent/', ['index.html', 'text/html']],
-  ['/omnigent/app.js', ['app.js', 'application/javascript']], ['/omnigent/launcher.js', ['launcher.js', 'application/javascript']],
+  ['/omnigent/app.js', ['app.js', 'application/javascript']],
   ['/omnigent/style.css', ['style.css', 'text/css']]]);
 const safeCode = error => /^[A-Z_0-9]{1,64}$/.test(error?.code || '') ? error.code : 'OMNIGENT_FAILED';
 
@@ -21,8 +21,7 @@ export function createServer({ bridge = createOmnigentBridge(), directory = stat
     };
     try {
       const url = new URL(req.url, 'http://localhost');
-      const onboarding = url.pathname === '/omnigent/onboarding';
-      if (url.pathname === '/api/omnigent' || onboarding) {
+      if (url.pathname === '/api/omnigent') {
         const site = req.headers['sec-fetch-site'];
         let originAllowed = true;
         if (req.headers.origin) {
@@ -36,13 +35,6 @@ export function createServer({ bridge = createOmnigentBridge(), directory = stat
           } catch { originAllowed = false; }
         }
         if (!originAllowed || (site && !['same-origin', 'none'].includes(site))) return reply(403, { error: { code: 'UNTRUSTED_REQUEST' } });
-        // Minimal read-only navigation data; the custom header prevents a
-        // cross-origin simple request. The private action API still needs its token.
-        if (onboarding) {
-          if (req.method !== 'GET') return reply(405, { error: { code: 'METHOD_NOT_ALLOWED' } });
-          if (req.headers['x-omnigent-onboarding'] !== '1') return reply(403, { error: { code: 'UNTRUSTED_REQUEST' } });
-          return reply(200, await bridge.onboarding());
-        }
         if (req.headers['x-omnigent-token'] !== token) return reply(403, { error: { code: 'UNTRUSTED_REQUEST' } });
         if (req.method === 'GET') return reply(200, await bridge.read());
         if (req.method !== 'POST') return reply(405, { error: { code: 'METHOD_NOT_ALLOWED' } });

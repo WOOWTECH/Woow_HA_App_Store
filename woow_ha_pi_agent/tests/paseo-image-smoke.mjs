@@ -14,13 +14,11 @@ try {
   const lifecycle = await import('/usr/local/lib/pi-paseo-ha/lifecycle.mjs');
   await lifecycle.prepareImage(); assert.equal(lifecycle.seed().seeded, true);
   const plugin = await lifecycle.loadPlugin();
-  assert.equal(plugin.version, '0.1.10'); assert.equal(plugin.enabled, true);
-  const { ensureOnboarding } = await import('/opt/woow/pi-paseo-plugin/src/onboarding.mjs');
-  const first = await ensureOnboarding(plugin.hooks.createOnboarding);
-  const second = await ensureOnboarding(plugin.hooks.createOnboarding);
-  assert.ok(first.sessionId); assert.equal(first.sessionId, second.sessionId);
-  const sessions = fs.readdirSync(path.join(agentDir, 'sessions'), { recursive: true }).filter(file => file.endsWith('.jsonl'));
-  assert.equal(sessions.length, 1, 'onboarding persists once without a model account');
+  assert.equal(plugin.version, '0.1.12'); assert.equal(plugin.enabled, true);
+  assert.equal(plugin.hooks, undefined, 'image bridge must not offer conversation creation');
+  const sessionsDir = path.join(agentDir, 'sessions');
+  const sessions = fs.existsSync(sessionsDir) ? fs.readdirSync(sessionsDir, { recursive: true }).filter(file => file.endsWith('.jsonl')) : [];
+  assert.equal(sessions.length, 0, 'image registration must not create a conversation');
   const { locations } = await import('/opt/woow/pi-paseo-plugin/src/state.mjs');
   const layout = await import('/opt/woow/pi-paseo-plugin/src/runtime-layout.mjs');
   assert.equal(layout.runtimeReady(locations()), true);
@@ -33,5 +31,5 @@ try {
   assert.equal(sdk.version, '0.12.0');
   const settings = path.join(agentDir, 'settings.json'); fs.writeFileSync(settings, '{"packages":[]}');
   assert.equal(lifecycle.seed().seeded, false); assert.equal(await lifecycle.loadPlugin(), null);
-  console.log('PASS offline HA image: Paseo 0.1.10, CLI 0.11.2 r3, both native writers, fixed web, Pi Web 0.12 SDK, registration/removal.', JSON.stringify(native));
+  console.log('PASS offline HA image: Paseo 0.1.12, CLI 0.11.2 r3, both native writers, fixed web, Pi Web 0.12 SDK, settings-only registration/removal.', JSON.stringify(native));
 } finally { fs.rmSync(agentDir, { recursive: true, force: true }); }

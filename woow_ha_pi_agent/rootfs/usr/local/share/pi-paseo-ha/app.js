@@ -3,7 +3,7 @@
   const token = document.querySelector('meta[name=paseo-token]').content;
   const $ = id => document.getElementById(id);
   const embedded = new URLSearchParams(location.search).get('embedded') === '1';
-  if (embedded) { $('back').target = '_parent'; $('onboarding').target = '_parent'; }
+  if (embedded) $('back').target = '_parent';
   window.addEventListener('keydown', event => { if (embedded && event.key === 'Escape') parent.document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); });
   let busy = false;
   async function request(action) {
@@ -20,8 +20,6 @@
       } else {
         $('notice').textContent = `插件 ${data.version || '未安裝'} · ${data.phase || 'unavailable'} · 網頁 ${data.webReady ? data.webVersion : '準備中'}`;
         $('engines').replaceChildren(...(data.providers || []).map(row => { const card = document.createElement('article'); card.textContent = `${row.provider}：${row.status || 'unknown'}${row.chatVerified ? '（已驗證對話）' : ''}`; return card; }));
-        $('onboarding').hidden = !data.onboardingUrl;
-        if (data.onboardingUrl) $('onboarding').href = prefix + data.onboardingUrl;
         $('pair-link').hidden = true; $('pair-link').removeAttribute('href');
       }
     } catch (error) { $('notice').textContent = '操作未完成：' + error.message; }

@@ -1,3 +1,13 @@
+## 0.15.12
+
+- Bundle the verified Paseo 0.1.12 archive. Paseo registration and service recovery no longer create or open a setup conversation; pairing remains an explicit action in Settings → Paseo.
+- Remove the old setup-conversation link from the native Settings iframe. Preserve existing sessions, provider credentials, relay pairing state, service pause state, ingress routing, and Pi Web 0.12.0.
+
+## 0.15.11
+
+- Remove Omnigent first-home auto-navigation, setup conversation creation and the floating top-right link. Bind from Settings → Omnigent; preserve existing sessions and authorized host recovery.
+- Bundle Omnigent plugin 0.3.24, keep the private ingress settings bridge and explicit model verification.
+
 ## 0.15.10
 
 - Bundle public, checksum-verified Omnigent 0.3.21. Its bounded native package recheck prevents a temporary settings read failure from hiding a connected plugin in Pi Web; explicit disable remains immediate.
@@ -108,6 +118,11 @@
 - Preinstall Claude Code 2.1.296 and Codex 0.162.1 from a lockfile in the image. Existing user-local CLI binaries remain first on PATH and are not overwritten.
 
 # Changelog
+
+## 0.15.11
+
+- Remove the Omnigent floating link, first-home auto-navigation and setup conversation creation. Bind only from the native Settings → Omnigent form; the private ingress bridge, model verification and authorized host recovery remain available.
+- Bundle Omnigent plugin 0.3.24 with matching settings-only boot behavior. Preserve existing sessions and login state; stale setup records are ignored.
 
 ## 0.14.3
 

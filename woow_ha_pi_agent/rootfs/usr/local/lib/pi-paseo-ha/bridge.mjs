@@ -11,7 +11,6 @@ export function createPaseoBridge(load = loadPlugin) {
     const state = await plugin.api.status();
     return { installed: true, enabled: true, version: plugin.version, phase: clean(state.phase),
       running: state.daemon?.running === true, webReady: state.webClient?.ready === true, webVersion: clean(state.webClient?.version),
-      onboardingUrl: /^[a-zA-Z0-9-]{1,80}$/.test(state.onboardingSessionId || '') ? '/?session=' + state.onboardingSessionId : null,
       providers: (state.providers || []).filter(row => providers.includes(row.provider)).map(row => ({
         provider: row.provider, status: clean(row.status), chatVerified: row.chatVerified === true,
         modes: (row.modes || []).map(mode => ({ id: clean(mode.id), label: clean(mode.label) })),
@@ -23,7 +22,7 @@ export function createPaseoBridge(load = loadPlugin) {
       const plugin = await load();
       if (!plugin?.enabled) throw Object.assign(new Error('Plugin unavailable'), { code: 'PLUGIN_UNAVAILABLE' });
       if (body.action === 'pair') return { url: pairUrl((await plugin.api.pair()).url, prefix) };
-      if (body.action === 'start') await plugin.api.lifecycle({ action: 'enable', cwd: process.env.HOME }, plugin.hooks);
+      if (body.action === 'start') await plugin.api.lifecycle({ action: 'enable', cwd: process.env.HOME });
       else if (body.action === 'stop') await plugin.api.lifecycle({ action: 'stop' });
       else if (body.action === 'models' && providers.includes(body.provider)) {
         const rows = await plugin.api.listModels(body.provider);

@@ -66,20 +66,7 @@ export async function loadPlugin({ env = process.env, bundle = BUNDLE } = {}) {
     const binding = (scopes[entry.scope]?.packages || []).find(item => (typeof item === 'string' ? item : item.source) === entry.source);
     const enabled = typeof binding === 'string' || !!binding && (!Array.isArray(binding.extensions) || binding.extensions.length > 0);
     const api = await import(pathToFileURL(path.join(root, 'src/host-api.mjs')).href);
-    return { root, api, enabled, version: pkg.version, hooks: {
-      createOnboarding: async (prompt, remember) => {
-        const cwd = path.resolve(env.HOME);
-        const safePath = `--${cwd.replace(/^[/\\]/, '').replace(/[/\\:]/g, '-')}--`;
-        const session = sdk.SessionManager.create(cwd, path.join(env.PI_CODING_AGENT_DIR, 'sessions', safePath));
-        session.appendSessionInfo('Paseo 連線初始化');
-        session.appendCustomEntry('paseo-onboarding', { version: 1 });
-        // Persist without requiring a model account or spending tokens. The
-        // plugin supervisor already performs installation/startup independently.
-        session.appendMessage({ role: 'user', content: prompt, timestamp: Date.now() });
-        remember(session.getSessionId());
-        return session.getSessionId();
-      },
-    } };
+    return { root, api, enabled, version: pkg.version };
   }
   return null;
 }
@@ -121,7 +108,7 @@ export async function startLifecycle({ load = loadPlugin, intervalMs = 3000, sto
       const next = current ? JSON.stringify([current.root, current.enabled]) : 'missing';
       if (next === signature) return;
       if (previous && (previous.root !== current?.root || !current?.enabled)) await previous.api.lifecycle({ action: 'disable' });
-      if (current?.enabled) await current.api.lifecycle({ action: signature === undefined ? 'restore' : 'enable', cwd: process.env.HOME }, current.hooks);
+      if (current?.enabled) await current.api.lifecycle({ action: signature === undefined ? 'restore' : 'enable', cwd: process.env.HOME });
       else if (current && !previous) await current.api.lifecycle({ action: 'disable' });
       previous = current; signature = next;
     } catch { console.error('Paseo setup needs attention; Pi Web remains available.'); }

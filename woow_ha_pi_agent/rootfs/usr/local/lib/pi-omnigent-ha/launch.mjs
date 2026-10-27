@@ -21,7 +21,6 @@ async function activate() {
   if (activeRoot === next.root) return;
   stopWorker();
   activeRoot = next.root;
-  await next.web.ensureOnboarding();
   worker = spawn(process.execPath, [path.join(next.root, 'bin/cli.mjs'), 'boot'], { env: process.env, stdio: 'ignore', detached: true });
   const current = worker;
   current.once('error', () => { if (worker === current) worker = null; });

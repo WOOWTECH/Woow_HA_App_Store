@@ -8,7 +8,7 @@ const bundle = process.argv[2] || '/opt/woow/pi-paseo-plugin';
 const runtimeDir = process.argv[3] || '/opt/woow/paseo-runtime';
 const stateDir = process.argv[4] || '/opt/woow/paseo-web';
 const pkg = JSON.parse(fs.readFileSync(path.join(bundle, 'package.json')));
-if (pkg.name !== '@woowtech/pi-paseo' || pkg.version !== '0.1.10') throw new Error('Unsupported Paseo package');
+if (pkg.name !== '@woowtech/pi-paseo' || pkg.version !== '0.1.12') throw new Error('Unsupported Paseo package');
 const layout = await import(pathToFileURL(path.join(bundle, 'src/runtime-layout.mjs')).href);
 const web = await import(pathToFileURL(path.join(bundle, 'src/web-client.mjs')).href);
 const loc = { runtimeDir, stateDir };

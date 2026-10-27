@@ -126,8 +126,8 @@ test('hashed assets gzip after prefix rewrite, validate GET/HEAD/304 per represe
 });
 function fakePlugin() {
   const calls = [];
-  const plugin = { enabled: true, version: '0.1.10', api: {
-    status: async () => ({ phase: 'ready', daemon: { running: true }, webClient: { ready: true, version: '0.13.0-woow.1' }, providers: [{ provider: 'claude', status: 'ready' }], token: 'never-project-this' }),
+  const plugin = { enabled: true, version: '0.1.12', api: {
+    status: async () => ({ phase: 'ready', daemon: { running: true }, webClient: { ready: true, version: '0.13.0-woow.1' }, providers: [{ provider: 'claude', status: 'ready' }], onboardingSessionId: 'legacy-id', token: 'never-project-this' }),
     pair: async () => { calls.push('pair'); return { url: '/paseo-web/#fixture' }; },
     lifecycle: async input => calls.push(input), listModels: async () => ({ models: [{ id: 'test', secret: 'never-project-this' }] }),
     web: async () => new Response('<script src="/paseo-web/main.js"></script>', { headers: { 'Content-Type': 'text/html' } }),
@@ -137,6 +137,7 @@ function fakePlugin() {
 test('bridge projects safe fields, forwards lifecycle and refuses disabled packages', async () => {
   const f = fakePlugin();
   assert.ok(!JSON.stringify(await f.bridge.read()).includes('never-project-this'));
+  assert.equal('onboardingUrl' in await f.bridge.read(), false);
   assert.deepEqual(await f.bridge.act({ action: 'models', provider: 'claude' }), { models: [{ id: 'test', label: 'test' }] });
   await f.bridge.act({ action: 'start' }); assert.equal(f.calls[0].action, 'enable');
   await f.bridge.act({ action: 'stop' }); assert.equal(f.calls[1].action, 'stop');

@@ -2,12 +2,10 @@
   const prefix = location.pathname.replace(/\/omnigent\/?$/, '');
   const token = document.querySelector('meta[name="omnigent-token"]').content;
   const $ = id => document.getElementById(id);
-  // The native Settings section embeds this SAME private page. Navigation to
-  // a Pi conversation must leave the inner frame, and Escape must still close
-  // the host Settings dialog. No new API, token channel or postMessage listener.
+  // The native Settings section embeds this private page. Escape closes the
+  // host Settings dialog without adding another navigation path.
   if (new URLSearchParams(location.search).get('embedded') === '1' && window.parent !== window) {
     $('back').target = '_parent';
-    $('onboarding').target = '_parent';
     document.addEventListener('keydown', event => {
       if (event.key !== 'Escape' || event.defaultPrevented) return;
       event.preventDefault();
@@ -44,8 +42,6 @@
     $('connection').textContent = `${result.server || '尚未設定網址'} · ${result.host.connected ? '主機在線' : '主機離線'} · ${result.phase}`;
     $('open').hidden = !result.server;
     if (result.server) $('open').href = result.server;
-    $('onboarding').hidden = !result.onboardingUrl;
-    if (result.onboardingUrl) $('onboarding').href = prefix + result.onboardingUrl;
     $('notice').textContent = !result.active ? '插件已停用或移除。請在 Pi Web Plugins 重新啟用或安裝。'
       : result.operation?.ok === false ? `操作尚未完成：${result.operation.code || '請查看引擎狀態'}`
       : result.phase === 'ready' ? '全部已安裝引擎的實際對話已通過。'
