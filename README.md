@@ -153,7 +153,7 @@ ha store add https://github.com/WOOWTECH/Woow_HA_App_Store
   | `image-changed` | `image` 改變、新增或拿掉 | `image` |
 
   只寫進報告、不擋：預設值改變（`default-changed`）、只改主機端預設 port（`host-port-changed`）。不擋也不報告：範圍變寬、列舉加值、必填改選填、新增選填 key、新增有預設值的 key。
-- **第 4 類 漏洞比對**（只限有預先建置映像的 addon）：新映像由 repo 自己的 amd64 PR 建置，用 Store 的 [`addon-sbom`](.github/actions/addon-sbom/action.yml) 步驟交出 SBOM；舊映像從 GHCR 拉比對對象的 amd64 映像。兩邊用同一份 Grype DB 掃描（Grype、Syft 依 checksum 釘選）。以（漏洞 ID, 套件）比對，**新映像才有、嚴重度 Critical 或 High、Grype `fix.state` 是 `fixed`** 的是「新增可修補漏洞」，沒宣告接受就擋下。舊映像就有的、沒有修補版本的、嚴重度不到 High 的只算進報告的數量。在裝置上建置的 addon 不做第 4 類，報告註明交由 #90。
+- **第 4 類 漏洞比對**（只限有預先建置映像的 addon）：新映像由 repo 自己的 amd64 PR 建置，用 Store 的 [`addon-sbom`](.github/actions/addon-sbom/action.yml) 步驟交出 SBOM；舊映像從 GHCR 拉比對對象的 amd64 映像。兩邊用同一份 Grype DB 掃描（Grype、Syft 依 checksum 釘選）。以（漏洞 ID, 套件）比對，**新映像才有、嚴重度 Critical 或 High、Grype `fix.state` 是 `fixed`** 的是「新增可修補漏洞」，沒宣告接受就擋下。舊映像就有的、沒有修補版本的、嚴重度不到 High 的只算進報告的數量。在裝置上建置的 addon 不做第 4 類，報告註明交由 #90。呼叫端傳 `skip_vulnerability_scan: <原因>` 時，這次呼叫的所有 addon 都不做第 4 類，報告寫出這個原因（例如 knxd 出貨的是第三方映像）；第 1 類照常比對。
 - **`upgrade-notes.yaml`** 放在每個 addon 的 `config.yaml` 旁邊，只有需要宣告時才建立：
 
   ```yaml

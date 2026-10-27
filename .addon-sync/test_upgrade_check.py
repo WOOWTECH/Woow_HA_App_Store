@@ -1,4 +1,4 @@
-import contextlib,copy,io,pathlib,shutil,tempfile,unittest
+import contextlib,copy,io,json,pathlib,shutil,tempfile,unittest
 import yaml
 import upgrade_check as u
 
@@ -314,6 +314,47 @@ class ReusableWorkflow(unittest.TestCase):
         self.assertIn('actions/runs/${RUN_ID}/artifacts',steps[wait]['run'])
         self.assertEqual(self.wf['on']['workflow_call']['inputs']['sbom_wait_minutes']['default'],40)
         self.assertGreater(self.wf['jobs']['compare']['timeout-minutes'],40)
+class SkipVulnerabilityScan(unittest.TestCase):
+    """skip_vulnerability_scan: a caller whose prebuilt image is not the one it builds (knxd ships a third-party image),
+    or whose category 4 moved elsewhere, opts out with a reason; category 1 still runs and the report says why."""
+    WF=pathlib.Path(__file__).resolve().parent.parent/'.github/workflows/woow-addon-upgrade-check.yml'
+    REASON='the shipped image is third-party; category 4 for it is out of scope'
+    def setUp(self):
+        self.wf=yaml.safe_load(self.WF.read_text(encoding='utf-8'))
+        self.plan=next(s for s in self.wf['jobs']['compare']['steps'] if s.get('id')=='plan')
+    def test_optional_string_input_that_defaults_to_scanning(self):
+        inp=self.wf['on']['workflow_call']['inputs']['skip_vulnerability_scan']
+        self.assertEqual((inp['type'],inp['default']),('string',''))
+        self.assertEqual(self.plan['env']['SKIP_VULNERABILITY_SCAN'],'${{ inputs.skip_vulnerability_scan }}')
+    def _run_plan(self,skip):
+        # Runs the real "Find the comparison targets" script against a fake repo, gh stubbed (needs bash, jq, yq: CI runners).
+        import os,subprocess
+        tmp=pathlib.Path(tempfile.mkdtemp());self.addCleanup(shutil.rmtree,tmp)
+        (tmp/'tooling/.addon-sync').mkdir(parents=True);(tmp/'source/addon').mkdir(parents=True);(tmp/'bin').mkdir()
+        (tmp/'tooling/.addon-sync/registry.json').write_text(json.dumps({'providers':{'WOOWTECH/t':{'ref_policy':'release','components':[
+            {'id':'t','source_path':'addon','config_file':'config.yaml'}]}}}))
+        cfg=dict(BASE,image='ghcr.io/da-anda/addon-{arch}')
+        (tmp/'source/addon/config.yaml').write_text(yaml.safe_dump(dict(cfg,version='1.1.0')))
+        (tmp/'old.yaml').write_text(yaml.safe_dump(cfg))
+        (tmp/'changed.tsv').write_text('t\taddon\taddon/config.yaml\t1.1.0\n')
+        gh=tmp/'bin/gh';gh.write_text('#!/bin/bash\ncase "$*" in *releases*) echo v1.0.0;; *contents*) cat "$OLD";; *) exit 1;; esac\n');gh.chmod(0o755)
+        env=dict(os.environ,PATH=f"{tmp/'bin'}{os.pathsep}{os.environ['PATH']}",OLD=str(tmp/'old.yaml'),REPO='WOOWTECH/t',BASE_SHA='b',
+            GH_TOKEN='x',SBOM_ARTIFACT='',SKIP_VULNERABILITY_SCAN=skip,RUNNER_TEMP=str(tmp),GITHUB_OUTPUT=str(tmp/'out'))
+        (tmp/'plan.sh').write_text(self.plan['run'])
+        r=subprocess.run(['bash',str(tmp/'plan.sh')],cwd=tmp,env=env,capture_output=True,text=True)
+        plan=(tmp/'plan.txt').read_text().rstrip('\n').split('\x1f') if (tmp/'plan.txt').exists() else []
+        return r,plan,(tmp/'out').read_text() if (tmp/'out').exists() else ''
+    @unittest.skipUnless(all(shutil.which(t) for t in ('bash','jq','yq')),'needs bash, jq and yq (present on GitHub runners)')
+    def test_skip_drops_category_4_and_reports_the_reason(self):
+        r,plan,out=self._run_plan(self.REASON)
+        self.assertEqual(r.returncode,0,r.stdout+r.stderr)
+        # target still found (category 1 runs), no image ref to scan, the reason is the report's scan note
+        self.assertEqual(plan[4:],['v1.0.0','',f'skipped by the caller: {self.REASON}']);self.assertIn('scan=false',out)
+    @unittest.skipUnless(all(shutil.which(t) for t in ('bash','jq','yq')),'needs bash, jq and yq (present on GitHub runners)')
+    def test_without_skip_a_prebuilt_image_still_needs_its_sbom(self):
+        r,_,_=self._run_plan('')
+        self.assertEqual(r.returncode,1);self.assertIn('passes no sbom_artifact',r.stdout+r.stderr)
+
 class Scanners(unittest.TestCase):
     ACTION=pathlib.Path(__file__).resolve().parent.parent/'.github/actions/addon-sbom'
     def test_pinned_versions_and_checksums(self):

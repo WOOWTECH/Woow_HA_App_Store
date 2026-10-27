@@ -17,7 +17,11 @@
 # version change does it wait (at most sbom_wait_minutes) for the SBOM artifact
 # of the same run, through the Actions API. An add-on with a prebuilt image
 # whose SBOM never arrives fails the check; it is never skipped.
-# Add-ons built on the device are reported as compared in #90.
+# Add-ons built on the device are reported as compared in #90. A caller whose
+# prebuilt image is not what its CI builds (knxd ships a third-party image),
+# or whose category 4 runs elsewhere, passes skip_vulnerability_scan with the
+# reason: category 4 is then skipped for every add-on in the call and the
+# report gives that reason; the configuration comparison still runs.
 #
 # Caller (in a workflow that also runs on push to the default branch, so
 # addon_sync's ci_gate keeps seeing a successful non-PR run; no path filter,
@@ -31,6 +35,7 @@
 #     uses: WOOWTECH/Woow_HA_App_Store/.github/workflows/woow-addon-upgrade-check.yml@main
 #     with:
 #       sbom_artifact: upgrade-comparison-sbom-*  # omit only when no add-on has a prebuilt image
+#       # skip_vulnerability_scan: <reason>        # instead of sbom_artifact, only when category 4 does not apply
 #
 # GitHub names the check "<caller job> / <job>": "Upgrade comparison / compare".
 # On other events the job passes at once: the PR was already compared.
@@ -44,6 +49,10 @@ name: Upgrade comparison
         default: main
       sbom_artifact:
         description: Name or glob of the artifacts the addon-sbom action uploads in the same run (upgrade-comparison-sbom-<component>); required when an add-on has a prebuilt image.
+        type: string
+        default: ''
+      skip_vulnerability_scan:
+        description: Reason to skip the vulnerability comparison (category 4) for every add-on in this call; it is printed in the report. Empty scans as usual.
         type: string
         default: ''
       sbom_wait_minutes:
@@ -130,6 +139,7 @@ jobs:
       if: steps.detect.outputs.changed == 'true'
       env:
         SBOM_ARTIFACT: ${{ inputs.sbom_artifact }}
+        SKIP_VULNERABILITY_SCAN: ${{ inputs.skip_vulnerability_scan }}
         GH_TOKEN: ${{ github.token }}
         REPO: ${{ github.repository }}
         BASE_SHA: ${{ github.event.pull_request.base.sha }}
@@ -167,7 +177,9 @@ jobs:
           # Category 4: needs a prebuilt image and a comparison target; then the new image's SBOM is mandatory.
           image="$(yq -r '.image // ""' "source/${path}")"
           artifact="upgrade-comparison-sbom-${id}"
-          if [ -z "${image}" ]; then
+          if [ -n "${SKIP_VULNERABILITY_SCAN}" ]; then
+            note="skipped by the caller: ${SKIP_VULNERABILITY_SCAN}"
+          elif [ -z "${image}" ]; then
             note="built on the device; the vulnerability comparison for these add-ons is #90"
           elif [ ! -s "${old}" ]; then
             note="no comparison target"
