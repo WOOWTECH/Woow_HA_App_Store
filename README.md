@@ -169,6 +169,7 @@ ha store add https://github.com/WOOWTECH/Woow_HA_App_Store
   ```
 
   - 只讀版本號在（比對對象, 新版本] 之間的段落；更早的段落不算數，不會蓋掉這次新出現的變更。
+  - 版本先照 PEP 440 排序（`2026.9.1-1` 是 2026.9.1 之後的修訂）；不符合時用點分數字加上 `-v<N>`／`-<N>` 重建序號（`2.12.4-v2` < `2.12.4-v3`，沒有序號的排最前）。無法排序的版本號會讓檢查失敗。
   - 每項破壞性變更要有 `change`、`key` 完全相同的一筆；接受的漏洞要有 `id`、`package` 完全相同的一筆。`migration`、`reason` 不能是空的。報告會列出可以直接貼上的 `change`／`key`。
   - 寫了宣告、但檢查沒找到對應的變更：只寫進報告，不擋。
 - **Release 說明**：發 Release 時，上一個正式 Release 之後各版的宣告自動整理成「破壞性變更與遷移方式」「已接受的漏洞」兩段，放在 GitHub 自動產生的說明前面；共用的 `woow-addon-release.yml` 和 `Woow_ha_odoo` 的 `release.yml` 都這樣做。沒有宣告就不加；檔案格式錯誤時不發 Release。

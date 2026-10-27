@@ -124,14 +124,21 @@ def category1(old, new):
     if old.get('image')!=new.get('image'):found.append(('image-changed','image'))
     return found,notices
 
+REBUILD=re.compile(r'^(\d+(?:\.\d+)*)(?:-v?(\d+))?$')
+
 def version_cmp(a, b):
-    """-1, 0 or 1. PEP 440 where possible, else the leading dotted number (nginxpm `2.12.4-v2`); an ambiguous pair is an error."""
+    """-1, 0 or 1. PEP 440 where possible (Woow_haos_ha_core `2026.9.1-1` is a post-release); else a dotted number with an
+    optional rebuild suffix `-v<N>` or `-<N>` (nginxpm `2.12.4-v2` < `2.12.4-v3`; no suffix sorts first); else the leading
+    dotted number alone. A pair that cannot be ordered is an error."""
     if a==b:return 0
     try:x,y=Version(a),Version(b)
     except InvalidVersion:
-        m,n=re.match(r'^(\d+(?:\.\d+)*)',a),re.match(r'^(\d+(?:\.\d+)*)',b)
-        if not m or not n:raise ValueError(f'cannot order versions {a!r} and {b!r}')
-        x,y=tuple(map(int,m[1].split('.'))),tuple(map(int,n[1].split('.')))
+        m,n=REBUILD.match(a),REBUILD.match(b)
+        if m and n:x,y=(tuple(map(int,m[1].split('.'))),int(m[2] or -1)),(tuple(map(int,n[1].split('.'))),int(n[2] or -1))
+        else:
+            m,n=re.match(r'^(\d+(?:\.\d+)*)',a),re.match(r'^(\d+(?:\.\d+)*)',b)
+            if not m or not n:raise ValueError(f'cannot order versions {a!r} and {b!r}')
+            x,y=tuple(map(int,m[1].split('.'))),tuple(map(int,n[1].split('.')))
         if x==y:raise ValueError(f'cannot order versions {a!r} and {b!r}')
     return -1 if x<y else 1
 
