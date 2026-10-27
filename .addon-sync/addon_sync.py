@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse, base64, hashlib, io, json, os, pathlib, re, shutil, subprocess, tarfile, tempfile, urllib.error, urllib.parse, urllib.request
 import yaml
 from packaging.version import Version, InvalidVersion
+import upgrade_check
 
 BRANCH = 'woow-addon-sync'
 EVENT_FILE = 'notification.json'
@@ -327,6 +328,21 @@ def tagged_commit(gh, repo, tag):
     if target['type']=='tag':target=gh.api(repo,'git/tags/'+target['sha'])['object']
     return target['sha']
 
+def release_body(gh, repo, provider, comp, sha, version):
+    """Release-notes sections for the add-on's upgrade-notes.yaml at sha (pipeline #119); '' when it declares nothing new.
+    GitHub puts a body before its generated notes, so both appear. Only declarations since the add-on's last formal
+    Release count; a malformed file blocks the Release rather than publishing it without the notes."""
+    path='upgrade-notes.yaml' if comp['source_path']=='.' else str(safe_path(comp['source_path'])/'upgrade-notes.yaml')
+    try:raw=gh.content(repo,path,sha)
+    except Blocked as e:
+        if 'HTTP 404' in str(e):return ''
+        raise
+    prefix=release_tag(provider,comp,'')
+    released=[r['tag_name'][len(prefix):] for r in gh.api(repo,'releases?per_page=100')
+        if not r.get('draft') and not r.get('prerelease') and r.get('tag_name','').startswith(prefix)]
+    try:return upgrade_check.release_notes(yaml.safe_load(raw),version,released)
+    except (ValueError,TypeError,yaml.YAMLError) as e:raise Blocked(path+': '+str(e))
+
 def release(gh, registry, repo, sha, apply=False):
     """Publish a stable Release for each stable addon whose manifest version at sha has none yet.
     Runs in the source repository after its CI, on a default-branch commit; reads the manifest at
@@ -345,7 +361,8 @@ def release(gh, registry, repo, sha, apply=False):
             version=str(cfg['version']);tag=release_tag(provider,comp,version)
             if get_or_none(gh,repo,'releases/tags/'+urllib.parse.quote(tag,safe='')) is not None:report.append({'id':cid,'state':'already-released','tag':tag,'version':version});continue
             if tagged_commit(gh,repo,tag) not in [None,sha]:raise Blocked('Tag '+tag+' points at another commit; release or delete it by hand')
-            if apply:gh.api(repo,'releases',{'tag_name':tag,'target_commitish':sha,'name':f"{cfg.get('name',cid)} {version}",'generate_release_notes':True,'make_latest':'true'})
+            body=release_body(gh,repo,provider,comp,sha,version)
+            if apply:gh.api(repo,'releases',{'tag_name':tag,'target_commitish':sha,'name':f"{cfg.get('name',cid)} {version}",'generate_release_notes':True,'make_latest':'true',**({'body':body} if body else {})})
             report.append({'id':cid,'state':'released' if apply else 'would-release','tag':tag,'version':version})
         except Exception as e:
             report.append({'id':cid,'state':'blocked','reason':str(e) if isinstance(e,Blocked) else type(e).__name__})

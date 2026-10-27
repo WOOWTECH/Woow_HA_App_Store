@@ -37,9 +37,13 @@ upgrade-notes.yaml, next to config.yaml, created only when needed:
       - id: CVE-2026-1234        # same id and package as the report
         package: openssl
         reason: Upstream base image not updated yet; replaced in 1.3.1.   # must not be empty
+
+Release notes (#119): `release-notes` prints the declarations since the last formal Release as
+two sections, 破壞性變更與遷移方式 and 已接受的漏洞, and nothing when there are none.
+addon_sync.release (woow-addon-release.yml) and Woow_ha_odoo's release.yml put them on the Release.
 """
 from __future__ import annotations
-import argparse, json, os, pathlib, re, sys
+import argparse, functools, json, os, pathlib, re, sys
 import yaml
 from packaging.version import InvalidVersion, Version
 
@@ -153,6 +157,30 @@ def declarations(notes, after, upto):
         for section,entries in body.items():out[section]+=[dict(e,version=version) for e in entries]
     return out
 
+RELEASE_SECTIONS=(('breaking','破壞性變更與遷移方式',lambda e:f'`{e["change"]}` `{e["key"]}`（{e["version"]}）','migration'),
+    ('accepted_vulnerabilities','已接受的漏洞',lambda e:f'{e["id"]}（{e["package"]}，{e["version"]}）','reason'))
+
+def release_notes(notes, version, released=()):
+    """Markdown the Release of `version` adds to its notes; '' when nothing is declared.
+
+    `released`: versions that already have a formal Release. Only sections after the newest of them below `version`
+    count, the same (comparison target, new] range the PR check used, so a declaration appears on one Release only."""
+    def below(v):
+        try:return version_cmp(v,version)<0
+        except ValueError:return False  # a tag that is not a version (or cannot be ordered) is not a Release of this add-on
+    earlier=[v for v in released if v!=version and below(v)]
+    after=max(earlier,key=functools.cmp_to_key(version_cmp)) if earlier else None
+    found=declarations(notes,after,version);out=[]
+    for section,title,label,text_key in RELEASE_SECTIONS:
+        if not found[section]:continue
+        lines=[]
+        for e in found[section]:
+            text=str(e.get(text_key) or '').strip()
+            if not text:raise ValueError(f'{e["version"]}.{section}: {label(e)} has no {text_key}')
+            lines.append(f'- {label(e)}：'+text.replace('\n','\n  '))
+        out.append(f'## {title}\n\n'+'\n'.join(lines)+'\n')
+    return '\n'.join(out)
+
 def _paste(version, items):
     return '\n'.join([f'"{version}":','  breaking:']+[f'    - change: {i["change"]}\n      key: {i["key"]}\n      migration: ' for i in items])
 
@@ -261,7 +289,16 @@ def main(argv=None):
     c.add_argument('--old-scan');c.add_argument('--new-scan');c.add_argument('--name');c.add_argument('--notes-path',default='upgrade-notes.yaml')
     c.add_argument('--scan-note',default='no scan results',help='why there are no scan results (report text)')
     c.add_argument('--summary',default=os.environ.get('GITHUB_STEP_SUMMARY'),help='Markdown file the report is appended to')
+    n=sub.add_parser('release-notes',help="print the Release-notes sections for a version's declarations ('' when none)")
+    n.add_argument('--notes',required=True,help='upgrade-notes.yaml at the released commit (may be absent)')
+    n.add_argument('--version',required=True,help='version being released')
+    n.add_argument('--released',nargs='*',default=[],help='versions that already have a formal Release')
     a=p.parse_args(argv)
+    if a.command=='release-notes':
+        try:text=release_notes(_load(a.notes,'optional'),a.version,a.released)
+        except (ValueError,TypeError,OSError,yaml.YAMLError) as e:
+            print(f'::error title=Release notes failed::{a.notes}: {e}');return 2
+        print(text,end='');return 0
     try:
         old,new=_load(a.old,'yaml'),_load(a.new,'yaml')
         r=compare(old,new,old_version=str(old['version']) if old else None,new_version=str(new['version']),notes=_load(a.notes,'optional'),
