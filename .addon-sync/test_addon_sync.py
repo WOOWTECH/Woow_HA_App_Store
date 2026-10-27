@@ -41,6 +41,14 @@ class Tests(unittest.TestCase):
             (root/'README.md').write_text('| `test` | Test | 1.0.0 | build | note |\n')
             report,catalog=s.consume(None,{'providers':{}},root)
             self.assertEqual(report,[]);self.assertIn('| 1.2.0 |',(root/'README.md').read_text())
+    def test_consume_reports_blocked_readme_without_failing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=pathlib.Path(tmp);(root/'.addon-sync').mkdir();other=root/'other';other.write_text('keep')
+            (root/'.addon-sync/catalog.json').write_text(json.dumps({'schema':1,'components':{'test':{'version':'1.2.0'}}}))
+            (root/'README.md').symlink_to(other)
+            report,catalog=s.consume(None,{'providers':{}},root)
+            self.assertEqual(report,[{'id':'README.md','state':'blocked','reason':'README is a symlink'}])
+            self.assertIn('catalog_id',json.loads((root/'.addon-sync/catalog.json').read_text()));self.assertEqual(other.read_text(),'keep')
     def test_rebrand_only_download_resources(self):
         with tempfile.TemporaryDirectory() as tmp:
             root=pathlib.Path(tmp);store=root/'store';target=root/'private';(store/'.addon-sync').mkdir(parents=True);target.mkdir()

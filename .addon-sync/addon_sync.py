@@ -451,7 +451,9 @@ def consume(gh, registry, workspace, only=None):
             except Exception as e:report.append({'id':cid,'state':'waiting' if isinstance(e,Deferred) else 'blocked','reason':str(e) if isinstance(e,Blocked) else type(e).__name__})
     catalog['catalog_id']=digest(canonical(catalog['components']))
     catpath.parent.mkdir(exist_ok=True);catpath.write_text(json.dumps(catalog,ensure_ascii=False,indent=2)+'\n')
-    sync_readme_versions(workspace,catalog)
+    # README is presentation only; a README problem must not stop the commit of synced components.
+    try:sync_readme_versions(workspace,catalog)
+    except Exception as e:report.append({'id':'README.md','state':'blocked','reason':str(e) if isinstance(e,Blocked) else type(e).__name__})
     return report,catalog
 
 def sync_readme_versions(workspace,catalog):
