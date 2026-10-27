@@ -300,7 +300,10 @@ class Tests(unittest.TestCase):
                     kind,commit=tags[name]
                     return {'object':{'type':kind,'sha':commit if kind=='commit' else 't'*40}}
                 if path=='git/tags/'+'t'*40:return {'object':{'type':'commit','sha':next(c for k,c in tags.values() if k=='tag')}}
-                if path=='releases?per_page=100':return [dict({'draft':False,'prerelease':False},**r) for r in listing]
+                if path.startswith('releases?per_page=100'):
+                    # GitHub pages the Releases list: 100 per page, page=1 when not given, newest first.
+                    page=int(path.partition('&page=')[2] or 1)
+                    return [dict({'draft':False,'prerelease':False},**r) for r in listing[(page-1)*100:page*100]]
                 raise AssertionError(path)
         return GH()
     def release_component(self,cid,path,**extra):
@@ -344,6 +347,13 @@ class Tests(unittest.TestCase):
         s.release(gh,{'providers':{'WOOWTECH/test':{'components':components}}},'WOOWTECH/test','a'*40,apply=True)
         self.assertEqual([c['tag_name'] for c in gh.created],['two-v1.2.0'])
         self.assertIn('Old news.',gh.created[0]['body']);self.assertIn('ssl_port',gh.created[0]['body'])
+    def test_release_notes_read_every_page_of_releases(self):
+        # Past 100 Releases the add-on's last formal Release can be on page 2; missing it would repeat old declarations.
+        noise=[{'tag_name':f'other-v0.{i}'} for i in range(130)]
+        gh=self.release_gh({'config.yaml':'name: Test\nslug: test\nversion: 1.2.0\n','upgrade-notes.yaml':self.NOTES},
+            listing=noise+[{'tag_name':'v1.1.0'}])
+        s.release(gh,self.single(),'WOOWTECH/test','a'*40,apply=True)
+        self.assertIn('ssl_port',gh.created[0]['body']);self.assertNotIn('Old news.',gh.created[0]['body'])
     def test_release_without_declarations_has_only_generated_notes(self):
         for name,files in [('no upgrade-notes.yaml',{}),('nothing for this version',{'upgrade-notes.yaml':'"1.1.0":\n  breaking: []\n'})]:
             with self.subTest(name):

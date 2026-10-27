@@ -328,6 +328,15 @@ def tagged_commit(gh, repo, tag):
     if target['type']=='tag':target=gh.api(repo,'git/tags/'+target['sha'])['object']
     return target['sha']
 
+def all_releases(gh, repo):
+    """Every Release of repo: GitHub returns at most 100 per page, so read pages until a short one."""
+    out=[];page=1
+    while True:
+        batch=gh.api(repo,'releases?per_page=100'+('' if page==1 else f'&page={page}'))
+        out+=batch
+        if len(batch)<100:return out
+        page+=1
+
 def release_body(gh, repo, provider, comp, sha, version):
     """Release-notes sections for the add-on's upgrade-notes.yaml at sha (pipeline #119); '' when it declares nothing new.
     GitHub puts a body before its generated notes, so both appear. Only declarations since the add-on's last formal
@@ -338,7 +347,7 @@ def release_body(gh, repo, provider, comp, sha, version):
         if 'HTTP 404' in str(e):return ''
         raise
     prefix=release_tag(provider,comp,'')
-    released=[r['tag_name'][len(prefix):] for r in gh.api(repo,'releases?per_page=100')
+    released=[r['tag_name'][len(prefix):] for r in all_releases(gh,repo)
         if not r.get('draft') and not r.get('prerelease') and r.get('tag_name','').startswith(prefix)]
     try:return upgrade_check.release_notes(yaml.safe_load(raw),version,released)
     except (ValueError,TypeError,yaml.YAMLError) as e:raise Blocked(path+': '+str(e))
