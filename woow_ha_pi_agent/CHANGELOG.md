@@ -1,3 +1,8 @@
+## 0.15.13
+
+- Bundle checksum-verified Omnigent plugin 0.3.26. After native Pi provider login, an empty authenticated model cache is refreshed on catalog or verification requests so the model picker can show available choices.
+- Keep Pi Web 0.12.0, Paseo 0.1.12, the existing Settings pairing flow, add-on options, ports, architectures, user sessions and provider credentials. The runtime continues to use only engines already present in the image.
+
 ## 0.15.12
 
 - Bundle the verified Paseo 0.1.12 archive. Paseo registration and service recovery no longer create or open a setup conversation; pairing remains an explicit action in Settings → Paseo.

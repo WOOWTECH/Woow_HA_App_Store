@@ -54,7 +54,7 @@ const calls = [];
 let lifecycle = { active: true, registered: true };
 const current = { phase: 'needs-login', enabled: true, loginConfirmed: false, host: { id: 'fixture', connected: false },
   engines: { pi: { available: true, version: '1.1.0' } } };
-const plugin = { locations: () => ({ stateDir }), version: '0.3.24', lifecycle: async () => lifecycle,
+const plugin = { locations: () => ({ stateDir }), version: '0.3.26', lifecycle: async () => lifecycle,
   runtime: { status: async () => current,
     catalog: async () => ({ data: { engines: { pi: { models: [{ id: 'test-a', displayName: 'Test A' }, { id: 'test-b', displayName: 'Test B' }] } } } }),
     initialize: async input => { calls.push({ action: 'connect', ...input }); Object.assign(current, { loginConfirmed: true, server: input.server, host: { connected: true } }); return { ok: true }; },
@@ -193,7 +193,12 @@ try {
     clientPage.on('response', response => { if (response.status() >= 400 && response.url().includes('/paseo-web/')) failedClientAssets.push({ path: new URL(response.url()).pathname, status: response.status() }); });
     await clientPage.waitForLoadState('networkidle');
     assert.ok(clientPage.url().includes(prefix + '/paseo-web/'));
-    const script = await clientPage.locator('script[src*="/_expo/"]').first().getAttribute('src');
+    // Dynamic attachment chunks can be inserted before the entry script.
+    // Use the main script declared by the served HTML for router assertions.
+    const entryResponse = await context.request.get(base + '/paseo-web/');
+    assert.equal(entryResponse.status(), 200);
+    const script = (await entryResponse.text()).match(/<script[^>]+src="([^"]+\/_expo\/static\/js\/web\/index-[^"]+\.js)"/)?.[1];
+    assert.ok(script, 'served client HTML declares its main entry script');
     const scriptUrl = new URL(script, clientPage.url());
     assert.ok(scriptUrl.pathname.startsWith(prefix + '/paseo-web/'), `script escaped HA Ingress: ${scriptUrl.pathname}`);
     const scriptResponse = await context.request.get(scriptUrl.href, { headers: { 'Accept-Encoding': 'gzip' } });
