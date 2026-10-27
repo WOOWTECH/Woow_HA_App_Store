@@ -35,7 +35,7 @@
 #     uses: WOOWTECH/Woow_HA_App_Store/.github/workflows/woow-addon-upgrade-check.yml@main
 #     with:
 #       sbom_artifact: upgrade-comparison-sbom-*  # omit only when no add-on has a prebuilt image
-#       # skip_vulnerability_scan: <reason>        # instead of sbom_artifact, only when category 4 does not apply
+#       # skip_vulnerability_scan: "<reason>"      # instead of sbom_artifact, only when category 4 does not apply (quote it)
 #
 # GitHub names the check "<caller job> / <job>": "Upgrade comparison / compare".
 # On other events the job passes at once: the PR was already compared.

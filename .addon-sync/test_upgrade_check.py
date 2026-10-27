@@ -131,7 +131,21 @@ class Tests(unittest.TestCase):
         cfg=self.REMOVED();cfg['version']='2.12.5-v1'
         for version,blocked in [('2.12.5-v1',False),('2.12.4-v2',True)]:
             with self.subTest(version):self.assertEqual(run(cfg,self.notes(version),old=old,old_version='2.12.4-v2')['blocked'],blocked)
-        with self.assertRaises(ValueError):run(cfg,self.notes('2.12.4-v3'),old=old,old_version='2.12.4-v2')
+        with self.assertRaises(ValueError):run(cfg,self.notes('2.12.4-beta'),old=old,old_version='2.12.4-v2')
+    def test_rebuild_suffix_bumps_order_by_their_suffix_number(self):
+        # nginxpm (ref_policy main) bumps only its -v<N> suffix while upstream stays put: 2.12.4-v2 -> 2.12.4-v3.
+        old=copy.deepcopy(BASE);old['version']='2.12.4-v2'
+        cfg=self.REMOVED();cfg['version']='2.12.4-v3'
+        for version,blocked in [('2.12.4-v3',False),('2.12.4-v2',True),('2.12.4-v10',True),('2.12.4',True),('2.12.3-v9',True)]:
+            with self.subTest(version):self.assertEqual(run(cfg,self.notes(version),old=old,old_version='2.12.4-v2')['blocked'],blocked)
+    def test_haos_core_dash_revision_versions(self):
+        # Woow_haos_ha_core (ref_policy main) versions as <HA release>-<revision>: 2026.9.1-1 -> 2026.9.1-2, then 2026.9.2.
+        old=copy.deepcopy(BASE);old['version']='2026.9.1-1'
+        for new_version,declared,blocked in [('2026.9.1-2','2026.9.1-2',False),('2026.9.1-2','2026.9.1-1',True),
+                ('2026.9.2','2026.9.1-2',False),('2026.9.2','2026.9.2-1',True),('2026.9.1-10','2026.9.1-2',False)]:
+            cfg=self.REMOVED();cfg['version']=new_version
+            with self.subTest(new=new_version,declared=declared):
+                self.assertEqual(run(cfg,self.notes(declared),old=old,old_version='2026.9.1-1')['blocked'],blocked)
 
 def match(vid,package,severity='High',state='fixed',versions=('1.2.3',)):
     return {'vulnerability':{'id':vid,'severity':severity,'fix':{'state':state,'versions':list(versions)}},'artifact':{'name':package,'version':'1.0'}}
@@ -314,6 +328,22 @@ class ReusableWorkflow(unittest.TestCase):
         self.assertIn('actions/runs/${RUN_ID}/artifacts',steps[wait]['run'])
         self.assertEqual(self.wf['on']['workflow_call']['inputs']['sbom_wait_minutes']['default'],40)
         self.assertGreater(self.wf['jobs']['compare']['timeout-minutes'],40)
+    def test_ref_policy_main_compares_with_the_pr_base(self):
+        # apporo_ha_multi_ha_core, Woow_haos_ha_core, nginxpm have no formal Release: the Store follows main (#121).
+        plan=self.step('Find the comparison targets')
+        self.assertRegex(plan,r'if \[ "\$\{policy\}" = "main" \]; then\s+(#.*\s+)*target="\$\{BASE_SHA\}"')
+        self.assertEqual(self.step_env('Find the comparison targets')['BASE_SHA'],'${{ github.event.pull_request.base.sha }}')
+    def test_only_add_ons_whose_version_changed_are_compared(self):
+        # Multi-add-on repositories: an add-on whose version is unchanged is listed as unchanged and never compared.
+        detect=self.step('Find add-ons whose version changed')
+        self.assertIn('if [ "${current}" != "${previous}" ]; then',detect)
+        self.assertIn('>> changed.tsv',detect.split('else')[0])
+        self.assertIn('done < changed.tsv',self.step('Find the comparison targets'))
+        self.assertIn('done < plan.txt',self.step('Compare with the comparison target'))
+    def test_device_built_add_ons_are_reported_as_compared_in_90(self):
+        self.assertIn('built on the device; the vulnerability comparison for these add-ons is #90',self.step('Find the comparison targets'))
+    def step(self,name):return next(s for s in self.wf['jobs']['compare']['steps'] if s.get('name')==name)['run']
+    def step_env(self,name):return next(s for s in self.wf['jobs']['compare']['steps'] if s.get('name')==name)['env']
 class SkipVulnerabilityScan(unittest.TestCase):
     """skip_vulnerability_scan: a caller whose prebuilt image is not the one it builds (knxd ships a third-party image),
     or whose category 4 moved elsewhere, opts out with a reason; category 1 still runs and the report says why."""
