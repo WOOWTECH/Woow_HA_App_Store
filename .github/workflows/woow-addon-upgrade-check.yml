@@ -1,0 +1,138 @@
+# Upgrade comparison for a WOOW source repository (pipeline #89, ADR-0005).
+#
+# A merged version-bump PR is a release, so every PR compares each add-on whose
+# version it changes with the version users run now: the latest formal Release
+# (tag v<ver>, or <slug>-v<ver> when a repository versions add-ons
+# independently), or the PR base for ref_policy: main repositories. Breaking
+# configuration changes must be declared in <addon>/upgrade-notes.yaml
+# (format and change names: the docstring of .addon-sync/upgrade_check.py).
+# A PR that changes no version passes in seconds; any tool error fails.
+#
+# Caller (in a workflow that also runs on push to the default branch, so
+# addon_sync's ci_gate keeps seeing a successful non-PR run; no path filter):
+#
+#   upgrade-comparison:
+#     name: Upgrade comparison
+#     uses: WOOWTECH/Woow_HA_App_Store/.github/workflows/woow-addon-upgrade-check.yml@main
+#
+# GitHub names the check "<caller job> / <job>": "Upgrade comparison / compare".
+# On other events the job passes at once: the PR was already compared.
+name: Upgrade comparison
+'on':
+  workflow_call:
+    inputs:
+      tooling_ref:
+        description: Store ref whose .addon-sync tooling runs; keep it equal to the ref in the uses line.
+        type: string
+        default: main
+permissions:
+  contents: read
+jobs:
+  compare:
+    name: compare
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+    - name: Not a pull request
+      if: github.event_name != 'pull_request'
+      env:
+        EVENT: ${{ github.event_name }}
+      run: echo "Upgrade comparison runs on pull requests; nothing to compare on ${EVENT} (the PR was already compared)." >> "$GITHUB_STEP_SUMMARY"
+    - name: Check out the pull request
+      if: github.event_name == 'pull_request'
+      uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      with:
+        path: source
+        persist-credentials: false
+    - name: Check out Store tooling
+      if: github.event_name == 'pull_request'
+      uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      with:
+        repository: WOOWTECH/Woow_HA_App_Store
+        ref: ${{ inputs.tooling_ref }}
+        path: tooling
+        sparse-checkout: |
+          .addon-sync
+          .github/workflows
+        persist-credentials: false
+    - name: Find add-ons whose version changed
+      id: detect
+      if: github.event_name == 'pull_request'
+      env:
+        GH_TOKEN: ${{ github.token }}
+        REPO: ${{ github.repository }}
+        BASE_SHA: ${{ github.event.pull_request.base.sha }}
+      run: |
+        set -euo pipefail
+        # Raw file at a ref through the API; prints nothing for 404, fails on any other error.
+        fetch() {
+          local err; err="$(mktemp)"
+          if gh api -H 'Accept: application/vnd.github.raw' "repos/${REPO}/contents/$1?ref=$2" 2>"$err"; then return 0; fi
+          if grep -q 'HTTP 404' "$err"; then return 0; fi
+          cat "$err" >&2; return 1
+        }
+        provider="$(jq -c --arg r "$REPO" '.providers[$r] // empty' tooling/.addon-sync/registry.json)"
+        if [ -z "$provider" ]; then echo "::error::${REPO} is not in the Store registry"; exit 1; fi
+        : > changed.tsv
+        echo "## Upgrade comparison" >> "$GITHUB_STEP_SUMMARY"
+        # Same detection as Woow_ha_odoo's CI: the version in the PR against the version on the PR base.
+        while IFS=$'\t' read -r id dir file; do
+          path="${file}"; [ "${dir}" = "." ] || path="${dir}/${file}"
+          [ -f "source/${path}" ] || continue
+          current="$(yq -r '.version' "source/${path}")"
+          previous="$(fetch "${path}" "${BASE_SHA}" | yq -r '.version // "none"')"
+          if [ "${current}" != "${previous}" ]; then
+            printf '%s\t%s\t%s\t%s\n' "${id}" "${dir}" "${path}" "${current}" >> changed.tsv
+          else
+            echo "- ${id}: version ${current} unchanged" >> "$GITHUB_STEP_SUMMARY"
+          fi
+        done < <(jq -r '.components[] | [.id, .source_path, .config_file] | @tsv' <<<"$provider")
+        if [ -s changed.tsv ]; then echo "changed=true" >> "$GITHUB_OUTPUT"; else
+          echo "No add-on version changed; nothing to compare." >> "$GITHUB_STEP_SUMMARY"; echo "changed=false" >> "$GITHUB_OUTPUT"; fi
+    - name: Install dependencies
+      if: steps.detect.outputs.changed == 'true'
+      run: python3 -m pip install -r tooling/.addon-sync/requirements.txt
+    - name: Test the comparison
+      if: steps.detect.outputs.changed == 'true'
+      run: python3 tooling/.addon-sync/test_upgrade_check.py -v
+    - name: Compare with the comparison target
+      if: steps.detect.outputs.changed == 'true'
+      env:
+        GH_TOKEN: ${{ github.token }}
+        REPO: ${{ github.repository }}
+        BASE_SHA: ${{ github.event.pull_request.base.sha }}
+      run: |
+        set -euo pipefail
+        fetch() {
+          local err; err="$(mktemp)"
+          if gh api -H 'Accept: application/vnd.github.raw' "repos/${REPO}/contents/$1?ref=$2" 2>"$err"; then return 0; fi
+          if grep -q 'HTTP 404' "$err"; then return 0; fi
+          cat "$err" >&2; return 1
+        }
+        provider="$(jq -c --arg r "$REPO" '.providers[$r]' tooling/.addon-sync/registry.json)"
+        policy="$(jq -r '.ref_policy' <<<"$provider")"; count="$(jq '.components | length' <<<"$provider")"
+        releases="$(gh api --paginate "repos/${REPO}/releases?per_page=100" --jq '.[] | select(.draft == false and .prerelease == false) | .tag_name' | jq -R . | jq -sc .)"
+        status=0
+        while IFS=$'\t' read -r id dir path version; do
+          old="$RUNNER_TEMP/${id}.old.yaml"; rm -f "$old"; target=""
+          if [ "${policy}" = "main" ]; then
+            # ref_policy main: the Store follows the default branch, so users run what the PR base has.
+            target="${BASE_SHA}"
+          else
+            # Store tag rule (addon_sync.release_tag): v<ver>, or <slug>-v<ver> when there are several add-ons.
+            prefix="v"; [ "${count}" = "1" ] || prefix="${id}-v"
+            latest="$(jq -r --arg p "${prefix}" '.[] | select(startswith($p)) | ltrimstr($p)' <<<"${releases}" | sort -V | tail -n1)"
+            [ -z "${latest}" ] || target="${prefix}${latest}"
+          fi
+          notes="upgrade-notes.yaml"; [ "${dir}" = "." ] || notes="${dir}/upgrade-notes.yaml"
+          args=(--name "${id}" --new "source/${path}" --notes "source/${notes}" --notes-path "${notes}")
+          if [ -n "${target}" ]; then
+            fetch "${path}" "${target}" > "$old"
+            if [ -s "$old" ]; then args+=(--old "$old"); echo "${id}: comparing ${version} with ${target}"; else echo "${id}: no config at ${target}"; fi
+          else
+            echo "${id}: no formal Release yet"
+          fi
+          rc=0; python3 tooling/.addon-sync/upgrade_check.py compare "${args[@]}" || rc=$?
+          [ "${rc}" = 0 ] || status=1
+        done < changed.tsv
+        exit "${status}"
