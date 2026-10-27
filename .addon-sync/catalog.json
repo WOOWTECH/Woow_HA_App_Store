@@ -2328,22 +2328,22 @@
     "ytm_po_token_generator": {
       "id": "ytm_po_token_generator",
       "name": "YT Music PO Token Generator",
-      "version": "2.0.1",
+      "version": "2.0.2",
       "repository": "WOOWTECH/Woow_ha_music_assistant_add_on",
-      "source_sha": "21ca94aeca16f46d31101ad543096763644ea1f7",
+      "source_sha": "98ed3b07016b206d198426a0186329b9b3c10ea8",
       "source_path": "ytm_po_token_generator",
       "config_file": "config.yaml",
-      "config_sha256": "sha256:02bbbde560a3c14ce8cd96c1b860beac4d748e0e8b2d7623d7681d9805187a10",
-      "archive_sha256": "sha256:f651b23ed159fc9988ebed1dda0e3c64d9cbc047bed1468c725f77b8c0d0f350",
-      "context_fingerprint": "sha256:3b2e9c58e2ba3dea291702eae2c54378e565c3efe02db61f2aa2e36f65071dbc",
-      "material_fingerprint": "sha256:3b2e9c58e2ba3dea291702eae2c54378e565c3efe02db61f2aa2e36f65071dbc",
+      "config_sha256": "sha256:e0aaaf25289f63b776e71aec189f1555c9fecea313cf62299cb4a6c2647c43c5",
+      "archive_sha256": "sha256:624f5c871820215c4adaedaa7b392c3478353fa4a011890990cc6c6206f4be6f",
+      "context_fingerprint": "sha256:d09200662af04734a8539b9144455a4436ff94ab04a0a13192b468a197ebbec8",
+      "material_fingerprint": "sha256:d09200662af04734a8539b9144455a4436ff94ab04a0a13192b468a197ebbec8",
       "architectures": [
         "amd64",
         "aarch64"
       ],
       "config": {
         "name": "YT Music PO Token Generator",
-        "version": "2.0.1",
+        "version": "2.0.2",
         "slug": "ytm_po_token_generator",
         "description": "An HA App wrapper for the BgUtils POT Provider that can generate PO tokens for Youtube Music.",
         "url": "https://github.com/Brainicism/bgutil-ytdlp-pot-provider",
@@ -2359,21 +2359,21 @@
       "source_build_supported": false,
       "images": {
         "amd64": {
-          "reference": "ghcr.io/woowtech/ha-mirror-brainicism-bgutil-ytdlp-pot-provider:2.0.1",
-          "index_digest": "sha256:96d95372bbf04db68e29329ba05a20bd406844fa3c5ac43315fe476870c6084d",
-          "digest": "sha256:59170817f6dba3410a4961e26055f123c0798e34f1b6127da4a33ef6bf91fa6e",
-          "source_revision": "2df09aeaa71a4eec1e31901e84fbddbf0c7c54a9"
+          "reference": "ghcr.io/woowtech/ha-mirror-brainicism-bgutil-ytdlp-pot-provider:2.0.2",
+          "index_digest": "sha256:d7d34108b76e52c7d3b575fe9e797e4bf41c1b2a08f80c5292eff6f851ce8472",
+          "digest": "sha256:e19ed26b0ea9cf9ecbc7eb7bcdc5b54a01a42ed71cbe542e2ad184fecf6b65e1",
+          "source_revision": "26475e9d3665b972c4aeb83b4dbaafcf64b88438"
         },
         "aarch64": {
-          "reference": "ghcr.io/woowtech/ha-mirror-brainicism-bgutil-ytdlp-pot-provider:2.0.1",
-          "index_digest": "sha256:96d95372bbf04db68e29329ba05a20bd406844fa3c5ac43315fe476870c6084d",
-          "digest": "sha256:104eec534338376ea6d1b394aa3456d4176f51046dc885fc7e452b54cd22e7ef",
-          "source_revision": "2df09aeaa71a4eec1e31901e84fbddbf0c7c54a9"
+          "reference": "ghcr.io/woowtech/ha-mirror-brainicism-bgutil-ytdlp-pot-provider:2.0.2",
+          "index_digest": "sha256:d7d34108b76e52c7d3b575fe9e797e4bf41c1b2a08f80c5292eff6f851ce8472",
+          "digest": "sha256:27260e217704a1ba6294374c8d8ee7b97c6cf63abbfb15cce15138394d5c1e41",
+          "source_revision": "26475e9d3665b972c4aeb83b4dbaafcf64b88438"
         }
       },
       "delivery": "published-image",
       "validation": "manifest+architecture-images+configured-CI",
-      "publisher_run_id": "37410335353",
+      "publisher_run_id": "40485631717",
       "channel": "stable",
       "store_path": "ytm_po_token_generator"
     },
@@ -3631,5 +3631,5 @@
       "store_path": "woow_mcp_nextcloud"
     }
   },
-  "catalog_id": "sha256:caf6bb56097c97522ad601fe43f9806cfb7675b968b6252c9b14e09c8e5db705"
+  "catalog_id": "sha256:fbc0b36fda69013779b5ee5a47a32085d7f8c9fda5cce8508da2ce37b8315a96"
 }
