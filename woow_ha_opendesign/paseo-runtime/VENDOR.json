@@ -1,0 +1,10 @@
+{
+  "repository": "https://github.com/WOOWTECH/opendesign-paseo-plugin",
+  "commit": "21af10e178c00a4b4f3608f87321f200c410915a",
+  "package": "@woowtech/opendesign-cli-image",
+  "version": "0.2.1",
+  "archive_sha256": "355b69e76bd6bfe64ad4da3e940805e51711afba7eb81d08fb52e3602cd42efa",
+  "lock_sha256": "c984b56e1efad208223d917650f2fbe865089247dd0a68bf22450c48c964e20c",
+  "status": "review-candidate-not-published",
+  "core_requirement": "native woow-paseo launcher and atomic per-entry MCP CAS (w2.5)"
+}

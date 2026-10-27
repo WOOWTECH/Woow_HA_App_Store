@@ -1,3 +1,69 @@
+## 0.15.10
+
+- Bundle public, checksum-verified Omnigent 0.3.21. Its bounded native package recheck prevents a temporary settings read failure from hiding a connected plugin in Pi Web; explicit disable remains immediate.
+- Retain the 0.15.9 file-icon Ingress fix, Paseo 0.1.10, Pi Web 0.12.0 and previously authorized host identity. The native Omnigent UI adapter is unchanged from 0.3.20.
+- No add-on options, ports, architectures, image names, provider credentials or session formats change. Provider login and real conversations still require operator verification on each installation.
+
+## 0.15.9
+
+- Fix Catppuccin file icons in the HA Supervisor ingress panel. The Pi Web settings patch already adds the ingress prefix to these CSS icon URLs; nginx was rewriting the same quoted `/icons/` literal in the compiled JavaScript, producing a duplicate prefix and 404 responses. Keep the icon path split in the compiled patch so nginx leaves that runtime expression intact.
+- Verify the official Pi Web 0.12.0 client and server bundles after the nginx rewrite, and fetch a real icon through the nginx plus Supervisor path-strip browser fixture. Preserve the native Omnigent and Paseo settings, saved conversations, credentials, and existing host identity. No options, ports, architectures, image names, or stored data formats change.
+
+## 0.15.8
+
+- Bundle public, checksum-verified Paseo 0.1.10 and Omnigent 0.3.20. Preserve Pi Web 0.12.0, its native Ingress/settings integration, first-home navigation and the authorized-host recovery from 0.15.7.
+- Bake Paseo native 0.11.2 runtime revision `0.11.2-r3-6d8dbe515479`. Both PID writers and recovery use the same persistent Linux flock guard; recovery requires private installation/process identity proof and never signals an unrelated process.
+- Preserve trusted r2 status/stop fallback where that runtime is available. Healthy r2 activation requires a normal restart into r3; ambiguous legacy ownership fails closed without unsafe proof migration. The image bundles r3 only.
+- Verify both baked native PID modules and competing flock exclusion in each architecture's network-disabled image gate, alongside the existing CLI/SDK/onboarding and fixed web-client checks. Preserve Store notification and local source-build hooks.
+- No options, ports, architectures, image names, provider credentials or session formats change. Live Supervisor reboot and actual-account model acceptance are separate from these isolated source/image checks.
+
+## 0.15.7
+
+- Bundle public, checksum-verified Omnigent 0.3.19 while retaining Pi Web 0.12.0, Paseo 0.1.9 and existing provider/session data.
+- Restore an already authorized host after a container restart when an unrelated process under another UID reuses its old PID, but only with complete saved/current kernel boot and process-start proof. Never signal that process; unverifiable identity still fails closed.
+- Keep the first-home Omnigent setup auto-open and fresh URL/account/password flow from 0.15.6. No options, ports, architectures or data formats change.
+
+## 0.15.6
+
+- Bundle public, checksum-verified Omnigent 0.3.18 and preserve Paseo 0.1.9 from 0.15.5.
+- Recover the same authorized host after stale PID reuse using the common plugin launch lock and process identity checks; never signal an unrelated process.
+- Open the existing unfinished Omnigent setup conversation on an untouched first homepage, including mobile and bounded cold-boot waiting.
+- Respect explicit links, remembered work, drafts and interactions, including before hydration; preserve Ingress paths and avoid navigation loops.
+- Read local plugin metadata for eligibility without runtime probes or remote model calls.
+
+## 0.15.5
+
+- Bundle checksum-verified Omnigent 0.3.16 with explicitly authorized host recovery on boot; credentials alone do not authorize reconnect. Bundle Paseo 0.1.9, its locked daemon and the fixed web client. Retain Pi Web 0.12.0, existing Omnigent integration, provider login, sessions and settings.
+- Add Paseo immediately after Omnigent in native desktop/mobile Settings. Use a private Unix socket and the existing HA Supervisor-only nginx authentication boundary.
+- Adapt the deployed web client's HTML, router base, JS and assets to the validated HA Ingress prefix; cover deep-route refresh, pairing fragments, gzip and phone scrolling through real nginx browser tests.
+- Serve rewritten hash-named client assets with private immutable caching and negotiated gzip; bound the per-prefix memory cache and verify encoded lengths, ETags, HEAD and 304 responses. HTML, setup and API responses remain private/no-store.
+- Seed registration and a model-independent setup conversation once. Preserve disabled/removed packages and manual pauses across upgrades. No option or data migration is required.
+- Build PR candidates from the generated local-source context even when the version number is intentionally unchanged; these builds do not publish or overwrite stable images.
+
+## 0.15.4
+
+- Bundle checksum-verified Omnigent plugin 0.3.16. Previously authorized hosts can resume after restart when the saved server, host identity, account and token still match; expired authorization returns to the settings conversation. Keep Pi Web 0.12.0, native Settings integration and existing engines.
+
+## 0.15.3
+
+- Bundle checksum-verified Omnigent plugin 0.3.15. The plugin now supports Paseo 0.1.9 in compatible Pi Web installs while retaining the 0.3.14 terminal diagnostics. This HA add-on keeps Pi Web 0.12.0, its native Omnigent settings integration and existing engines.
+
+## 0.15.2
+
+- Bundle checksum-verified Omnigent plugin 0.3.14, fixing terminal removal handling and connection verification diagnostics while retaining Pi Web 0.12.0 and the installed engines.
+
+## 0.15.1
+
+- Bundle checksum-verified Omnigent plugin 0.3.13 with runtime retention, native provider-error classification and actual verification-model receipts; retain Pi Web 0.12.0 and the existing installed engines.
+
+- Add Omnigent immediately after MCP in Pi Web 0.12.0's native Settings tabs and mobile section picker. The section embeds the existing private HA settings page; the top-right entry and standalone Ingress `/omnigent` page remain available.
+- Keep credentials out of the host UI: the embedded form is unmounted when leaving its section, conversation links navigate the parent, and Escape closes Settings. The existing Unix socket, token checks, origin checks and request limit are unchanged.
+- Validate both official compiled bundles and all HTML/RSC/manifest references before patching. Rename the changed client asset using its content hash so upgrades do not reuse the old immutable browser cache. Unknown upstream builds fail before any patch is written.
+- Add real compiled Chromium coverage on desktop, tablet and phone, plus fail-closed/idempotence tests against the official npm artifact.
+- Build both PR architectures from the Store downloader's generated local source context after verifying source bytes, executable permissions, build inputs and source locks. Release builds keep their existing context.
+- Add a manual post-release check for an exact Store commit and published version: verify catalog/release provenance, compile the freshly generated amd64 source context and smoke-test the loaded runtime offline without publishing or installing anything.
+- Document the installation prerequisite of at least 10 GB free on the HAOS data disk, with additional space for source builds. Supervisor pulls images before add-on startup, so a runtime guard cannot enforce this prerequisite.
+
 ## 0.15.0
 
 - Build and run image smoke tests on native amd64 and aarch64 GitHub runners, removing QEMU overhead from the ARM release path.

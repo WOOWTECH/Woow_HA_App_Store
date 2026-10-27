@@ -16,7 +16,7 @@ Projects, the OpenDesign database, application configuration, connector data, an
 
 The add-on includes the Woow OpenDesign MCP server (it replaces the separate *Woow OpenDesign MCP Server* add-on). It always runs and always talks to this add-on's own OpenDesign; there is no connection to configure and no option to turn it off.
 
-- **Administration:** on OpenDesign's **Plugins** page (Installed), click **Open** on the built-in **MCP Server** plugin (it opens a new tab), or open `<the add-on's Ingress page>/mcp-admin/`. There you reveal, rotate or revoke the token, choose which tools are enabled, and record the client endpoint. Since 0.2.4 it also shows each tool's accepted arguments and whether the server really offers it, checks the connection to OpenDesign, restarts the MCP tool process and shows its recent output (in memory only, with tokens and passwords removed). Since 0.2.6 it also shows whether the saved settings have been applied to the MCP tool process, and a change saved elsewhere after you opened the page must be reloaded before you save again. Access is the add-on's Home Assistant Ingress login, the same as OpenDesign and its terminal: there is no separate administrator check, so any Home Assistant user who can open this add-on can reach this page.
+- **Administration:** under OpenDesign's **Plugins → Expert suites → Personal**, click **Open** on the built-in **MCP Server** plugin (it opens a new tab), or open `<the add-on's Ingress page>/mcp-admin/`. There you reveal, rotate or revoke the token, choose which tools are enabled, and record the client endpoint. Since 0.2.4 it also shows each tool's accepted arguments and whether the server really offers it, checks the connection to OpenDesign, restarts the MCP tool process and shows its recent output (in memory only, with tokens and passwords removed). Since 0.2.6 it also shows whether the saved settings have been applied to the MCP tool process, and a change saved elsewhere after you opened the page must be reloaded before you save again. Access is the add-on's Home Assistant Ingress login, the same as OpenDesign and its terminal: there is no separate administrator check, so any Home Assistant user who can open this add-on can reach this page.
 - **LAN clients (Claude Code, Claude Desktop via a local bridge, other MCP clients):** map a host port to container port `8081/tcp` in the add-on's **Network** settings (unmapped by default), then connect to `http://<HA host>:<port>/mcp` with the header `Authorization: Bearer <token>`. Other add-ons on the Home Assistant network (for example a Cloudflare tunnel add-on) can reach `http://<this add-on's hostname>:8081/` without a host port.
 - **Claude.ai custom connectors:** expose port 8081 through an HTTPS tunnel (for example Cloudflare) and use the connector URL shown on the administration page: `https://<tunnel host>/private_<token>/mcp`. Treat that URL like the token itself.
 - **Tools:** the same 15 tools as the WOOW PaaS OpenDesign MCP, **all on by default**. An administrator can turn any of them off on the administration page.
@@ -49,13 +49,13 @@ Rendering is serialized and bounded by an absolute two-minute deadline, 64 slide
 
 The container starts a minimal root PID 1 because Home Assistant mounts `/data` as root at runtime. It creates and assigns only add-on-owned directories, safely removes the withdrawn `/data/opendesign/credentials` path without following symlinks, then launches OpenDesign and a loopback-only `ttyd` login terminal through `su-exec` as UID/GID 1001, nginx as its own UID `ha-ingress` (1002), and the built-in MCP server, which drops itself to UID `mcp` (10001). None of them inherits the Supervisor token. Only authenticated HA Ingress can reach the terminal route; its shell uses the persistent OpenDesign home so CLI authentication survives restarts.
 
-CI validates and smokes every build before architecture work. Pull requests and `main` build without pushing under `contents: read`; only a `main` run for a `config.yaml` version that has no Release yet (that is, a merged version-bump pull request) starts a publisher with `packages: write`; pushing a Git tag publishes nothing. Its preflight fails closed unless the amd64 version tag is absent from GHCR; the App Store's shared workflow then creates the `v<version>` tag and Release on that commit. Version tags are immutable: a failed release cannot be retried over the same version and requires another version-bump pull request. The image is amd64 only, like the core. Dockerfile and CI/release inputs pin the WoowTech core image (`ghcr.io/woowtech/open-design-core`) by digest; `build.yaml` uses a tag because Supervisor's local builder rejects digest syntax there and otherwise silently substitutes its default base image. Until the core digest is published both are deliberate placeholders, and builds pass `BUILD_FROM`.
+CI validates and smokes every build before architecture work. Pull requests and `main` build without pushing under `contents: read`; only a `main` run for a `config.yaml` version that has no Release yet (that is, a merged version-bump pull request) starts a publisher with `packages: write`; pushing a Git tag publishes nothing. Its preflight fails closed unless the amd64 version tag is absent from GHCR; the App Store's shared workflow then creates the `v<version>` tag and Release on that commit. Version tags are immutable: a failed release cannot be retried over the same version and requires another version-bump pull request. The image is amd64 only, like the core. Dockerfile defaults and CI/release inputs pin the published core `ghcr.io/woowtech/open-design-core:20261026.0712@sha256:366e337dc7ea192526468de33ad3f2f0ce97be3ffba9b8382a0c1d9ab88b1404`. Supervisor's local builder rejects digest syntax in `build.yaml` and otherwise silently substitutes its default base image, so that development path uses the published immutable tag `ghcr.io/woowtech/open-design-core:20261026.0712` for the same image.
 
 ## Native API BYOK and OpenCode
 
 The core image provides OpenCode `1.18.33`. OpenDesign's native API BYOK flow uses its `byok-opencode` runtime and discovers this executable on `PATH`. A first run after installation downloads OpenCode's model catalog once; on slow networks that first answer can take a minute. Configure the provider, model, and API key in the upstream Settings UI; those values are browser-local and are not persisted by the add-on. Clearing browser storage or using another browser requires fresh entry.
 
-The core image also provides Claude Code `2.1.296`, Codex CLI `0.162.1`, and Pi Coding Agent `1.1.0` on `PATH` for OpenDesign's Local AI discovery. The add-on build checks each version under UID 1001; the add-on does not install them on startup or inject a Paseo plugin. Users can open Local AI and rescan after updating the add-on image. Use the built-in **CLI Terminal** plugin (Plugins page; `<Ingress>/console/`) for interactive provider sign-in. OpenDesign's own Plugins page and daemon-managed Skill staging provide the same selected plugin/Skill context to its supported agent adapters.
+The core image also provides Claude Code `2.1.296`, Codex CLI `0.162.1`, and Pi Coding Agent `1.1.0` on `PATH` for OpenDesign's Local AI discovery. The add-on build checks each version under UID 1001; the add-on does not reinstall these provider CLIs on startup. The shared core also supplies the native Paseo launcher. Users can open Local AI and rescan after updating the add-on image. Use the built-in **CLI Terminal** plugin (**Plugins → Expert suites → Personal**; `<Ingress>/console/`) for interactive provider sign-in. OpenDesign's own Plugins page and daemon-managed Skill staging provide the same selected plugin/Skill context to its supported agent adapters.
 
 ## Omnigent (removed in 0.2.1)
 
@@ -78,3 +78,85 @@ Omnigent is not part of the add-on until it is stable. 0.2.1 neither installs no
 - **Browser developer tools show `GET /api/amr/models` 500 and `GET /api/integrations/vela/status` 503 on page load:** expected. They belong to upstream OpenDesign's optional AMR runtime (the proprietary `vela` CLI), which the WoowTech core image does not ship, in the add-on or on the PaaS. Upstream defines `503 {"error":"amr-runtime-unavailable"}` as the authoritative "no AMR runtime" answer and returns `500 {"error":"AMR vela binary could not be resolved"}` for the model list (its own startup smoke test accepts 200 or 500). The web UI already handles both (the AMR model list comes back empty and the AMR sign-in check reads "not signed in"); other agents, BYOK, exports and MCP are not affected. To use AMR, the `vela` runtime would have to be provided separately.
 - **MCP client gets 404 after a pause:** its session was idle for 30 minutes and has ended; the client must initialize again (most clients reconnect on their own).
 - **MCP client gets 401:** the token was rotated or revoked; copy the current one from **MCP Server**. A browser-style request with an `Origin` header to `/mcp` is refused (403) by design; Claude.ai uses the `/private_<token>/mcp` URL instead.
+
+
+## Paseo setup and persistence
+
+From OpenDesign **Plugins → Expert suites → Personal**, open **Paseo**. The native
+launcher opens a new tab inside this add-on's Home Assistant Ingress prefix.
+Home Assistant login is required. There is no extra admin-role check beyond
+access to this add-on's Ingress, matching the built-in MCP administration policy.
+
+**← 返回 OpenDesign** returns to the native Home Assistant app page; select
+Plugins there to open Paseo again. It does not deep-link into the Plugins page.
+If startup cannot read its own app metadata, the link is instead
+**← 返回 Home Assistant** and opens Home Assistant's root page. Metadata lookup
+is bounded to three seconds, uses no environment proxy or redirects, and never
+passes the Supervisor token or app options to the browser or service children.
+
+On first start, the managed service downloads its pinned Paseo execution
+packages and creates a marked **Paseo 連線初始化** project/conversation. The same
+conversation is reconciled on later starts. This step requires outbound access
+to the package registry; installation progress/errors appear in setup. Existing
+OpenDesign projects, MCP entries and provider homes are retained on upgrade.
+
+Select Claude Code, Codex or Pi, complete that provider's official login, read
+its models, and run the two-turn conversation test. A fresh installation has no
+provider credentials. A running daemon, model list or pairing link is not proof
+of a successful model conversation or completed official App pairing.
+
+**停止服務** persists the disabled intent. Restarting the add-on does not enable
+it again; **安裝並啟動** resumes it. The bridge itself stays supervised and available
+while Paseo is stopped. The add-on gives required processes up to 25 seconds to
+shut down inside Supervisor's 30-second timeout.
+
+Paseo state and installed runtime packages live under `/data/opendesign/paseo`;
+provider credentials remain in `/data/opendesign/home`, shared with native
+OpenDesign agent tools. Source material may also live in that home's
+`.local/share/opendesign-paseo`. Cold HA backups retain these directories,
+including CLI credentials, projects, conversations, daemon identity and the
+saved enabled/disabled choice. They exclude only
+`/data/opendesign/paseo/packages/runtime`, the downloaded Paseo execution
+packages. Home Assistant's native `backup_exclude` prunes that subtree before
+archiving, anchored to Supervisor's `/data/apps/data/<slug>` (or legacy
+`/data/addons/data/<slug>`) root so identically named user project directories
+are retained. Its npm binary hardlinks can otherwise fail Supervisor's streaming
+restore. Provider installations and `packages/npm-cache` remain in the backup.
+
+After restore, an enabled service rebuilds the missing packages from the
+image's exact bundled lock using `npm ci`, then checks the CLI version and web
+UI before starting Paseo. A manually stopped service stays stopped; selecting
+**安裝並啟動** performs the same rebuild. The installed-version record alone is
+not treated as proof that package files exist. Restore therefore requires
+outbound access to the package registry and any locked package download hosts.
+The retained npm cache may reduce downloads, but offline recovery is not
+guaranteed. A failed install retains the enabled intent and the supervisor
+retries with a bounded delay; setup reports installation errors. Restoring
+connectivity allows recovery without deleting credentials or user state.
+This exclusion applies to newly created backups; it does not repair an older
+archive that already contains those hardlinks. The
+bridge code is immutable image content at `/opt/opendesign-paseo`; its private
+socket under `/run/ha-opendesign-paseo` is recreated at start. No bridge port is
+mapped to the LAN, and Supervisor tokens are removed before every child starts.
+
+The proxy permits Paseo requests only from the actual Supervisor peer
+172.30.32.2. It supplies the authenticated user and validated Ingress prefix to
+the Unix-socket bridge, preserves browser Host/Origin/Referer, and discards
+forwarded-header claims. Mutations require the exact same-origin setup page.
+Do not bypass that proxy or expose the socket. The setting page supports both
+local HTTP Home Assistant and HTTPS; login/pairing links stay external and do
+not receive an Ingress referrer.
+
+Release maintainers: see [the 0.2.7 packaging/release gate](docs/paseo-release.md).
+
+
+### 還原後的 CLI 憑證權限
+
+啟動時會在 UID 1001 下收緊 `.codex/auth.json`、`.codex/config.toml`、
+`.claude/.credentials.json`、`.claude/settings.json`、`.pi/agent/auth.json`、
+`.pi/agent/models.json` 與 `.pi/agent/settings.json` 為 `0600`，並將
+`.codex`、`.claude`、`.pi`、`.pi/agent` 設為 `0700`。檔案內容與專案權限不會改動，
+不存在的設定不會被建立。這補足原生還原可能帶回 `0644` 權限的情況。
+
+這些私有路徑必須是一般目錄與單一 hard link 的一般檔案。遇到 symlink、多重
+hard link 或其他非一般檔案時會拒絕啟動，避免將權限修正套用到外部目標。

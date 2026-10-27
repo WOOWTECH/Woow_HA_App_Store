@@ -82,6 +82,10 @@ RUN git clone --filter=blob:none https://github.com/obra/superpowers.git /tmp/sp
 # ---- add-on layer ----
 COPY vendor/podman/fix-model-routes.py /opt/woow/fix-model-routes.py
 COPY rootfs/ /
+# Reviewed operator adapter: reload only the supervised Dashboard, retain the
+# native privilege-drop shim and all non-Dashboard CLI behavior.
+COPY --chmod=0555 vendor/paseo/dashboard_control.py vendor/paseo/profile_lifecycle.py vendor/paseo/resource_limits.py /opt/hermes-paseo-dashboard-control/
+COPY --chmod=0555 vendor/paseo/hermes /opt/hermes/.venv/bin/hermes
 RUN chmod 0755 /etc/cont-init.d/00-woow-options /etc/cont-init.d/020-woow-provision \
                /etc/cont-init.d/03-woow-dotenv /usr/local/bin/woow-provision \
                /etc/s6-overlay/s6-rc.d/woow-nginx/run /etc/s6-overlay/s6-rc.d/woow-provision/run

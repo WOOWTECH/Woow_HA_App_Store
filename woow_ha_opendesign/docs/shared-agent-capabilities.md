@@ -20,7 +20,7 @@ The upstream plugin contract is based on a portable `SKILL.md`; the OpenDesign p
 1. Start the add-on, open it from the sidebar, and choose **Local AI → Rescan**.
 2. Open **Plugins**, install a plugin, then open or create a project and select that plugin.
 3. Select Claude Code, Codex, Pi, or the OpenCode API runtime for the project.
-4. For account-based CLI authentication, open **Plugins** and click **Open** on the built-in **CLI Terminal** plugin (`<Ingress>/console/`):
+4. For account-based CLI authentication, open **Plugins → Expert suites → Personal** and click **Open** on the built-in **CLI Terminal** plugin (`<Ingress>/console/`):
    - Claude Code: run `claude`, then `/login` when prompted.
    - Codex: run `codex login --device-auth` and finish the device authorization in your browser.
    - Pi: run `pi` and use `/login` in its TUI.

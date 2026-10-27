@@ -147,6 +147,11 @@ RUN set -euo pipefail; \
     && grep -q '__piChatGPTDeviceId' \
        "/opt/piweb/lib/node_modules/@agegr/pi-web/.next/server/app/api/auth/login/[provider]/route.js"
 
+# Keep the official compiled 0.12.0 UI and private Ingress bridge. Add Omnigent
+# to React's desktop/mobile settings navigation immediately after MCP. The
+# patch checks client + SSR artifact hashes and syntax before writing either.
+RUN node /opt/patches/patch-omnigent-settings.mjs /opt/piweb/lib/node_modules/@agegr/pi-web
+
 
 # Omnigent is built once per architecture, never downloaded on first activation.
 # Keep Python and the SDK in separate OCI layers for HA's transfer budget.
@@ -165,14 +170,27 @@ RUN apt-get update \
 # HA already ships a pinned official Claude CLI. The SDK falls back to PATH;
 # remove its duplicate binary before any runtime COPY creates an OCI layer.
 RUN /opt/omnigent/venv/bin/python -c 'from pathlib import Path; import claude_agent_sdk; p=Path(claude_agent_sdk.__file__).parent / "_bundled" / "claude"; print("Removed duplicate Claude bytes:", p.stat().st_size if p.exists() else 0); p.unlink(missing_ok=True)'
-ARG PI_OMNIGENT_VERSION=0.3.11
-ARG PI_OMNIGENT_SHA256=4d1565e727f8b02accfab135e7e4376dd00a2448e1f212299089d3fae7e19a01
+ARG PI_OMNIGENT_VERSION=0.3.21
+ARG PI_OMNIGENT_SHA256=41a0aadfc811900f4ce83384e08700408c3ad59a931e6011b4516e200ef86b64
 RUN curl --fail --silent --show-error --location --retry 3 \
       "https://github.com/WOOWTECH/pi-omnigent-plugin/releases/download/v${PI_OMNIGENT_VERSION}/woowtech-pi-omnigent-plugin-${PI_OMNIGENT_VERSION}.tgz" -o /tmp/plugin.tgz \
     && echo "${PI_OMNIGENT_SHA256}  /tmp/plugin.tgz" | sha256sum --check --strict \
     && mkdir -p /opt/woow/pi-omnigent-plugin \
     && tar -xzf /tmp/plugin.tgz --strip-components=1 -C /opt/woow/pi-omnigent-plugin \
     && chmod -R a+rX,go-w /opt/woow/pi-omnigent-plugin
+
+# The HA bridge consumes the plugin API; never apply its Pi Web 0.10 overlay.
+# Build the daemon + fixed Expo client once for each native image architecture.
+FROM piweb-builder AS paseo-builder
+ARG PI_PASEO_VERSION=0.1.10
+ARG PI_PASEO_SHA256=8aefc73fa5de1507bd7c37931ae48a42fe74e44a014a108b4939c973d4568cc6
+RUN curl --fail --silent --show-error --location --retry 3 \
+      "https://github.com/WOOWTECH/pi-paseo-plugin/releases/download/v${PI_PASEO_VERSION}/woowtech-pi-paseo-${PI_PASEO_VERSION}.tgz" -o /tmp/paseo.tgz \
+    && echo "${PI_PASEO_SHA256}  /tmp/paseo.tgz" | sha256sum --check --strict \
+    && mkdir -p /opt/woow/pi-paseo-plugin \
+    && tar -xzf /tmp/paseo.tgz --strip-components=1 -C /opt/woow/pi-paseo-plugin \
+    && node /opt/patches/build-paseo.mjs \
+    && rm -rf /tmp/paseo.tgz /tmp/npm-cache
 
 # =============================================================================
 # Stage 2 — the add-on image. No compiler.
@@ -254,6 +272,13 @@ COPY --from=piweb-builder /opt/pi-clis/codex /opt/pi-clis/codex
 COPY --from=omnigent-builder /opt/omnigent/python /opt/omnigent/python
 COPY --from=omnigent-builder /opt/omnigent/venv /opt/omnigent/venv
 COPY --from=omnigent-builder /opt/woow/pi-omnigent-plugin /opt/woow/pi-omnigent-plugin
+COPY --from=paseo-builder /opt/woow/pi-paseo-plugin /opt/woow/pi-paseo-plugin
+COPY --from=paseo-builder /opt/woow/paseo-runtime /opt/woow/paseo-runtime
+COPY --from=paseo-builder /opt/woow/paseo-web /opt/woow/paseo-web
+RUN ln -s /usr/local/lib/node_modules/@agegr/pi-web/node_modules /opt/woow/pi-paseo-plugin/node_modules \
+    && ln -s /opt/woow/pi-paseo-plugin/bin/cli.mjs /usr/local/bin/pi-paseo \
+    && chmod +x /opt/woow/pi-paseo-plugin/bin/cli.mjs
+
 RUN ln -s /usr/local/lib/node_modules/@agegr/pi-web/node_modules /opt/woow/pi-omnigent-plugin/node_modules \
     && ln -s /opt/omnigent/venv/bin/omnigent /usr/local/bin/omnigent \
     && ln -s /opt/woow/pi-omnigent-plugin/bin/cli.mjs /usr/local/bin/pi-omnigent \
@@ -277,6 +302,8 @@ RUN /opt/pi-clis/claude/node_modules/.bin/claude --version | grep -q '^2.1.296' 
 
 COPY rootfs/ /
 COPY tests/omnigent-image-smoke.mjs /tmp/omnigent-image-smoke.mjs
+COPY tests/paseo-image-smoke.mjs /tmp/paseo-image-smoke.mjs
+COPY tests/paseo-native-runtime.mjs /tmp/paseo-native-runtime.mjs
 
 # rootfs COPY doesn't reliably preserve +x on files created outside a POSIX
 # filesystem. Explicitly re-mark every executable we ship so s6-overlay's
@@ -313,7 +340,8 @@ RUN --network=none sed 's/listen 172.30.32.1:30142/listen 127.0.0.1:30142/' /etc
     && nginx -t -c /tmp/nginx-ci.conf \
     && rm /tmp/nginx-ci.conf \
     && timeout 300s node /tmp/omnigent-image-smoke.mjs \
-    && rm /tmp/omnigent-image-smoke.mjs
+    && timeout 120s node /tmp/paseo-image-smoke.mjs \
+    && rm /tmp/omnigent-image-smoke.mjs /tmp/paseo-image-smoke.mjs /tmp/paseo-native-runtime.mjs
 
 # SHELL is what pi-web 0.9.0's browser terminal spawns:
 #     process.env.SHELL || "/bin/sh"   with argv ["-l"]

@@ -2,6 +2,18 @@
   const prefix = location.pathname.replace(/\/omnigent\/?$/, '');
   const token = document.querySelector('meta[name="omnigent-token"]').content;
   const $ = id => document.getElementById(id);
+  // The native Settings section embeds this SAME private page. Navigation to
+  // a Pi conversation must leave the inner frame, and Escape must still close
+  // the host Settings dialog. No new API, token channel or postMessage listener.
+  if (new URLSearchParams(location.search).get('embedded') === '1' && window.parent !== window) {
+    $('back').target = '_parent';
+    $('onboarding').target = '_parent';
+    document.addEventListener('keydown', event => {
+      if (event.key !== 'Escape' || event.defaultPrevented) return;
+      event.preventDefault();
+      window.parent.document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    });
+  }
   const labels = { claude: 'Claude Code', codex: 'Codex', pi: 'Pi Agent' };
   let view, busy = false;
   const clearPassword = () => { $('setup').elements.password.value = ''; };

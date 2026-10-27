@@ -72,6 +72,54 @@ function fakePlugin() {
       disconnect: async () => { calls.push('disconnect'); return { ok: true }; } } };
   return { plugin, current, calls, bridge: createOmnigentBridge(async () => plugin) };
 }
+function localOnboarding(t, f) {
+  const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ha-first-home-'));
+  t.after(() => fs.rmSync(stateDir, { recursive: true, force: true }));
+  f.plugin.locations = () => ({ stateDir });
+  const save = (name, value) => fs.writeFileSync(path.join(stateDir, name + '.json'), JSON.stringify(value), { mode: 0o600 });
+  save('state', { phase: 'needs-login', enabled: true });
+  save('onboarding', { sessionId: 'test-session' });
+  return { stateDir, save };
+}
+test('first-home uses only local saved state, never runtime status/catalog or dependency probes', async t => {
+  const f = fakePlugin(); const local = localOnboarding(t, f);
+  f.plugin.lifecycle = async () => ({ active: true, registered: true });
+  f.plugin.runtime.status = async () => { throw new Error('runtime.status must not run for first-home'); };
+  f.plugin.runtime.catalog = async () => { throw new Error('runtime.catalog must not run for first-home'); };
+  f.plugin.onboarding = () => { throw new Error('read exact local receipt instead'); };
+  assert.deepEqual(await f.bridge.onboarding(), { sessionId: 'test-session', pending: true });
+  for (const phase of ['ready', 'disabled', 'unavailable', 'unknown', undefined]) {
+    local.save('state', { phase, enabled: true });
+    assert.deepEqual(await f.bridge.onboarding(), { sessionId: null, pending: false });
+  }
+  for (const state of [{ phase: 'needs-login', enabled: false }, { phase: 'needs-login' }, { phase: 'needs-login', enabled: true, nativeActive: false }, [], null]) {
+    local.save('state', state);
+    assert.deepEqual(await f.bridge.onboarding(), { sessionId: null, pending: false });
+  }
+  local.save('state', { phase: 'needs-login', enabled: true });
+  for (const lifecycle of [{ active: false, registered: true }, { active: true, registered: false }, { active: true }]) {
+    f.plugin.lifecycle = async () => lifecycle;
+    assert.deepEqual(await f.bridge.onboarding(), { sessionId: null, pending: false });
+  }
+  f.plugin.lifecycle = async () => ({ active: true, registered: true });
+  for (const onboard of [{ sessionId: '../other' }, { sessionId: 'https://elsewhere' }, [], null]) {
+    local.save('onboarding', onboard);
+    assert.deepEqual(await f.bridge.onboarding(), { sessionId: null, pending: false });
+  }
+  fs.unlinkSync(path.join(local.stateDir, 'onboarding.json'));
+  assert.deepEqual(await f.bridge.onboarding(), { sessionId: null, pending: true }, 'active cold boot can wait for its saved onboarding');
+  local.save('onboarding', { sessionId: 'test-session' });
+  const stateFile = path.join(local.stateDir, 'state.json');
+  fs.unlinkSync(stateFile);
+  assert.deepEqual(await f.bridge.onboarding(), { sessionId: null, pending: true }, 'missing cold-boot state waits without opening even a stale onboarding');
+  fs.writeFileSync(stateFile, '{invalid', { mode: 0o600 });
+  assert.deepEqual(await f.bridge.onboarding(), { sessionId: null, pending: false });
+  local.save('state', { phase: 'needs-login', enabled: true }); fs.chmodSync(stateFile, 0o000);
+  assert.deepEqual(await f.bridge.onboarding(), { sessionId: null, pending: false });
+  fs.unlinkSync(stateFile); fs.symlinkSync(path.join(local.stateDir, 'onboarding.json'), stateFile);
+  assert.deepEqual(await f.bridge.onboarding(), { sessionId: null, pending: false });
+  assert.deepEqual(f.calls, [], 'read-only eligibility never initializes or verifies');
+});
 test('fresh credentials go directly to runtime, never DTO or automatic chat verification', async () => {
   const f = fakePlugin(); const view = await f.bridge.act({ action: 'connect', server: 'https://example.test', username: 'test', password: 'private-fixture' });
   assert.deepEqual(f.calls, [{ server: 'https://example.test', username: 'test', password: 'private-fixture', verify: false }]);
@@ -98,6 +146,19 @@ test('private HTTP bridge checks token, body, error redaction and HA prefix for 
   t.after(() => { server.closeAllConnections(); server.close(); });
   const base = `http://127.0.0.1:${server.address().port}`;
   const prefix = '/api/hassio_ingress/fixture01234567890123';
+  f.plugin.lifecycle = async () => ({ active: true, registered: true });
+  f.current.enabled = true;
+  localOnboarding(t, f);
+  const navigationHeaders = { 'X-Omnigent-Onboarding': '1', 'Sec-Fetch-Site': 'same-origin', Origin: base };
+  const navigation = await fetch(base + '/omnigent/onboarding', { headers: navigationHeaders });
+  assert.equal(navigation.status, 200);
+  assert.deepEqual(await navigation.json(), { sessionId: 'test-session', pending: true });
+  for (const extra of [{ Origin: 'https://other.example' }, { 'Sec-Fetch-Site': 'cross-site' }, { 'Sec-Fetch-Site': 'same-site' }]) {
+    assert.equal((await fetch(base + '/omnigent/onboarding', { headers: { ...navigationHeaders, ...extra } })).status, 403);
+  }
+  assert.equal((await fetch(base + '/omnigent/onboarding')).status, 403);
+  assert.equal((await fetch(base + '/omnigent/onboarding', { method: 'POST', headers: navigationHeaders })).status, 405);
+  assert.deepEqual(f.calls, [], 'navigation endpoint is read-only');
   const html = await (await fetch(base + '/omnigent', { headers: { 'X-Ingress-Path': prefix } })).text();
   assert.ok(html.includes(`${prefix}/omnigent/app.js`)); assert.ok(!html.includes('__CSRF_TOKEN__'));
   const token = html.match(/name="omnigent-token" content="([a-f0-9]+)"/)[1];

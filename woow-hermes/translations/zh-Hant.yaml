@@ -17,6 +17,9 @@ configuration:
   minimax_api_key:
     name: MiniMax API 金鑰
     description: 只有在這裡修改時才會寫入 Hermes，在儀表板裡改的金鑰不會被覆蓋。
+  paseo_ingress_url:
+    name: Paseo 的 Home Assistant 網址
+    description: 要在 HA 側欄使用 Paseo，請填瀏覽器開啟 HA 的完整來源，例如 https://ha.example.com 或 http://homeassistant.local:8123，不含頁面路徑或 ingress token。儀表板公開網址仍供區網與 OAuth 使用。修改後重啟此附加元件。
   openrouter_api_key:
     name: OpenRouter API 金鑰
     description: 規則同 MiniMax 金鑰。

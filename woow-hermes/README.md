@@ -47,6 +47,7 @@ https://github.com/WOOWTECH/Woow_HA_App_Store
 - **Skills**：內建與自訂 skill，並可從 skill hub 安裝。
 - **OpenAI 相容 API**：`/v1/chat/completions`、`/v1/responses`，支援串流。
 - **Webhook**：外部服務（GitHub、GitLab 等）以 HMAC 簽章觸發 agent。
+- **Paseo 遠端對話**（0.1.11 起）：在 Plugins 安裝 `WOOWTECH/hermes-paseo-plugin`（至少 `v0.1.4-rc.3`），啟用後開啟配對導引；可直接在 Dashboard 重載。首次使用會下載 Paseo runtime，模型帳號仍在 Hermes 設定。完整步驟見 [DOCS](DOCS.md#paseo-remote-plugin-ha-ingress)。
 
 本 add-on 以 [Woow_podman_hermes](https://github.com/WOOWTECH/Woow_podman_hermes) 的 `slim` 映像為基礎，包成 Home Assistant add-on，並補上 HA Ingress 所需的轉接層。
 
@@ -104,6 +105,7 @@ HA 無法限制單一 add-on 的記憶體。啟動時可用記憶體不足 4 GB�
 | Gateway API 金鑰（`api_server_key`） | `8642` API 的 Bearer 金鑰，留空則自動產生 |
 | Webhook 密鑰（`webhook_secret`） | `8644` webhook 的 HMAC 密鑰，留空則自動產生 |
 | 儀表板公開網址（`public_url`） | MCP OAuth 登入完成後導回的網址。留空則為 `http://<HA IP>:9119`，只在區網有效。**不要填 HA 側邊欄網址** |
+| Paseo 的 HA 網址（`paseo_ingress_url`） | 從 HA 側邊欄使用 Paseo 時，填瀏覽器開啟 HA 的來源，例如 `https://ha.example.com`。只含協定、主機與選用 port，不含 Ingress 路徑；這是額外允許的來源，`public_url` 仍供區網與 OAuth 使用。更改 add-on 選項後需重啟一次。 |
 | MiniMax / OpenRouter API 金鑰、GitHub token | 只有在這裡修改時才寫入 Hermes，在儀表板 **Keys** 頁改的值不會在重啟時被覆蓋 |
 | 額外環境變數（`env_vars`） | 進階設定，傳給所有 Hermes 程序。`HERMES_HOME`、`PATH`、`SUPERVISOR_TOKEN` 等保留名稱會被略過 |
 

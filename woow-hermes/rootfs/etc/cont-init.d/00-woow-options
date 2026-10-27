@@ -63,7 +63,7 @@ if [[ -n $public_url ]]; then
     echo "  HERMES_DASHBOARD_PUBLIC_URL=${public_url%/}"
 fi
 
-reserved='^(HERMES_HOME|HERMES_DASHBOARD_HOST|HERMES_DASHBOARD_PORT|PATH|HOME|SUPERVISOR_TOKEN|HASSIO_TOKEN)$'
+reserved='^(HERMES_HOME|HERMES_DASHBOARD_HOST|HERMES_DASHBOARD_PORT|HERMES_PASEO_INGRESS_ORIGIN|PATH|HOME|SUPERVISOR_TOKEN|HASSIO_TOKEN)$'
 count=$(jq -r '.env_vars | length' "$OPTIONS")
 for ((i = 0; i < count; i++)); do
     key=$(jq -r ".env_vars[$i].key" "$OPTIONS")
@@ -78,6 +78,16 @@ for ((i = 0; i < count; i++)); do
         *) echo "  ${key}=${value}" ;;
     esac
 done
+
+# HA and the LAN Dashboard have different browser origins. Only this explicit
+# administrator option grants the extra origin; never derive it from a request.
+paseo_ingress_url=$(opt paseo_ingress_url)
+if [[ -n $paseo_ingress_url ]]; then
+    paseo_origin=$(printf '%s' "$paseo_ingress_url" | python3 /opt/woow/paseo_origin.py)
+    setenv HERMES_PASEO_INGRESS_ORIGIN "$paseo_origin"
+else
+    rm -f "$ENVDIR/HERMES_PASEO_INGRESS_ORIGIN"
+fi
 
 # Save generated secrets into the options, so they show in the Configuration tab
 # and survive a restore. A failure keeps the /data/secrets copy.

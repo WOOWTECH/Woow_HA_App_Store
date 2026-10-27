@@ -6,16 +6,14 @@
 # root PID-1 launcher, the /data layout, the headless export renderer and the
 # built-in Woow OpenDesign MCP server (mcp-runtime/).
 #
-# 0.2.1 removed Omnigent from the add-on (until Omnigent is stable). The pinned
-# core (20261018.1219, fork w2.2) is built with OMNIGENT=off: no omnigent CLI,
-# no omnigent-host-entry, no bundled woow-omnigent plugin or skill. The removal
-# step below stays as a guard so an older core can never bring them back.
+# The shared core contains Omnigent for PaaS, while this HA shell does not expose
+# its plugin or skill. The removal step below enforces that HA boundary.
 #
 # The core is published as the public ghcr.io/woowtech/open-design-core,
-# copied from the PaaS registry by digest (paas-odoo-ci #359, approval #372:
-# OpenDesign 0.24.1 from fork woow-od-v0.24.1-w2.2 = 1c7e697). Bump with
+# copied from the PaaS registry by digest (core 20261026.1751 from approved
+# build 29406 / promotion 29440, fork woow-od-v0.24.1-w2.7). Bump with
 # .github/scripts/pin-core.sh <tag> <digest> (rewrites every pin).
-ARG BUILD_FROM=ghcr.io/woowtech/open-design-core:20261024.0943@sha256:ffbb2bd070c488d79d960ee72fb7717f43791af6a4ae1585943598ad444a76e0
+ARG BUILD_FROM=ghcr.io/woowtech/open-design-core:20261026.1751@sha256:14601a0b5c935b09193e7217daf603f2d3dbca2d9a9f3ba6f80d2fe2a406dbe2
 
 # --- Built-in Woow OpenDesign MCP server: admin UI assets (mcp-runtime/, see mcp-runtime/README.md) ---
 # Built with the core image's own Node/npm from the vendored, lock-pinned UI sources; only dist/ is kept.
@@ -111,6 +109,12 @@ COPY ha-patches/sign-in-hint.py /tmp/ha-patches/sign-in-hint.py
 RUN python3 /tmp/ha-patches/sign-in-hint.py /app/apps/web/out \
     && rm -rf /tmp/ha-patches
 
+# Same immutable shared runtime as the PaaS wrapper; it owns no core patches.
+# Require the native launcher and atomic MCP CAS in the pinned w2.7 core;
+# older cores fail this gate instead of silently omitting Paseo.
+COPY paseo-runtime/ /tmp/paseo-runtime/
+RUN sh /tmp/paseo-runtime/install.sh && rm -rf /tmp/paseo-runtime
+
 COPY rootfs/ /
 RUN set -eu; \
     mkdir -p /data/opendesign/home; \
@@ -138,7 +142,7 @@ RUN sh /tmp/mcp-runtime/install.sh && rm -rf /tmp/mcp-runtime
 
 # amd64 only: the core image is built for linux/amd64.
 ARG BUILD_ARCH=amd64
-ARG BUILD_VERSION=0.2.6
+ARG BUILD_VERSION=0.2.8
 ENV WOOW_ADDON_VERSION=${BUILD_VERSION}
 ARG BUILD_DATE
 ARG BUILD_DESCRIPTION="OpenDesign for Home Assistant"

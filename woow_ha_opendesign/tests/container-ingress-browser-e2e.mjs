@@ -161,6 +161,18 @@ try {
     env: { ...process.env, HOME: chromiumHome, XDG_CONFIG_HOME: configHome, XDG_CACHE_HOME: cacheHome },
     args: ['--no-sandbox', '--disable-dev-shm-usage', '--disable-http2', '--disable-quic'],
   });
+  // A new HA user may need Paseo before choosing an OpenDesign model. Exercise
+  // the core's first-run /plugins route through the actual Ingress rewrite.
+  const firstRunContext = await browser.newContext();
+  const firstRunPlugins = await firstRunContext.newPage();
+  await firstRunPlugins.goto(`http://127.0.0.1:${proxyPort}${prefix}/plugins`, { waitUntil: 'domcontentloaded', timeout: 30_000 });
+  const paseoLink = firstRunPlugins.getByTestId('plugins-card-open-woow-paseo');
+  await paseoLink.waitFor({ timeout: 30_000 });
+  assert.notEqual(new URL(firstRunPlugins.url()).pathname, '/onboarding', 'fresh /plugins must not redirect to model onboarding');
+  assert.equal(await paseoLink.getAttribute('href'), `${prefix}/paseo/setup/`);
+  assert.equal(await paseoLink.getAttribute('target'), '_blank');
+  await firstRunContext.close();
+
   const context = await browser.newContext({ acceptDownloads: true });
   await context.addInitScript(() => {
     localStorage.setItem('open-design:config', JSON.stringify({ onboardingCompleted: true }));

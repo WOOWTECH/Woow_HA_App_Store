@@ -16,8 +16,12 @@ BUNDLED_HERMES_BOOTSTRAP = (
 )
 
 
+# Exact reviewed Paseo wrapper; do not accept arbitrary python -c programs.
+PASEO_HERMES_BOOTSTRAP = 'import os,site,sys\nsys.argv[0]="hermes"\nsite.addsitedir(os.environ["HERMES_SITE"])\nsys.path.insert(0,"/opt/hermes-paseo-dashboard-control")\nfrom resource_limits import configure_cpu_environment\nconfigure_cpu_environment()\nif sys.argv[1:2]==["dashboard"]:\n    if os.geteuid()==0:\n        raise SystemExit("Start Dashboard as the Hermes service account.")\n    from hermes_cli import web_server\n    from dashboard_control import install\n    install(web_server)\nfrom hermes_cli.main import main\nsys.exit(main())\n'
+
 def hermes_arguments(args):
-    if args[:4] == ['/opt/hermes/.venv/bin/python', '-P', '-c', BUNDLED_HERMES_BOOTSTRAP]:
+    if (len(args) >= 4 and args[:3] == ['/opt/hermes/.venv/bin/python', '-P', '-c']
+            and args[3] in (BUNDLED_HERMES_BOOTSTRAP, PASEO_HERMES_BOOTSTRAP)):
         return args[4:]
     if (len(args) >= 2 and Path(args[0]).name.startswith('python')
             and args[1] == '/opt/hermes/.venv/bin/hermes'):

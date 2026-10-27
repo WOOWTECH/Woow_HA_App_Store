@@ -119,6 +119,15 @@ class BootGate(unittest.TestCase):
                 self.assertFalse(check(role, [*launch[:3], launch[3] + '; print(1)', *command])['identity'])
                 self.assertFalse(check(role, launch + ['chat'])['identity'])
 
+    def test_paseo_bootstrap_matches_vendored_wrapper_and_rejects_extra_code(self):
+        wrapper = (Path(__file__).resolve().parents[1] / 'vendor/paseo/hermes').read_text()
+        self.assertIn(probe.PASEO_HERMES_BOOTSTRAP, wrapper)
+        launch = ['/opt/hermes/.venv/bin/python', '-P', '-c', probe.PASEO_HERMES_BOOTSTRAP]
+        self.assertEqual(probe.hermes_arguments(launch + ['dashboard']), ['dashboard'])
+        self.assertEqual(probe.hermes_arguments(launch + ['acp']), ['acp'])
+        self.assertIsNone(probe.hermes_arguments([*launch[:3], launch[3] + '\nprint(1)', 'dashboard']))
+        self.assertIsNone(probe.hermes_arguments(['/tmp/python', *launch[1:], 'dashboard']))
+
     def test_heartbeat_dashboard_relay_without_gateway_fails(self):
         # Every other gate is live/healthy; only the true gateway PID is absent.
         original_worker_checks = probe.worker_checks

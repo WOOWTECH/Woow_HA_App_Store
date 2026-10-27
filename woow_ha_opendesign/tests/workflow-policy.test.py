@@ -20,7 +20,7 @@ def check(condition, message):
 
 
 jobs = workflow.get("jobs", {})
-required_jobs = {"validate", "smoke", "build-nonrelease", "release-plan", "release-preflight", "release-architecture-gate", "publish-release", "release"}
+required_jobs = {"validate", "smoke", "build-nonrelease", "release-plan", "release-preflight", "release-architecture-gate", "publish-release", "release", "publish-candidate"}
 check(required_jobs <= set(jobs), "workflow must separate validation, smoke, non-release build, release plan, preflight, release architecture gate, release publishing, and the Release")
 check(workflow.get("permissions") == {"contents": "read"}, "workflow default permissions must be contents:read only")
 
@@ -35,12 +35,12 @@ RELEASE_IF = "needs.release-plan.outputs.release == 'true'"
 
 plan = jobs.get("release-plan", {})
 plan_text = yaml.safe_dump(plan)
-check(plan.get("if") == "github.event_name != 'pull_request' && github.ref == 'refs/heads/main'", "release plan must run only on main, never for pull requests")
+check(plan.get("if") == "github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && ! inputs.candidate_core_image", "release plan must run only on main, never for pull requests")
 check(plan.get("permissions") == {"contents": "read"}, "release plan must have only contents:read")
 check("gh release view" in plan_text, "release plan must skip a version that already has a Release")
 
 package_writers = [name for name, job in jobs.items() if job.get("permissions", {}).get("packages") == "write"]
-check(package_writers == ["publish-release"], "only publish-release may receive packages:write")
+check(set(package_writers) == {"publish-release", "publish-candidate"}, "only gated publishers may receive packages:write")
 for name in {"validate", "smoke", "build-nonrelease", "release-architecture-gate"}:
     check(jobs.get(name, {}).get("permissions") == {"contents": "read"}, f"{name} must explicitly have only contents:read")
 
@@ -102,6 +102,21 @@ for needle, message in [
     ("Registry returned HTTP", "preflight must fail closed on unexpected registry responses"),
 ]:
     check(needle in preflight_text, message)
+
+candidate = jobs.get("publish-candidate", {})
+check(candidate.get("if") == "github.event_name == 'workflow_dispatch' && inputs.candidate_core_image != '' && github.ref != 'refs/heads/main'", "candidate must require explicit non-main dispatch")
+check(candidate.get("needs") == "validate", "candidate must require validation")
+check(candidate.get("permissions") == {"contents": "read", "packages": "write"}, "candidate cannot write repository contents")
+steps = candidate.get("steps", [])
+step_names = [step.get("name") for step in steps]
+ordered = ["Validate candidate scope and immutable core", "Build candidate locally", "Full candidate container smoke", "Refuse existing candidate tag", "Log in to GHCR after smoke", "Push tested candidate and verify anonymous manifest"]
+check(all(name in step_names for name in ordered) and [step_names.index(name) for name in ordered] == sorted(step_names.index(name) for name in ordered), "candidate must smoke before credentials/push with immutable preflight")
+build = next((step for step in steps if step.get("name") == "Build candidate locally"), {})
+check(build.get("with", {}).get("load") is True and build.get("with", {}).get("push") is False, "candidate build must load without publishing")
+check('run: ./tests/container-smoke.sh "$CANDIDATE_IMAGE"' in workflow_text, "candidate must run full container suite")
+check('docker push "$CANDIDATE_IMAGE"' in workflow_text, "candidate pushes the tested image without a rebuild")
+for name in ["smoke", "build-nonrelease"]:
+    check(jobs[name].get("if") == "${{ ! inputs.candidate_core_image }}", "normal builds must defer to the candidate smoke when dispatched")
 
 if errors:
     for error in errors:

@@ -1,5 +1,10 @@
 # EMQX Changelog
 
+## 0.4.1 — 發佈候選（2026-10-25）
+
+- 共用 HA 管理面板包含 n8n 條件寫入說明；EMQX 工具、授權、依賴及 state schema 不變。
+- 0.4.0 → 0.4.1 不需資料遷移；六個啟用產品的新映像仍須通過精確映像、匿名拉取與 Store gate，見[0.4.1 發佈決策](../../docs/operations/release-decision-0.4.1.md)。
+
 ## 0.4.0 — 發佈候選（2026-10-25）
 
 - **MCP SDK 2 遷移（對齊 WOOW PaaS，issue #21）**：Python MCP SDK `mcp` 1.30.0 → 2.3.0（另加 `mcp-types` 2.3.0），子程序對後端的連線仍用 HTTPX 0.28.1；管理面板 UI 建置用的 Node 基底 22.23.4 → 26.12.1（2026-10-28 起 Active LTS）。

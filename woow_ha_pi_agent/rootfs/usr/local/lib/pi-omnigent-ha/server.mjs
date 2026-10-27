@@ -21,7 +21,8 @@ export function createServer({ bridge = createOmnigentBridge(), directory = stat
     };
     try {
       const url = new URL(req.url, 'http://localhost');
-      if (url.pathname === '/api/omnigent') {
+      const onboarding = url.pathname === '/omnigent/onboarding';
+      if (url.pathname === '/api/omnigent' || onboarding) {
         const site = req.headers['sec-fetch-site'];
         let originAllowed = true;
         if (req.headers.origin) {
@@ -34,7 +35,15 @@ export function createServer({ bridge = createOmnigentBridge(), directory = stat
               && origin.host === req.headers.host;
           } catch { originAllowed = false; }
         }
-        if (!originAllowed || req.headers['x-omnigent-token'] !== token || (site && !['same-origin', 'none'].includes(site))) return reply(403, { error: { code: 'UNTRUSTED_REQUEST' } });
+        if (!originAllowed || (site && !['same-origin', 'none'].includes(site))) return reply(403, { error: { code: 'UNTRUSTED_REQUEST' } });
+        // Minimal read-only navigation data; the custom header prevents a
+        // cross-origin simple request. The private action API still needs its token.
+        if (onboarding) {
+          if (req.method !== 'GET') return reply(405, { error: { code: 'METHOD_NOT_ALLOWED' } });
+          if (req.headers['x-omnigent-onboarding'] !== '1') return reply(403, { error: { code: 'UNTRUSTED_REQUEST' } });
+          return reply(200, await bridge.onboarding());
+        }
+        if (req.headers['x-omnigent-token'] !== token) return reply(403, { error: { code: 'UNTRUSTED_REQUEST' } });
         if (req.method === 'GET') return reply(200, await bridge.read());
         if (req.method !== 'POST') return reply(405, { error: { code: 'METHOD_NOT_ALLOWED' } });
         if (!/^application\/json(?:\s*;|$)/i.test(req.headers['content-type'] || '')) return reply(415, { error: { code: 'JSON_REQUIRED' } });
