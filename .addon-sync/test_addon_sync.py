@@ -276,7 +276,8 @@ class Tests(unittest.TestCase):
         self.assertEqual(job['environment'],'store-sync');self.assertNotIn('permissions',job)
         checkout=next(x for x in job['steps'] if x.get('uses','').startswith('actions/checkout@'))
         self.assertEqual(checkout['with']['ssh-key'],'${{ secrets.STORE_SYNC_DEPLOY_KEY }}')
-    def release_gh(self,configs,released=(),tags=None,compare='ahead'):
+    def release_gh(self,configs,released=(),tags=None,compare='ahead',listing=()):
+        # listing: the Releases page, [{'tag_name', 'prerelease'}]; asked for only when an add-on has upgrade-notes.yaml.
         # tags: name -> (object type, commit); an annotated tag object points at the commit.
         tags=tags or {}
         class GH:
@@ -299,6 +300,7 @@ class Tests(unittest.TestCase):
                     kind,commit=tags[name]
                     return {'object':{'type':kind,'sha':commit if kind=='commit' else 't'*40}}
                 if path=='git/tags/'+'t'*40:return {'object':{'type':'commit','sha':next(c for k,c in tags.values() if k=='tag')}}
+                if path=='releases?per_page=100':return [dict({'draft':False,'prerelease':False},**r) for r in listing]
                 raise AssertionError(path)
         return GH()
     def release_component(self,cid,path,**extra):
@@ -324,6 +326,34 @@ class Tests(unittest.TestCase):
         self.assertEqual([(r['id'],r['state'],r.get('tag')) for r in report],
             [('one','already-released','one-v1.0.0'),('two','released','two-v2.1.0'),('beta','excluded',None),('off','excluded',None)])
         self.assertEqual([c['tag_name'] for c in gh.created],['two-v2.1.0'])
+    NOTES=('"1.1.0":\n  breaking:\n    - {change: port-removed, key: 8080/tcp, migration: Old news.}\n'
+        '"1.2.0":\n  breaking:\n    - {change: option-removed, key: ssl_port, migration: Use the 443/tcp port mapping instead.}\n'
+        '  accepted_vulnerabilities:\n    - {id: CVE-2026-1234, package: openssl, reason: Fixed upstream in 1.2.1.}\n')
+    def test_release_notes_carry_the_declarations_since_the_last_release(self):
+        gh=self.release_gh({'config.yaml':'name: Test\nslug: test\nversion: 1.2.0\n','upgrade-notes.yaml':self.NOTES},
+            listing=[{'tag_name':'v1.1.0'},{'tag_name':'v1.2.0-rc1','prerelease':True}])
+        s.release(gh,self.single(),'WOOWTECH/test','a'*40,apply=True)
+        (created,)=gh.created
+        self.assertEqual(created['body'],'## 破壞性變更與遷移方式\n\n- `option-removed` `ssl_port`（1.2.0）：Use the 443/tcp port mapping instead.\n\n'
+            '## 已接受的漏洞\n\n- CVE-2026-1234（openssl，1.2.0）：Fixed upstream in 1.2.1.\n')
+        self.assertTrue(created['generate_release_notes'])
+    def test_release_notes_of_a_multi_addon_repository_follow_each_addons_tags(self):
+        gh=self.release_gh({'two/config.yaml':'name: Two\nslug: two\nversion: 1.2.0\n','two/upgrade-notes.yaml':self.NOTES},
+            listing=[{'tag_name':'one-v1.1.5'},{'tag_name':'two-v1.0.0'}])
+        components=[self.release_component('one','one'),self.release_component('two','two')]
+        s.release(gh,{'providers':{'WOOWTECH/test':{'components':components}}},'WOOWTECH/test','a'*40,apply=True)
+        self.assertEqual([c['tag_name'] for c in gh.created],['two-v1.2.0'])
+        self.assertIn('Old news.',gh.created[0]['body']);self.assertIn('ssl_port',gh.created[0]['body'])
+    def test_release_without_declarations_has_only_generated_notes(self):
+        for name,files in [('no upgrade-notes.yaml',{}),('nothing for this version',{'upgrade-notes.yaml':'"1.1.0":\n  breaking: []\n'})]:
+            with self.subTest(name):
+                gh=self.release_gh({'config.yaml':'name: Test\nslug: test\nversion: 1.2.0\n',**files},listing=[{'tag_name':'v1.0.0'}])
+                s.release(gh,self.single(),'WOOWTECH/test','a'*40,apply=True)
+                self.assertNotIn('body',gh.created[0]);self.assertTrue(gh.created[0]['generate_release_notes'])
+    def test_malformed_upgrade_notes_block_the_release(self):
+        gh=self.release_gh({'config.yaml':'name: Test\nslug: test\nversion: 1.2.0\n','upgrade-notes.yaml':'1.2: {}\n'})
+        report=s.release(gh,self.single(),'WOOWTECH/test','a'*40,apply=True)
+        self.assertEqual(report[0]['state'],'blocked');self.assertIn('upgrade-notes.yaml',report[0]['reason']);self.assertEqual(gh.created,[])
     def test_release_dry_run_creates_nothing(self):
         gh=self.release_gh({'config.yaml':'name: Test\nslug: test\nversion: 1.2.0\n'})
         report=s.release(gh,self.single(),'WOOWTECH/test','a'*40)

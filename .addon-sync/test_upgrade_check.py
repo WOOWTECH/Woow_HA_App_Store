@@ -161,6 +161,55 @@ class CommandLine(unittest.TestCase):
     def test_malformed_notes_exit_2(self):
         code,out=self.main('--old',self.write('old.yaml',BASE),'--new',self.write('new.yaml',new()),'--notes',self.write('notes.yaml','1.1: {}\n'))
         self.assertEqual(code,2);self.assertIn('quoted string',out)
+# The spec's example declarations: what users read on the Release page.
+NOTES={'1.3.0':{'breaking':[{'change':'option-removed','key':'ssl_port','migration':'改用 ports 設定的 443/tcp。'}],
+    'accepted_vulnerabilities':[{'id':'CVE-2026-1234','package':'openssl','reason':'上游 base image 還沒更新，預計 1.3.1 換掉。'}]}}
+class ReleaseNotes(unittest.TestCase):
+    def test_both_sections(self):
+        self.assertEqual(u.release_notes(NOTES,'1.3.0',released=['1.2.0']),
+            '## 破壞性變更與遷移方式\n\n- `option-removed` `ssl_port`（1.3.0）：改用 ports 設定的 443/tcp。\n\n'
+            '## 已接受的漏洞\n\n- CVE-2026-1234（openssl，1.3.0）：上游 base image 還沒更新，預計 1.3.1 換掉。\n')
+    def test_only_one_section(self):
+        for section,title,other in [('breaking','## 破壞性變更與遷移方式','已接受的漏洞'),('accepted_vulnerabilities','## 已接受的漏洞','破壞性變更')]:
+            with self.subTest(section):
+                text=u.release_notes({'1.3.0':{section:NOTES['1.3.0'][section]}},'1.3.0',released=['1.2.0'])
+                self.assertTrue(text.startswith(title+'\n\n- '));self.assertNotIn(other,text)
+    def test_nothing_declared_adds_nothing(self):
+        for name,notes in [('no file',None),('empty file',{}),('empty sections',{'1.3.0':{'breaking':[]}}),
+                ('only an already released version',{'1.2.0':NOTES['1.3.0']}),('only a later version',{'1.4.0':NOTES['1.3.0']})]:
+            with self.subTest(name):self.assertEqual(u.release_notes(notes,'1.3.0',released=['1.1.0','1.2.0']),'')
+    def test_versions_since_the_last_formal_release_all_count(self):
+        # 1.2.1 never got a Release, so its declarations belong to the 1.3.0 Release; 1.2.0's were on its own page.
+        notes={'1.2.0':{'breaking':[dict(NOTES['1.3.0']['breaking'][0],key='old_port')]},'1.2.1':{'breaking':[dict(NOTES['1.3.0']['breaking'][0],key='mid_port')]},**NOTES}
+        text=u.release_notes(notes,'1.3.0',released=['1.1.0','1.2.0','1.3.0'])
+        self.assertIn('`mid_port`（1.2.1）',text);self.assertIn('`ssl_port`（1.3.0）',text);self.assertNotIn('old_port',text)
+        self.assertIn('old_port',u.release_notes(notes,'1.3.0'))
+    def test_a_released_tag_that_is_not_a_version_is_ignored(self):
+        # A stray tag on the Releases page must not block the Release it has nothing to do with.
+        self.assertEqual(u.release_notes(NOTES,'1.3.0',released=['1.2.0','nightly']),u.release_notes(NOTES,'1.3.0',released=['1.2.0']))
+    def test_multiline_text_stays_inside_its_bullet(self):
+        notes={'1.3.0':{'breaking':[dict(NOTES['1.3.0']['breaking'][0],migration='第一步。\n第二步。\n')]}}
+        self.assertIn('：第一步。\n  第二步。\n',u.release_notes(notes,'1.3.0'))
+    def test_empty_migration_or_reason_is_an_error(self):
+        for section,field in [('breaking','migration'),('accepted_vulnerabilities','reason')]:
+            with self.subTest(section):
+                with self.assertRaises(ValueError):u.release_notes({'1.3.0':{section:[dict(NOTES['1.3.0'][section][0],**{field:' '})]}},'1.3.0')
+class ReleaseNotesCommand(unittest.TestCase):
+    """The exact invocation Woow_ha_odoo's release.yml uses."""
+    def setUp(self):
+        self.dir=pathlib.Path(tempfile.mkdtemp());self.addCleanup(shutil.rmtree,self.dir)
+    def main(self,*args):
+        with contextlib.redirect_stdout(io.StringIO()) as out:code=u.main(['release-notes',*args])
+        return code,out.getvalue()
+    def test_prints_the_sections_for_the_version(self):
+        path=self.dir/'upgrade-notes.yaml';path.write_text(yaml.safe_dump(NOTES,allow_unicode=True),encoding='utf-8')
+        self.assertEqual(self.main('--notes',str(path),'--version','1.3.0','--released','1.1.0','1.2.0'),(0,u.release_notes(NOTES,'1.3.0')))
+    def test_missing_notes_file_prints_nothing(self):
+        self.assertEqual(self.main('--notes',str(self.dir/'absent.yaml'),'--version','1.3.0','--released'),(0,''))
+    def test_malformed_notes_exit_2(self):
+        path=self.dir/'upgrade-notes.yaml';path.write_text('1.3: {}\n',encoding='utf-8')
+        code,out=self.main('--notes',str(path),'--version','1.3.0')
+        self.assertEqual(code,2);self.assertIn('::error',out)
 class ReusableWorkflow(unittest.TestCase):
     """Shape that callers and the ruleset depend on; the shell itself is verified on pilot PRs (#89 Testing Decisions)."""
     def setUp(self):

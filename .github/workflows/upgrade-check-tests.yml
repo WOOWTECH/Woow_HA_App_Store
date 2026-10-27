@@ -1,11 +1,15 @@
 # Tests for the upgrade comparison (pipeline #89) before a change reaches the
 # reusable woow-addon-upgrade-check.yml that every managed source repo calls.
+# addon_sync.release imports upgrade_check for the Release notes (#119), and
+# every source repo's release runs test_addon_sync.py, so it runs here too.
 name: Upgrade comparison tests
 'on':
   pull_request:
     paths:
     - .addon-sync/upgrade_check.py
     - .addon-sync/test_upgrade_check.py
+    - .addon-sync/addon_sync.py
+    - .addon-sync/test_addon_sync.py
     - .addon-sync/requirements.txt
     - .github/workflows/woow-addon-upgrade-check.yml
     - .github/workflows/upgrade-check-tests.yml
@@ -14,6 +18,8 @@ name: Upgrade comparison tests
     paths:
     - .addon-sync/upgrade_check.py
     - .addon-sync/test_upgrade_check.py
+    - .addon-sync/addon_sync.py
+    - .addon-sync/test_addon_sync.py
     - .addon-sync/requirements.txt
     - .github/workflows/woow-addon-upgrade-check.yml
     - .github/workflows/upgrade-check-tests.yml
@@ -31,3 +37,5 @@ jobs:
       run: python3 -m pip install -r .addon-sync/requirements.txt
     - name: Test the upgrade comparison
       run: python3 .addon-sync/test_upgrade_check.py -v
+    - name: Test the publisher and Release notes
+      run: python3 .addon-sync/test_addon_sync.py -v
