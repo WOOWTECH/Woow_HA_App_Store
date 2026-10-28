@@ -213,6 +213,11 @@ def _paste(version, items):
 
 BLOCKING_SEVERITIES={'critical','high'}
 
+def _rank(m):
+    """Sort key picking a pair's match: new fixable over Critical/High over the rest, then Critical, then a fixed tie-break."""
+    v=m['vulnerability'];severity=str(v.get('severity','')).lower();blocking=severity in BLOCKING_SEVERITIES
+    return (blocking and (v.get('fix') or {}).get('state')=='fixed',blocking,severity=='critical',json.dumps(m,sort_keys=True))
+
 def _findings(scan):
     """{(vulnerability id, package): match} from Grype JSON; one entry per pair however many locations match."""
     if not isinstance(scan,dict) or not isinstance(scan.get('matches'),list):raise ValueError('scan result is not Grype JSON (no matches list)')
@@ -220,20 +225,26 @@ def _findings(scan):
     for m in scan['matches']:
         v,a=(m.get('vulnerability') or {},m.get('artifact') or {}) if isinstance(m,dict) else ({},{})
         if not v.get('id') or not a.get('name'):raise ValueError('Grype match without vulnerability.id or artifact.name')
-        out.setdefault((v['id'],a['name']),m)
+        # Grype repeats a pair per location or package version: keep the most blocking match so the order cannot hide one.
+        k=(v['id'],a['name'])
+        if k not in out or _rank(m)>_rank(out[k]):out[k]=m
     return out
 
 def _database(scan):
     """The DB a Grype scan used (Grype 0.120: descriptor.db.status), or None when the JSON does not say."""
     db=(scan.get('descriptor') or {}).get('db') or {}
     status=db.get('status') or db
-    return (status.get('built'),status.get('from') or status.get('checksum')) if status else None
+    found=(status.get('built'),status.get('from') or status.get('checksum'))
+    return found if all(found) else None
 
 def category4(old_scan, new_scan):
     """Counts and new fixable vulnerabilities: in the new image only, Critical/High, Grype fix.state fixed."""
     if old_scan is None or new_scan is None:raise ValueError('vulnerability comparison needs both the old and the new scan result')
     old,new=_findings(old_scan),_findings(new_scan)
-    if _database(old_scan)!=_database(new_scan):raise ValueError(f'old and new images were scanned with different vulnerability databases ({_database(old_scan)} vs {_database(new_scan)})')
+    dbs=_database(old_scan),_database(new_scan)
+    # Two scans without DB info would compare equal and pass, with no proof they used the same DB.
+    if None in dbs:raise ValueError('scan result does not say which vulnerability database it used (descriptor.db.status built and from)')
+    if dbs[0]!=dbs[1]:raise ValueError(f'old and new images were scanned with different vulnerability databases ({dbs[0]} vs {dbs[1]})')
     fixable=[];skipped={'in_old':0,'not_fixed':0,'low':0}
     for (vid,package),m in new.items():
         v=m['vulnerability'];fix=v.get('fix') or {}

@@ -162,7 +162,9 @@ class Tests(unittest.TestCase):
 
 def match(vid,package,severity='High',state='fixed',versions=('1.2.3',)):
     return {'vulnerability':{'id':vid,'severity':severity,'fix':{'state':state,'versions':list(versions)}},'artifact':{'name':package,'version':'1.0'}}
-def scan(*matches):return {'matches':list(matches)}
+def db(built='2026-10-27T00:00:00Z'):
+    return {'db':{'status':{'schemaVersion':'v6.1.10','built':built,'from':'https://grype.anchore.io/databases/v6/db.tar.zst?checksum=sha256%3A'+'b'*64,'valid':True}}}
+def scan(*matches):return {'matches':list(matches),'descriptor':db()}
 OLD_SCAN=scan(match('CVE-2026-0001','openssl'))
 def vrun(new_scan,old_scan=OLD_SCAN,notes=None):
     return u.compare(BASE,new(),'1.0.0','1.1.0',notes=notes,old_scan=old_scan,new_scan=new_scan)
@@ -221,10 +223,26 @@ class Vulnerabilities(unittest.TestCase):
             with self.subTest(name):
                 with self.assertRaises(ValueError):vrun(new_scan,old_scan=old_scan)
     def test_scans_from_different_databases_are_an_error(self):
-        def db(built):return {'db':{'status':{'schemaVersion':'v6.1.10','built':built,'from':'https://grype.anchore.io/databases/v6/db.tar.zst?checksum=sha256%3A'+'b'*64,'valid':True}}}
-        old_scan=dict(OLD_SCAN,descriptor=db('2026-10-27T00:00:00Z'))
-        self.assertFalse(vrun(dict(scan(),descriptor=db('2026-10-27T00:00:00Z')),old_scan=old_scan)['blocked'])
-        with self.assertRaises(ValueError):vrun(dict(scan(),descriptor=db('2026-10-26T00:00:00Z')),old_scan=old_scan)
+        self.assertFalse(vrun(scan())['blocked'])
+        with self.assertRaises(ValueError):vrun(dict(scan(),descriptor=db('2026-10-26T00:00:00Z')))
+    def test_scan_without_database_info_is_an_error(self):
+        # Without descriptor.db there is no proof both images were scanned with the same DB.
+        for name,descriptor in [('no descriptor',None),('no db',{}),('empty status',{'db':{'status':{}}})]:
+            without=lambda s:{'matches':s['matches']} if descriptor is None else dict(s,descriptor=descriptor)
+            for side,new_scan,old_scan in [('old',scan(),without(OLD_SCAN)),('new',without(scan()),OLD_SCAN),('both',without(scan()),without(OLD_SCAN))]:
+                with self.subTest(name,side=side):
+                    with self.assertRaises(ValueError):vrun(new_scan,old_scan=old_scan)
+    def test_duplicate_matches_do_not_depend_on_order(self):
+        # Grype reports a pair once per location; any qualifying match makes it new fixable, with that match's details.
+        rows=[('not fixed and fixed',match('CVE-2026-0002','zlib','Critical',state='not-fixed',versions=()),match('CVE-2026-0002','zlib',versions=('1.3.1',)),
+                [{'id':'CVE-2026-0002','package':'zlib','severity':'High','fixed_in':['1.3.1'],'accepted':False}]),
+            ('below High and Critical',match('CVE-2026-0002','zlib','Low'),match('CVE-2026-0002','zlib','Critical',versions=('1.3.1',)),
+                [{'id':'CVE-2026-0002','package':'zlib','severity':'Critical','fixed_in':['1.3.1'],'accepted':False}]),
+            ('below High and not fixed',match('CVE-2026-0002','zlib','Low'),match('CVE-2026-0002','zlib','Critical',state='not-fixed',versions=()),[])]
+        for name,a,b,fixable in rows:
+            with self.subTest(name):
+                ab,ba=vrun(scan(a,b))['vulnerabilities'],vrun(scan(b,a))['vulnerabilities']
+                self.assertEqual(ab,ba);self.assertEqual(ab['new_fixable'],fixable);self.assertEqual(ab['new_count'],1)
     def test_no_comparison_target_with_a_scan_passes(self):
         r=u.compare(None,new(),None,'1.1.0',new_scan=self.NEW())
         self.assertFalse(r['blocked']);self.assertIn('no comparison target',r['report'])
