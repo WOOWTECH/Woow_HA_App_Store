@@ -338,14 +338,23 @@ def main(argv=None):
     n.add_argument('--notes',required=True,help='upgrade-notes.yaml at the released commit (may be absent)')
     n.add_argument('--version',required=True,help='version being released')
     n.add_argument('--released',nargs='*',default=[],help='versions that already have a formal Release')
-    t=sub.add_parser('latest-release',help='read Release tags on stdin, print the newest version with --prefix (nothing when none)')
-    t.add_argument('--prefix',required=True,help='tag prefix: v, or <slug>-v when a repository versions add-ons independently')
+    t=sub.add_parser('latest-release',help="read the repository's Releases (GitHub API JSON array) on stdin, print the tag of the add-on's latest formal Release (nothing when none)")
+    t.add_argument('--registry',required=True,help='Store registry.json');t.add_argument('--repo',required=True,help='source repository, owner/name')
+    t.add_argument('--component',required=True,help='add-on id in the registry')
     a=p.parse_args(argv)
     if a.command=='latest-release':
-        try:latest=latest_release([tag[len(a.prefix):] for tag in sys.stdin.read().split() if tag.startswith(a.prefix)])
-        except ValueError as e:
-            _error('Upgrade comparison failed',f'Release tags with prefix {a.prefix}: {e}');return 2
-        if latest is not None:print(latest)
+        # The Release filter and tag rule are addon_sync's, so the PR check and the Release notes agree; addon_sync imports this module.
+        from addon_sync import formal_versions, release_tag
+        try:
+            provider=_load(a.registry,'json')['providers'][a.repo]
+            comp=next((c for c in provider['components'] if c['id']==a.component),None)
+            if comp is None:raise KeyError(f'no component {a.component}')
+            releases=json.load(sys.stdin)
+            if not isinstance(releases,list):raise ValueError('stdin is not a JSON array of Releases')
+            latest=latest_release(formal_versions(releases,release_tag(provider,comp,'')))
+        except (ValueError,KeyError,TypeError,AttributeError,OSError) as e:
+            _error('Upgrade comparison failed',f'Releases of {a.repo} {a.component}: {e}');return 2
+        if latest is not None:print(release_tag(provider,comp,latest))
         return 0
     if a.command=='release-notes':
         try:text=release_notes(_load(a.notes,'optional'),a.version,a.released)

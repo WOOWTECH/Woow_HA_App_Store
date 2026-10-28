@@ -314,6 +314,10 @@ def release_tag(provider, component, version):
     """v<version> for a single-addon repository; <slug>-v<version> when addons version independently."""
     return ('v' if len(provider['components'])==1 else component['id']+'-v')+version
 
+def formal_versions(releases, prefix):
+    """Versions of the formal Releases (not draft, not prerelease) among GitHub's `releases` whose tag starts with prefix."""
+    return [r['tag_name'][len(prefix):] for r in releases if not r.get('draft') and not r.get('prerelease') and r.get('tag_name','').startswith(prefix)]
+
 def get_or_none(gh, repo, path):
     try:return gh.api(repo,path)
     except Blocked as e:
@@ -346,9 +350,7 @@ def release_body(gh, repo, provider, comp, sha, version):
     except Blocked as e:
         if 'HTTP 404' in str(e):return ''
         raise
-    prefix=release_tag(provider,comp,'')
-    released=[r['tag_name'][len(prefix):] for r in all_releases(gh,repo)
-        if not r.get('draft') and not r.get('prerelease') and r.get('tag_name','').startswith(prefix)]
+    released=formal_versions(all_releases(gh,repo),release_tag(provider,comp,''))
     try:return upgrade_check.release_notes(yaml.safe_load(raw),version,released)
     except (ValueError,TypeError,yaml.YAMLError) as e:raise Blocked(path+': '+str(e))
 

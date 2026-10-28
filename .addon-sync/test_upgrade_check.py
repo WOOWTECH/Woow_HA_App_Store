@@ -355,19 +355,38 @@ class LatestRelease(unittest.TestCase):
         self.assertEqual(u.latest_release(['2.12.4-v9','2.12.4-v10','2.12.4']),'2.12.4-v10')
         self.assertEqual(u.latest_release(['1.9.0','1.10.0','nightly']),'1.10.0')
         self.assertIsNone(u.latest_release(['nightly']));self.assertIsNone(u.latest_release([]))
-    def main(self,stdin,*args):
+    def main(self,releases,component,components=('t',)):
+        d=pathlib.Path(tempfile.mkdtemp());self.addCleanup(shutil.rmtree,d)
+        (d/'registry.json').write_text(json.dumps({'providers':{'WOOWTECH/r':{'components':[{'id':c} for c in components]}}}))
+        stdin=releases if isinstance(releases,str) else json.dumps([r if isinstance(r,dict) else {'tag_name':r,'draft':False,'prerelease':False} for r in releases])
         with contextlib.redirect_stdout(io.StringIO()) as out,unittest.mock.patch('sys.stdin',io.StringIO(stdin)):
-            code=u.main(['latest-release',*args])
+            code=u.main(['latest-release','--registry',str(d/'registry.json'),'--repo','WOOWTECH/r','--component',component])
         return code,out.getvalue()
-    def test_command_reads_tags_and_prints_the_latest_version_for_the_prefix(self):
-        tags='v1.2.0rc1\nv1.2.0\none-v9.0.0\nv1.1.0\n'
-        self.assertEqual(self.main(tags,'--prefix','v'),(0,'1.2.0\n'))
-        self.assertEqual(self.main(tags,'--prefix','one-v'),(0,'9.0.0\n'))
-        self.assertEqual(self.main(tags,'--prefix','two-v'),(0,''))
-    def test_workflow_uses_the_python_ordering(self):
+    def test_prints_the_tag_of_the_latest_formal_release(self):
+        self.assertEqual(self.main(['v1.2.0rc1','v1.2.0','v1.1.0'],'t'),(0,'v1.2.0\n'))
+        self.assertEqual(self.main([],'t'),(0,''))
+    def test_drafts_prereleases_and_other_prefixes_are_not_formal_releases(self):
+        releases=[{'tag_name':'v2.0.0','draft':True,'prerelease':False},{'tag_name':'v1.9.0','draft':False,'prerelease':True},'x-v3.0.0','v1.1.0']
+        self.assertEqual(self.main(releases,'t'),(0,'v1.1.0\n'))
+        self.assertEqual(self.main(releases[:3],'t'),(0,''))
+    def test_tag_rule_is_addon_syncs(self):
+        # v<ver> for a single add-on, <slug>-v<ver> when the repository has several (addon_sync.release_tag).
+        releases=['v9.0.0','woow_ha_core-v2.4.0','woow_ha_core_2-v2.3.0','woow_ha_core_2-v2.2.0']
+        both=('woow_ha_core','woow_ha_core_2')
+        self.assertEqual(self.main(releases,'woow_ha_core_2',both),(0,'woow_ha_core_2-v2.3.0\n'))
+        self.assertEqual(self.main(releases,'woow_ha_core',both),(0,'woow_ha_core-v2.4.0\n'))
+        self.assertEqual(self.main(releases,'t'),(0,'v9.0.0\n'))
+    def test_unknown_component_or_bad_input_exits_2(self):
+        for releases,component in [(['v1.0.0'],'other'),('not json','t'),('{}','t')]:
+            with self.subTest(component=component,releases=releases):
+                code,out=self.main(releases,component)
+                self.assertEqual(code,2);self.assertTrue(out.startswith('::error title=Upgrade comparison failed::'),out)
+    def test_workflow_leaves_the_filter_and_tag_rule_to_python(self):
         wf=yaml.safe_load((pathlib.Path(__file__).resolve().parent.parent/'.github/workflows/woow-addon-upgrade-check.yml').read_text(encoding='utf-8'))
         plan=next(s for s in wf['jobs']['compare']['steps'] if s.get('id')=='plan')['run']
-        self.assertIn('upgrade_check.py latest-release --prefix',plan);self.assertNotIn('sort -V',plan)
+        self.assertIn('upgrade_check.py latest-release --registry',plan)
+        for duplicate in ('sort -V','prerelease','draft','-v"','prefix='):
+            with self.subTest(duplicate):self.assertNotIn(duplicate,plan)
 class ReleaseNotesCommand(unittest.TestCase):
     """The exact invocation Woow_ha_odoo's release.yml uses."""
     def setUp(self):
@@ -442,7 +461,7 @@ class StepHarness(unittest.TestCase):
     WF=STORE/'.github/workflows/woow-addon-upgrade-check.yml'
     def setUp(self):self.wf=yaml.safe_load(self.WF.read_text(encoding='utf-8'))
     def step(self,ident):return next(s for s in self.wf['jobs']['compare']['steps'] if ident in (s.get('id'),s.get('name')))
-    def run_step(self,ident,*,policy='release',extra=None,releases='v1.0.0',old_config=True,skip='',sbom=''):
+    def run_step(self,ident,*,policy='release',extra=None,releases=('v1.0.0',),old_config=True,skip='',sbom='',version='1.1.0'):
         import os,subprocess
         tmp=pathlib.Path(tempfile.mkdtemp());self.addCleanup(shutil.rmtree,tmp)
         (tmp/'tooling/.addon-sync').mkdir(parents=True);(tmp/'source/addon').mkdir(parents=True);(tmp/'bin').mkdir()
@@ -451,13 +470,15 @@ class StepHarness(unittest.TestCase):
         (tmp/'tooling/.addon-sync/registry.json').write_text(json.dumps({'providers':{'WOOWTECH/t':{'ref_policy':policy,'components':[
             {'id':'t','source_path':'addon','config_file':'config.yaml'}],**(extra or {})}}}))
         cfg=dict(BASE,image='ghcr.io/da-anda/addon-{arch}')
-        (tmp/'source/addon/config.yaml').write_text(yaml.safe_dump(dict(cfg,version='1.1.0')))
+        (tmp/'source/addon/config.yaml').write_text(yaml.safe_dump(dict(cfg,version=version)))
         (tmp/'old.yaml').write_text(yaml.safe_dump(cfg) if old_config else '')
         (tmp/'changed.tsv').write_text('t\taddon\taddon/config.yaml\t1.1.0\n')
         gh=tmp/'bin/gh'
         gh.write_text('#!/bin/bash\ncase "$*" in\n  *releases*) [ -z "$RELEASES" ] || printf "%s\\n" "$RELEASES";;\n'
             '  *contents*) if [ -s "$OLD" ]; then cat "$OLD"; else echo "gh: Not Found (HTTP 404)" >&2; exit 1; fi;;\n  *) exit 1;;\nesac\n')
         gh.chmod(0o755)
+        # What `gh api --paginate .../releases --jq '.[]'` prints: one Release object per line; a bare tag is a formal Release.
+        releases='\n'.join(json.dumps(r if isinstance(r,dict) else {'tag_name':r,'draft':False,'prerelease':False}) for r in releases)
         env=dict(os.environ,PATH=f"{tmp/'bin'}{os.pathsep}{os.environ['PATH']}",OLD=str(tmp/'old.yaml'),RELEASES=releases,REPO='WOOWTECH/t',BASE_SHA='b',
             GH_TOKEN='x',SBOM_ARTIFACT=sbom,SKIP_VULNERABILITY_SCAN=skip,RUNNER_TEMP=str(tmp),RUN_ATTEMPT='1',
             GITHUB_OUTPUT=str(tmp/'out'),GITHUB_STEP_SUMMARY=str(tmp/'summary'))
@@ -512,7 +533,7 @@ class ComparisonTarget(StepHarness):
         self.assertEqual(r.returncode,1);self.assertIn('v1.0.0 has no addon/config.yaml',r.stdout+r.stderr);self.assertEqual(plan,[])
     @needs_shell
     def test_no_formal_release_has_no_comparison_target(self):
-        r,plan,_=self.run_step('plan',releases='',old_config=False)
+        r,plan,_=self.run_step('plan',releases=(),old_config=False)
         self.assertEqual(r.returncode,0,r.stdout+r.stderr);self.assertEqual(plan[4:],['','','no comparison target'])
     @needs_shell
     def test_ref_policy_main_without_config_at_the_base_is_a_new_add_on(self):
@@ -521,13 +542,50 @@ class ComparisonTarget(StepHarness):
     @needs_shell
     def test_latest_release_is_ordered_like_the_release_notes(self):
         # sort -V would pick v1.0.0rc1; version_cmp (PEP 440) puts the rc before 1.0.0.
-        r,plan,_=self.run_step('plan',releases='v0.9.0\nv1.0.0\nv1.0.0rc1',skip='x')
+        r,plan,_=self.run_step('plan',releases=('v0.9.0','v1.0.0','v1.0.0rc1'),skip='x')
         self.assertEqual(r.returncode,0,r.stdout+r.stderr);self.assertEqual(plan[4],'v1.0.0')
+    @needs_shell
+    def test_drafts_and_prereleases_are_not_comparison_targets(self):
+        releases=('v1.0.0',{'tag_name':'v1.2.0','draft':True,'prerelease':False},{'tag_name':'v1.1.0','draft':False,'prerelease':True})
+        r,plan,_=self.run_step('plan',releases=releases,skip='x')
+        self.assertEqual(r.returncode,0,r.stdout+r.stderr);self.assertEqual(plan[4],'v1.0.0')
+    @needs_shell
+    def test_multi_add_on_repository_uses_the_slug_tag(self):
+        comps=[{'id':i,'source_path':'addon','config_file':'config.yaml'} for i in ('t','t_2')]
+        r,plan,_=self.run_step('plan',extra={'components':comps},releases=('v9.0.0','t_2-v2.0.0','t-v1.0.0'),skip='x')
+        self.assertEqual(r.returncode,0,r.stdout+r.stderr);self.assertEqual(plan[4],'t-v1.0.0')
+    @needs_shell
+    def test_version_with_a_newline_is_rejected_before_it_reaches_the_log(self):
+        r,_,_=self.run_step('detect',version='1.1.0\n::warning title=Injected::boom')
+        self.assertEqual(r.returncode,1);self.assertIn('contains a control character',r.stdout)
+        self.assertEqual([l for l in r.stdout.splitlines() if l.startswith('::') and not l.startswith('::error title=Upgrade comparison failed::')],[])
     def test_the_raw_file_fetch_is_defined_once(self):
         text=self.WF.read_text(encoding='utf-8')
         self.assertNotIn('fetch() {',text);self.assertTrue((self.STORE/'.addon-sync/gh_raw.sh').exists())
         for ident in ('detect','plan'):
             with self.subTest(ident):self.assertIn('source tooling/.addon-sync/gh_raw.sh',self.step(ident)['run'])
+
+class LogEscaping(StepHarness):
+    """Values from the PR or its Releases are echoed through esc (gh_raw.sh), the escaping addon_sync.annotation uses."""
+    PR_VALUES=('version','current','target','ref','SBOM_ARTIFACT','SKIP_VULNERABILITY_SCAN','old_image','old_version','image')
+    @unittest.skipUnless(shutil.which('bash'),'needs bash')
+    def test_esc_matches_annotation(self):
+        import subprocess,addon_sync
+        text='50%\r\n::warning title=Injected::boom\n'
+        r=subprocess.run([shutil.which('bash'),'-c','source "$1"; esc "$2"','-',(self.STORE/'.addon-sync/gh_raw.sh').as_posix(),text],capture_output=True)
+        self.assertEqual(r.returncode,0,r.stderr);self.assertEqual(r.stdout.decode(),addon_sync.annotation(text))
+    def test_every_echo_escapes_pr_values(self):
+        import re
+        for step in self.wf['jobs']['compare']['steps']:
+            run=step.get('run','')
+            for line in run.splitlines():
+                # The step summary is Markdown, never read for workflow commands.
+                if 'echo ' not in line or 'GITHUB_STEP_SUMMARY' in line or 'GITHUB_OUTPUT' in line:continue
+                bare=re.sub(r'\$\(esc "\$\{\w+\}"\)','',line[line.index('echo '):])
+                for name in self.PR_VALUES:
+                    with self.subTest(step=step.get('name'),value=name):self.assertNotIn('${'+name+'}',bare)
+            if 'esc "' in run:
+                with self.subTest(step=step.get('name')):self.assertIn('source tooling/.addon-sync/gh_raw.sh',run)
 
 class SbomAttempt(unittest.TestCase):
     """A re-run must judge the image its own build made, not an earlier attempt's SBOM."""

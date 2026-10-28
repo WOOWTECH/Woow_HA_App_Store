@@ -123,6 +123,10 @@ jobs:
           path="${file}"; [ "${dir}" = "." ] || path="${dir}/${file}"
           [ -f "source/${path}" ] || continue
           current="$(yq -r '.version' "source/${path}")"
+          # The version goes into changed.tsv and plan.txt; a newline, tab or separator in it would shift their fields.
+          if [[ "${current}" == *[[:cntrl:]]* ]]; then
+            echo "::error title=Upgrade comparison failed::${id}: the version in ${path} contains a control character (newline, tab...): $(esc "${current}")"; exit 1
+          fi
           previous="$(fetch "${path}" "${BASE_SHA}" | yq -r '.version // "none"')"
           if [ "${current}" != "${previous}" ]; then
             printf '%s\t%s\t%s\t%s\n' "${id}" "${dir}" "${path}" "${current}" >> changed.tsv
@@ -152,8 +156,8 @@ jobs:
         set -euo pipefail
         source tooling/.addon-sync/gh_raw.sh
         provider="$(jq -c --arg r "$REPO" '.providers[$r]' tooling/.addon-sync/registry.json)"
-        policy="$(jq -r '.ref_policy' <<<"$provider")"; count="$(jq '.components | length' <<<"$provider")"
-        releases="$(gh api --paginate "repos/${REPO}/releases?per_page=100" --jq '.[] | select(.draft == false and .prerelease == false) | .tag_name' | jq -R . | jq -sc .)"
+        policy="$(jq -r '.ref_policy' <<<"$provider")"
+        releases="$(gh api --paginate "repos/${REPO}/releases?per_page=100" --jq '.[]' | jq -sc .)"
         # plan.txt (fields split by the unit separator: read would merge empty tab-separated fields): id, config path, version, upgrade-notes path, target, old image ref ("" = no scan), scan note.
         : > plan.txt; : > scan.txt; status=0
         while IFS=$'\t' read -r id dir path version; do
@@ -162,20 +166,18 @@ jobs:
             # ref_policy main: the Store follows the default branch, so users run what the PR base has.
             target="${BASE_SHA}"
           else
-            # Store tag rule (addon_sync.release_tag): v<ver>, or <slug>-v<ver> when there are several add-ons.
-            prefix="v"; [ "${count}" = "1" ] || prefix="${id}-v"
-            # Ordered by upgrade_check.version_cmp, the same ordering the Release notes use.
-            latest="$(jq -r '.[]' <<<"${releases}" | python3 tooling/.addon-sync/upgrade_check.py latest-release --prefix "${prefix}")"
-            [ -z "${latest}" ] || target="${prefix}${latest}"
+            # Formal-Release filter, tag rule and ordering are the ones the Release notes use (addon_sync, upgrade_check.version_cmp).
+            target="$(python3 tooling/.addon-sync/upgrade_check.py latest-release --registry tooling/.addon-sync/registry.json --repo "${REPO}" --component "${id}" <<<"${releases}")" \
+              || { printf '%s\n' "${target}"; exit 1; }  # on failure the output is its ::error (already escaped)
           fi
           notes="upgrade-notes.yaml"; [ "${dir}" = "." ] || notes="${dir}/upgrade-notes.yaml"
           if [ -n "${target}" ]; then
             fetch "${path}" "${target}" > "$old"
-            if [ -s "$old" ]; then echo "${id}: comparing ${version} with ${target}"
+            if [ -s "$old" ]; then echo "${id}: comparing $(esc "${version}") with $(esc "${target}")"
             elif [ "${policy}" = "main" ]; then echo "${id}: no config at the PR base, a new add-on"
             else
               # Users run this Release; an unreadable config there must not pass as "no comparison target".
-              echo "::error title=Upgrade comparison failed::${id}: the latest formal Release ${target} has no ${path} (moved or deleted?), so there is nothing to compare with; restore the path or compare by hand"
+              echo "::error title=Upgrade comparison failed::${id}: the latest formal Release $(esc "${target}") has no ${path} (moved or deleted?), so there is nothing to compare with; restore the path or compare by hand"
               status=1; continue
             fi
           else
@@ -185,7 +187,8 @@ jobs:
           image="$(yq -r '.image // ""' "source/${path}")"
           artifact="upgrade-comparison-sbom-${id}-attempt-${RUN_ATTEMPT}"
           if [ -n "${SKIP_VULNERABILITY_SCAN}" ]; then
-            note="skipped by the caller: ${SKIP_VULNERABILITY_SCAN}"
+            # One plan.txt line: a multi-line reason becomes one line (the report shows it inside ::stop-commands::).
+            note="skipped by the caller: ${SKIP_VULNERABILITY_SCAN//[[:cntrl:]]/ }"
           elif [ -z "${image}" ]; then
             note="built on the device; the vulnerability comparison for these add-ons is #90"
           elif [ ! -s "${old}" ]; then
@@ -197,7 +200,7 @@ jobs:
             status=1
           # shellcheck disable=SC2053 # SBOM_ARTIFACT is a glob on purpose
           elif [[ "${artifact}" != ${SBOM_ARTIFACT} ]]; then
-            echo "::error title=Upgrade comparison failed::${id}: sbom_artifact '${SBOM_ARTIFACT}' does not match ${artifact}, the artifact the addon-sbom action uploads for component ${id}"
+            echo "::error title=Upgrade comparison failed::${id}: sbom_artifact '$(esc "${SBOM_ARTIFACT}")' does not match ${artifact}, the artifact the addon-sbom action uploads for component ${id}"
             status=1
           else
             old_image="$(yq -r '.image' "${old}")"; old_version="$(yq -r '.version' "${old}")"
@@ -231,14 +234,15 @@ jobs:
       if: steps.plan.outputs.scan == 'true'
       run: |
         set -euo pipefail
+        source tooling/.addon-sync/gh_raw.sh
         export SYFT_CHECK_FOR_APP_UPDATE=false
         while IFS=$'\x1f' read -r id _path _version _notes target ref _note; do
           [ -n "${ref}" ] || continue
           if ! docker pull --quiet --platform linux/amd64 "${ref}"; then
-            echo "::error title=Upgrade comparison failed::${id}: cannot pull the comparison target's image ${ref} from the registry; re-run, or check that the image of ${target} exists"; exit 1
+            echo "::error title=Upgrade comparison failed::${id}: cannot pull the comparison target's image $(esc "${ref}") from the registry; re-run, or check that the image of $(esc "${target}") exists"; exit 1
           fi
           if ! "$RUNNER_TEMP/scanners/syft" scan "docker:${ref}" --config tooling/.github/actions/addon-sbom/syft.yaml -o "syft-json=$RUNNER_TEMP/${id}.old.syft.json"; then
-            echo "::error title=Upgrade comparison failed::${id}: Syft could not read ${ref}"; exit 1
+            echo "::error title=Upgrade comparison failed::${id}: Syft could not read $(esc "${ref}")"; exit 1
           fi
           docker image rm --force "${ref}" > /dev/null
         done < plan.txt
@@ -296,6 +300,7 @@ jobs:
       if: steps.detect.outputs.changed == 'true'
       run: |
         set -euo pipefail
+        source tooling/.addon-sync/gh_raw.sh
         export GRYPE_DB_CACHE_DIR="$RUNNER_TEMP/grype-db" GRYPE_DB_AUTO_UPDATE=false GRYPE_DB_VALIDATE_AGE=true \
           GRYPE_DB_MAX_ALLOWED_BUILT_AGE="${DB_MAX_AGE_HOURS}h" GRYPE_CHECK_FOR_APP_UPDATE=false
         status=0
@@ -314,7 +319,7 @@ jobs:
                 echo "::error title=Upgrade comparison failed::${id}: Grype could not scan the ${side} image's SBOM"; status=1; continue 2
               fi
             done
-            echo "${id}: scanned ${ref} (${target}) and the PR image with the same DB"
+            echo "${id}: scanned $(esc "${ref}") ($(esc "${target}")) and the PR image with the same DB"
             args+=(--old-scan "$RUNNER_TEMP/${id}.old.grype.json" --new-scan "$RUNNER_TEMP/${id}.new.grype.json")
           fi
           rc=0; python3 tooling/.addon-sync/upgrade_check.py compare "${args[@]}" || rc=$?
