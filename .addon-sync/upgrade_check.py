@@ -27,21 +27,7 @@ Breaking changes (`change`, and the `key` it is reported under):
 Report only: default-changed, host-port-changed. Silent: widened ranges, added enum
 values, required made optional, added optional keys, added keys with a default.
 
-upgrade-notes.yaml, next to config.yaml, created only when needed:
-  "1.3.0":                       # quoted version; only (comparison target, new version] counts
-    breaking:
-      - change: option-removed   # same change and key as the report
-        key: ssl_port
-        migration: Use the 443/tcp port mapping instead.   # must not be empty
-    accepted_vulnerabilities:
-      - id: CVE-2026-1234        # same id and package as the report
-        package: openssl
-        reason: Upstream base image not updated yet; replaced in 1.3.1.   # must not be empty
-
-Release notes (#119): `release-notes` prints the declarations since the last formal Release as
-two sections, 破壞性變更與遷移方式 and 已接受的漏洞, and nothing when there are none.
-addon_sync.release (woow-addon-release.yml) and Woow_ha_odoo's release.yml put them on the Release.
-The version order, the parsing of this file and the Release notes are addon_sync's (it publishes the Releases).
+upgrade-notes.yaml format, version order and Release notes (#119): addon_sync, the comment above REBUILD.
 """
 from __future__ import annotations
 import argparse, json, os, pathlib, re, secrets, sys

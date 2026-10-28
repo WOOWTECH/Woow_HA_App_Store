@@ -6,7 +6,7 @@
 # v<ver>, or <slug>-v<ver> when a repository versions add-ons
 # independently), or the PR base for ref_policy: main repositories. Breaking
 # configuration changes must be declared in <addon>/upgrade-notes.yaml
-# (format and change names: the docstring of .addon-sync/upgrade_check.py).
+# (change names: the docstring of .addon-sync/upgrade_check.py; file format: .addon-sync/addon_sync.py).
 # A PR that changes no version passes in seconds; any tool error fails.
 #
 # Category 4 (add-ons with a prebuilt image): the caller's amd64 build hands

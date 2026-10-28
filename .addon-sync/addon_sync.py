@@ -338,8 +338,19 @@ def formal_versions(provider, comp, releases):
     prefix=release_tag(provider,comp,'')
     return [r['tag_name'][len(prefix):] for r in releases if not r.get('draft') and not r.get('prerelease') and r.get('tag_name','').startswith(prefix)]
 
-# Release rules shared with upgrade_check (pipeline #89, #119): version order, the upgrade-notes.yaml format
-# (documented in upgrade_check's docstring) and the Release notes built from it.
+# Release rules shared with upgrade_check (pipeline #89, #119): version order, the upgrade-notes.yaml format and the
+# Release notes built from it. upgrade-notes.yaml, next to config.yaml, created only when needed:
+#   "1.3.0":                       # quoted version; only (comparison target, new version] counts
+#     breaking:
+#       - change: option-removed   # same change and key as upgrade_check's report (change names: its docstring)
+#         key: ssl_port
+#         migration: Use the 443/tcp port mapping instead.   # must not be empty
+#     accepted_vulnerabilities:
+#       - id: CVE-2026-1234        # same id and package as the report
+#         package: openssl
+#         reason: Upstream base image not updated yet; replaced in 1.3.1.   # must not be empty
+# The Release notes (`upgrade_check.py release-notes`, release() through release_body, Woow_ha_odoo's release.yml) print
+# the declarations after the comparison target as two sections, 破壞性變更與遷移方式 and 已接受的漏洞; nothing when none.
 REBUILD=re.compile(r'^(\d+(?:\.\d+)*)(?:-v?(\d+))?$')
 
 def version_cmp(a, b):
