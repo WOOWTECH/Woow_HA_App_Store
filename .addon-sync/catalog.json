@@ -1099,15 +1099,15 @@
     "dnsmasq-dhcp": {
       "id": "dnsmasq-dhcp",
       "name": "Dnsmasq-DHCP",
-      "version": "5.1.1",
+      "version": "5.1.2",
       "repository": "WOOWTECH/Woow_ha_dnsmasq_dhcp_add_on",
-      "source_sha": "53f349f0908c88e692c7c3606c2046c2d282ce9d",
+      "source_sha": "580050467679a5005dcda9fd7edcbbf5cf1261b9",
       "source_path": "dnsmasq-dhcp",
       "config_file": "config.yaml",
-      "config_sha256": "sha256:67672b22e83ec182aa104a91aacf29ba2763357af160f751646a257124a2215b",
-      "archive_sha256": "sha256:17426abc629ab801bbd70f04d6fc5c4f6bf61fb1b7717c80748473c0b4791634",
-      "context_fingerprint": "sha256:3dcfe30fddc24659dd6fec2fcca843147c67804f3830d7fce7280e2ef306ec0a",
-      "material_fingerprint": "sha256:9bebc5137630916a168cd0ff4dcdc2e49b3c0b143ff0ab85d8866c22eb771aab",
+      "config_sha256": "sha256:434c8158e2cc83dbed58e6f109dfd6cd6552f04a688ccfc2030f21467267acd8",
+      "archive_sha256": "sha256:8b51887d264663e45e940605a9a968d3af2d71b1ddfa5201df80ad29651d7716",
+      "context_fingerprint": "sha256:48801408c8afe8b0cdb10df14aa1440270549cd54f3b980c75f61261897480b4",
+      "material_fingerprint": "sha256:fe0fbfdb7077f754d43491f3d059f22f04b72b08fc05657f75a87d61d9665bd3",
       "architectures": [
         "aarch64",
         "amd64"
@@ -1115,7 +1115,7 @@
       "config": {
         "description": "A DHCP/DNS server based on dnsmasq",
         "url": "https://github.com/f18m/ha-addon-dnsmasq-dhcp-server/tree/main",
-        "version": "5.1.1",
+        "version": "5.1.2",
         "slug": "dnsmasq-dhcp",
         "name": "Dnsmasq-DHCP",
         "stage": "stable",
@@ -1301,21 +1301,21 @@
       "source_build_supported": true,
       "images": {
         "aarch64": {
-          "reference": "ghcr.io/woowtech/ha-mirror-ghcr-io-f18m-addon-dnsmasq-dhcp:5.1.1",
-          "index_digest": "sha256:2718e1b2b1ce40af4e1f890d8873aad14b6c0fcd694dcc28d282d5b0e61ac0e1",
-          "digest": "sha256:fe7f883c234d9486eaa41f977ac3384080c183c4f53026c89272c6ab2f4b5680",
+          "reference": "ghcr.io/woowtech/ha-mirror-ghcr-io-f18m-addon-dnsmasq-dhcp:5.1.2",
+          "index_digest": "sha256:b08e94d0854b3428165da454c3eb376ed0d7d682be525b9e030c4127d3936e83",
+          "digest": "sha256:6513e4ba3a0d1cdddd5663e50d3a841bdc8a6898a3afd48cd2354b9a5b723c44",
           "source_revision": null
         },
         "amd64": {
-          "reference": "ghcr.io/woowtech/ha-mirror-ghcr-io-f18m-addon-dnsmasq-dhcp:5.1.1",
-          "index_digest": "sha256:2718e1b2b1ce40af4e1f890d8873aad14b6c0fcd694dcc28d282d5b0e61ac0e1",
-          "digest": "sha256:5b53b9729527516b0f29f2193a2cb3392af20848a07251ad2515a56a5fd33a6e",
+          "reference": "ghcr.io/woowtech/ha-mirror-ghcr-io-f18m-addon-dnsmasq-dhcp:5.1.2",
+          "index_digest": "sha256:b08e94d0854b3428165da454c3eb376ed0d7d682be525b9e030c4127d3936e83",
+          "digest": "sha256:8a99300b2fba41f7eed7feb3a11bf19f467fc0391160d8586cadca1521b8e110",
           "source_revision": null
         }
       },
       "delivery": "published-image",
       "validation": "manifest+architecture-images+configured-CI",
-      "publisher_run_id": "37585952634",
+      "publisher_run_id": "40675333315",
       "channel": "stable",
       "store_path": "dnsmasq-dhcp"
     },
@@ -3631,5 +3631,5 @@
       "store_path": "woow_mcp_nextcloud"
     }
   },
-  "catalog_id": "sha256:e34cdf00e435614d47b770aab1ea05e9635702e8181f6a15a679c1580d8a1dea"
+  "catalog_id": "sha256:5a2f1707be5aaf53cef29c763b2875bc78fdb356bcef29acebb125c4e0d05ca5"
 }
