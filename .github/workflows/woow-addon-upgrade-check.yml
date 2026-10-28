@@ -130,11 +130,13 @@ jobs:
           eval "$(jq -r '@sh "id=\(.id) path=\(.config)"' <<<"${component}")"  # @sh quotes each value for eval
           base="$(fetch "${path}" "${BASE_SHA}")"
           if [ ! -f "source/${path}" ]; then
-            # A config the PR deletes or moves must not pass as "nothing to compare".
+            # A config the PR deletes or moves, or a registry path that is wrong, must not pass as "nothing to compare".
             if [ -n "${base}" ]; then
-              fail "${id}: this PR deletes or moves ${path}, the config the Store registry lists for this add-on; restore it, or change the add-on's registry entry first"; status=1
-            else echo "- ${id}: no ${path} in the PR or its base; nothing to compare" >> "$GITHUB_STEP_SUMMARY"; fi
-            continue
+              fail "${id}: this PR deletes or moves ${path}, the config the Store registry lists for this add-on; restore it, or change the add-on's registry entry first"
+            else
+              fail "${id}: the Store registry lists ${path} for this add-on, but neither this PR nor its base has it; correct the path in the add-on's registry entry"
+            fi
+            status=1; continue
           fi
           current="$(yq -r '.version' "source/${path}")"
           # Besides esc on every echo: a value from the PR or its Releases with a control character is refused before use.

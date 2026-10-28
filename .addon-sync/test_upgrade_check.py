@@ -606,9 +606,10 @@ class ComparisonTarget(StepHarness):
         r,_,_=self.run_step('detect',new_config=False)
         self.assertEqual(r.returncode,1,r.stdout+r.stderr);self.assertIn('this PR deletes or moves addon/config.yaml',r.stdout)
     @needs_shell
-    def test_config_absent_in_the_pr_and_its_base_is_not_compared(self):
-        r,_,out=self.run_step('detect',new_config=False,old_config=False)
-        self.assertEqual(r.returncode,0,r.stdout+r.stderr);self.assertIn('changed=false',out)
+    def test_registry_path_absent_in_the_pr_and_its_base_fails(self):
+        # Spec: a tool error fails the check; a wrong registry path is one, not "nothing to compare".
+        r,_,_=self.run_step('detect',new_config=False,old_config=False)
+        self.assertEqual(r.returncode,1,r.stdout+r.stderr);self.assertIn('neither this PR nor its base has it',r.stdout)
     @needs_shell
     def test_ref_policy_main_without_config_at_the_base_is_a_new_add_on(self):
         r,plan,_=self.run_step('plan',policy='main',old_config=False)
