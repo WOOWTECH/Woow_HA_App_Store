@@ -150,7 +150,9 @@ class Tests(unittest.TestCase):
         cfg=self.REMOVED();cfg['version']='2.12.5-v1'
         for version,blocked in [('2.12.5-v1',False),('2.12.4-v2',True)]:
             with self.subTest(version):self.assertEqual(run(cfg,self.notes(version),old=old,old_version='2.12.4-v2')['blocked'],blocked)
-        with self.assertRaises(ValueError):run(cfg,self.notes('2.12.4-beta'),old=old,old_version='2.12.4-v2')
+        # 2.12.4-beta is PEP 440 2.12.4b0, before 2.12.4-v2, so it does not count; 2.12.4-foo reads only as 2.12.4: no order.
+        self.assertTrue(run(cfg,self.notes('2.12.4-beta'),old=old,old_version='2.12.4-v2')['blocked'])
+        with self.assertRaises(ValueError):run(cfg,self.notes('2.12.4-foo'),old=old,old_version='2.12.4-v2')
     def test_rebuild_suffix_bumps_order_by_their_suffix_number(self):
         # nginxpm (ref_policy main) bumps only its -v<N> suffix while upstream stays put: 2.12.4-v2 -> 2.12.4-v3.
         old=copy.deepcopy(BASE);old['version']='2.12.4-v2'

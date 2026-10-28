@@ -378,22 +378,23 @@ class Form(IntEnum):
     NONE=0;LEADING=1;WHOLE=2
 
 def _read(v):
-    """(Form, readings) of `v` for version_cmp, best first: PEP 440 (Woow_haos_ha_core `2026.9.1-1` is a post-release), a
-    dotted number with an optional rebuild suffix `-v<N>` or `-<N>` (nginxpm `2.12.4-v2` < `2.12.4-v3`; no suffix sorts
-    first), the leading dotted number alone; None where `v` does not read that way."""
-    try:pep=Version(v)
-    except InvalidVersion:pep=None
-    m,n=REBUILD.match(v),LEADING.match(v)
-    readings=(pep,(tuple(map(int,m[1].split('.'))),int(m[2] or -1)) if m else None,tuple(map(int,n[0].split('.'))) if n else None)
-    return (Form.WHOLE if readings[0] is not None or readings[1] is not None else Form.LEADING if n else Form.NONE),readings
+    """(Form, whole, leading) of `v` for version_cmp; whole and leading are PEP 440 Versions, None where `v` does not read so.
+    Whole: PEP 440 (Woow_haos_ha_core `2026.9.1-1` is a post-release), or a dotted number with a rebuild suffix `-v<N>`,
+    read as post-release N like `-<N>` (nginxpm `2.12.4` < `2.12.4-v2` < `2.12.4-v3`). Leading: the leading dotted number."""
+    try:whole=Version(v)
+    except InvalidVersion:m=REBUILD.match(v);whole=Version(m[1]+(f'.post{m[2]}' if m[2] else '')) if m else None
+    n=LEADING.match(v);leading=Version(n[0]) if n else None
+    return (Form.WHOLE if whole is not None else Form.LEADING if leading is not None else Form.NONE),whole,leading
 
 def version_cmp(a, b):
-    """-1, 0 or 1 by the first reading (_read) both versions have. A pair that cannot be ordered is an error."""
+    """-1, 0 or 1. Two whole versions (_read) compare as PEP 440, so equal ones (1.3 and 1.3.0, 1.2.4-v2 and 1.2.4-2) are 0;
+    any other pair by its leading dotted numbers, which leave the rest unread, so equal ones cannot be ordered.
+    A pair that cannot be ordered is an error."""
     if a==b:return 0
-    for i,(x,y) in enumerate(zip(_read(a)[1],_read(b)[1])):
-        if x is not None and y is not None:break
+    (_,wa,la),(_,wb,lb)=_read(a),_read(b)
+    if wa is not None and wb is not None:x,y=wa,wb
+    elif la is not None and lb is not None and la!=lb:x,y=la,lb
     else:raise ValueError(f'cannot order versions {a!r} and {b!r}')
-    if i and x==y:raise ValueError(f'cannot order versions {a!r} and {b!r}')
     return -1 if x<y else 1 if x>y else 0
 
 def require_newer(version, target):

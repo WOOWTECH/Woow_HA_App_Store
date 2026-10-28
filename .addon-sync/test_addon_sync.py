@@ -66,6 +66,15 @@ class Tests(unittest.TestCase):
     def test_suffix_rejected(self):
         with self.assertRaises(s.Blocked):s.version_not_older('2.12.4-v2','2.12.4-v3')
     def test_pep_prerelease(self):self.assertFalse(s.version_not_older('1.2.0b1','1.2.0'))
+    def test_equal_whole_versions_compare_equal_in_every_form(self):
+        # PEP 440 says 1.3 == 1.3.0; a rebuild suffix -v<N> or -<N> is post-release N, so the same rule holds for it.
+        for a,b in [('1.3','1.3.0'),('1.2.4-v2','1.2.4-2'),('1.2-v2','1.2.0-v2'),('1.2.4-v2','1.2.4.post2')]:
+            with self.subTest(a=a,b=b):self.assertEqual((s.version_cmp(a,b),s.version_cmp(b,a)),(0,0))
+        # Any two whole versions are ordered, rebuild and PEP 440 forms mixed; an equal one is "not newer", not a tool error.
+        self.assertEqual(s.version_cmp('1.2.4rc1','1.2.4-v2'),-1);self.assertEqual(s.version_cmp('1.2.4','1.2.4-v0'),-1)
+        with self.assertRaisesRegex(ValueError,'1.2.4-2 is not newer than 1.2.4-v2'):s.require_newer('1.2.4-2','1.2.4-v2')
+        # Read by the leading number alone, the rest is unknown: equal leading numbers cannot be ordered.
+        with self.assertRaisesRegex(ValueError,'cannot order'):s.version_cmp('1.2.0','1.2.0-foo')
     def test_path_traversal(self):
         for p in ['../x','/etc/passwd','x/../../y','x\\y']:
             with self.subTest(p=p),self.assertRaises(s.Blocked):s.safe_path(p)
