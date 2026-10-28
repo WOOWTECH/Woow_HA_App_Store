@@ -109,6 +109,7 @@ jobs:
       run: |
         set -euo pipefail
         source tooling/.addon-sync/gh_raw.sh
+        source tooling/.addon-sync/log.sh
         provider="$(jq -c --arg r "$REPO" '.providers[$r] // empty' tooling/.addon-sync/registry.json)"
         if [ -z "$provider" ]; then echo "::error::${REPO} is not in the Store registry"; exit 1; fi
         # Skipping category 4 is approved per provider in the Store registry, with the reason; checked on every PR.
@@ -155,6 +156,7 @@ jobs:
       run: |
         set -euo pipefail
         source tooling/.addon-sync/gh_raw.sh
+        source tooling/.addon-sync/log.sh
         provider="$(jq -c --arg r "$REPO" '.providers[$r]' tooling/.addon-sync/registry.json)"
         policy="$(jq -r '.ref_policy' <<<"$provider")"
         releases="$(gh api --paginate "repos/${REPO}/releases?per_page=100" --jq '.[]' | jq -sc .)"
@@ -238,7 +240,7 @@ jobs:
       if: steps.plan.outputs.scan == 'true'
       run: |
         set -euo pipefail
-        source tooling/.addon-sync/gh_raw.sh
+        source tooling/.addon-sync/log.sh
         export SYFT_CHECK_FOR_APP_UPDATE=false
         while IFS=$'\x1f' read -r id _path _version _notes target ref _note; do
           [ -n "${ref}" ] || continue
@@ -304,7 +306,7 @@ jobs:
       if: steps.detect.outputs.changed == 'true'
       run: |
         set -euo pipefail
-        source tooling/.addon-sync/gh_raw.sh
+        source tooling/.addon-sync/log.sh
         export GRYPE_DB_CACHE_DIR="$RUNNER_TEMP/grype-db" GRYPE_DB_AUTO_UPDATE=false GRYPE_DB_VALIDATE_AGE=true \
           GRYPE_DB_MAX_ALLOWED_BUILT_AGE="${DB_MAX_AGE_HOURS}h" GRYPE_CHECK_FOR_APP_UPDATE=false
         status=0

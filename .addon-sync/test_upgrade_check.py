@@ -575,15 +575,22 @@ class ComparisonTarget(StepHarness):
         self.assertNotIn('fetch() {',text);self.assertTrue((self.STORE/'.addon-sync/gh_raw.sh').exists())
         for ident in ('detect','plan'):
             with self.subTest(ident):self.assertIn('source tooling/.addon-sync/gh_raw.sh',self.step(ident)['run'])
+    def test_each_step_sources_exactly_the_helpers_it_uses(self):
+        import re
+        for step in self.wf['jobs']['compare']['steps']:
+            run=step.get('run','')
+            for helper,use in [('gh_raw.sh',r'\bfetch '),('log.sh',r'\besc "')]:
+                with self.subTest(step=step.get('name'),helper=helper):
+                    self.assertEqual('source tooling/.addon-sync/'+helper in run,bool(re.search(use,run)))
 
 class LogEscaping(StepHarness):
-    """Values from the PR or its Releases are echoed through esc (gh_raw.sh), the escaping addon_sync.annotation uses."""
+    """Values from the PR or its Releases are echoed through esc (log.sh), the escaping addon_sync.annotation uses."""
     PR_VALUES=('version','current','target','ref','SBOM_ARTIFACT','SKIP_VULNERABILITY_SCAN','old_image','old_version','image')
     @unittest.skipUnless(shutil.which('bash'),'needs bash')
     def test_esc_matches_annotation(self):
         import subprocess,addon_sync
         text='50%\r\n::warning title=Injected::boom\n'
-        r=subprocess.run([shutil.which('bash'),'-c','source "$1"; esc "$2"','-',(self.STORE/'.addon-sync/gh_raw.sh').as_posix(),text],capture_output=True)
+        r=subprocess.run([shutil.which('bash'),'-c','source "$1"; esc "$2"','-',(self.STORE/'.addon-sync/log.sh').as_posix(),text],capture_output=True)
         self.assertEqual(r.returncode,0,r.stderr);self.assertEqual(r.stdout.decode(),addon_sync.annotation(text))
     def test_every_echo_escapes_pr_values(self):
         import re
@@ -596,7 +603,7 @@ class LogEscaping(StepHarness):
                 for name in self.PR_VALUES:
                     with self.subTest(step=step.get('name'),value=name):self.assertNotIn('${'+name+'}',bare)
             if 'esc "' in run:
-                with self.subTest(step=step.get('name')):self.assertIn('source tooling/.addon-sync/gh_raw.sh',run)
+                with self.subTest(step=step.get('name')):self.assertIn('source tooling/.addon-sync/log.sh',run)
 
 class SbomAttempt(unittest.TestCase):
     """A re-run must judge the image its own build made, not an earlier attempt's SBOM."""
