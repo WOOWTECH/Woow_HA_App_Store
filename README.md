@@ -135,7 +135,7 @@ ha store add https://github.com/WOOWTECH/Woow_HA_App_Store
 
 - **每個受管來源 repo 的每個 PR 都跑必要檢查 `Upgrade comparison / compare`**，由共用的 [`woow-addon-upgrade-check.yml`](.github/workflows/woow-addon-upgrade-check.yml) 提供（呼叫端 job 名稱 `Upgrade comparison`，GitHub 把檢查名稱寫成「呼叫端 job / 內部 job」）。呼叫方式寫在那個檔案開頭；不設 path filter。
   - PR 沒有修改任何 addon 的版本：幾秒內通過。PR 刪除或搬移了 registry 列出的 `config.yaml`（PR base 上有、PR 裡沒有）時檢查失敗：放回原處，或先改 Store registry 裡該 addon 的設定。
-  - 有修改：把每個改了版本的 addon 和**比對對象**相比。比對對象是該 addon 最新的正式 Release（tag 規則同上：`v<版本>` 或 `<slug>-v<版本>`；哪些算正式 Release、tag 怎麼對應，和 Release 說明共用 `addon_sync.py` 的同一套規則，由 `upgrade_check.py latest-release` 判斷）；PR 的版本必須比它新，否則檢查在選比對對象時就失敗（發布 Release 也用同一條規則）；`ref_policy: main`、從沒有正式 Release 的 repo，是 PR base 上的版本。第一次發布的 addon 沒有比對對象，不做比對並在報告註明；`upgrade-notes.yaml` 有空的 `migration` 或 `reason` 時仍會擋下。
+  - 有修改：把每個改了版本的 addon 和**比對對象**相比。比對對象是該 addon 版本比 PR 低的正式 Release 中最新的一個（tag 規則同上：`v<版本>` 或 `<slug>-v<版本>`；哪些算正式 Release、tag 怎麼對應、怎麼排序，和 Release 說明共用 `addon_sync.py` 的同一套規則，由 `upgrade_check.py latest-release` 判斷）。已有更高版本的 Release 不算錯：在 1.3.0 之後修舊線發 1.2.5，比對對象是 1.2.4，PR 檢查和 Release 說明都只看（1.2.4, 1.2.5] 的宣告；無法和其他版本排序的零散 tag 直接略過；`ref_policy: main`、從沒有正式 Release 的 repo，是 PR base 上的版本。第一次發布的 addon 沒有比對對象，不做比對並在報告註明；`upgrade-notes.yaml` 有空的 `migration` 或 `reason` 時仍會擋下。
   - PR 的版本號、比對對象的 tag、映像與版本號含換行、tab 等控制字元時檢查直接失敗；其他來自 PR 或 Release 的文字印到 log 前都先跳脫，GitHub 不會把它當成工作流程指令。
   - 結果只寫在 job summary，不在 PR 上留言。檢查工具出錯（拉不到舊映像、漏洞資料庫下載失敗或超過 120 小時）時檢查失敗，不放行，重跑即可。
 - **第 1 類 設定相容性**：比較新舊 `config.yaml`。下表的破壞性變更都要在 `upgrade-notes.yaml` 宣告，否則擋下。`key` 用 schema 的路徑，例如 `database.port`。

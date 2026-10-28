@@ -360,12 +360,14 @@ class Tests(unittest.TestCase):
                 gh=self.release_gh({'config.yaml':'name: Test\nslug: test\nversion: 1.2.0\n',**files},listing=[{'tag_name':'v1.0.0'}])
                 s.release(gh,self.single(),'WOOWTECH/test','a'*40,apply=True)
                 self.assertNotIn('body',gh.created[0]);self.assertTrue(gh.created[0]['generate_release_notes'])
-    def test_release_below_a_newer_formal_release_is_blocked(self):
-        # Same comparison target as the PR check: the latest formal Release, which must be older than the new version.
+    def test_hotfix_below_a_newer_formal_release_is_released(self):
+        # Same comparison target as the PR check: the newest formal Release below the new version (1.1.0, not 1.3.0);
+        # a stray tag that cannot be ordered against 1.1.0 is ignored rather than blocking the Release.
         gh=self.release_gh({'config.yaml':'name: Test\nslug: test\nversion: 1.2.0\n','upgrade-notes.yaml':self.NOTES},
-            listing=[{'tag_name':'v1.1.0'},{'tag_name':'v1.3.0'}])
+            listing=[{'tag_name':'v1.3.0'},{'tag_name':'v1.1.0-foo'},{'tag_name':'v1.1.0'}])
         report=s.release(gh,self.single(),'WOOWTECH/test','a'*40,apply=True)
-        self.assertEqual(report[0]['state'],'blocked');self.assertIn('not newer than the comparison target 1.3.0',report[0]['reason']);self.assertEqual(gh.created,[])
+        self.assertEqual(report[0]['state'],'released',report)
+        self.assertIn('ssl_port',gh.created[0]['body']);self.assertNotIn('Old news.',gh.created[0]['body'])
     def test_malformed_upgrade_notes_block_the_release(self):
         gh=self.release_gh({'config.yaml':'name: Test\nslug: test\nversion: 1.2.0\n','upgrade-notes.yaml':'1.2: {}\n'})
         report=s.release(gh,self.single(),'WOOWTECH/test','a'*40,apply=True)

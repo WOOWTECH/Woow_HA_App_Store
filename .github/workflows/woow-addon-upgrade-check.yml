@@ -1,8 +1,9 @@
 # Upgrade comparison for a WOOW source repository (pipeline #89, ADR-0005).
 #
 # A merged version-bump PR is a release, so every PR compares each add-on whose
-# version it changes with the version users run now: the latest formal Release
-# (tag v<ver>, or <slug>-v<ver> when a repository versions add-ons
+# version it changes with the version users run now: the newest formal Release
+# below the PR's version (a hotfix 1.2.5 after 1.3.0 compares with 1.2.4; tag
+# v<ver>, or <slug>-v<ver> when a repository versions add-ons
 # independently), or the PR base for ref_policy: main repositories. Breaking
 # configuration changes must be declared in <addon>/upgrade-notes.yaml
 # (format and change names: the docstring of .addon-sync/upgrade_check.py).
@@ -176,7 +177,7 @@ jobs:
             # ref_policy main: the Store follows the default branch, so users run what the PR base has.
             target="${BASE_SHA}"
           else
-            # Formal-Release filter, tag rule, ordering and "the version must go up from it" are the Release notes' (addon_sync).
+            # Formal-Release filter, tag rule, ordering and "newest below the PR's version" are the Release notes' (addon_sync).
             target="$(python3 tooling/.addon-sync/upgrade_check.py latest-release --registry tooling/.addon-sync/registry.json --repo "${REPO}" --component "${id}" --version "${version}" <<<"${releases}")" \
               || { printf '%s\n' "${target}"; exit 1; }  # on failure the output is its ::error (already escaped)
           fi
@@ -190,7 +191,7 @@ jobs:
             elif [ "${policy}" = "main" ]; then echo "${id}: no config at the PR base, a new add-on"
             else
               # Users run this Release; an unreadable config there must not pass as "no comparison target".
-              fail "${id}: the latest formal Release ${target} has no ${path} (moved or deleted?), so there is nothing to compare with; restore the path or compare by hand"
+              fail "${id}: the comparison target ${target} has no ${path} (moved or deleted?), so there is nothing to compare with; restore the path or compare by hand"
               status=1; continue
             fi
           else

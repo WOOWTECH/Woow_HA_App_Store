@@ -8,7 +8,7 @@ public outboxes. It runs on the woow-addon-ready dispatch a source sends after a
 new notification, with its schedule as the fallback.
 """
 from __future__ import annotations
-import argparse, base64, functools, hashlib, io, json, os, pathlib, re, shutil, subprocess, tarfile, tempfile, urllib.error, urllib.parse, urllib.request
+import argparse, base64, hashlib, io, json, os, pathlib, re, shutil, subprocess, tarfile, tempfile, urllib.error, urllib.parse, urllib.request
 import yaml
 from packaging.version import Version, InvalidVersion
 
@@ -354,15 +354,21 @@ def _is_version(v):
     try:Version(v);return True
     except InvalidVersion:return bool(re.match(r'^\d+(?:\.\d+)*',v))
 
-def comparison_target(released, version=None):
-    """The newest of `released` (an add-on's formal Release versions) by version_cmp, or None; strings that are not
-    versions (a stray `nightly` tag) are ignored. The PR check and the Release notes both read upgrade-notes.yaml in
-    (comparison target, version], so both take the target from here. With `version`, a target that is not older is a
-    ValueError: the window would be empty, and comparing with a newer Release is not an upgrade."""
-    found=[v for v in released if _is_version(v)]
-    target=max(found,key=functools.cmp_to_key(version_cmp)) if found else None
-    if target is not None and version is not None and version_cmp(target,version)>=0:
-        raise ValueError(f'version {version} is not newer than the comparison target {target}; raise the version')
+def _well_formed(v):
+    """True when version_cmp reads `v` as PEP 440 or a dotted number with a rebuild suffix, not by its leading number alone."""
+    try:Version(v);return True
+    except InvalidVersion:return bool(REBUILD.match(v))
+
+def comparison_target(released, version):
+    """The newest of `released` (an add-on's formal Release versions) strictly below `version`, or None. The PR check and
+    the Release notes both read upgrade-notes.yaml in (comparison target, version], so both take the target from here.
+    A higher Release is not an error: a hotfix 1.2.5 after 1.3.0 compares with 1.2.4. A tag that is not a version (a stray
+    `nightly`), or that cannot be ordered against `version` or a well-formed Release, is ignored: it must not block a Release."""
+    target=None
+    for v in sorted((v for v in released if _is_version(v)),key=lambda v:not _well_formed(v)):  # well-formed first, so they win
+        try:
+            if version_cmp(v,version)<0 and (target is None or version_cmp(v,target)>0):target=v
+        except ValueError:continue
     return target
 
 def declaration_text(entry, field):
@@ -397,9 +403,10 @@ RELEASE_SECTIONS=(('breaking','破壞性變更與遷移方式',lambda e:f'`{e["c
 def release_notes(notes, version, released=()):
     """Markdown the Release of `version` adds to its notes; '' when nothing is declared.
 
-    `released`: versions that already have a formal Release. Only sections after their comparison_target count, the
-    same (comparison target, new] range the PR check used, so a declaration appears on one Release only."""
-    after=comparison_target([v for v in released if v!=version],version)  # a listed Release of `version` is this one
+    `released`: versions that already have a formal Release. Only sections after their comparison_target (the newest
+    below `version`) count, the same (comparison target, new] range the PR check used, so a declaration appears on one
+    Release only."""
+    after=comparison_target(released,version)
     found=declarations(notes,after,version);out=[]
     for section,title,label,text_key in RELEASE_SECTIONS:
         if not found[section]:continue
@@ -436,8 +443,8 @@ def all_releases(gh, repo):
 
 def release_body(gh, repo, provider, comp, sha, version):
     """Release-notes sections for the add-on's upgrade-notes.yaml at sha (pipeline #119); '' when it declares nothing new.
-    GitHub puts a body before its generated notes, so both appear. Only declarations since the add-on's last formal
-    Release count; a malformed file blocks the Release rather than publishing it without the notes."""
+    GitHub puts a body before its generated notes, so both appear. Only declarations after the comparison target (the
+    newest formal Release below `version`) count; a malformed file blocks the Release rather than publishing it without the notes."""
     path=source_file(comp,'upgrade-notes.yaml')
     try:raw=gh.content(repo,path,sha)
     except Blocked as e:
