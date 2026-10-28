@@ -150,9 +150,6 @@ jobs:
         if [ -s changed.jsonl ]; then echo "changed=true" >> "$GITHUB_OUTPUT"; else
           echo "No add-on version changed; nothing to compare." >> "$GITHUB_STEP_SUMMARY"; echo "changed=false" >> "$GITHUB_OUTPUT"; fi
         exit "${status}"
-    - name: Test the comparison
-      if: steps.detect.outputs.changed == 'true'
-      run: python3 tooling/.addon-sync/test_upgrade_check.py -v
     - name: Find the comparison targets
       id: plan
       if: steps.detect.outputs.changed == 'true'

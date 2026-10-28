@@ -456,12 +456,14 @@ class ReusableWorkflow(unittest.TestCase):
         job=self.wf['jobs']['compare'];self.assertEqual(job['name'],'compare');self.assertNotIn('if',job)
         # actions: read lets the job find this run's SBOM artifact without `needs:` on the build (user story 5).
         self.assertEqual(self.wf['permissions'],{'contents':'read','actions':'read'})
-    def test_tests_run_before_the_comparison_with_store_tooling(self):
-        steps=self.wf['jobs']['compare']['steps'];runs=[s.get('run','') for s in steps]
+    def test_store_tooling_is_tested_in_store_ci_not_in_every_source_pr(self):
+        steps=self.wf['jobs']['compare']['steps']
         tooling=[s for s in steps if s.get('with',{}).get('repository')=='WOOWTECH/Woow_HA_App_Store'][0]['with']
         self.assertEqual((tooling['ref'],tooling['persist-credentials']),('${{ inputs.tooling_ref }}',False))
-        test=next(i for i,r in enumerate(runs) if 'test_upgrade_check.py' in r);compare=next(i for i,r in enumerate(runs) if 'upgrade_check.py compare' in r)
-        self.assertLess(test,compare)
+        # The tooling's tests run in the Store's own CI before a change reaches main, not in each source repo's PRs.
+        self.assertNotIn('test_',self.text)
+        ci=yaml.safe_load((pathlib.Path(__file__).resolve().parent.parent/'.github/workflows/upgrade-check-tests.yml').read_text(encoding='utf-8'))
+        self.assertIn('python3 .addon-sync/test_upgrade_check.py -v',[s.get('run') for s in ci['jobs']['test']['steps']])
     def test_no_secrets_beyond_the_job_token(self):
         self.assertNotIn('secrets.',self.text)
     def test_db_is_updated_once_before_scanning_and_has_an_age_limit(self):
