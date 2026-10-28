@@ -448,11 +448,13 @@ class ComponentsCommand(unittest.TestCase):
         comps=[{'id':'a','source_path':'.','config_file':'config.yaml'},{'id':'b','source_path':'addons/b','config_file':'config.yml'}]
         code,out=self.main({'providers':{'WOOWTECH/r':{'ref_policy':'main','components':comps,'upgrade_comparison':{'skip_vulnerability_scan':'#1: why'}}}})
         self.assertEqual(code,0);self.assertEqual(json.loads(out),{'ref_policy':'main','skip_vulnerability_scan':'#1: why','components':[
-            {'id':'a','config':'config.yaml','notes':'upgrade-notes.yaml'},{'id':'b','config':'addons/b/config.yml','notes':'addons/b/upgrade-notes.yaml'}]})
+            {'id':'a','config':'config.yaml','notes':'upgrade-notes.yaml','previous_config':''},
+            {'id':'b','config':'addons/b/config.yml','notes':'addons/b/upgrade-notes.yaml','previous_config':''}]})
         code,out=self.main({'providers':{'WOOWTECH/r':{'ref_policy':'release','components':comps}}})
         self.assertEqual(json.loads(out)['skip_vulnerability_scan'],'')
     def test_unknown_repository_or_unsafe_path_exits_2(self):
-        for name,registry in [('unknown',{'providers':{}}),('unsafe',{'providers':{'WOOWTECH/r':{'ref_policy':'release','components':[{'id':'a','source_path':'../x','config_file':'config.yaml'}]}}})]:
+        for name,registry in [('unknown',{'providers':{}}),('unsafe',{'providers':{'WOOWTECH/r':{'ref_policy':'release','components':[{'id':'a','source_path':'../x','config_file':'config.yaml'}]}}}),
+                ('unsafe previous',{'providers':{'WOOWTECH/r':{'ref_policy':'release','components':[{'id':'a','source_path':'a','config_file':'config.yaml','previous_config':'../x/config.yaml'}]}}})]:
             with self.subTest(name):
                 code,out=self.main(registry)
                 self.assertEqual(code,2);self.assertTrue(out.startswith('::error title=Upgrade comparison failed::WOOWTECH/r: '),out)
@@ -521,7 +523,7 @@ class StepHarness(unittest.TestCase):
     WF=STORE/'.github/workflows/woow-addon-upgrade-check.yml'
     def setUp(self):self.wf=yaml.safe_load(self.WF.read_text(encoding='utf-8'))
     def step(self,ident):return next(s for s in self.wf['jobs']['compare']['steps'] if ident in (s.get('id'),s.get('name')))
-    def run_step(self,ident,*,policy='release',extra=None,releases=('v1.0.0',),old_config=True,new_config=True,skip='',sbom='',version='1.1.0',old=None):
+    def run_step(self,ident,*,policy='release',extra=None,releases=('v1.0.0',),old_config=True,new_config=True,skip='',sbom='',version='1.1.0',old=None,old_path=''):
         import os,subprocess
         tmp=pathlib.Path(tempfile.mkdtemp());self.addCleanup(shutil.rmtree,tmp)
         (tmp/'tooling/.addon-sync').mkdir(parents=True);(tmp/'source/addon').mkdir(parents=True);(tmp/'bin').mkdir()
@@ -535,14 +537,14 @@ class StepHarness(unittest.TestCase):
         with contextlib.redirect_stdout(io.StringIO()) as provider:
             self.assertEqual(u.main(['components','--registry',str(tmp/'tooling/.addon-sync/registry.json'),'--repo','WOOWTECH/t']),0)
         (tmp/'provider.json').write_text(provider.getvalue())
-        (tmp/'changed.jsonl').write_text(json.dumps({'id':'t','config':'addon/config.yaml','notes':'addon/upgrade-notes.yaml','version':version})+'\n')
+        (tmp/'changed.jsonl').write_text(''.join(json.dumps(dict(c,version=version))+'\n' for c in json.loads(provider.getvalue())['components'][:1]))
         gh=tmp/'bin/gh'
         gh.write_text('#!/bin/bash\ncase "$*" in\n  *releases*) [ -z "$RELEASES" ] || printf "%s\\n" "$RELEASES";;\n'
-            '  *contents*) if [ -s "$OLD" ]; then cat "$OLD"; else echo "gh: Not Found (HTTP 404)" >&2; exit 1; fi;;\n  *) exit 1;;\nesac\n')
+            '  *contents*) if [ -s "$OLD" ] && [[ -z "$OLD_PATH" || "$*" == *"contents/$OLD_PATH?"* ]]; then cat "$OLD"; else echo "gh: Not Found (HTTP 404)" >&2; exit 1; fi;;\n  *) exit 1;;\nesac\n')
         gh.chmod(0o755)
         # What `gh api --paginate .../releases --jq '.[]'` prints: one Release object per line; a bare tag is a formal Release.
         releases='\n'.join(json.dumps(r if isinstance(r,dict) else {'tag_name':r,'draft':False,'prerelease':False}) for r in releases)
-        env=dict(os.environ,PATH=f"{tmp/'bin'}{os.pathsep}{os.environ['PATH']}",OLD=str(tmp/'old.yaml'),RELEASES=releases,REPO='WOOWTECH/t',BASE_SHA='b',
+        env=dict(os.environ,PATH=f"{tmp/'bin'}{os.pathsep}{os.environ['PATH']}",OLD=str(tmp/'old.yaml'),OLD_PATH=old_path,RELEASES=releases,REPO='WOOWTECH/t',BASE_SHA='b',
             GH_TOKEN='x',SBOM_ARTIFACT=sbom,SKIP_VULNERABILITY_SCAN=skip,RUNNER_TEMP=str(tmp),RUN_ATTEMPT='1',
             GITHUB_OUTPUT=str(tmp/'out'),GITHUB_STEP_SUMMARY=str(tmp/'summary'))
         (tmp/'step.sh').write_text(self.step(ident)['run'])
@@ -610,6 +612,32 @@ class ComparisonTarget(StepHarness):
         # Spec: a tool error fails the check; a wrong registry path is one, not "nothing to compare".
         r,_,_=self.run_step('detect',new_config=False,old_config=False)
         self.assertEqual(r.returncode,1,r.stdout+r.stderr);self.assertIn('neither this PR nor its base has it',r.stdout)
+    MOVED={'components':[{'id':'t','source_path':'addon','config_file':'config.yaml','previous_config':'old/config.yaml'}]}
+    @needs_shell
+    def test_a_move_without_a_version_bump_is_unchanged(self):
+        # The registry lists the new path and previous_config the old one; the PR base still has only the old path.
+        for policy in ('release','main'):
+            with self.subTest(policy):
+                r,_,out=self.run_step('detect',policy=policy,extra=self.MOVED,version='1.0.0',old_path='old/config.yaml')
+                self.assertEqual(r.returncode,0,r.stdout+r.stderr);self.assertIn('changed=false',out)
+    @needs_shell
+    def test_a_target_from_before_the_move_is_read_at_the_previous_path(self):
+        # The move PR with a bump, or the next bump PR while the latest Release (or, for main, the PR base) predates the move.
+        for policy in ('release','main'):
+            with self.subTest(policy):
+                r,plan,_=self.run_step('plan',policy=policy,extra=self.MOVED,sbom='*',old_path='old/config.yaml')
+                self.assertEqual(r.returncode,0,r.stdout+r.stderr);self.assertIn('t: comparing 1.1.0 with',r.stdout)
+                self.assertEqual(plan['ref'],'ghcr.io/da-anda/addon-amd64:1.0.0')
+    @needs_shell
+    def test_a_target_after_the_move_is_read_at_the_new_path(self):
+        r,plan,_=self.run_step('plan',extra=self.MOVED,sbom='*',old_path='addon/config.yaml')
+        self.assertEqual(r.returncode,0,r.stdout+r.stderr);self.assertEqual(plan['ref'],'ghcr.io/da-anda/addon-amd64:1.0.0')
+    @needs_shell
+    def test_a_moved_config_without_previous_config_points_to_the_readme(self):
+        r,_,_=self.run_step('plan',sbom='*',old_path='old/config.yaml')
+        self.assertEqual(r.returncode,1,r.stdout+r.stderr);self.assertIn('has no addon/config.yaml, so there is nothing to compare with; if the config moved, see moving a config in the Store README',r.stdout)
+        r,_,_=self.run_step('detect',new_config=False)
+        self.assertIn('to move it, see moving a config in the Store README',r.stdout)
     @needs_shell
     def test_ref_policy_main_without_config_at_the_base_is_a_new_add_on(self):
         r,plan,_=self.run_step('plan',policy='main',old_config=False)
@@ -656,7 +684,7 @@ class ComparisonTarget(StepHarness):
         import re
         for step in self.wf['jobs']['compare']['steps']:
             run=step.get('run','')
-            for helper,use in [('gh_raw.sh',r'\bfetch '),('log.sh',r'\b(esc|fail) "')]:
+            for helper,use in [('gh_raw.sh',r'\bfetch(_config)? '),('log.sh',r'\b(esc|fail) "')]:
                 with self.subTest(step=step.get('name'),helper=helper):
                     self.assertEqual('source tooling/.addon-sync/'+helper in run,bool(re.search(use,run)))
 
