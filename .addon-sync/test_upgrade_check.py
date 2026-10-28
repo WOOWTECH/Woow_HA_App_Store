@@ -837,12 +837,15 @@ class Fields(StepHarness):
         self.assertTrue(r.stdout.startswith('::error title=Upgrade comparison failed::fields: jq cannot read not json'),r.stdout)
     @needs_shell
     def test_a_name_that_is_not_a_plain_variable_or_is_a_local_is_refused(self):
-        # The name goes into jq's @sh output that is eval'd; the helper's own locals would be overwritten before eval.
-        for name in ('Id','1x','x-y','x;touch pwned','json','spec','pair','code'):
+        # The name goes into jq's @sh output that is eval'd; the helper's own locals (all _f_...) would be overwritten before eval.
+        for name in ('Id','1x','x-y','x;touch pwned','_f_json','_f_code','_f_anything'):
             with self.subTest(name):
                 r=self.bash(f'fields "$1" "{name}=id"; echo reached',json.dumps({'id':'v'}))
                 self.assertNotEqual(r.returncode,0);self.assertNotIn('reached',r.stdout)
                 self.assertTrue(r.stdout.startswith('::error title=Upgrade comparison failed::fields: '),r.stdout)
+        # Any other name is the caller's, including ones a helper might plausibly use.
+        r=self.bash('fields "$1" json=id spec=id pair=id code=id; echo "${json}${spec}${pair}${code}"',json.dumps({'id':'v'}))
+        self.assertEqual((r.returncode,r.stdout),(0,'vvvv\n'),r.stderr)
     def test_no_step_evals_jq_output_itself(self):
         self.assertNotIn('eval "$(jq',self.WF.read_text(encoding='utf-8'))
 
