@@ -1,10 +1,11 @@
 # Upgrade comparison for a WOOW source repository (pipeline #89, ADR-0005).
 #
 # A merged version-bump PR is a release, so every PR compares each add-on whose
-# version it changes with the version users run now: the newest formal Release
-# below the PR's version (a hotfix 1.2.5 after 1.3.0 compares with 1.2.4; tag
-# v<ver>, or <slug>-v<ver> when a repository versions add-ons
-# independently), or the PR base for ref_policy: main repositories. Breaking
+# version it changes with the version users run now: the latest formal Release
+# (tag v<ver>, or <slug>-v<ver> when a repository versions add-ons
+# independently), or the PR base for ref_policy: main repositories. The PR's
+# version must be newer: every Release becomes the latest, so a lower one
+# would be a downgrade. Breaking
 # configuration changes must be declared in <addon>/upgrade-notes.yaml
 # (change names: the docstring of .addon-sync/upgrade_check.py; file format: .addon-sync/addon_sync.py).
 # A PR that changes no version passes in seconds; any tool error fails.
@@ -182,7 +183,7 @@ jobs:
             # ref_policy main: the Store follows the default branch, so users run what the PR base has.
             target="${BASE_SHA}"
           else
-            # Formal-Release filter, tag rule, ordering and "newest below the PR's version" are the Release notes' (addon_sync).
+            # Formal-Release filter, tag rule, ordering and "the version must be newer" are the Release notes' (addon_sync).
             target="$(python3 tooling/.addon-sync/upgrade_check.py latest-release --registry tooling/.addon-sync/registry.json --repo "${REPO}" --component "${id}" --version "${version}" <<<"${releases}")" \
               || { printf '%s\n' "${target}"; exit 1; }  # on failure the output is its ::error (already escaped)
           fi

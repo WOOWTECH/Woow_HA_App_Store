@@ -277,7 +277,7 @@ class Tests(unittest.TestCase):
         checkout=next(x for x in job['steps'] if x.get('uses','').startswith('actions/checkout@'))
         self.assertEqual(checkout['with']['ssh-key'],'${{ secrets.STORE_SYNC_DEPLOY_KEY }}')
     def release_gh(self,configs,released=(),tags=None,compare='ahead',listing=()):
-        # listing: the Releases page, [{'tag_name', 'prerelease'}]; asked for only when an add-on has upgrade-notes.yaml.
+        # listing: the Releases page, [{'tag_name', 'prerelease'}].
         # tags: name -> (object type, commit); an annotated tag object points at the commit.
         tags=tags or {}
         class GH:
@@ -360,11 +360,16 @@ class Tests(unittest.TestCase):
                 gh=self.release_gh({'config.yaml':'name: Test\nslug: test\nversion: 1.2.0\n',**files},listing=[{'tag_name':'v1.0.0'}])
                 s.release(gh,self.single(),'WOOWTECH/test','a'*40,apply=True)
                 self.assertNotIn('body',gh.created[0]);self.assertTrue(gh.created[0]['generate_release_notes'])
-    def test_hotfix_below_a_newer_formal_release_is_released(self):
-        # Same comparison target as the PR check: the newest formal Release below the new version (1.1.0, not 1.3.0);
-        # a stray tag that cannot be ordered against 1.1.0 is ignored rather than blocking the Release.
+    def test_a_version_not_newer_than_the_latest_release_is_blocked_with_or_without_notes(self):
+        # Every Release becomes the latest (make_latest) and publish ships releases/latest: 1.2.0 after 1.3.0 is a downgrade.
+        for name,files in [('no upgrade-notes.yaml',{}),('upgrade-notes.yaml',{'upgrade-notes.yaml':self.NOTES})]:
+            with self.subTest(name):
+                gh=self.release_gh({'config.yaml':'name: Test\nslug: test\nversion: 1.2.0\n',**files},listing=[{'tag_name':'v1.3.0'},{'tag_name':'v1.1.0'}])
+                report=s.release(gh,self.single(),'WOOWTECH/test','a'*40,apply=True)
+                self.assertEqual(report[0]['state'],'blocked',report);self.assertIn('not newer than 1.3.0',report[0]['reason']);self.assertEqual(gh.created,[])
+    def test_a_tag_that_cannot_be_ordered_does_not_block_the_release(self):
         gh=self.release_gh({'config.yaml':'name: Test\nslug: test\nversion: 1.2.0\n','upgrade-notes.yaml':self.NOTES},
-            listing=[{'tag_name':'v1.3.0'},{'tag_name':'v1.1.0-foo'},{'tag_name':'v1.1.0'}])
+            listing=[{'tag_name':'v1.2.0-foo'},{'tag_name':'nightly'},{'tag_name':'v1.1.0'}])
         report=s.release(gh,self.single(),'WOOWTECH/test','a'*40,apply=True)
         self.assertEqual(report[0]['state'],'released',report)
         self.assertIn('ssl_port',gh.created[0]['body']);self.assertNotIn('Old news.',gh.created[0]['body'])

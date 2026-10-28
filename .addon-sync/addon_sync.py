@@ -367,7 +367,7 @@ def version_cmp(a, b):
             if not m or not n:raise ValueError(f'cannot order versions {a!r} and {b!r}')
             x,y=tuple(map(int,m[1].split('.'))),tuple(map(int,n[1].split('.')))
         if x==y:raise ValueError(f'cannot order versions {a!r} and {b!r}')
-    return -1 if x<y else 1
+    return -1 if x<y else 1 if x>y else 0
 
 def _is_version(v):
     """True when version_cmp can read `v` (PEP 440, a dotted number with a rebuild suffix, or a leading dotted number)."""
@@ -379,16 +379,25 @@ def _well_formed(v):
     try:Version(v);return True
     except InvalidVersion:return bool(REBUILD.match(v))
 
+def require_newer(version, target):
+    """ValueError unless `version` is newer than `target`, the version users run now."""
+    if version_cmp(version,target)<=0:
+        raise ValueError(f'version {version} is not newer than {target}, the version users run now '
+            '(the latest formal Release; the PR base under ref_policy: main); raise the version')
+
 def comparison_target(released, version):
-    """The newest of `released` (an add-on's formal Release versions) strictly below `version`, or None. The PR check and
-    the Release notes both read upgrade-notes.yaml in (comparison target, version], so both take the target from here.
-    A higher Release is not an error: a hotfix 1.2.5 after 1.3.0 compares with 1.2.4. A tag that is not a version (a stray
-    `nightly`), or that cannot be ordered against `version` or a well-formed Release, is ignored: it must not block a Release."""
+    """The latest of `released` (an add-on's formal Release versions), or None; `version` must be newer (require_newer).
+    Releases are cut only from the default branch and each becomes the latest (release(), make_latest), which publish()
+    ships, so a lower version would be a downgrade. The PR check and the Release notes both read upgrade-notes.yaml in
+    (comparison target, version], so both take the target from here. A tag that is not a version (a stray `nightly`), or
+    that cannot be ordered against `version` or a well-formed Release, is ignored: it must not block a Release."""
     target=None
     for v in sorted((v for v in released if _is_version(v)),key=lambda v:not _well_formed(v)):  # well-formed first, so they win
         try:
-            if version_cmp(v,version)<0 and (target is None or version_cmp(v,target)>0):target=v
+            version_cmp(v,version)
+            if target is None or version_cmp(v,target)>0:target=v
         except ValueError:continue
+    if target is not None:require_newer(version,target)
     return target
 
 def declaration_text(entry, field):
@@ -423,10 +432,10 @@ RELEASE_SECTIONS=(('breaking','破壞性變更與遷移方式',lambda e:f'`{e["c
 def release_notes(notes, version, released=()):
     """Markdown the Release of `version` adds to its notes; '' when nothing is declared.
 
-    `released`: versions that already have a formal Release. Only sections after their comparison_target (the newest
-    below `version`) count, the same (comparison target, new] range the PR check used, so a declaration appears on one
-    Release only."""
-    after=comparison_target(released,version)
+    `released`: versions that already have a formal Release. Only sections after their comparison_target (the latest;
+    ValueError unless `version` is newer) count, the same (comparison target, new] range the PR check used, so a
+    declaration appears on one Release only."""
+    after=comparison_target([v for v in released if v!=version],version)  # a listed Release of `version` is this one
     found=declarations(notes,after,version);out=[]
     for section,title,label,text_key in RELEASE_SECTIONS:
         if not found[section]:continue
@@ -461,16 +470,15 @@ def all_releases(gh, repo):
         if len(batch)<100:return out
         page+=1
 
-def release_body(gh, repo, provider, comp, sha, version):
+def release_body(gh, repo, comp, sha, version, released):
     """Release-notes sections for the add-on's upgrade-notes.yaml at sha (pipeline #119); '' when it declares nothing new.
     GitHub puts a body before its generated notes, so both appear. Only declarations after the comparison target (the
-    newest formal Release below `version`) count; a malformed file blocks the Release rather than publishing it without the notes."""
+    latest of `released`, its formal Release versions) count; a malformed file blocks the Release rather than publishing it without the notes."""
     path=source_file(comp,'upgrade-notes.yaml')
     try:raw=gh.content(repo,path,sha)
     except Blocked as e:
         if 'HTTP 404' in str(e):return ''
         raise
-    released=formal_versions(provider,comp,all_releases(gh,repo))
     try:return release_notes(yaml.safe_load(raw),version,released)
     except (ValueError,TypeError,yaml.YAMLError) as e:raise Blocked(path+': '+str(e))
 
@@ -481,7 +489,7 @@ def release(gh, registry, repo, sha, apply=False):
     provider=registry['providers'][repo];branch,_=gh.head(repo)
     if not SHA.fullmatch(sha or ''):raise Blocked('Release must target an immutable commit SHA')
     if gh.api(repo,'compare/'+sha+'...'+urllib.parse.quote(branch,safe=''))['status'] not in ['ahead','identical']:raise Blocked('Commit is not on the default branch')
-    report=[]
+    report=[];releases=None
     for comp in provider['components']:
         cid=comp['id']
         if not publishes_releases(comp):report.append({'id':cid,'state':'excluded'});continue
@@ -492,7 +500,13 @@ def release(gh, registry, repo, sha, apply=False):
             version=str(cfg['version']);tag=release_tag(provider,comp,version)
             if get_or_none(gh,repo,'releases/tags/'+urllib.parse.quote(tag,safe='')) is not None:report.append({'id':cid,'state':'already-released','tag':tag,'version':version});continue
             if tagged_commit(gh,repo,tag) not in [None,sha]:raise Blocked('Tag '+tag+' points at another commit; release or delete it by hand')
-            body=release_body(gh,repo,provider,comp,sha,version)
+            if releases is None:releases=all_releases(gh,repo)
+            released=formal_versions(provider,comp,releases)
+            # The new Release becomes the latest: a version not newer than the latest formal Release is blocked whether or
+            # not upgrade-notes.yaml exists.
+            try:comparison_target(released,version)
+            except ValueError as e:raise Blocked(str(e)) from None
+            body=release_body(gh,repo,comp,sha,version,released)
             if apply:gh.api(repo,'releases',{'tag_name':tag,'target_commitish':sha,'name':f"{cfg.get('name',cid)} {version}",'generate_release_notes':True,'make_latest':'true',**({'body':body} if body else {})})
             report.append({'id':cid,'state':'released' if apply else 'would-release','tag':tag,'version':version})
         except Exception as e:

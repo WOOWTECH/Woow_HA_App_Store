@@ -33,7 +33,7 @@ from __future__ import annotations
 import argparse, json, os, pathlib, re, secrets, sys
 import yaml
 # addon_sync owns the Release rules (version order, upgrade-notes.yaml parsing, Release notes); it does not import this module.
-from addon_sync import Blocked, comparison_target, declaration_text, declarations, find_component, find_provider, formal_versions, publishes_releases, release_notes, release_tag, safe_path, source_file, workflow_command
+from addon_sync import Blocked, comparison_target, declaration_text, declarations, find_component, find_provider, formal_versions, publishes_releases, release_notes, release_tag, require_newer, safe_path, source_file, workflow_command
 
 RANGED={'int','float','str'}
 
@@ -184,9 +184,11 @@ def compare(old, new, old_version, new_version, notes=None, old_scan=None, new_s
     `old`/`new`: parsed config.yaml; `old` is None when there is no comparison target (first release).
     `notes`: parsed upgrade-notes.yaml or None. `old_scan`/`new_scan`: Grype JSON for category 4 (#118), None = not scanned.
     `scan_note`: report text for why there are no scan results.
+    ValueError unless new_version is newer than old_version (addon_sync.require_newer).
     Returns blocked, vulnerabilities (None when not scanned), breaking [{change, key, declared}], notices,
     unmatched declarations, problems, and a Markdown report."""
     name=name or new.get('slug') or 'add-on'
+    if old is not None:require_newer(new_version,old_version)
     sections=declarations(notes,old_version,new_version);declared,accepted=sections['breaking'],sections['accepted_vulnerabilities']
     # The Release notes (#119) publish every migration and reason and fail on an empty one, so check them here
     # with or without a comparison target or scan: the merge is the release approval (ADR-0005).
@@ -271,10 +273,10 @@ def main(argv=None):
     n.add_argument('--notes',required=True,help='upgrade-notes.yaml at the released commit (may be absent)')
     n.add_argument('--version',required=True,help='version being released')
     n.add_argument('--released',nargs='*',default=[],help='versions that already have a formal Release')
-    t=sub.add_parser('latest-release',help="read the repository's Releases (GitHub API JSON array) on stdin, print the tag of the add-on's newest formal Release below --version (nothing when none)")
+    t=sub.add_parser('latest-release',help="read the repository's Releases (GitHub API JSON array) on stdin, print the tag of the add-on's latest formal Release (nothing when none); fails unless --version is newer")
     t.add_argument('--registry',required=True,help='Store registry.json');t.add_argument('--repo',required=True,help='source repository, owner/name')
     t.add_argument('--component',required=True,help='add-on id in the registry')
-    t.add_argument('--version',required=True,help="the PR's version: the target is the newest formal Release below it, as for the Release notes")
+    t.add_argument('--version',required=True,help="the PR's version: it must be newer than the target, as for the Release notes")
     k=sub.add_parser('components',help="print what the workflow needs from the repository's registry entry (JSON, see components())")
     k.add_argument('--registry',required=True,help='Store registry.json');k.add_argument('--repo',required=True,help='source repository, owner/name')
     a=p.parse_args(argv)

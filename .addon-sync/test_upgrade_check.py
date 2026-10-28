@@ -1,4 +1,4 @@
-import contextlib,copy,io,json,pathlib,shutil,tempfile,unittest,unittest.mock
+import contextlib,copy,io,json,pathlib,re,shutil,tempfile,unittest,unittest.mock
 import yaml
 import upgrade_check as u
 
@@ -139,15 +139,12 @@ class Tests(unittest.TestCase):
         r=u.compare(None,new(),old_version=None,new_version='1.1.0',notes=self.notes(migration=''))
         self.assertTrue(r['blocked']);self.assertEqual(r['problems'],['1.1.0: option-removed workers has no migration'])
         self.assertIn('no comparison target',r['report']);self.assertIn('has no migration',r['report'])
-    def test_version_that_does_not_go_up_is_still_compared(self):
-        # Owner decision: no "the version must go up" gate; a revert under ref_policy main (PR base 1.2.0, PR 1.1.0) is compared.
-        r=run(new(),old=dict(BASE,version='1.2.0'),old_version='1.2.0')
-        self.assertFalse(r['blocked']);self.assertIn('1.2.0 → 1.1.0',r['report'])
-    def test_hotfix_on_an_older_line_counts_only_its_own_window(self):
-        # 1.2.5 after 1.3.0: the target is 1.2.4, so 1.3.0's declarations do not count for 1.2.5.
-        old=dict(BASE,version='1.2.4');cfg=dict(self.REMOVED(),version='1.2.5')
-        for version,blocked in [('1.2.5',False),('1.3.0',True),('1.2.4',True)]:
-            with self.subTest(version):self.assertEqual(run(cfg,self.notes(version),old=old,old_version='1.2.4')['blocked'],blocked)
+    def test_version_not_newer_than_the_target_is_an_error(self):
+        # Every Release becomes the latest one users get, so a lower or equal version is a downgrade (ref_policy main: the PR base).
+        for target,version in [('1.2.0','1.1.0'),('1.1.0','1.1.0'),('1.1.0','1.1')]:
+            with self.subTest(target=target,version=version):
+                with self.assertRaisesRegex(ValueError,f'version {re.escape(version)} is not newer than {re.escape(target)}'):
+                    u.compare(dict(BASE,version=target),dict(new(),version=version),old_version=target,new_version=version)
     def test_nonstandard_versions_order_by_their_leading_number(self):
         old=copy.deepcopy(BASE);old['version']='2.12.4-v2'
         cfg=self.REMOVED();cfg['version']='2.12.5-v1'
@@ -291,6 +288,10 @@ class CommandLine(unittest.TestCase):
         self.assertEqual(code,1);self.assertIn('::error title=New fixable vulnerability::CVE-2026-0002 zlib',out)
         self.assertIn('CVE-2026-0002',self.summary.read_text(encoding='utf-8'))
         self.assertEqual(self.main(*args,'--new-scan',self.write('bad.json','{}'))[0],2)
+    def test_version_not_newer_than_the_pr_base_exits_2(self):
+        # ref_policy main compares with the PR base in this command; a revert there fails with the reason.
+        code,out=self.main('--old',self.write('old.yaml',dict(BASE,version='1.2.0')),'--new',self.write('new.yaml',new()),'--name','t')
+        self.assertEqual(code,2);self.assertIn('::error title=Upgrade comparison failed::t: version 1.1.0 is not newer than 1.2.0',out)
     def test_scan_note_explains_a_skipped_comparison(self):
         self.main('--old',self.write('old.yaml',BASE),'--new',self.write('new.yaml',new()),'--scan-note','built on the device; compared in #90')
         self.assertIn('not run (built on the device; compared in #90)',self.summary.read_text(encoding='utf-8'))
@@ -352,11 +353,11 @@ class ReleaseNotes(unittest.TestCase):
     def test_a_released_tag_that_is_not_a_version_is_ignored(self):
         # A stray tag on the Releases page must not block the Release it has nothing to do with.
         self.assertEqual(u.release_notes(NOTES,'1.3.0',released=['1.2.0','nightly']),u.release_notes(NOTES,'1.3.0',released=['1.2.0']))
-    def test_hotfix_after_a_newer_release_starts_after_the_newest_release_below_it(self):
-        # 1.2.5 after 1.3.0: the window is (1.2.4, 1.2.5], the same target the PR check used (owner decision).
-        notes={'1.2.5':{'breaking':[dict(NOTES['1.3.0']['breaking'][0],key='hotfix_port')]},'1.2.4':{'breaking':[dict(NOTES['1.3.0']['breaking'][0],key='old_port')]},**NOTES}
-        text=u.release_notes(notes,'1.2.5',released=['1.2.4','1.3.0'])
-        self.assertIn('`hotfix_port`（1.2.5）',text);self.assertNotIn('old_port',text);self.assertNotIn('ssl_port',text)
+    def test_a_version_not_newer_than_the_latest_release_is_an_error(self):
+        # 1.2.5 after 1.3.0 would be a downgrade for users on 1.3.0, the latest Release: no window, an error.
+        for version in ('1.2.5','1.3'):
+            with self.subTest(version):
+                with self.assertRaisesRegex(ValueError,'not newer than 1.3.0'):u.release_notes(NOTES,version,released=['1.2.4','1.3.0'])
     def test_a_tag_that_cannot_be_ordered_is_ignored(self):
         # 1.2.0-foo cannot be ordered against 1.2.0 (nor 1.3.0-foo against 1.3.0): ignored in any order, not a blocked Release.
         for released in (['1.2.0','1.2.0-foo'],['1.2.0-foo','1.2.0'],['1.2.0','1.3.0-foo']):
@@ -381,9 +382,14 @@ class LatestRelease(unittest.TestCase):
         self.assertEqual(u.comparison_target(['2.12.4-v9','2.12.4-v10','2.12.4'],'9'),'2.12.4-v10')
         self.assertEqual(u.comparison_target(['1.9.0','1.10.0','nightly'],'9'),'1.10.0')
         self.assertIsNone(u.comparison_target(['nightly'],'9'));self.assertIsNone(u.comparison_target([],'9'))
-    def test_newest_release_strictly_below_the_version(self):
-        self.assertEqual(u.comparison_target(['1.2.4','1.3.0','1.2.5'],'1.2.5'),'1.2.4')
-        self.assertIsNone(u.comparison_target(['1.3.0'],'1.2.5'))
+    def test_target_is_the_latest_release_and_the_version_must_be_newer(self):
+        self.assertEqual(u.comparison_target(['1.2.4','1.3.0'],'1.4.0'),'1.3.0')
+        for released,version in [(['1.2.4','1.3.0'],'1.2.5'),(['1.3.0'],'1.3.0'),(['1.3.0'],'1.3')]:
+            with self.subTest(released=released,version=version):
+                with self.assertRaisesRegex(ValueError,f'version {re.escape(version)} is not newer than 1.3.0'):u.comparison_target(released,version)
+    def test_a_tag_that_cannot_be_ordered_is_ignored(self):
+        for released in (['1.2.0','1.3.0-foo'],['1.3.0-foo','1.2.0'],['1.2.0','1.2.0-foo'],['nightly','1.2.0']):
+            with self.subTest(released):self.assertEqual(u.comparison_target(released,'1.3.0'),'1.2.0')
     def main(self,releases,component,components=('t',),version='99.0.0'):
         d=pathlib.Path(tempfile.mkdtemp());self.addCleanup(shutil.rmtree,d)
         (d/'registry.json').write_text(json.dumps({'providers':{'WOOWTECH/r':{'components':[{'id':c} for c in components]}}}))
@@ -398,12 +404,14 @@ class LatestRelease(unittest.TestCase):
         releases=[{'tag_name':'v2.0.0','draft':True,'prerelease':False},{'tag_name':'v1.9.0','draft':False,'prerelease':True},'x-v3.0.0','v1.1.0']
         self.assertEqual(self.main(releases,'t'),(0,'v1.1.0\n'))
         self.assertEqual(self.main(releases[:3],'t'),(0,''))
-    def test_target_is_the_newest_formal_release_below_the_version(self):
-        # --version applies the Release notes' rule; a higher Release is no error (hotfix on an older line, owner decision).
+    def test_a_version_not_newer_than_the_latest_release_exits_2(self):
+        # --version applies the Release notes' rule: the target is the latest formal Release and the version must be newer.
         self.assertEqual(self.main(['v1.2.0','v1.1.0'],'t',version='1.3.0'),(0,'v1.2.0\n'))
         self.assertEqual(self.main([],'t',version='1.3.0'),(0,''))
-        self.assertEqual(self.main(['v1.3.0','v1.2.4'],'t',version='1.2.5'),(0,'v1.2.4\n'))
-        self.assertEqual(self.main(['v1.2.0','v1.1.0'],'t',version='1.1.0'),(0,''))
+        for version in ('1.2.5','1.3.0'):
+            with self.subTest(version):
+                code,out=self.main(['v1.3.0','v1.2.4'],'t',version=version)
+                self.assertEqual(code,2);self.assertIn(f'version {version} is not newer than 1.3.0',out)
     def test_tag_rule_is_addon_syncs(self):
         # v<ver> for a single add-on, <slug>-v<ver> when the repository has several (addon_sync.release_tag).
         releases=['v9.0.0','woow_ha_core-v2.4.0','woow_ha_core_2-v2.3.0','woow_ha_core_2-v2.2.0']
@@ -660,10 +668,16 @@ class ComparisonTarget(StepHarness):
         r,plan,_=self.run_step('plan',releases=('v0.9.0','v1.0.0','v1.0.0rc1'),skip='x')
         self.assertEqual(r.returncode,0,r.stdout+r.stderr);self.assertEqual(plan['target'],'v1.0.0')
     @needs_shell
-    def test_hotfix_after_a_newer_release_compares_with_the_newest_release_below_it(self):
-        # The Release notes' rule (addon_sync.comparison_target): 1.2.5 after 1.3.0 compares with 1.2.4, no error.
-        r,plan,_=self.run_step('plan',releases=('v1.3.0','v1.2.4','v1.2.0'),version='1.2.5',skip='x')
-        self.assertEqual(r.returncode,0,r.stdout+r.stderr);self.assertEqual(plan['target'],'v1.2.4')
+    def test_a_version_not_newer_than_the_latest_release_fails(self):
+        # The Release notes' rule (addon_sync.comparison_target): 1.2.5 after 1.3.0 is a downgrade; 1.3.0 again is no upgrade.
+        for version in ('1.2.5','1.3.0'):
+            with self.subTest(version):
+                r,plan,_=self.run_step('plan',releases=('v1.3.0','v1.2.4','v1.2.0'),version=version,skip='x')
+                self.assertEqual(r.returncode,1,r.stdout+r.stderr);self.assertIn(f'version {version} is not newer than 1.3.0',r.stdout);self.assertEqual(plan,{})
+    @needs_shell
+    def test_a_normal_bump_compares_with_the_latest_release(self):
+        r,plan,_=self.run_step('plan',releases=('v1.0.0','v0.9.0','v1.1.0-foo'),version='1.1.0',skip='x')
+        self.assertEqual(r.returncode,0,r.stdout+r.stderr);self.assertEqual(plan['target'],'v1.0.0')
     @needs_shell
     def test_drafts_and_prereleases_are_not_comparison_targets(self):
         releases=('v1.0.0',{'tag_name':'v1.2.0','draft':True,'prerelease':False},{'tag_name':'v1.1.0','draft':False,'prerelease':True})
