@@ -390,8 +390,15 @@ class ComparisonTargetCommand(unittest.TestCase):
             with self.subTest(released=released,version=version):
                 with self.assertRaisesRegex(ValueError,f'version {re.escape(version)} is not newer than 1.3.0'):u.comparison_target(released,version)
     def test_a_tag_that_cannot_be_ordered_is_ignored(self):
-        for released in (['1.2.0','1.3.0-foo'],['1.3.0-foo','1.2.0'],['1.2.0','1.2.0-foo'],['nightly','1.2.0']):
+        # Only a version that reads whole (PEP 440 or a rebuild suffix) can be the target: a stray v9.0-test, read by its
+        # leading number alone, would otherwise be higher than every real Release and block every PR.
+        for released in (['1.2.0','1.3.0-foo'],['1.3.0-foo','1.2.0'],['1.2.0','1.2.0-foo'],['nightly','1.2.0'],['1.2.0','9.0-test']):
             with self.subTest(released):self.assertEqual(u.comparison_target(released,'1.3.0'),'1.2.0')
+    def test_a_version_that_cannot_be_ordered_against_the_target_fails(self):
+        # The PR's version is not a stray tag: when it cannot be shown newer than the latest Release, it is not released.
+        with self.assertRaisesRegex(ValueError,'version 1.3.0-foo cannot be ordered against 1.3.0, the version users run now'):
+            u.comparison_target(['1.2.0','1.3.0'],'1.3.0-foo')
+        self.assertEqual(u.comparison_target(['1.2.0','1.3.0'],'1.4.0-foo'),'1.3.0')
     def main(self,releases,component,components=('t',),version='99.0.0'):
         d=pathlib.Path(tempfile.mkdtemp());self.addCleanup(shutil.rmtree,d)
         (d/'registry.json').write_text(json.dumps({'providers':{'WOOWTECH/r':{'components':[{'id':c} for c in components]}}}))

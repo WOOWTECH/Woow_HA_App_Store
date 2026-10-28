@@ -8,7 +8,7 @@ public outboxes. It runs on the woow-addon-ready dispatch a source sends after a
 new notification, with its schedule as the fallback.
 """
 from __future__ import annotations
-import argparse, base64, hashlib, io, json, os, pathlib, re, shutil, subprocess, tarfile, tempfile, urllib.error, urllib.parse, urllib.request
+import argparse, base64, functools, hashlib, io, json, os, pathlib, re, shutil, subprocess, tarfile, tempfile, urllib.error, urllib.parse, urllib.request
 import yaml
 from enum import IntEnum
 from packaging.version import Version, InvalidVersion
@@ -399,22 +399,20 @@ def version_cmp(a, b):
 
 def require_newer(version, target):
     """ValueError unless `version` is newer than `target`, the version users run now."""
-    if version_cmp(version,target)<=0:
-        raise ValueError(f'version {version} is not newer than {target}, the version users run now '
-            '(the latest formal Release; the PR base under ref_policy: main); raise the version')
+    try:newer=version_cmp(version,target)>0
+    except ValueError:newer=None
+    if not newer:
+        raise ValueError(f'version {version} '+('cannot be ordered against' if newer is None else 'is not newer than')+f' {target}, the version users '
+            'run now (the latest formal Release; the PR base under ref_policy: main); raise the version')
 
 def comparison_target(released, version):
     """The latest of `released` (an add-on's formal Release versions), or None; `version` must be newer (require_newer).
     Releases are cut only from the default branch and each becomes the latest (release(), make_latest), which publish()
     ships, so a lower version would be a downgrade. The PR check and the Release notes both read upgrade-notes.yaml in
-    (comparison target, version], so both take the target from here. A tag that is not a version (a stray `nightly`), or
-    that cannot be ordered against `version` or a well-formed Release, is ignored: it must not block a Release."""
-    target=None
-    for v in sorted((v for v in released if _read(v)[0]),key=lambda v:_read(v)[0],reverse=True):  # read whole first, so they win
-        try:
-            version_cmp(v,version)
-            if target is None or version_cmp(v,target)>0:target=v
-        except ValueError:continue
+    (comparison target, version], so both take the target from here. Only a version that reads whole (_read) can be the
+    target: a stray tag (`nightly`, `9.0-test`) cannot be ordered against the Releases, so it is ignored and must not
+    block a Release. Whole versions are always ordered."""
+    target=max((v for v in released if _read(v)[0]==Form.WHOLE),key=functools.cmp_to_key(version_cmp),default=None)
     if target is not None:require_newer(version,target)
     return target
 

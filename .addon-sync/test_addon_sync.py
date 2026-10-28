@@ -399,7 +399,7 @@ class Tests(unittest.TestCase):
                 self.assertEqual(report[0]['state'],'blocked',report);self.assertIn('not newer than 1.3.0',report[0]['reason']);self.assertEqual(gh.created,[])
     def test_a_tag_that_cannot_be_ordered_does_not_block_the_release(self):
         gh=self.release_gh({'config.yaml':'name: Test\nslug: test\nversion: 1.2.0\n','upgrade-notes.yaml':self.NOTES},
-            listing=[{'tag_name':'v1.2.0-foo'},{'tag_name':'nightly'},{'tag_name':'v1.1.0'}])
+            listing=[{'tag_name':'v1.2.0-foo'},{'tag_name':'nightly'},{'tag_name':'v9.0-test'},{'tag_name':'v1.1.0'}])
         report=s.release(gh,self.single(),'WOOWTECH/test','a'*40,apply=True)
         self.assertEqual(report[0]['state'],'released',report)
         self.assertIn('ssl_port',gh.created[0]['body']);self.assertNotIn('Old news.',gh.created[0]['body'])
