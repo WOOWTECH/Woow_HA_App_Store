@@ -586,7 +586,7 @@ class StepHarness(unittest.TestCase):
         with contextlib.redirect_stdout(io.StringIO()) as provider:
             self.assertEqual(u.main(['components','--registry',str(tmp/'tooling/.addon-sync/registry.json'),'--repo','WOOWTECH/t']),0)
         (tmp/'provider.json').write_text(provider.getvalue())
-        (tmp/'changed.jsonl').write_text(''.join(json.dumps(dict(c,version=version))+'\n' for c in json.loads(provider.getvalue())['components'][:1]))
+        (tmp/'changed.jsonl').write_text(''.join(json.dumps(dict(c,version=version,new=str(tmp/'t.new.yaml')))+'\n' for c in json.loads(provider.getvalue())['components'][:1]))
         gh=tmp/'bin/gh'
         gh.write_text('#!/bin/bash\ncase "$*" in\n  *releases*) [ -z "$RELEASES" ] || printf "%s\\n" "$RELEASES";;\n'
             '  *contents*) if [ -s "$OLD" ] && [[ -z "$OLD_PATH" || "$*" == *"contents/$OLD_PATH?"* ]]; then cat "$OLD"; else echo "gh: Not Found (HTTP 404)" >&2; exit 1; fi;;\n  *) exit 1;;\nesac\n')
@@ -780,6 +780,12 @@ class ComparisonTarget(StepHarness):
         self.assertNotIn('fetch() {',text);self.assertTrue((self.STORE/'.addon-sync/gh_raw.sh').exists())
         for ident in ('detect','plan'):
             with self.subTest(ident):self.assertIn('source tooling/.addon-sync/gh_raw.sh',self.step(ident)['run'])
+    def test_the_prs_config_path_is_spelled_once(self):
+        # The detect step names where it leaves the PR's config; later steps read that path from the JSON lines it wrote.
+        text=self.WF.read_text(encoding='utf-8')
+        self.assertEqual(text.count('.new.yaml'),1)
+        for ident,field in (('detect','new: $new'),('plan','new=new'),('Compare with the comparison target','new=new')):
+            with self.subTest(ident):self.assertIn(field,self.step(ident)['run'])
     def test_each_step_sources_exactly_the_helpers_it_uses(self):
         import re
         for step in self.wf['jobs']['compare']['steps']:

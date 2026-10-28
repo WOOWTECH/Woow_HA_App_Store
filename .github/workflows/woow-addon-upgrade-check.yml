@@ -152,7 +152,7 @@ jobs:
           fi
           before="none"; [ ! -s "${base}" ] || before="$(yq -r '.version // "none"' "${base}")"
           if [ "${current}" != "${before}" ]; then
-            jq -c --arg version "${current}" --arg notes "${notes}" '. + {version: $version, notes: $notes}' <<<"${component}" >> changed.jsonl
+            jq -c --arg version "${current}" --arg notes "${notes}" --arg new "${new}" '. + {version: $version, notes: $notes, new: $new}' <<<"${component}" >> changed.jsonl
           else
             echo "- ${id}: version ${current} unchanged" >> "$GITHUB_STEP_SUMMARY"
           fi
@@ -177,12 +177,11 @@ jobs:
         source tooling/.addon-sync/fields.sh
         policy="$(jq -r '.ref_policy' provider.json)"; approved="$(jq -r '.skip_vulnerability_scan' provider.json)"
         releases="$(gh api --paginate "repos/${REPO}/releases?per_page=100" --jq '.[]' | jq -sc .)"
-        # plan.jsonl, one object per add-on: id, notes (path in the PR), target, ref (old image; "" = no scan),
-        # artifact (the addon-sbom artifact of its new image), note (why there is no scan). The detect step left the
-        # PR's config in $RUNNER_TEMP/<id>.new.yaml.
+        # plan.jsonl, one object per add-on: id, notes (path in the PR), new (where the detect step left the PR's config),
+        # target, ref (old image; "" = no scan), artifact (the addon-sbom artifact of its new image), note (why there is no scan).
         : > plan.jsonl; status=0
         while IFS= read -r component; do
-          fields "${component}" id=id path=config previous=previous_config notes=notes version=version
+          fields "${component}" id=id path=config previous=previous_config notes=notes version=version new=new
           old="$RUNNER_TEMP/${id}.old.yaml"; rm -f "$old"; touch "$old"; target=""; target_version=""; ref=""; note=""
           if [ "${policy}" = "main" ]; then
             # ref_policy main: the Store follows the default branch, so users run what the PR base has.
@@ -219,7 +218,7 @@ jobs:
             echo "${id}: no formal Release yet"
           fi
           # Category 4: needs a prebuilt image and a comparison target; then the new image's SBOM is mandatory.
-          image="$(yq -r '.image // ""' "$RUNNER_TEMP/${id}.new.yaml")"
+          image="$(yq -r '.image // ""' "${new}")"
           artifact="upgrade-comparison-sbom-${id}-attempt-${RUN_ATTEMPT}"
           if [ -n "${SKIP_VULNERABILITY_SCAN}" ]; then
             # The detect step checked the approval; the report gives the registry's reason, never the caller's text.
@@ -244,7 +243,7 @@ jobs:
             fi
             ref="${old_image//\{arch\}/amd64}:${old_version}"
           fi
-          jq -nc --arg id "${id}" --arg notes "${notes}" --arg target "${target}" --arg ref "${ref}" \
+          jq -nc --arg id "${id}" --arg notes "${notes}" --arg new "${new}" --arg target "${target}" --arg ref "${ref}" \
             --arg artifact "${artifact}" --arg note "${note}" '$ARGS.named' >> plan.jsonl
         done < changed.jsonl
         if [ -n "$(jq -r 'select(.ref != "") | .id' plan.jsonl)" ]; then echo "scan=true" >> "$GITHUB_OUTPUT"; else echo "scan=false" >> "$GITHUB_OUTPUT"; fi
@@ -346,9 +345,9 @@ jobs:
           GRYPE_DB_MAX_ALLOWED_BUILT_AGE="${DB_MAX_AGE_HOURS}h" GRYPE_CHECK_FOR_APP_UPDATE=false
         status=0
         while IFS= read -r row; do
-          fields "${row}" id=id notes=notes target=target ref=ref note=note
+          fields "${row}" id=id notes=notes new=new target=target ref=ref note=note
           old="$RUNNER_TEMP/${id}.old.yaml"
-          args=(--name "${id}" --new "$RUNNER_TEMP/${id}.new.yaml" --notes "source/${notes}" --notes-path "${notes}")
+          args=(--name "${id}" --new "${new}" --notes "source/${notes}" --notes-path "${notes}")
           [ ! -s "${old}" ] || args+=(--old "${old}")
           if [ -z "${ref}" ]; then
             args+=(--scan-note "${note}")
