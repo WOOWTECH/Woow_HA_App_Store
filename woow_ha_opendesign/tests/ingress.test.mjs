@@ -129,8 +129,8 @@ test('initial project raw and scoped preview iframe paths retain ingress transpo
   }
 
   const spaRoute = runIngressShim(`${prefix}/settings`);
-  assert.deepEqual(spaRoute.replaceCalls, ['/settings']);
-  assert.equal(spaRoute.location.pathname, '/settings');
+  assert.deepEqual(spaRoute.replaceCalls, []);
+  assert.equal(spaRoute.location.pathname, `${prefix}/settings`);
 });
 
 test('project preview iframe history retains ingress transport prefix', () => {
@@ -157,8 +157,9 @@ test('project preview iframe history retains ingress transport prefix', () => {
   spaRoute.history.pushState({}, '', '/settings/profile');
   assert.deepEqual(spaRoute.historyCalls.at(-1), {
     method: 'pushState',
-    url: '/settings/profile',
+    url: `${prefix}/settings/profile`,
   });
+  assert.equal(spaRoute.location.pathname, `${prefix}/settings/profile`);
 });
 
 test('nginx validates the ingress prefix and preserves streaming upgrades', () => {
@@ -313,7 +314,7 @@ test('early shim covers root-relative streaming, navigation, and dynamic URLs', 
     "wrapHistory('pushState', nativeHistoryPushState)",
     "wrapHistory('replaceState', nativeHistoryReplaceState)",
     'logicalHistoryUrl',
-    "window.addEventListener('beforeunload'",
+    'alreadyScoped(pathname) ? pathname : `${prefix}${pathname}`',
     'Element.prototype.setAttribute',
     'HTMLIFrameElement',
     'MutationObserver',

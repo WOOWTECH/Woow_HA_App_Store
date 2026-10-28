@@ -31,6 +31,12 @@ check(list(jobs) == ["import"], "exactly one import job")
 job = jobs.get("import", {})
 check(job.get("permissions") == {"contents": "read", "packages": "write"}, "import job gets only contents:read and packages:write")
 check(job.get("if") == "github.ref == 'refs/heads/main'", "only the workflow on main may publish")
+steps = job.get("steps", [])
+names = [step.get("name") for step in steps]
+registry_check = next((step for step in steps if step.get("name") == "Check anonymous JCR registry endpoint"), {})
+check(registry_check.get("run") == "python3 -B .github/scripts/registry-preflight.py", "import must diagnose the anonymous registry before login")
+check(not registry_check.get("env") and not registry_check.get("if") and not registry_check.get("continue-on-error"), "import registry check is required, anonymous and fail closed")
+check("Check anonymous JCR registry endpoint" in names and "Log in to JCR (read-only) and GHCR" in names and names.index("Check anonymous JCR registry endpoint") < names.index("Log in to JCR (read-only) and GHCR"), "registry check must precede import authentication")
 for ref in re.findall(r"uses:\s*[^\s]+@([^\s#]+)", text):
     check(re.fullmatch(r"[0-9a-f]{40}", ref) is not None, f"action ref must be a full commit SHA: {ref}")
 check("persist-credentials: false" in text, "checkout must not persist credentials")

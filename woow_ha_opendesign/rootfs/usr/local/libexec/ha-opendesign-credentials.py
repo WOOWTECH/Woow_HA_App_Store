@@ -11,6 +11,10 @@ PRIVATE = {
     '.claude': ('.credentials.json', 'settings.json'),
     '.pi': (),
     '.pi/agent': ('auth.json', 'models.json', 'settings.json'),
+    # Only OpenCode's private leaves: .config, .local and .local/share are
+    # shared with other providers; traverse them without changing their modes.
+    '.config/opencode': ('opencode.json', 'opencode.jsonc'),
+    '.local/share/opencode': ('auth.json',),
 }
 DIR_FLAGS = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
 

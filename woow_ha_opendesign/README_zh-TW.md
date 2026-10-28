@@ -10,7 +10,7 @@
 - 支援獨立 HTML、ZIP、截圖式 PDF、PNG/JPEG，以及每張投影片為圖片的 PPTX。**不支援可編輯 PPTX**，要求此模式時會明確失敗。
 - core 映像提供 Claude Code `2.1.296`、Codex CLI `0.162.1`、Pi Coding Agent `1.1.0` 與 OpenCode `1.18.33`（OpenDesign 原生 `byok-opencode` API runtime）；附加元件建置時以 UID 1001 逐一核對版本，不需要 Paseo 插件，也不會在首次使用時下載 CLI。
 - 來自 core 的 WoowTech 改動：白牌介面、繁體中文語系修正、匯出修正、內建 `woowtech-brand` skill，並移除 `brainstorming` skill。
-- 不含 Omnigent：0.2.1 起移除 Omnigent host，以及 core 內建的 `woow-omnigent` plugin 與 skill，待 Omnigent 穩定後再加回（見 [DOCS.md](DOCS.md#omnigent-removed-in-021)）。
+- **Omnigent 0.2.10 候選：**恢復原生插件 GUI 與 daemon 管理的 host，首次需輸入網址／帳密，新狀態私有持久化於 `/data`，不採用歷史退役登入。隔離 HA 安裝與重啟已通過；首次設定頁路由和已連線 GUI 對話仍須用新版 core 候選實測（見[設定、升級與驗證](DOCS.md#omnigent-029-candidate)）。
 - 透過 OpenDesign 原生 **Plugins** 頁面安裝的插件與 Skills，會由同一個 daemon 提供給 Claude Code、Codex、Pi、OpenCode 的專案執行流程。
 - OpenDesign「外掛」頁內建受 HA Ingress 保護的 **CLI 終端機**（`<Ingress>/console/`），可在 GUI 中完成 Claude Code、Codex、Pi 的互動登入。OpenCode 更多 API provider 可在 **Settings → API providers** 設定。
 - **內建 OpenDesign MCP server**（取代另一支「Woow OpenDesign MCP Server」附加元件）：MCP 用戶端連 `8081/tcp`＋Bearer token，Claude.ai 連接器用 `/private_<token>/mcp`。工具與 WOOW PaaS 的 OpenDesign MCP 相同共 15 支，預設全開，包含寫入工具 `create_project`、`send_message`（會執行 OpenDesign agent）與 `delete_project`。管理頁（token、工具權限）是 OpenDesign「外掛」頁內建的 **MCP Server**，只能經 HA Ingress 進入。詳見 [DOCS.md](DOCS.md#built-in-mcp-server)。
@@ -21,11 +21,12 @@
 
 1. 在 Home Assistant 開啟 **設定 → 附加元件 → 附加元件商店 → 儲存庫**。
 2. 加入 `https://github.com/WOOWTECH/Woow_ha_opendesign_add_on`。
-3. 安裝 **Woow HA OpenDesign**，在「資訊」頁籤打開 **Watchdog**（Home Assistant 新裝的附加元件預設是關的；沒開時內部程序一結束，附加元件就會停著不會自己回來），再啟動並從側邊欄開啟。
+3. 安裝 **Woow HA OpenDesign**，在「資訊」頁籤打開 **Watchdog**（Home Assistant 新裝的附加元件預設是關的；沒開時內部程序一結束，附加元件就會停著不會自己回來），再啟動並選 **開啟網頁介面**；0.2.10 候選版會直接進入 **Plugins**。
 4. 在 **設定** 設定 API BYOK 的供應商、模型與金鑰；設定只會保留在該瀏覽器。
 5. 開啟 **Local AI → Rescan** 重新掃描已預裝的 CLI。接著進入 **Plugins** 安裝工作流程，再於專案中選取；OpenDesign 會將所選 Skill stage 到專案並交給當次選用的代理。
 6. 在 OpenDesign 開啟 **Plugins → Expert suites → Personal**，按內建 **CLI 終端機** 的「開啟」（開新分頁），在終端執行 `claude` 後輸入 `/login`、`codex login --device-auth`，或執行 `pi` 後在 TUI 輸入 `/login`。登入狀態保存在 `/data/opendesign/home`。OpenCode API 供應商可在 **Settings → API providers** 設定。
 7. 在同一個 **Plugins → Expert suites → Personal** 頁面開啟 **Paseo**，進行連線設定、供應商登入、模型選擇與服務啟停；詳見 [Paseo 設定與資料保存](DOCS.md#paseo-setup-and-persistence)。
+8. 在 0.2.10 候選版，進入 **Plugins → Omnigent → Open → Configure** 輸入伺服器網址、帳號與密碼；要使用的已安裝引擎仍須各自完成供應商登入。詳見 [Omnigent 設定](DOCS.md#omnigent-029-candidate)。
 
 本附加元件沒有設定選項，也沒有主機目錄掛載。
 
@@ -60,6 +61,4 @@ API BYOK 的供應商、模型與金鑰只存在管理員瀏覽器的 localStora
 
 ## 授權
 
-執行映像衍生自已公開發布的 WoowTech OpenDesign core 映像（從 WoowTech fork 建置的 OpenDesign 0.24.1）。Dockerfile 預設值與 release／CI 建置固定使用 `ghcr.io/woowtech/open-design-core:20261026.0712@sha256:366e337dc7ea192526468de33ad3f2f0ce97be3ffba9b8382a0c1d9ab88b1404`。Home Assistant 本機附加元件建置器不接受 `build.yaml` 的 digest 語法，因此該開發路徑使用已發布且不覆寫的 tag `ghcr.io/woowtech/open-design-core:20261026.0712`，對應同一個 core 映像。
-
-OpenDesign 採 Apache-2.0 授權，core 映像附有其授權與 WoowTech 改動聲明；本儲存庫的附加元件封裝及整合程式採 MIT 授權，詳見 [LICENSE](LICENSE)，因此映像標示為 `Apache-2.0 AND MIT`。
+目標執行映像衍生自 WoowTech fork 建置的 OpenDesign 0.24.1 core。此審查分支把 Dockerfile 與 CI 釘至 `ghcr.io/woowtech/open-design-core:20261027.1127@sha256:c8cd57f07adaef23b8dddbb22a8b75f97bdf8ca42c8bfbec1b284dc60ee5a4cf`；該核心仍待 Gitea 精確候選核准後公開匯入。Home Assistant 本機附加元件建置器不接受 `build.yaml` 的 digest 語法，因此該開發路徑使用對應 tag；必須先確認公開 tag 解析到相同 digest 才能建置發行。OpenDesign 採 Apache-2.0 授權，core 映像附有其授權與 WoowTech 改動聲明；本儲存庫的附加元件封裝及整合程式採 MIT 授權，詳見 [LICENSE](LICENSE)，因此映像標示為 `Apache-2.0 AND MIT`。

@@ -27,13 +27,13 @@ with (ROOT / ".github/workflows/build.yml").open() as handle:
 check(isinstance(workflow, dict) and "jobs" in workflow, "GitHub Actions workflow YAML is invalid")
 check(set(repository) == {"name", "url", "maintainer"}, "repository.yaml must have the repository contract keys")
 check(repository.get("url") == "https://github.com/WOOWTECH/Woow_ha_opendesign_add_on", "repository URL mismatch")
-check(config.get("version") == "0.2.9", "release version must be 0.2.9")
+check(config.get("version") == "0.2.10", "release version must be 0.2.10")
 check("browser-local API BYOK" in config.get("description", ""), "add-on description must describe browser-local BYOK")
 check(config.get("arch") == ["amd64"], "the core image is amd64-only; only amd64 is allowed")
 check(config.get("ingress") is True, "ingress must be enabled")
 check(config.get("ingress_stream") is True, "ingress_stream must be enabled")
 check(config.get("ingress_port") == 8099, "ingress port must be 8099")
-check("ingress_entry" not in config, "no ingress_entry: '/' makes Supervisor 2026.09 build <token>// URLs that 404")
+check(config.get("ingress_entry") == "plugins", "ingress_entry must be the relative plugins path; a leading slash makes <token>// URLs that 404")
 check(config.get("ports") == {"8081/tcp": None} and set(config.get("ports_description", {})) == {"8081/tcp"} and "webui" not in config, "only the unmapped built-in MCP port 8081 may be declared")
 check(not config.get("homeassistant_api") and not config.get("hassio_api") and not config.get("full_access"), "built-in MCP administration relies on Ingress login; no HA/Supervisor API access")
 check(config.get("backup") == "cold", "cold backup is required")
@@ -44,8 +44,8 @@ check(config.get("image") == "ghcr.io/woowtech/woow-ha-opendesign-{arch}", "arch
 # The add-on derives from the shared WoowTech OpenDesign core image. Every build
 # input names the same published core (digest for CI/Dockerfile, its immutable
 # tag for Supervisor local builds), so no build can fall back to upstream OpenDesign.
-core_image = "ghcr.io/woowtech/open-design-core:20261026.1751@sha256:14601a0b5c935b09193e7217daf603f2d3dbca2d9a9f3ba6f80d2fe2a406dbe2"
-local_core_image = "ghcr.io/woowtech/open-design-core:20261026.1751"
+core_image = "ghcr.io/woowtech/open-design-core:20261027.1127@sha256:c8cd57f07adaef23b8dddbb22a8b75f97bdf8ca42c8bfbec1b284dc60ee5a4cf"
+local_core_image = "ghcr.io/woowtech/open-design-core:20261027.1127"
 check(build.get("build_from") == {"amd64": local_core_image}, "Supervisor local builds must use the core image (tag syntax, amd64 only)")
 check("nexu-io/od" not in (ROOT / "build.yaml").read_text(), "build.yaml must not fall back to the upstream OpenDesign image")
 check(package.get("dependencies") == {"playwright-core": "1.55.0"}, "renderer dependency must remain exactly pinned")
@@ -65,7 +65,7 @@ runtime_sources = "\n".join([
     (ROOT / "runtime/package.json").read_text(),
 ])
 
-check(re.search(rf"^ARG BUILD_FROM={re.escape(core_image)}$", dockerfile, re.M), "Dockerfile base must default to the core image placeholder")
+check(re.search(rf"^ARG BUILD_FROM={re.escape(core_image)}$", dockerfile, re.M), "Dockerfile base must match the immutable core pin")
 check("nexu-io/od" not in dockerfile, "Dockerfile must not fall back to the upstream OpenDesign image")
 check("EXPOSE" not in dockerfile, "Dockerfile must not expose a port")
 check("OD_DATA_DIR=/data/opendesign" in dockerfile, "OD_DATA_DIR persistence is missing")
@@ -86,14 +86,11 @@ for setting in ["HA_OPENDESIGN_HOME=", "CLAUDE_CONFIG_DIR=", "CODEX_HOME=", "PI_
 check((ROOT / "rootfs/usr/local/bin/ha-opendesign-agents").exists(), "shared agent status/sync CLI is missing")
 check((ROOT / "tests/shared-agents.test.mjs").exists(), "shared agent integration tests are missing")
 check("sh /tmp/paseo-runtime/install.sh" in dockerfile and "start_child paseo" in launcher, "shared Paseo runtime must be installed and supervised")
-# 0.2.1: Omnigent is removed from the add-on (until it is stable).
-check(not (ROOT / "rootfs/etc/omnigent-host").exists() and not (ROOT / "rootfs/etc/profile.d/omnigent-host.sh").exists(), "the retired omnigent-host kit must not be shipped")
-check("omnigent" not in (ROOT / "rootfs/etc/profile.d/ha-opendesign-cli-help.sh").read_text().lower(), "CLI help must not mention Omnigent")
-check("omnigent-host-launch" not in launcher and "OG_" not in launcher and "OMNIGENT_" not in launcher, "launcher must not run an Omnigent host")
+# The legacy external supervisor remains absent; the native daemon owns Omnigent.
+check(not (ROOT / "rootfs/etc/omnigent-host").exists() and not (ROOT / "rootfs/etc/profile.d/omnigent-host.sh").exists(), "do not reintroduce a second host supervisor")
 check('su-exec open-design:open-design /usr/local/bin/node /opt/ha-opendesign/headless-entry.mjs' in launcher, "OpenDesign must start directly")
-check("retire_omnigent_state" in launcher and 'mv -- "$source" "$target"' in launcher and 'chmod 0700 "$backups"' in launcher and "rm " not in launcher.split("retire_omnigent_state() {")[1].split("\n}\n")[0], "0.2.0 Omnigent state must be moved (never deleted) into a 0700 backup")
-check("rm -rf /app/plugins/_official/woow/woow-omnigent /app/skills/woow-omnigent" in dockerfile and "test ! -e /app/plugins/_official/woow/woow-omnigent" in dockerfile and "test ! -e /app/skills/woow-omnigent" in dockerfile, "the core's woow-omnigent plugin and skill must be removed and checked absent")
-check(not re.search(r"^(ENTRYPOINT|CMD) .*omnigent", dockerfile, re.M) and "OMNIGENT_" not in dockerfile and "/etc/omnigent-host" not in dockerfile, "the image must not run or configure Omnigent")
+check(not re.search(r"^(ENTRYPOINT|CMD) .*omnigent", dockerfile, re.M), "the HA launcher must own PID 1")
+check(not re.search(r"OMNIGENT_(?:CONFIG_HOME|DATA_DIR)=", dockerfile), "native private host state must not be overridden globally")
 check("prepare_owned_dir" in launcher and "chown -h" in launcher, "privileged /data preparation must reject/fail closed on symlinks")
 check("/usr/sbin/nginx -e stderr" in launcher, "unprivileged nginx must use its inherited stderr descriptor under HA procfs")
 apk_block = re.search(r"RUN apk add --no-cache(.*?)&& rm -rf", dockerfile, re.S)

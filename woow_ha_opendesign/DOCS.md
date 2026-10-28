@@ -8,7 +8,7 @@ Use OpenDesign's native **API BYOK** controls in Settings. Provider, model, and 
 
 ## Access and persistence
 
-Use **Open Web UI** or the **OpenDesign** sidebar item. OpenDesign itself is ingress-only; the only declared LAN port is the optional built-in MCP endpoint below, which is not mapped unless you map it.
+Use **Open Web UI** or the **OpenDesign** sidebar item. In the 0.2.10 candidate, **Open Web UI** enters the native **Plugins** page so Omnigent can be opened from its card. OpenDesign itself is ingress-only; the only declared LAN port is the optional built-in MCP endpoint below, which is not mapped unless you map it.
 
 Projects, the OpenDesign database, application configuration, connector data, and generated state are stored beneath `/data/opendesign`. API BYOK credentials are deliberately excluded. The add-on requests cold backup so this directory is captured while the service is stopped.
 
@@ -49,7 +49,7 @@ Rendering is serialized and bounded by an absolute two-minute deadline, 64 slide
 
 The container starts a minimal root PID 1 because Home Assistant mounts `/data` as root at runtime. It creates and assigns only add-on-owned directories, safely removes the withdrawn `/data/opendesign/credentials` path without following symlinks, then launches OpenDesign and a loopback-only `ttyd` login terminal through `su-exec` as UID/GID 1001, nginx as its own UID `ha-ingress` (1002), and the built-in MCP server, which drops itself to UID `mcp` (10001). None of them inherits the Supervisor token. Only authenticated HA Ingress can reach the terminal route; its shell uses the persistent OpenDesign home so CLI authentication survives restarts.
 
-CI validates and smokes every build before architecture work. Pull requests and `main` build without pushing under `contents: read`; only a `main` run for a `config.yaml` version that has no Release yet (that is, a merged version-bump pull request) starts a publisher with `packages: write`; pushing a Git tag publishes nothing. Its preflight fails closed unless the amd64 version tag is absent from GHCR; the App Store's shared workflow then creates the `v<version>` tag and Release on that commit. Version tags are immutable: a failed release cannot be retried over the same version and requires another version-bump pull request. The image is amd64 only, like the core. Dockerfile defaults and CI/release inputs pin the published core `ghcr.io/woowtech/open-design-core:20261026.0712@sha256:366e337dc7ea192526468de33ad3f2f0ce97be3ffba9b8382a0c1d9ab88b1404`. Supervisor's local builder rejects digest syntax in `build.yaml` and otherwise silently substitutes its default base image, so that development path uses the published immutable tag `ghcr.io/woowtech/open-design-core:20261026.0712` for the same image.
+CI validates and smokes every build before architecture work. Pull requests and `main` build without pushing under `contents: read`; only a `main` run for a `config.yaml` version that has no Release yet (that is, a merged version-bump pull request) starts a publisher with `packages: write`; pushing a Git tag publishes nothing. Its preflight fails closed unless the amd64 version tag is absent from GHCR; the App Store's shared workflow then creates the `v<version>` tag and Release on that commit. Version tags are immutable: a failed release cannot be retried over the same version and requires another version-bump pull request. The image is amd64 only, like the core. This review branch targets the w2.10 core image (`ghcr.io/woowtech/open-design-core:20261027.1127`) by digest; its public import is pending. `build.yaml` uses the matching tag because Supervisor's local builder rejects digest syntax there and otherwise silently substitutes its default base image. Verify that the public tag resolves to the pinned digest before building or merging.
 
 ## Native API BYOK and OpenCode
 
@@ -57,12 +57,46 @@ The core image provides OpenCode `1.18.33`. OpenDesign's native API BYOK flow us
 
 The core image also provides Claude Code `2.1.296`, Codex CLI `0.162.1`, and Pi Coding Agent `1.1.0` on `PATH` for OpenDesign's Local AI discovery. The add-on build checks each version under UID 1001; the add-on does not reinstall these provider CLIs on startup. The shared core also supplies the native Paseo launcher. Users can open Local AI and rescan after updating the add-on image. Use the built-in **CLI Terminal** plugin (**Plugins → Expert suites → Personal**; `<Ingress>/console/`) for interactive provider sign-in. OpenDesign's own Plugins page and daemon-managed Skill staging provide the same selected plugin/Skill context to its supported agent adapters.
 
-## Omnigent (removed in 0.2.1)
+## Omnigent 0.2.10 candidate
 
-Omnigent is not part of the add-on until it is stable. 0.2.1 neither installs nor starts an Omnigent host, and deletes the core image's `woow-omnigent` plugin and skill, so OpenDesign offers neither (its built-in Omnigent status reports *not installed*). The pinned core still contains the `omnigent` CLI; it is unused and goes away with a core built without Omnigent.
+**Version 0.2.10 is a candidate.** It follows the 0.2.8 Paseo release and targets w2.10 core `20261027.1127` / `sha256:c8cd57f07adaef23b8dddbb22a8b75f97bdf8ca42c8bfbec1b284dc60ee5a4cf`. The core candidate has passed isolated PaaS Pi/OpenCode conversations but is not yet a public HA base. The existing w2.8 HA RC still returns HTTP 404 on settings reload and lists no Pi custom model. A new exact-source HA image, native GUI acceptance and backup recovery remain required before stable release.
 
-- **Your 0.2.0 Omnigent state is kept, not deleted:** at the first start of 0.2.1, `/data/opendesign/home/.omnigent` (Omnigent's configuration, host identity, logs and **the stored Omnigent login token**) is moved to `/data/opendesign/.backup/omnigent-<UTC time>/` (mode 0700; the add-on log says where). Delete that folder from the CLI Terminal when you no longer need it. It is in cold backups like the rest of `/data`. The **Omnigent connection setup** project that 0.2.0 created stays in your project list as an ordinary project (it no longer opens a connection dialog); delete it if you do not need it.
-- **How it was wired (to add it back):** 0.2.0 copied the `woow-paas-charts` `shared/omnigent-host` kit to `/etc/omnigent-host` (sha256-checked at build), started OpenDesign through the kit's `omnigent-host-launch` (which also ran its supervisor as UID 1001), exported the chart's `OG_*`/`OMNIGENT_*` settings pointing at `/data/opendesign/home/.omnigent` with sessions in `/data/opendesign/home/studio`, and sourced the kit's profile in the CLI Terminal (`/etc/profile.d/omnigent-host.sh`). See git history before 0.2.1 (commit `7a74551`).
+Choose **Open Web UI → Plugins → Omnigent → Open → Configure**. The native GUI asks for the Omnigent HTTPS server URL, username and password. It discovers only the four engines already in the image: Claude Code, Codex, Pi and OpenCode. Their provider sign-ins are separate; the integration does not install missing provider engines. Complete setup to see available models/modules and the real reply/stop verification results. No Omnigent credentials go into HA add-on options. Recheck settings reload, Pi custom-model discovery and native reply/stop on the new w2.10 HA image before relying on the flow.
+
+The native OpenDesign daemon owns the host and its lifecycle. The HA launcher continues to start OpenDesign directly and waits for its shutdown; there is no second `/etc/omnigent-host` supervisor. The chart's legacy `omnigentHost.enabled=false` remains correct. Native state lives in `/data/opendesign/integrations/omnigent/state.json`, with private host configuration, identity and tokens under `/data/opendesign/integrations/omnigent/host/`. The service derives this from `OD_DATA_DIR`. HA does not set a global `OMNIGENT_CONFIG_HOME`; the launcher clears inherited legacy `OMNIGENT_CONFIG_HOME`, `OMNIGENT_DATA_DIR` and `OG_*` location overrides before starting children.
+
+- **First use or upgrade from the retired integration:** enter fresh credentials in the GUI. Neither the old `/data/opendesign/home/.omnigent` nor `/data/opendesign/.backup/omnigent-*` is restored, copied, moved again or adopted automatically. Existing legacy projects also remain. Archived login tokens are still sensitive; delete their archives yourself when no longer needed.
+- **Restart or upgrade after new setup:** retain `/data`. The daemon keeps the new host identity and approved configuration and resumes the confirmed local host without opening a browser. The launcher no longer retires Omnigent state at each boot.
+- **Disable / re-enable / disconnect:** disabling stops the daemon-managed host; re-enabling requires fresh GUI sign-in. Disconnect clears login approval and stops the host. Restarts preserve a disabled choice.
+- **Cold backups:** `/data` includes both new Omnigent tokens/identity and any old archives, as well as MCP credentials. It does not include browser-local API BYOK keys. Treat the backup as a credential-bearing archive. Stop the original host before restoring the same identity elsewhere; concurrent copies must not both connect. Restore repairs OpenDesign ownership to UID/GID 1001. For rollback to a release without this integration, restore the backup taken before the upgrade; that older release cannot operate the new native integration.
+
+### Candidate verification and release handoff
+
+Before the stable release, verify the approved public core digest, review core CLI versions, and run `tests/run.sh`. On an isolated Docker builder, build the HA image and run `tests/container-smoke.sh <candidate-image>`. This mandatory smoke checks the real native daemon's fresh-login/disable/enable behavior, only-four-engine inventory, persisted disable state across container recreation and root ownership restore, and the real GUI form through the Supervisor-style ingress proxy, alongside existing MCP, terminal, BYOK and export checks. It never submits valid service credentials. Future core updates should use `.github/scripts/pin-core.sh <YYYYMMDD.HHMM> <sha256:digest>` to keep every build input aligned.
+
+For authenticated acceptance, the coordinator can run:
+
+```sh
+./tests/omnigent-connected-smoke.sh <candidate-image> /private/test-login.json /private/provider-home [next-candidate-image]
+```
+
+The file must be mode `0600` with JSON keys `server`, `username`, `password`. Supply a third argument: a private directory containing the authorized Claude/Codex login files and Pi/OpenCode provider configuration, in their normal HOME-relative paths. `tests/validate-omnigent-provider-fixture.py` lists the accepted files and rejects symlinks, extra files, public permissions and any legacy Omnigent state. An Omnigent account alone does not configure local engines. The optional upgrade image is the fourth argument.
+
+The harness creates only its own containers and volumes, mounts the credential file read-only, publishes no ports, prints no raw logs/responses, and removes its local resources afterwards. Provider files seed only the disposable HOME; they never enter the image or repository. It performs actual setup through the native API, requires real reply and stopped-session receipts for all four engines, checks one UID-1001 managed host, restarts before polling status (to prove automatic resume), archives cold `/data` and restores it to a separate volume with root ownership, optionally changes to a newer candidate image, then checks disable/re-enable/new login/disconnect and graceful host stop. It can incur model usage and leaves test-account host/session history. This is Docker packaging acceptance; actual HA Supervisor install/Ingress/backup/fresh restore acceptance remains a separate release gate.
+
+The launcher allows 35 seconds for daemon/host cleanup; Supervisor's `timeout: 45` leaves an outer margin before it kills the container. This uses the [standard Supervisor stop timeout](https://contributors.home-assistant.io/apps/reference/configuration/).
+
+The existing **Validate, build, and publish** workflow publishes a uniquely tagged, tested candidate from a **non-main branch** when supplied an immutable core:
+
+```sh
+gh workflow run build.yml --repo WOOWTECH/Woow_ha_opendesign_add_on \
+  --ref <candidate-branch> \
+  -f candidate_core_image="jcr-prod.woowtech.io/woow-paas-docker-local/open-design-core:<tag>-pending-approval@sha256:<digest>"
+```
+
+This branch-only path runs validation and full container smoke before publishing a unique `0.2.10-rc.<run>.<attempt>` image, verifies anonymous GHCR access, and records its source/core/image digest in the `ha-candidate-receipt` artifact. It does not create a stable Release or notify the Store. An imported immutable GHCR core is also accepted. Omitting the input runs ordinary checks against the checked-in approved core.
+
+After actual HA acceptance and the final version-bump PR merge, the existing immutable image → Release → Store notification/synchronization path remains authoritative. Store and Local Download must consume the released source/version and image digest; confirm their source SHA and catalog receipts after synchronization.
 
 ## Troubleshooting
 
@@ -154,9 +188,15 @@ Release maintainers: see [the 0.2.7 packaging/release gate](docs/paseo-release.m
 
 啟動時會在 UID 1001 下收緊 `.codex/auth.json`、`.codex/config.toml`、
 `.claude/.credentials.json`、`.claude/settings.json`、`.pi/agent/auth.json`、
-`.pi/agent/models.json` 與 `.pi/agent/settings.json` 為 `0600`，並將
-`.codex`、`.claude`、`.pi`、`.pi/agent` 設為 `0700`。檔案內容與專案權限不會改動，
+`.pi/agent/models.json`、`.pi/agent/settings.json`、OpenCode 的
+`.config/opencode/opencode.json`、`.config/opencode/opencode.jsonc` 與
+`.local/share/opencode/auth.json` 為 `0600`，並將 `.codex`、`.claude`、`.pi`、
+`.pi/agent`、`.config/opencode`、`.local/share/opencode` 設為 `0700`。
+共享父目錄 `.config`、`.local`、`.local/share` 及未列出的 provider 路徑不會被 chmod。
+檔案內容（包含 JSONC 註解）與專案權限不會改動，
 不存在的設定不會被建立。這補足原生還原可能帶回 `0644` 權限的情況。
+這些是持久化 HOME 中的 CLI 設定／登入資料；瀏覽器內的 API BYOK 設定仍不在備份中。
 
 這些私有路徑必須是一般目錄與單一 hard link 的一般檔案。遇到 symlink、多重
-hard link 或其他非一般檔案時會拒絕啟動，避免將權限修正套用到外部目標。
+hard link 或其他非一般檔案時會拒絕啟動；每一層祖先目錄也拒絕 symlink，
+避免將權限修正套用到外部目標。

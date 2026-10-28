@@ -3,7 +3,9 @@ set -Eeuo pipefail
 
 readonly DATA_DIR=/data/opendesign
 readonly NGINX_TMP=/tmp/ha-opendesign-nginx
-readonly SHUTDOWN_GRACE_SECONDS=25
+# Native Omnigent cancellation and host drain are bounded within 32 seconds.
+# Leave a margin before Supervisor's 45-second container stop timeout.
+readonly SHUTDOWN_GRACE_SECONDS=35
 # Supervised children (OpenDesign, nginx, ttyd, Paseo and the built-in MCP server). Every process started with start_child is required:
 # when any one exits, the launcher stops the others and exits so Supervisor
 # restarts the complete set. Add a process with one more start_child call below.
@@ -110,29 +112,6 @@ remove_obsolete_credentials() {
   fi
 }
 
-# 0.2.1 retired the Omnigent host (0.2.0 ran the woow-paas-charts omnigent-host
-# kit beside OpenDesign). Its state, including the stored Omnigent login, is
-# MOVED once out of the agents' home into a 0700 backup the user can delete;
-# nothing is deleted. Idempotent: once moved, there is nothing left to move.
-retire_omnigent_state() {
-  local source="$DATA_DIR/home/.omnigent" backups="$DATA_DIR/.backup" target
-  if [[ ! -e "$source" && ! -L "$source" ]]; then
-    return
-  fi
-  prepare_owned_dir "$backups"
-  chmod 0700 "$backups"
-  target="$backups/omnigent-$(date -u +%Y%m%dT%H%M%SZ)"
-  if [[ -e "$target" || -L "$target" ]]; then
-    target="$target-$$"
-  fi
-  # A rename inside /data: a symlink is moved as the link itself, never followed.
-  mv -- "$source" "$target"
-  if [[ -d "$target" && ! -L "$target" ]]; then
-    chmod 0700 "$target"
-  fi
-  echo "[ha-opendesign] Omnigent was removed in 0.2.1: moved its state (with the stored Omnigent login) to ${target}; delete it when no longer needed" >&2
-}
-
 # A Home Assistant backup restore extracts /data without the original owners:
 # OpenDesign's database and project files come back as root, and the daemon
 # (UID 1001) then fails with SQLITE_READONLY (measured on HAOS 18.1 /
@@ -199,7 +178,6 @@ for dir in "$DATA_DIR" "$DATA_DIR/home" "$DATA_DIR/export-render" "$DATA_DIR/exp
   }
   chmod 0750 "$dir"
 done
-retire_omnigent_state
 # Agent CLI config homes (CODEX_HOME etc. below). Codex warns when its home is
 # missing, so create the absent ones. Existing entries are the user's and are
 # not replaced; the private credential check below refuses unsafe links.
@@ -226,6 +204,12 @@ export CLAUDE_CONFIG_DIR="$HOME/.claude"
 export CODEX_HOME="$HOME/.codex"
 export PI_CODING_AGENT_DIR="$HOME/.pi/agent"
 export XDG_CONFIG_HOME="$HOME/.config"
+
+# The daemon owns Omnigent and derives its private state from OD_DATA_DIR.
+# Ignore location overrides inherited from old core/chart images: they could
+# adopt a retired login from home/.omnigent or start a second host manager.
+# Historical homes and .backup archives are left untouched, never restored.
+unset OMNIGENT_CONFIG_HOME OMNIGENT_DATA_DIR OG_CONFIG_HOME OG_DATA_DIR OG_STATE_DIR OG_STATUS_FILE OG_WORKSPACE OG_SERVER_URL OG_SERVER_URL_FILE
 
 # Opt the agent CLIs (and their libraries) out of telemetry, as in 0.2.0.
 export DO_NOT_TRACK=1

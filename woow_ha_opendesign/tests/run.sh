@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
+export PYTHONDONTWRITEBYTECODE=1
 cd "$(dirname "$0")/.."
 
 python3 tests/validate.py
@@ -13,18 +14,20 @@ bash -n mcp-runtime/tests/e2e/run-proof.sh
 bash -n mcp-runtime/tests/e2e/run-upgrade-proof.sh
 python3 tests/workflow-policy.test.py
 python3 tests/candidate-release.test.py
+python3 -B tests/registry-preflight.test.py
 python3 tests/backup-exclude.test.py
 python3 -B tests/ha-return.test.py
 python3 -B tests/credential-permissions.test.py
 python3 tests/sign-in-hint.test.py
 python3 tests/import-core-policy.test.py
+python3 tests/provider-fixture.test.py
 
 for file in rootfs/opt/ha-opendesign/*.js rootfs/opt/ha-opendesign/*.mjs tests/*.mjs mcp-runtime/tests/e2e/*.mjs docs/repro/*.cjs; do
   node --check "$file"
 done
 
 # bash -n checks only its first file argument: one call per script.
-for file in rootfs/usr/local/bin/ha-opendesign rootfs/usr/local/bin/ha-opendesign-agents .github/scripts/release-preflight.sh .github/scripts/import-core.sh .github/scripts/pin-core.sh tests/run.sh tests/container-smoke.sh tests/import-core.test.sh tests/pin-core.test.sh; do
+for file in rootfs/usr/local/bin/ha-opendesign rootfs/usr/local/bin/ha-opendesign-agents .github/scripts/release-preflight.sh .github/scripts/import-core.sh .github/scripts/pin-core.sh tests/run.sh tests/container-smoke.sh tests/omnigent-connected-smoke.sh tests/import-core.test.sh tests/pin-core.test.sh; do
   bash -n "$file"
 done
 node --test tests/*.test.mjs
@@ -33,7 +36,7 @@ bash tests/pin-core.test.sh
 
 shellcheck_bin=${SHELLCHECK_BIN:-shellcheck}
 if command -v "$shellcheck_bin" >/dev/null 2>&1; then
-  "$shellcheck_bin" rootfs/usr/local/bin/ha-opendesign .github/scripts/release-preflight.sh .github/scripts/import-core.sh .github/scripts/pin-core.sh tests/run.sh tests/container-smoke.sh tests/import-core.test.sh tests/pin-core.test.sh tests/paseo-ingress-e2e.sh paseo-runtime/install.sh
+  "$shellcheck_bin" rootfs/usr/local/bin/ha-opendesign .github/scripts/release-preflight.sh .github/scripts/import-core.sh .github/scripts/pin-core.sh tests/run.sh tests/container-smoke.sh tests/omnigent-connected-smoke.sh tests/import-core.test.sh tests/pin-core.test.sh tests/paseo-ingress-e2e.sh paseo-runtime/install.sh
 else
   echo "shellcheck: SKIP (not installed)"
 fi

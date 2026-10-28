@@ -109,6 +109,11 @@ check(candidate.get("needs") == "validate", "candidate must require validation")
 check(candidate.get("permissions") == {"contents": "read", "packages": "write"}, "candidate cannot write repository contents")
 steps = candidate.get("steps", [])
 step_names = [step.get("name") for step in steps]
+registry_check = next((step for step in steps if step.get("name") == "Check anonymous JCR registry endpoint"), {})
+check(registry_check.get("run") == "python3 -B .github/scripts/registry-preflight.py", "candidate must diagnose the anonymous registry before login")
+check(registry_check.get("if") == "startsWith(steps.candidate.outputs.core, 'jcr-prod.woowtech.io/')", "registry check must run only for a JCR core")
+check(not registry_check.get("env") and not registry_check.get("continue-on-error"), "anonymous registry check receives no secrets and must fail closed")
+check("Check anonymous JCR registry endpoint" in step_names and "Log in to JCR for candidate core read" in step_names and step_names.index("Check anonymous JCR registry endpoint") < step_names.index("Log in to JCR for candidate core read"), "registry check must precede the candidate JCR login")
 ordered = ["Validate candidate scope and immutable core", "Build candidate locally", "Full candidate container smoke", "Refuse existing candidate tag", "Log in to GHCR after smoke", "Push tested candidate and verify anonymous manifest"]
 check(all(name in step_names for name in ordered) and [step_names.index(name) for name in ordered] == sorted(step_names.index(name) for name in ordered), "candidate must smoke before credentials/push with immutable preflight")
 build = next((step for step in steps if step.get("name") == "Build candidate locally"), {})

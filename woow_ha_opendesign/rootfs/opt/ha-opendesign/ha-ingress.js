@@ -4,18 +4,11 @@
   const prefix = window.__OD_INGRESS_PATH__ || '';
   if (!prefix) return;
 
-  // Supervisor's public prefix is transport routing, not an OpenDesign route.
-  // Keep SPA history unprefixed so OpenDesign recognizes /settings and similar
-  // routes. Project raw/preview iframe documents must retain their transport
-  // prefix, however, because their initial URL is fetched through ingress.
+  // Keep the public transport prefix in the URL. Removing it after load makes
+  // a launcher popup's /settings/omnigent URL hit Home Assistant with a 404
+  // when the user reloads. OpenDesign's router strips this prefix for parsing.
   const nativeHistoryPushState = history.pushState;
   const nativeHistoryReplaceState = history.replaceState;
-  const initialLogicalPath = window.location.pathname.slice(prefix.length) || '/';
-  const isProjectIframeTransport = /^\/api\/projects\/[^/]+\/(?:raw|preview)(?:\/|$)/.test(initialLogicalPath);
-
-  if ((window.location.pathname === prefix || window.location.pathname.startsWith(`${prefix}/`)) && !isProjectIframeTransport) {
-    nativeHistoryReplaceState.call(history, history.state, '', `${initialLogicalPath}${window.location.search}${window.location.hash}`);
-  }
 
   const alreadyScoped = (pathname) => pathname === prefix
     || pathname.startsWith(`${prefix}/`)
@@ -115,13 +108,7 @@
   const logicalHistoryUrl = (value) => {
     const pathname = pathFromUrl(String(value));
     if (!pathname) return value;
-    if (isProjectIframeTransport) {
-      if (pathname === prefix || pathname.startsWith(`${prefix}/`) || pathname.startsWith('/api/hassio_ingress/')) return pathname;
-      return `${prefix}${pathname}`;
-    }
-    if (pathname === prefix) return '/';
-    if (pathname.startsWith(`${prefix}/`)) return pathname.slice(prefix.length) || '/';
-    return pathname;
+    return alreadyScoped(pathname) ? pathname : `${prefix}${pathname}`;
   };
   const wrapHistory = (method, native) => {
     history[method] = function logicalHistory(state, title, url) {
@@ -131,19 +118,6 @@
   };
   wrapHistory('pushState', nativeHistoryPushState);
   wrapHistory('replaceState', nativeHistoryReplaceState);
-
-  // Best effort: restore the transport prefix in the history entry before a
-  // user/browser leaves the iframe, so a manual reload remains ingress-routed.
-  window.addEventListener('beforeunload', () => {
-    if (!window.location.pathname.startsWith(prefix)) {
-      nativeHistoryReplaceState.call(
-        history,
-        history.state,
-        '',
-        `${prefix}${window.location.pathname}${window.location.search}${window.location.hash}`,
-      );
-    }
-  });
 
   const rewriteCss = (value) => typeof value === 'string'
     ? value.replace(/url\(\s*(["']?)(\/[^/][^"')\s]*)\1\s*\)/gi, (_match, quote, url) => `url(${quote}${rewrite(url)}${quote})`)

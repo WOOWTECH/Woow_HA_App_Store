@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.2.10
+
+- Restore the bundled native Omnigent plugin by removing the Dockerfile deletion guard. Require its adapter/host assets and preinstalled SDK 0.16.0 from the reviewed core; retain Claude Code, Codex, Pi and OpenCode as the only engines. The OpenDesign daemon owns host startup/shutdown; the legacy external supervisor stays disabled.
+- Stop retiring Omnigent state on each HA boot. New setup uses the daemon-private `/data/opendesign/integrations/omnigent/host` and must ask for URL/username/password in the GUI. Ignore inherited legacy location overrides; neither `home/.omnigent` nor `.backup/omnigent-*` is automatically adopted or deleted. New setup survives restart/upgrade and cold backup restore.
+- Allow 35 seconds for native cleanup with a 45-second Supervisor timeout; keep the Paseo 0.2.2 runtime shipped in 0.2.9, backup exclusions, native return navigation and credential-permission restore.
+- Add executable launcher persistence/shutdown tests, native daemon and GUI ingress smoke, and an opt-in real-service candidate harness for four-engine reply/stop, host resume, disable/re-enable/disconnect, cold restore and image upgrade. Preserve existing ingress, terminal, MCP, BYOK and export behavior.
+- **Migration/rollback:** retired users sign in again; already-configured new hosts retain `/data`. Backups contain Omnigent identity/login tokens and legacy archives. Stop the old host before restoring its identity elsewhere; rollback to a release without the integration requires the pre-upgrade backup. No HA option, port, architecture or image name changes.
+- Keep the Omnigent plugin settings pages reloadable through Home Assistant Ingress: the page keeps its Ingress address, so a browser reload returns the page instead of an HA 404 (issue #28), and the other plugin pages (terminal, MCP server, Paseo setup) behave the same.
+- Choosing **Configure** in the Omnigent plugin opens the setup in a daemon-created onboarding conversation: the page moves there and the connection dialog opens on top of it. Open the Omnigent card on the Plugins page again to return to the settings page.
+- After a native backup restore, Supervisor leaves the known provider credential files readable (`0644`); the add-on repairs them to `0600` (private directories `0700`) at startup, before the service runs.
+- Pin the w2.10 OpenDesign core `20261027.1127` (`sha256:c8cd57f0…`), copied to public GHCR without changing its digest. Home Assistant OS acceptance of this build (upgrade, Ingress reload, fresh and restored Omnigent connection, native backup restore) is recorded separately from this changelog.
+
 ## 0.2.9
 
 - Update the bundled Paseo runtime from 0.2.1 to the public 0.2.2 release. Its setup page recognizes Claude Code's official `claude.com` authorization URL, accepts the authorization code in the protected page, sends it to the Claude CLI, and waits up to 15 minutes for the provider to complete login.
@@ -8,6 +20,7 @@
 ## 0.2.8
 
 - Pin the public shared OpenDesign core 20261026.1751. The native Paseo plugin card and setup page open on first use; amd64 Home Assistant OS install and GUI acceptance are recorded separately from this source changelog.
+- This release does not expose the bundled Omnigent plugin in Home Assistant; Omnigent HA setup is introduced in 0.2.10.
 
 ## 0.2.7
 

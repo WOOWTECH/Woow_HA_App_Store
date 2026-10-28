@@ -1,5 +1,5 @@
 name: Woow HA OpenDesign
-version: "0.2.9"
+version: "0.2.10"
 slug: woow_ha_opendesign
 description: OpenDesign 0.24.1 (WoowTech core) with browser-local API BYOK, headless exports and a built-in MCP server
 url: https://github.com/WOOWTECH/Woow_ha_opendesign_add_on
@@ -8,9 +8,12 @@ arch:
 startup: application
 boot: auto
 init: false
-timeout: 30
+# Allow the native host to cancel active work and acknowledge its stopped state.
+timeout: 45
 ingress: true
 ingress_port: 8099
+# Supervisor appends this to /api/hassio_ingress/<token>/; no leading slash.
+ingress_entry: plugins
 ingress_stream: true
 panel_icon: mdi:palette-outline
 panel_title: OpenDesign

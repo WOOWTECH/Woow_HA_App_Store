@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import http from 'node:http';
 import { chromium } from 'playwright-core';
+import { checkOmnigentSetup } from './omnigent-browser-contract.mjs';
 
 const prefix = '/api/hassio_ingress/abcdefghijklmnop';
 const upstreamPort = Number(process.env.OD_INGRESS_PORT || 8099);
@@ -161,20 +162,24 @@ try {
     env: { ...process.env, HOME: chromiumHome, XDG_CONFIG_HOME: configHome, XDG_CACHE_HOME: cacheHome },
     args: ['--no-sandbox', '--disable-dev-shm-usage', '--disable-http2', '--disable-quic'],
   });
-  // A new HA user may need Paseo before choosing an OpenDesign model. Exercise
-  // the core's first-run /plugins route through the actual Ingress rewrite.
+  // A fresh installation must expose both plugin setup pages before a model is chosen.
   const firstRunContext = await browser.newContext();
   const firstRunPlugins = await firstRunContext.newPage();
   await firstRunPlugins.goto(`http://127.0.0.1:${proxyPort}${prefix}/plugins`, { waitUntil: 'domcontentloaded', timeout: 30_000 });
-  const paseoLink = firstRunPlugins.getByTestId('plugins-card-open-woow-paseo');
-  await paseoLink.waitFor({ timeout: 30_000 });
-  assert.notEqual(new URL(firstRunPlugins.url()).pathname, '/onboarding', 'fresh /plugins must not redirect to model onboarding');
-  assert.equal(await paseoLink.getAttribute('href'), `${prefix}/paseo/setup/`);
-  assert.equal(await paseoLink.getAttribute('target'), '_blank');
+  const firstRunPaseo = firstRunPlugins.getByTestId('plugins-card-open-woow-paseo');
+  const firstRunOmnigent = firstRunPlugins.getByTestId('plugins-card-open-woow-omnigent');
+  await Promise.all([firstRunPaseo.waitFor({ timeout: 30_000 }), firstRunOmnigent.waitFor({ timeout: 30_000 })]);
+  assert.equal(new URL(firstRunPlugins.url()).pathname, `${prefix}/plugins`, 'fresh /plugins must stay inside HA Ingress');
+  assert.equal(await firstRunPaseo.getAttribute('href'), `${prefix}/paseo/setup/`);
+  assert.equal(await firstRunPaseo.getAttribute('target'), '_blank');
+  assert.equal(await firstRunOmnigent.getAttribute('href'), `${prefix}/settings/omnigent`);
+  assert.equal(await firstRunOmnigent.getAttribute('target'), '_blank');
   await firstRunContext.close();
 
   const context = await browser.newContext({ acceptDownloads: true });
   await context.addInitScript(() => {
+    localStorage.setItem('open-design:locale', 'en');
+    localStorage.setItem('open-design:locale-source', 'manual');
     localStorage.setItem('open-design:config', JSON.stringify({ onboardingCompleted: true }));
   });
   const page = await context.newPage();
@@ -240,6 +245,7 @@ try {
   await terminalPage.keyboard.press('Enter');
   await terminalInput;
   await terminalPage.close();
+  await checkOmnigentSetup(pluginsPage, prefix);
   await pluginsPage.close();
   try {
     await page.waitForFunction(
@@ -259,15 +265,8 @@ try {
     console.error(`OpenDesign bootstrap diagnostics: ${JSON.stringify(diagnostics)}`);
     throw error;
   }
-  // 0.2.1 removed Omnigent: without the woow-omnigent plugin the core's native
-  // integration must not open its setup project or connection dialog.
-  const onboarding = await page.waitForURL((url) => url.pathname.startsWith('/projects/'), { timeout: 15_000 })
-    .then(() => true, () => false);
-  assert.equal(onboarding, false, 'no Omnigent setup project may open on first load');
-  assert.equal(await page.getByText('Connect Omnigent', { exact: true }).count(), 0, 'no Omnigent connection dialog');
-  const omnigentText = await page.evaluate(() => (document.body.innerText.match(/[^\n]*omnigent[^\n]*/gi) ?? []).slice(0, 10));
-  console.log(`Omnigent text on the home page: ${JSON.stringify(omnigentText)}`);
-  assert.equal(new URL(page.url()).pathname, '/', 'ingress transport prefix must be hidden from OpenDesign route logic');
+  // Setup is an explicit native plugin action; an unrelated home tab stays home.
+  assert.equal(new URL(page.url()).pathname, `${prefix}/`, 'ingress transport prefix must remain reloadable');
   // OpenDesign 0.24.1: with the sidebar collapsed the nav-rail buttons sit
   // under the main pane, expanding it re-renders (detaches) them, and two
   // buttons are named Settings. Expand first, let the layout settle, click the
@@ -281,7 +280,7 @@ try {
           await page.waitForTimeout(500);
         }
         await locator().click({ timeout: 10_000 });
-        await page.waitForURL((url) => url.pathname === pathname, { timeout: 10_000 });
+        await page.waitForURL((url) => url.pathname === `${prefix}${pathname}`, { timeout: 10_000 });
         return;
       } catch (error) {
         if (attempt >= 3) throw error;

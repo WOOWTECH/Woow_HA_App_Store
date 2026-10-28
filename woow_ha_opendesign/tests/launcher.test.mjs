@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { lstat, mkdtemp, mkdir, readdir, readFile, rm, stat, symlink, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -8,7 +8,7 @@ import test from 'node:test';
 const launcher = await readFile(new URL('../rootfs/usr/local/bin/ha-opendesign', import.meta.url), 'utf8');
 
 test('launcher bounds TERM shutdown before KILL and reap', () => {
-  assert.match(launcher, /readonly SHUTDOWN_GRACE_SECONDS=25/);
+  assert.match(launcher, /readonly SHUTDOWN_GRACE_SECONDS=35/);
   const term = launcher.indexOf('kill -TERM');
   const deadline = launcher.indexOf('deadline=$((SECONDS + SHUTDOWN_GRACE_SECONDS))');
   const kill = launcher.indexOf('kill -KILL');
@@ -101,61 +101,6 @@ ${launcher.slice(superviseStart)}
   const result = spawnSync('bash', ['-c', harness], { encoding: 'utf8', timeout: 10_000 });
   assert.equal(result.status, 3, result.stderr || result.error?.message);
   assert.match(result.stderr, /required process second exited \(status=3\); stopping its peers/);
-});
-
-test('OpenDesign starts directly: no Omnigent host (removed in 0.2.1)', () => {
-  assert.match(launcher, /start_child opendesign \\\n  "\$\{no_supervisor_env\[@\]\}" su-exec open-design:open-design \/usr\/local\/bin\/node \/opt\/ha-opendesign\/headless-entry\.mjs\n/);
-  assert.doesNotMatch(launcher, /omnigent-host-launch|OMNIGENT_KIT|\/etc\/omnigent-host|export OG_|export OMNIGENT_/);
-  assert.doesNotMatch(launcher, /"\$DATA_DIR\/home\/(\.omnigent|studio)"\n/, 'the launcher must not (re)create Omnigent directories');
-  for (const setting of ['DO_NOT_TRACK=1', 'DISABLE_TELEMETRY=1']) assert.ok(launcher.includes(`export ${setting}`), `missing export ${setting}`);
-});
-
-test('0.2.0 Omnigent state is moved once into a 0700 backup, never deleted or followed', async () => {
-  const start = launcher.indexOf('retire_omnigent_state() {');
-  const end = launcher.indexOf('\n}\n', start) + 3;
-  assert.ok(start >= 0 && end > start);
-  const root = await mkdtemp(path.join(tmpdir(), 'ha-opendesign-omnigent-'));
-  // prepare_owned_dir (tested above) chowns to open-design; here it only creates the directory.
-  const harness = (dataDir) => `set -Eeuo pipefail
-DATA_DIR=${JSON.stringify(dataDir)}
-prepare_owned_dir() { [[ ! -L "$1" ]] && mkdir -p -- "$1"; }
-${launcher.slice(start, end)}
-retire_omnigent_state`;
-  try {
-    const data = path.join(root, 'data');
-    await mkdir(path.join(data, 'home', '.omnigent', 'omnigent-host'), { recursive: true, mode: 0o755 });
-    await writeFile(path.join(data, 'home', '.omnigent', 'auth_tokens.json'), '{"fake": "login"}');
-    let result = spawnSync('bash', ['-c', harness(data)], { encoding: 'utf8' });
-    assert.equal(result.status, 0, result.stderr);
-    assert.match(result.stderr, /Omnigent was removed in 0\.2\.1: moved its state \(with the stored Omnigent login\) to .*\/\.backup\/omnigent-\d{8}T\d{6}Z; delete it when no longer needed/);
-    const backups = await readdir(path.join(data, '.backup'));
-    assert.equal(backups.length, 1);
-    assert.match(backups[0], /^omnigent-\d{8}T\d{6}Z$/);
-    const moved = path.join(data, '.backup', backups[0]);
-    assert.equal(await readFile(path.join(moved, 'auth_tokens.json'), 'utf8'), '{"fake": "login"}');
-    assert.equal((await stat(moved)).mode & 0o777, 0o700);
-    assert.equal((await stat(path.join(data, '.backup'))).mode & 0o777, 0o700);
-    await assert.rejects(stat(path.join(data, 'home', '.omnigent')));
-    // Idempotent: nothing left to move, nothing logged.
-    result = spawnSync('bash', ['-c', harness(data)], { encoding: 'utf8' });
-    assert.equal(result.status, 0, result.stderr);
-    assert.equal(result.stderr, '');
-    assert.equal((await readdir(path.join(data, '.backup'))).length, 1);
-    // A symlinked .omnigent is moved as the link itself; its target is never touched.
-    const outside = path.join(root, 'outside');
-    await mkdir(outside, { mode: 0o755 });
-    await writeFile(path.join(outside, 'keep.txt'), 'keep');
-    await symlink(outside, path.join(data, 'home', '.omnigent'));
-    result = spawnSync('bash', ['-c', harness(data)], { encoding: 'utf8' });
-    assert.equal(result.status, 0, result.stderr);
-    const links = (await readdir(path.join(data, '.backup'))).filter((name) => name !== backups[0]);
-    assert.equal(links.length, 1);
-    assert.ok((await lstat(path.join(data, '.backup', links[0]))).isSymbolicLink());
-    assert.equal((await stat(outside)).mode & 0o777, 0o755);
-    assert.equal(await readFile(path.join(outside, 'keep.txt'), 'utf8'), 'keep');
-  } finally {
-    await rm(root, { recursive: true, force: true });
-  }
 });
 
 test('restored /data is handed back to open-design before any child starts', () => {
