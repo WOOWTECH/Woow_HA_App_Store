@@ -1,7 +1,7 @@
 # Tests for the upgrade comparison (pipeline #89) before a change reaches the
 # reusable woow-addon-upgrade-check.yml that every managed source repo calls.
-# addon_sync.release imports upgrade_check for the Release notes (#119), and
-# every source repo's release runs test_addon_sync.py, so it runs here too.
+# upgrade_check imports addon_sync's Release rules (#119), and every source
+# repo's release runs addon_sync, so test_addon_sync.py runs here too.
 name: Upgrade comparison tests
 'on':
   pull_request:

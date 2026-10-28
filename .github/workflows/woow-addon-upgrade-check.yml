@@ -179,8 +179,8 @@ jobs:
             # ref_policy main: the Store follows the default branch, so users run what the PR base has.
             target="${BASE_SHA}"
           else
-            # Formal-Release filter, tag rule and ordering are the ones the Release notes use (addon_sync, upgrade_check.version_cmp).
-            target="$(python3 tooling/.addon-sync/upgrade_check.py latest-release --registry tooling/.addon-sync/registry.json --repo "${REPO}" --component "${id}" <<<"${releases}")" \
+            # Formal-Release filter, tag rule, ordering and "the version must go up from it" are the Release notes' (addon_sync).
+            target="$(python3 tooling/.addon-sync/upgrade_check.py latest-release --registry tooling/.addon-sync/registry.json --repo "${REPO}" --component "${id}" --version "${version}" <<<"${releases}")" \
               || { printf '%s\n' "${target}"; exit 1; }  # on failure the output is its ::error (already escaped)
           fi
           # Like the PR's version (detect step): refused with a control character before use.

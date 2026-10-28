@@ -606,6 +606,11 @@ class ComparisonTarget(StepHarness):
         r,plan,_=self.run_step('plan',releases=('v0.9.0','v1.0.0','v1.0.0rc1'),skip='x')
         self.assertEqual(r.returncode,0,r.stdout+r.stderr);self.assertEqual(plan['target'],'v1.0.0')
     @needs_shell
+    def test_version_not_newer_than_the_target_fails_when_the_target_is_chosen(self):
+        # The Release notes' rule (addon_sync.comparison_target): the PR's version must go up from the latest formal Release.
+        r,plan,_=self.run_step('plan',releases=('v1.0.0','v1.2.0'),skip='x')
+        self.assertEqual(r.returncode,1,r.stdout+r.stderr);self.assertIn('comparison target 1.2.0',r.stdout);self.assertEqual(plan,{})
+    @needs_shell
     def test_drafts_and_prereleases_are_not_comparison_targets(self):
         releases=('v1.0.0',{'tag_name':'v1.2.0','draft':True,'prerelease':False},{'tag_name':'v1.1.0','draft':False,'prerelease':True})
         r,plan,_=self.run_step('plan',releases=releases,skip='x')
