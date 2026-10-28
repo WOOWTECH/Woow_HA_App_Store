@@ -41,11 +41,13 @@ upgrade-notes.yaml, next to config.yaml, created only when needed:
 Release notes (#119): `release-notes` prints the declarations since the last formal Release as
 two sections, 破壞性變更與遷移方式 and 已接受的漏洞, and nothing when there are none.
 addon_sync.release (woow-addon-release.yml) and Woow_ha_odoo's release.yml put them on the Release.
+The version order, the parsing of this file and the Release notes are addon_sync's (it publishes the Releases).
 """
 from __future__ import annotations
-import argparse, functools, json, os, pathlib, re, secrets, sys
+import argparse, json, os, pathlib, re, secrets, sys
 import yaml
-from packaging.version import InvalidVersion, Version
+# addon_sync owns the Release rules (version order, upgrade-notes.yaml parsing, Release notes); it does not import this module.
+from addon_sync import declaration_text, declarations, find_component, formal_versions, latest_release, release_notes, release_tag, workflow_command
 
 RANGED={'int','float','str'}
 
@@ -126,84 +128,6 @@ def category1(old, new):
     if old.get('image')!=new.get('image'):found.append(('image-changed','image'))
     return found,notices
 
-REBUILD=re.compile(r'^(\d+(?:\.\d+)*)(?:-v?(\d+))?$')
-
-def version_cmp(a, b):
-    """-1, 0 or 1. PEP 440 where possible (Woow_haos_ha_core `2026.9.1-1` is a post-release); else a dotted number with an
-    optional rebuild suffix `-v<N>` or `-<N>` (nginxpm `2.12.4-v2` < `2.12.4-v3`; no suffix sorts first); else the leading
-    dotted number alone. A pair that cannot be ordered is an error."""
-    if a==b:return 0
-    try:x,y=Version(a),Version(b)
-    except InvalidVersion:
-        m,n=REBUILD.match(a),REBUILD.match(b)
-        if m and n:x,y=(tuple(map(int,m[1].split('.'))),int(m[2] or -1)),(tuple(map(int,n[1].split('.'))),int(n[2] or -1))
-        else:
-            m,n=re.match(r'^(\d+(?:\.\d+)*)',a),re.match(r'^(\d+(?:\.\d+)*)',b)
-            if not m or not n:raise ValueError(f'cannot order versions {a!r} and {b!r}')
-            x,y=tuple(map(int,m[1].split('.'))),tuple(map(int,n[1].split('.')))
-        if x==y:raise ValueError(f'cannot order versions {a!r} and {b!r}')
-    return -1 if x<y else 1
-
-def _is_version(v):
-    """True when version_cmp can read `v` (PEP 440, a dotted number with a rebuild suffix, or a leading dotted number)."""
-    try:Version(v);return True
-    except InvalidVersion:return bool(re.match(r'^\d+(?:\.\d+)*',v))
-
-def latest_release(versions):
-    """The newest of `versions` by version_cmp, or None; strings that are not versions (a stray `nightly` tag) are ignored.
-    The PR check's comparison target and the Release notes' window both use this, so they cannot disagree."""
-    found=[v for v in versions if _is_version(v)]
-    return max(found,key=functools.cmp_to_key(version_cmp)) if found else None
-
-def _text(entry, field):
-    """A declaration's migration or reason, stripped; '' when it is missing or blank (the declaration then does not count)."""
-    return str(entry.get(field) or '').strip()
-
-SECTIONS={'breaking':('change','key','migration'),'accepted_vulnerabilities':('id','package','reason')}
-
-def declarations(notes, after, upto):
-    """Entries of upgrade-notes.yaml whose version is in (after, upto]; `after` None means every version up to `upto`.
-
-    Returns {section: [entry + {'version'}]}. A malformed file raises ValueError (the check fails, it does not pass).
-    Shared with the Release-notes mode (#119)."""
-    out={k:[] for k in SECTIONS}
-    if notes is None:return out
-    if not isinstance(notes,dict):raise ValueError('upgrade-notes.yaml must map versions to sections')
-    for version,body in notes.items():
-        if not isinstance(version,str):raise ValueError(f'version key {version!r} must be a quoted string, e.g. "{version}"')
-        if not isinstance(body,dict):raise ValueError(f'{version}: must be a mapping of sections')
-        for section,entries in body.items():
-            if section not in SECTIONS:raise ValueError(f'{version}: unknown section {section!r} (expected {", ".join(SECTIONS)})')
-            if not isinstance(entries,list):raise ValueError(f'{version}.{section}: must be a list')
-            for e in entries:
-                if not isinstance(e,dict) or any(k not in e for k in SECTIONS[section][:2]):raise ValueError(f'{version}.{section}: every entry needs {" and ".join(SECTIONS[section][:2])}')
-        if version_cmp(version,upto)>0 or (after is not None and version_cmp(version,after)<=0):continue
-        for section,entries in body.items():out[section]+=[dict(e,version=version) for e in entries]
-    return out
-
-RELEASE_SECTIONS=(('breaking','破壞性變更與遷移方式',lambda e:f'`{e["change"]}` `{e["key"]}`（{e["version"]}）','migration'),
-    ('accepted_vulnerabilities','已接受的漏洞',lambda e:f'{e["id"]}（{e["package"]}，{e["version"]}）','reason'))
-
-def release_notes(notes, version, released=()):
-    """Markdown the Release of `version` adds to its notes; '' when nothing is declared.
-
-    `released`: versions that already have a formal Release. Only sections after the newest of them below `version`
-    count, the same (comparison target, new] range the PR check used, so a declaration appears on one Release only."""
-    def below(v):
-        try:return version_cmp(v,version)<0
-        except ValueError:return False  # a tag that is not a version (or cannot be ordered) is not a Release of this add-on
-    after=latest_release([v for v in released if v!=version and below(v)])
-    found=declarations(notes,after,version);out=[]
-    for section,title,label,text_key in RELEASE_SECTIONS:
-        if not found[section]:continue
-        lines=[]
-        for e in found[section]:
-            text=_text(e,text_key)
-            if not text:raise ValueError(f'{e["version"]}.{section}: {label(e)} has no {text_key}')
-            lines.append(f'- {label(e)}：'+text.replace('\n','\n  '))
-        out.append(f'## {title}\n\n'+'\n'.join(lines)+'\n')
-    return '\n'.join(out)
-
 def _cell(value):
     """Text for a Markdown table cell: a | or a line break would end the cell or the row (as branch_rules.main does)."""
     return re.sub(r'\r\n|\r|\n','<br>',str(value).replace('|','\\|'))
@@ -280,20 +204,20 @@ def compare(old, new, old_version, new_version, notes=None, old_scan=None, new_s
     sections=declarations(notes,old_version,new_version);declared,accepted=sections['breaking'],sections['accepted_vulnerabilities']
     # The Release notes (#119) publish every migration and reason and fail on an empty one, so check them here
     # with or without a comparison target or scan: the merge is the release approval (ADR-0005).
-    problems=[f'{d["version"]}: {d["change"]} {d["key"]} has no migration' for d in declared if not _text(d,'migration')]
-    problems+=[f'{d["version"]}: accepted {d["id"]} {d["package"]} has no reason' for d in accepted if not _text(d,'reason')]
+    problems=[f'{d["version"]}: {d["change"]} {d["key"]} has no migration' for d in declared if not declaration_text(d,'migration')]
+    problems+=[f'{d["version"]}: accepted {d["id"]} {d["package"]} has no reason' for d in accepted if not declaration_text(d,'reason')]
     if old is None:
         report=[f'### {name} {new_version}','',('**Blocked**: invalid declaration; ' if problems else '**Passed**: ')+'no comparison target (no earlier formal Release), so there is nothing to compare.']
         if problems:report+=['','Invalid declarations:','']+[f'- {p}' for p in problems]
         return {'blocked':bool(problems),'vulnerabilities':None,'breaking':[],'notices':[],'unmatched':[],'problems':problems,'report':'\n'.join(report)+'\n'}
     found,notes_only=category1(old,new)
-    valid={(d['change'],d['key']):d for d in declared if _text(d,'migration')}
+    valid={(d['change'],d['key']):d for d in declared if declaration_text(d,'migration')}
     breaking=[{'change':c,'key':k,'declared':(c,k) in valid} for c,k in found]
     notices=[{'change':c,'key':k,'detail':d} for c,k,d in notes_only]
     unmatched=[{'change':d['change'],'key':d['key'],'version':d['version']} for d in declared if (d['change'],d['key']) not in set(found)]
     vulns=category4(old_scan,new_scan) if (old_scan,new_scan)!=(None,None) else None
     if vulns is not None:
-        reasons={(d['id'],d['package']):_text(d,'reason') for d in accepted if _text(d,'reason')}
+        reasons={(d['id'],d['package']):declaration_text(d,'reason') for d in accepted if declaration_text(d,'reason')}
         for f in vulns['new_fixable']:
             f['accepted']=(f['id'],f['package']) in reasons
             if f['accepted']:f['reason']=reasons[(f['id'],f['package'])]
@@ -303,7 +227,7 @@ def compare(old, new, old_version, new_version, notes=None, old_scan=None, new_s
     r=[f'### {name} {old_version} → {new_version}','',('**Blocked**: undeclared breaking change, new fixable vulnerability, or invalid declaration.' if blocked else '**Passed**.'),'']
     if breaking:
         r+=['Breaking changes (each needs an entry in `'+notes_path+'`):','','| change | key | declared | migration |','|---|---|---|---|']
-        r+=[f'| `{_cell(b["change"])}` | `{_cell(b["key"])}` | {"yes" if b["declared"] else "**no**"} | {_cell(_text(valid[(b["change"],b["key"])],"migration")) if b["declared"] else ""} |' for b in breaking]
+        r+=[f'| `{_cell(b["change"])}` | `{_cell(b["key"])}` | {"yes" if b["declared"] else "**no**"} | {_cell(declaration_text(valid[(b["change"],b["key"])],"migration")) if b["declared"] else ""} |' for b in breaking]
         missing=[b for b in breaking if not b['declared']]
         if missing:r+=['','Add to `'+notes_path+'` and write the migration:','','```yaml',_paste(new_version,missing),'```']
         r.append('')
@@ -337,7 +261,6 @@ def _load(path, kind):
 
 def _error(title, message):
     """An ::error workflow command; PR-controlled text is escaped (addon_sync.workflow_command)."""
-    from addon_sync import workflow_command  # addon_sync imports this module, so import it here, not at the top
     print(workflow_command('error',title,message))
 
 def main(argv=None):
@@ -357,16 +280,15 @@ def main(argv=None):
     t.add_argument('--component',required=True,help='add-on id in the registry')
     a=p.parse_args(argv)
     if a.command=='latest-release':
-        # The registry lookup, Release filter and tag rule are addon_sync's, so the PR check and the Release notes agree; addon_sync imports this module.
-        from addon_sync import find_component, latest_release_tag
+        # The registry lookup, Release filter, tag rule and order are addon_sync's, so the PR check and the Release notes agree.
         try:
             provider,comp=find_component(_load(a.registry,'json'),a.repo,a.component)
             releases=json.load(sys.stdin)
             if not isinstance(releases,list):raise ValueError('stdin is not a JSON array of Releases')
-            tag=latest_release_tag(provider,comp,releases)
+            latest=latest_release(formal_versions(provider,comp,releases))
         except (ValueError,KeyError,TypeError,AttributeError,OSError) as e:
             _error('Upgrade comparison failed',f'Releases of {a.repo} {a.component}: {e}');return 2
-        if tag is not None:print(tag)
+        if latest is not None:print(release_tag(provider,comp,latest))
         return 0
     if a.command=='release-notes':
         try:text=release_notes(_load(a.notes,'optional'),a.version,a.released)

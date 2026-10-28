@@ -352,6 +352,11 @@ class ReleaseNotes(unittest.TestCase):
                 with self.assertRaises(ValueError):u.release_notes({'1.3.0':{section:[dict(NOTES['1.3.0'][section][0],**{field:' '})]}},'1.3.0')
 class LatestRelease(unittest.TestCase):
     """The PR check's comparison target and the Release notes' window use one ordering: version_cmp."""
+    def test_addon_sync_does_not_import_this_module(self):
+        # One direction only: upgrade_check uses addon_sync's Release rules, addon_sync never needs upgrade_check.
+        import subprocess,sys
+        r=subprocess.run([sys.executable,'-c',"import sys,addon_sync;print('upgrade_check' in sys.modules)"],cwd=pathlib.Path(__file__).resolve().parent,capture_output=True,text=True)
+        self.assertEqual(r.stdout.strip(),'False',r.stderr)
     def test_orders_with_version_cmp_where_sort_v_disagrees(self):
         # sort -V puts 1.2.0rc1 after 1.2.0 and 2026.9.1-10 is fine either way; PEP 440 says rc1 comes first.
         self.assertEqual(u.latest_release(['1.2.0rc1','1.2.0','1.1.9']),'1.2.0')

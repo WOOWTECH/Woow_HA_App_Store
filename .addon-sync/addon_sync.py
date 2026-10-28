@@ -8,10 +8,9 @@ public outboxes. It runs on the woow-addon-ready dispatch a source sends after a
 new notification, with its schedule as the fallback.
 """
 from __future__ import annotations
-import argparse, base64, hashlib, io, json, os, pathlib, re, shutil, subprocess, tarfile, tempfile, urllib.error, urllib.parse, urllib.request
+import argparse, base64, functools, hashlib, io, json, os, pathlib, re, shutil, subprocess, tarfile, tempfile, urllib.error, urllib.parse, urllib.request
 import yaml
 from packaging.version import Version, InvalidVersion
-import upgrade_check
 
 BRANCH = 'woow-addon-sync'
 EVENT_FILE = 'notification.json'
@@ -321,14 +320,90 @@ def find_component(registry, repo, cid):
     if comp is None:raise KeyError(f'no component {cid}')
     return provider,comp
 
-def latest_release_tag(provider, comp, releases):
-    """Tag of the add-on's latest formal Release among GitHub's `releases`; None when it has none."""
-    latest=upgrade_check.latest_release(formal_versions(releases,release_tag(provider,comp,'')))
-    return None if latest is None else release_tag(provider,comp,latest)
-
-def formal_versions(releases, prefix):
-    """Versions of the formal Releases (not draft, not prerelease) among GitHub's `releases` whose tag starts with prefix."""
+def formal_versions(provider, comp, releases):
+    """Versions of the add-on's formal Releases (not draft, not prerelease) among GitHub's `releases`, by its tag rule."""
+    prefix=release_tag(provider,comp,'')
     return [r['tag_name'][len(prefix):] for r in releases if not r.get('draft') and not r.get('prerelease') and r.get('tag_name','').startswith(prefix)]
+
+# Release rules shared with upgrade_check (pipeline #89, #119): version order, the upgrade-notes.yaml format
+# (documented in upgrade_check's docstring) and the Release notes built from it.
+REBUILD=re.compile(r'^(\d+(?:\.\d+)*)(?:-v?(\d+))?$')
+
+def version_cmp(a, b):
+    """-1, 0 or 1. PEP 440 where possible (Woow_haos_ha_core `2026.9.1-1` is a post-release); else a dotted number with an
+    optional rebuild suffix `-v<N>` or `-<N>` (nginxpm `2.12.4-v2` < `2.12.4-v3`; no suffix sorts first); else the leading
+    dotted number alone. A pair that cannot be ordered is an error."""
+    if a==b:return 0
+    try:x,y=Version(a),Version(b)
+    except InvalidVersion:
+        m,n=REBUILD.match(a),REBUILD.match(b)
+        if m and n:x,y=(tuple(map(int,m[1].split('.'))),int(m[2] or -1)),(tuple(map(int,n[1].split('.'))),int(n[2] or -1))
+        else:
+            m,n=re.match(r'^(\d+(?:\.\d+)*)',a),re.match(r'^(\d+(?:\.\d+)*)',b)
+            if not m or not n:raise ValueError(f'cannot order versions {a!r} and {b!r}')
+            x,y=tuple(map(int,m[1].split('.'))),tuple(map(int,n[1].split('.')))
+        if x==y:raise ValueError(f'cannot order versions {a!r} and {b!r}')
+    return -1 if x<y else 1
+
+def _is_version(v):
+    """True when version_cmp can read `v` (PEP 440, a dotted number with a rebuild suffix, or a leading dotted number)."""
+    try:Version(v);return True
+    except InvalidVersion:return bool(re.match(r'^\d+(?:\.\d+)*',v))
+
+def latest_release(versions):
+    """The newest of `versions` by version_cmp, or None; strings that are not versions (a stray `nightly` tag) are ignored.
+    The PR check's comparison target and the Release notes' window both use this, so they cannot disagree."""
+    found=[v for v in versions if _is_version(v)]
+    return max(found,key=functools.cmp_to_key(version_cmp)) if found else None
+
+def declaration_text(entry, field):
+    """A declaration's migration or reason, stripped; '' when it is missing or blank (the declaration then does not count)."""
+    return str(entry.get(field) or '').strip()
+
+SECTIONS={'breaking':('change','key','migration'),'accepted_vulnerabilities':('id','package','reason')}
+
+def declarations(notes, after, upto):
+    """Entries of upgrade-notes.yaml whose version is in (after, upto]; `after` None means every version up to `upto`.
+
+    Returns {section: [entry + {'version'}]}. A malformed file raises ValueError (the check fails, it does not pass).
+    Shared with the Release-notes mode (#119)."""
+    out={k:[] for k in SECTIONS}
+    if notes is None:return out
+    if not isinstance(notes,dict):raise ValueError('upgrade-notes.yaml must map versions to sections')
+    for version,body in notes.items():
+        if not isinstance(version,str):raise ValueError(f'version key {version!r} must be a quoted string, e.g. "{version}"')
+        if not isinstance(body,dict):raise ValueError(f'{version}: must be a mapping of sections')
+        for section,entries in body.items():
+            if section not in SECTIONS:raise ValueError(f'{version}: unknown section {section!r} (expected {", ".join(SECTIONS)})')
+            if not isinstance(entries,list):raise ValueError(f'{version}.{section}: must be a list')
+            for e in entries:
+                if not isinstance(e,dict) or any(k not in e for k in SECTIONS[section][:2]):raise ValueError(f'{version}.{section}: every entry needs {" and ".join(SECTIONS[section][:2])}')
+        if version_cmp(version,upto)>0 or (after is not None and version_cmp(version,after)<=0):continue
+        for section,entries in body.items():out[section]+=[dict(e,version=version) for e in entries]
+    return out
+
+RELEASE_SECTIONS=(('breaking','破壞性變更與遷移方式',lambda e:f'`{e["change"]}` `{e["key"]}`（{e["version"]}）','migration'),
+    ('accepted_vulnerabilities','已接受的漏洞',lambda e:f'{e["id"]}（{e["package"]}，{e["version"]}）','reason'))
+
+def release_notes(notes, version, released=()):
+    """Markdown the Release of `version` adds to its notes; '' when nothing is declared.
+
+    `released`: versions that already have a formal Release. Only sections after the newest of them below `version`
+    count, the same (comparison target, new] range the PR check used, so a declaration appears on one Release only."""
+    def below(v):
+        try:return version_cmp(v,version)<0
+        except ValueError:return False  # a tag that is not a version (or cannot be ordered) is not a Release of this add-on
+    after=latest_release([v for v in released if v!=version and below(v)])
+    found=declarations(notes,after,version);out=[]
+    for section,title,label,text_key in RELEASE_SECTIONS:
+        if not found[section]:continue
+        lines=[]
+        for e in found[section]:
+            text=declaration_text(e,text_key)
+            if not text:raise ValueError(f'{e["version"]}.{section}: {label(e)} has no {text_key}')
+            lines.append(f'- {label(e)}：'+text.replace('\n','\n  '))
+        out.append(f'## {title}\n\n'+'\n'.join(lines)+'\n')
+    return '\n'.join(out)
 
 def get_or_none(gh, repo, path):
     try:return gh.api(repo,path)
@@ -362,8 +437,8 @@ def release_body(gh, repo, provider, comp, sha, version):
     except Blocked as e:
         if 'HTTP 404' in str(e):return ''
         raise
-    released=formal_versions(all_releases(gh,repo),release_tag(provider,comp,''))
-    try:return upgrade_check.release_notes(yaml.safe_load(raw),version,released)
+    released=formal_versions(provider,comp,all_releases(gh,repo))
+    try:return release_notes(yaml.safe_load(raw),version,released)
     except (ValueError,TypeError,yaml.YAMLError) as e:raise Blocked(path+': '+str(e))
 
 def release(gh, registry, repo, sha, apply=False):
