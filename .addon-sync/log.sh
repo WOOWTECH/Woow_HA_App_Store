@@ -8,3 +8,13 @@ esc() {
 fail() {
   printf '::error title=Upgrade comparison failed::%s\n' "$(esc "$1")"
 }
+# no_cntrl <value> <message>: fail <message> and returns 1 when <value> has a control character (newline, tab...), so a
+# value from the PR or its Releases is refused before use; returns 0 otherwise.
+no_cntrl() {
+  [[ "$1" == *[[:cntrl:]]* ]] || return 0
+  fail "$2"; return 1
+}
+# fail_output <output>: a failed command's output is its ::error line (already escaped); print it and exit 1.
+fail_output() {
+  printf '%s\n' "$1"; exit 1
+}

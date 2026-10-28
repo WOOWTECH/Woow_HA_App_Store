@@ -1,7 +1,7 @@
 # Upgrade comparison for a WOOW source repository (pipeline #89, ADR-0005).
 #
 # A merged version-bump PR is a release, so every PR compares each add-on whose
-# version it changes with the version users run now: the latest formal Release
+# version it changes with the version users run now: the latest stable Release
 # (tag v<ver>, or <slug>-v<ver> when a repository versions add-ons
 # independently), or the PR base for ref_policy: main repositories. The PR's
 # version must be newer: every Release becomes the latest, so a lower one
@@ -118,7 +118,7 @@ jobs:
         source tooling/.addon-sync/fields.sh
         # The registry entry and each add-on's file paths, by addon_sync's rules; the later steps read provider.json too.
         provider="$(python3 tooling/.addon-sync/upgrade_check.py components --registry tooling/.addon-sync/registry.json --repo "${REPO}")" \
-          || { printf '%s\n' "${provider}"; exit 1; }  # on failure the output is its ::error (already escaped)
+          || fail_output "${provider}"
         printf '%s\n' "${provider}" > provider.json
         # Skipping category 4 is approved per provider in the Store registry, with the reason; checked on every PR.
         if [ -n "${SKIP_VULNERABILITY_SCAN}" ] && [ -z "$(jq -r '.skip_vulnerability_scan' provider.json)" ]; then
@@ -147,14 +147,12 @@ jobs:
           [ "${found}" = "${path}" ] || notes="${previous_notes}"
           # A version is read as Home Assistant Supervisor reads it (addon_sync.config_version); the PR's also as written.
           current="$(python3 tooling/.addon-sync/upgrade_check.py version --file "${new}" --path "${found}" --name "${id}" --as-written)" \
-            || { printf '%s\n' "${current}"; exit 1; }  # on failure the output is its ::error (already escaped)
+            || fail_output "${current}"
           if [ -z "${current}" ]; then fail "${id}: ${found} has no version"; status=1; continue; fi
           # Besides esc on every echo: a value from the PR or its Releases with a control character is refused before use.
-          if [[ "${current}" == *[[:cntrl:]]* ]]; then
-            fail "${id}: the version in ${found} contains a control character (newline, tab...): ${current}"; exit 1
-          fi
+          no_cntrl "${current}" "${id}: the version in ${found} contains a control character (newline, tab...): ${current}" || exit 1
           before=""; [ ! -s "${base}" ] || before="$(python3 tooling/.addon-sync/upgrade_check.py version --file "${base}" --name "${id}")" \
-            || { printf '%s\n' "${before}"; exit 1; }
+            || fail_output "${before}"
           if [ "${current}" != "${before}" ]; then
             jq -c --arg version "${current}" --arg notes "${notes}" --arg new "${new}" '. + {version: $version, notes: $notes, new: $new}' <<<"${component}" >> changed.jsonl
           else
@@ -191,22 +189,18 @@ jobs:
             # ref_policy main: the Store follows the default branch, so users run what the PR base has.
             target="${BASE_SHA}"
           else
-            # Formal-Release filter, tag rule, ordering and "the version must be newer" are the Release notes' (addon_sync).
+            # Stable-Release filter, tag rule, ordering and "the version must be newer" are the Release notes' (addon_sync).
             latest="$(python3 tooling/.addon-sync/upgrade_check.py comparison-target --registry tooling/.addon-sync/registry.json --repo "${REPO}" --component "${id}" --version "${version}" <<<"${releases}")" \
-              || { printf '%s\n' "${latest}"; exit 1; }  # on failure the output is its ::error (already escaped)
+              || fail_output "${latest}"
             IFS=$'\t' read -r target target_version <<<"${latest}"
           fi
           # Like the PR's version (detect step): refused with a control character before use.
-          if [[ "${target}${target_version}" == *[[:cntrl:]]* ]]; then
-            fail "${id}: the comparison target's tag has a control character (newline, tab...): ${target}"; exit 1
-          fi
+          no_cntrl "${target}${target_version}" "${id}: the comparison target's tag has a control character (newline, tab...): ${target}" || exit 1
           if [ -n "${target}" ]; then
             found="$(config_at "${target}" "${path}" "${previous}" "${old}")"
             old_version=""; [ ! -s "$old" ] || old_version="$(python3 tooling/.addon-sync/upgrade_check.py version --file "${old}" --path "${found}" --name "${id}")" \
-              || { printf '%s\n' "${old_version}"; exit 1; }
-            if [[ "${old_version}" == *[[:cntrl:]]* ]]; then
-              fail "${id}: the comparison target ${target} has a control character (newline, tab...) in its version: ${old_version}"; exit 1
-            fi
+              || fail_output "${old_version}"
+            no_cntrl "${old_version}" "${id}: the comparison target ${target} has a control character (newline, tab...) in its version: ${old_version}" || exit 1
             # Its tag and its config both give the target's version (compare reads the config's); neither may silently win.
             # The PR's version must be newer than it: under ref_policy main too, so it fails here, before any scan.
             if [ -s "$old" ] && ! python3 tooling/.addon-sync/upgrade_check.py check-target --name="${id}" --version="${version}" \
@@ -221,7 +215,7 @@ jobs:
               status=1; continue
             fi
           else
-            echo "${id}: no formal Release yet"
+            echo "${id}: no stable Release yet"
           fi
           # Category 4: needs a prebuilt image and a comparison target; then the new image's SBOM is mandatory.
           image="$(yq -r '.image // ""' "${new}")"
@@ -244,9 +238,7 @@ jobs:
             status=1
           else
             old_image="$(yq -r '.image' "${old}")"
-            if [[ "${old_image}" == *[[:cntrl:]]* ]]; then
-              fail "${id}: the comparison target ${target} has a control character (newline, tab...) in its image: ${old_image}"; exit 1
-            fi
+            no_cntrl "${old_image}" "${id}: the comparison target ${target} has a control character (newline, tab...) in its image: ${old_image}" || exit 1
             ref="${old_image//\{arch\}/amd64}:${old_version}"
           fi
           jq -nc --arg id "${id}" --arg notes "${notes}" --arg new "${new}" --arg target "${target}" --arg ref "${ref}" \

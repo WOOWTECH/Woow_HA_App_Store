@@ -16,7 +16,7 @@
 # alone, so re-running is harmless. The manifest is read at that commit through
 # the API, so the version and the tagged commit cannot disagree. The Release notes are
 # GitHub's generated notes, preceded by the add-on's upgrade-notes.yaml declarations since
-# its last formal Release (破壞性變更與遷移方式, 已接受的漏洞; pipeline #119), when there are any.
+# its last stable Release (破壞性變更與遷移方式, 已接受的漏洞; pipeline #119), when there are any.
 # The token is the caller's own GITHUB_TOKEN;
 # a Release created with it does not trigger the caller's other workflows, so
 # callers run woow-addon-sync.yml on `workflow_run` of the calling workflow.
