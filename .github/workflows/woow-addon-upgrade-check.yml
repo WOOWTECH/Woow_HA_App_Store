@@ -183,21 +183,31 @@ jobs:
         : > plan.jsonl; status=0
         while IFS= read -r component; do
           fields "${component}" id=id path=config previous=previous_config notes=notes version=version
-          old="$RUNNER_TEMP/${id}.old.yaml"; rm -f "$old"; touch "$old"; target=""; ref=""; note=""
+          old="$RUNNER_TEMP/${id}.old.yaml"; rm -f "$old"; touch "$old"; target=""; target_version=""; ref=""; note=""
           if [ "${policy}" = "main" ]; then
             # ref_policy main: the Store follows the default branch, so users run what the PR base has.
             target="${BASE_SHA}"
           else
             # Formal-Release filter, tag rule, ordering and "the version must be newer" are the Release notes' (addon_sync).
-            target="$(python3 tooling/.addon-sync/upgrade_check.py comparison-target --registry tooling/.addon-sync/registry.json --repo "${REPO}" --component "${id}" --version "${version}" <<<"${releases}")" \
-              || { printf '%s\n' "${target}"; exit 1; }  # on failure the output is its ::error (already escaped)
+            latest="$(python3 tooling/.addon-sync/upgrade_check.py comparison-target --registry tooling/.addon-sync/registry.json --repo "${REPO}" --component "${id}" --version "${version}" <<<"${releases}")" \
+              || { printf '%s\n' "${latest}"; exit 1; }  # on failure the output is its ::error (already escaped)
+            IFS=$'\t' read -r target target_version <<<"${latest}"
           fi
           # Like the PR's version (detect step): refused with a control character before use.
-          if [[ "${target}" == *[[:cntrl:]]* ]]; then
+          if [[ "${target}${target_version}" == *[[:cntrl:]]* ]]; then
             fail "${id}: the comparison target's tag has a control character (newline, tab...): ${target}"; exit 1
           fi
           if [ -n "${target}" ]; then
-            config_at "${target}" "${path}" "${previous}" "${old}" > /dev/null
+            found="$(config_at "${target}" "${path}" "${previous}" "${old}")"
+            old_version=""; [ ! -s "$old" ] || old_version="$(yq -r '.version' "${old}")"
+            if [[ "${old_version}" == *[[:cntrl:]]* ]]; then
+              fail "${id}: the comparison target ${target} has a control character (newline, tab...) in its version: ${old_version}"; exit 1
+            fi
+            # Its tag and its config both give the target's version (compare reads the config's); neither may silently win.
+            if [ -n "${target_version}" ] && [ -s "$old" ] && [ "${old_version}" != "${target_version}" ]; then
+              fail "${id}: the comparison target ${target} is version ${target_version} by its tag but ${old_version} by ${found}; correct that Release so its tag and config agree, then re-run this check"
+              status=1; continue
+            fi
             if [ -s "$old" ]; then echo "${id}: comparing $(esc "${version}") with $(esc "${target}")"
             elif [ "${policy}" = "main" ]; then echo "${id}: no config at the PR base, a new add-on"
             else
@@ -228,9 +238,9 @@ jobs:
             fail "${id}: sbom_artifact '${SBOM_ARTIFACT}' does not match ${artifact}, the artifact the addon-sbom action uploads for component ${id}"
             status=1
           else
-            old_image="$(yq -r '.image' "${old}")"; old_version="$(yq -r '.version' "${old}")"
-            if [[ "${old_image}${old_version}" == *[[:cntrl:]]* ]]; then
-              fail "${id}: the comparison target ${target} has a control character (newline, tab...) in its image or version: ${old_image}:${old_version}"; exit 1
+            old_image="$(yq -r '.image' "${old}")"
+            if [[ "${old_image}" == *[[:cntrl:]]* ]]; then
+              fail "${id}: the comparison target ${target} has a control character (newline, tab...) in its image: ${old_image}"; exit 1
             fi
             ref="${old_image//\{arch\}/amd64}:${old_version}"
           fi

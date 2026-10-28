@@ -409,15 +409,16 @@ class ComparisonTargetCommand(unittest.TestCase):
             code=u.main(['comparison-target','--registry',str(d/'registry.json'),'--repo','WOOWTECH/r','--component',component,'--version',version])
         return code,out.getvalue()
     def test_prints_the_tag_of_the_latest_formal_release(self):
-        self.assertEqual(self.main(['v1.2.0rc1','v1.2.0','v1.1.0'],'t'),(0,'v1.2.0\n'))
+        # And its version, tab-separated: the plan step checks that the config at the tag says the same version.
+        self.assertEqual(self.main(['v1.2.0rc1','v1.2.0','v1.1.0'],'t'),(0,'v1.2.0\t1.2.0\n'))
         self.assertEqual(self.main([],'t'),(0,''))
     def test_drafts_prereleases_and_other_prefixes_are_not_formal_releases(self):
         releases=[{'tag_name':'v2.0.0','draft':True,'prerelease':False},{'tag_name':'v1.9.0','draft':False,'prerelease':True},'x-v3.0.0','v1.1.0']
-        self.assertEqual(self.main(releases,'t'),(0,'v1.1.0\n'))
+        self.assertEqual(self.main(releases,'t'),(0,'v1.1.0\t1.1.0\n'))
         self.assertEqual(self.main(releases[:3],'t'),(0,''))
     def test_a_version_not_newer_than_the_latest_release_exits_2(self):
         # --version applies the Release notes' rule: the target is the latest formal Release and the version must be newer.
-        self.assertEqual(self.main(['v1.2.0','v1.1.0'],'t',version='1.3.0'),(0,'v1.2.0\n'))
+        self.assertEqual(self.main(['v1.2.0','v1.1.0'],'t',version='1.3.0'),(0,'v1.2.0\t1.2.0\n'))
         self.assertEqual(self.main([],'t',version='1.3.0'),(0,''))
         for version in ('1.2.5','1.3.0'):
             with self.subTest(version):
@@ -427,9 +428,9 @@ class ComparisonTargetCommand(unittest.TestCase):
         # v<ver> for a single add-on, <slug>-v<ver> when the repository has several (addon_sync.release_tag).
         releases=['v9.0.0','woow_ha_core-v2.4.0','woow_ha_core_2-v2.3.0','woow_ha_core_2-v2.2.0']
         both=('woow_ha_core','woow_ha_core_2')
-        self.assertEqual(self.main(releases,'woow_ha_core_2',both),(0,'woow_ha_core_2-v2.3.0\n'))
-        self.assertEqual(self.main(releases,'woow_ha_core',both),(0,'woow_ha_core-v2.4.0\n'))
-        self.assertEqual(self.main(releases,'t'),(0,'v9.0.0\n'))
+        self.assertEqual(self.main(releases,'woow_ha_core_2',both),(0,'woow_ha_core_2-v2.3.0\t2.3.0\n'))
+        self.assertEqual(self.main(releases,'woow_ha_core',both),(0,'woow_ha_core-v2.4.0\t2.4.0\n'))
+        self.assertEqual(self.main(releases,'t'),(0,'v9.0.0\t9.0.0\n'))
     def test_unknown_repository_is_the_registry_lookups_error(self):
         # One provider lookup (addon_sync.find_provider) for comparison-target and components.
         d=pathlib.Path(tempfile.mkdtemp());self.addCleanup(shutil.rmtree,d);(d/'registry.json').write_text('{"providers":{}}')
@@ -738,6 +739,15 @@ class ComparisonTarget(StepHarness):
                 self.assertEqual(r.returncode,1,r.stdout+r.stderr)
                 self.assertIn('changed=true',(self.tmp/'out').read_text())
                 self.assertIn('version 1.3.0 is not newer than 1.3 (the same version, written differently)',r.stdout)
+    @needs_shell
+    def test_a_target_whose_config_disagrees_with_its_tag_fails(self):
+        # The target's version comes from its tag (comparison-target) and from its config (compare); one must not silently win.
+        r,plan,_=self.run_step('plan',old={'version':'0.9.0'},skip='x')
+        self.assertEqual(r.returncode,1,r.stdout+r.stderr);self.assertEqual(plan,{})
+        self.assertIn('t: the comparison target v1.0.0 is version 1.0.0 by its tag but 0.9.0 by addon/config.yaml',r.stdout)
+        # Under ref_policy main the target is the PR base: its config is the only source.
+        r,plan,_=self.run_step('plan',policy='main',old={'version':'0.9.0'},skip='x')
+        self.assertEqual(r.returncode,0,r.stdout+r.stderr);self.assertEqual(plan['target'],'b')
     @needs_shell
     def test_a_normal_bump_compares_with_the_latest_release(self):
         r,plan,_=self.run_step('plan',releases=('v1.0.0','v0.9.0','v1.1.0-foo'),version='1.1.0',skip='x')
