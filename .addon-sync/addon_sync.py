@@ -406,9 +406,9 @@ def require_newer(version, target):
     try:order=version_cmp(version,target)
     except ValueError:order=None
     if order is None or order<=0:
-        why='cannot be ordered against' if order is None else 'is not newer than'
+        why,fix=('cannot be ordered against','use a newer version that reads whole: PEP 440, or a dotted number with a rebuild suffix -v<N>') if order is None else ('is not newer than','raise the version')
         raise ValueError(f'version {version} {why} {target}'+(' (the same version, written differently)' if order==0 and version!=target else '')+
-            ', the version users run now (the latest formal Release; the PR base under ref_policy: main); raise the version')
+            f', the version users run now (the latest formal Release; the PR base under ref_policy: main); {fix}')
 
 def comparison_target(released, version):
     """The latest of `released` (an add-on's formal Release versions), or None; `version` must be newer (require_newer).

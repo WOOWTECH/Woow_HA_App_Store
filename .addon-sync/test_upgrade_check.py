@@ -398,8 +398,12 @@ class ComparisonTargetCommand(unittest.TestCase):
             with self.subTest(released):self.assertEqual(u.comparison_target(released,'1.3.0'),'1.2.0')
     def test_a_version_that_cannot_be_ordered_against_the_target_fails(self):
         # The PR's version is not a stray tag: when it cannot be shown newer than the latest Release, it is not released.
-        with self.assertRaisesRegex(ValueError,'version 1.3.0-foo cannot be ordered against 1.3.0, the version users run now'):
+        with self.assertRaisesRegex(ValueError,'version 1.3.0-foo cannot be ordered against 1.3.0, the version users run now') as e:
             u.comparison_target(['1.2.0','1.3.0'],'1.3.0-foo')
+        # Raising it would not help (1.4-foo still cannot be ordered against 1.4): the fix is a version that reads whole.
+        self.assertRegex(str(e.exception),r'; use a newer version that reads whole: PEP 440, or a dotted number with a rebuild suffix -v<N>$')
+        self.assertNotIn('raise the version',str(e.exception))
+        with self.assertRaisesRegex(ValueError,r'is not newer than 1\.3\.0, .*; raise the version$'):u.comparison_target(['1.3.0'],'1.2.0')
         self.assertEqual(u.comparison_target(['1.2.0','1.3.0'],'1.4.0-foo'),'1.3.0')
     def main(self,releases,component,components=('t',),version='99.0.0'):
         d=pathlib.Path(tempfile.mkdtemp());self.addCleanup(shutil.rmtree,d)
