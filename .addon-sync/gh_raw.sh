@@ -7,15 +7,16 @@ fetch() {
   cat "$err" >&2; return 1
 }
 # config_at <ref> <path> <previous> <out>: writes an add-on's config at <ref> ("" = the PR checkout in source/) to <out>
-# and prints the path it was read from: <path>, or, when that is not there, <previous> (previous_config of a config move
-# in progress, "" when none; addon_sync.locate is the same rule). Prints nothing and leaves <out> empty when neither is there.
+# and prints the path it was read from: <path>, or, when that is missing or empty, <previous> (previous_config of a config
+# move in progress, "" when none; addon_sync.locate is the same rule). Prints nothing and leaves <out> empty when neither
+# has it; the caller's error names both paths.
 config_at() {
   local p
   : > "$4"
   for p in "$2" "$3"; do
     [ -n "${p}" ] || continue
     if [ -z "$1" ]; then
-      [ -f "source/${p}" ] || continue
+      [ -s "source/${p}" ] || continue
       cp "source/${p}" "$4"
     else
       fetch "${p}" "$1" > "$4" || return 1

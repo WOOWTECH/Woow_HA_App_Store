@@ -414,6 +414,22 @@ class Tests(unittest.TestCase):
                 report=s.release(gh,registry,'WOOWTECH/test','a'*40,apply=True)
                 self.assertEqual(report[0],{'id':'test','state':'released','tag':'v1.2.0','version':'1.2.0'})
                 self.assertEqual('ssl_port' in gh.created[0].get('body',''),notes)
+    def test_locate_skips_a_missing_or_empty_config_like_config_at(self):
+        # gh_raw.sh config_at falls back when the fetched file is empty ([ -s ]) as well as on 404; locate does the same,
+        # and when no location has the config its error names every path.
+        comp={'id':'t','source_path':'addon','config_file':'config.yaml','previous_config':'old/config.yaml'}
+        class GH:
+            def __init__(self,files):self.files=files
+            def content(self,repo,path,ref):
+                if path not in self.files:raise s.Blocked('GitHub '+repo+'/contents HTTP 404')
+                return self.files[path]
+        for files in ({'addon/config.yaml':b'','old/config.yaml':b'v: 1'},{'old/config.yaml':b'v: 1'}):
+            with self.subTest(files):
+                c,raw=s.locate(GH(files),'WOOWTECH/t',comp,'a'*40);self.assertEqual((c['source_path'],raw),('old',b'v: 1'))
+        for files in ({},{'addon/config.yaml':b'','old/config.yaml':b''},{'addon/config.yaml':b''}):
+            with self.subTest(files),self.assertRaisesRegex(s.Blocked,'^WOOWTECH/t has no addon/config.yaml or old/config.yaml at '+'a'*40):
+                s.locate(GH(files),'WOOWTECH/t',comp,'a'*40)
+        with self.assertRaisesRegex(s.Blocked,'^WOOWTECH/t has no addon/config.yaml at '):s.locate(GH({}),'WOOWTECH/t',dict(comp,previous_config=None),'a'*40)
     def test_malformed_upgrade_notes_block_the_release(self):
         gh=self.release_gh({'config.yaml':'name: Test\nslug: test\nversion: 1.2.0\n','upgrade-notes.yaml':'1.2: {}\n'})
         report=s.release(gh,self.single(),'WOOWTECH/test','a'*40,apply=True)

@@ -778,6 +778,30 @@ class ComparisonTarget(StepHarness):
                 with self.subTest(step=step.get('name'),helper=helper):
                     self.assertEqual('source tooling/.addon-sync/'+helper in run,bool(re.search(use,run)))
 
+class ConfigAt(StepHarness):
+    """config_at (gh_raw.sh) and addon_sync.locate read a config the same way: a missing or empty file is skipped."""
+    def bash(self,script,files,remote=None):
+        import os,subprocess
+        tmp=pathlib.Path(tempfile.mkdtemp());self.addCleanup(shutil.rmtree,tmp);(tmp/'bin').mkdir()
+        for name,text in files.items():(tmp/'source'/name).parent.mkdir(parents=True,exist_ok=True);(tmp/'source'/name).write_text(text)
+        gh=tmp/'bin/gh';gh.write_text('#!/bin/bash\nfor p in $REMOTE; do [[ "$*" == *"contents/${p%%=*}?"* ]] && { printf "%s" "${p#*=}"; exit 0; }; done\necho "gh: Not Found (HTTP 404)" >&2; exit 1\n');gh.chmod(0o755)
+        env=dict(os.environ,PATH=f"{tmp/'bin'}{os.pathsep}{os.environ['PATH']}",REPO='WOOWTECH/t',REMOTE=' '.join(f'{k}={v}' for k,v in (remote or {}).items()))
+        return subprocess.run([shutil.which('bash'),'-c','set -euo pipefail; source "$1"; shift; '+script,'-',(self.STORE/'.addon-sync/gh_raw.sh').as_posix()],cwd=tmp,env=env,capture_output=True,text=True)
+    @needs_shell
+    def test_a_missing_or_empty_config_falls_back_to_previous_config(self):
+        for name,files,remote,ref in [('checkout: empty',{'addon/config.yaml':'','old/config.yaml':'v: 1'},None,''),
+                ('checkout: missing',{'old/config.yaml':'v: 1'},None,''),
+                ('ref: empty',{},{'addon/config.yaml':'','old/config.yaml':'v:1'},'b'),('ref: missing',{},{'old/config.yaml':'v:1'},'b')]:
+            with self.subTest(name):
+                r=self.bash(f'config_at "{ref}" addon/config.yaml old/config.yaml out.yaml',files,remote)
+                self.assertEqual((r.returncode,r.stdout),(0,'old/config.yaml\n'),r.stderr)
+    @needs_shell
+    def test_neither_location_prints_nothing_and_leaves_an_empty_file(self):
+        for ref,files in [('',{'addon/config.yaml':''}),('b',{})]:
+            with self.subTest(ref=ref):
+                r=self.bash(f'config_at "{ref}" addon/config.yaml old/config.yaml out.yaml; [ ! -s out.yaml ] && echo empty',files)
+                self.assertEqual((r.returncode,r.stdout),(0,'empty\n'),r.stderr)
+
 class Fields(StepHarness):
     """fields (fields.sh) reads one JSON line into shell variables for every step."""
     def bash(self,script,*args):

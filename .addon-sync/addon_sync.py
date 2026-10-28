@@ -333,13 +333,17 @@ def locations(comp):
     return out
 
 def locate(gh, repo, comp, sha):
-    """(the location of the add-on at commit sha, among locations(comp), its config file); Blocked when none has it."""
-    *first,last=locations(comp)
-    for c in first:
-        try:return c,gh.content(repo,source_file(c,c['config_file']),sha)
+    """(the first location among locations(comp) whose config at sha is there and not empty, that config); Blocked naming
+    every path when none has it. gh_raw.sh config_at is the same rule."""
+    paths=[]
+    for c in locations(comp):
+        paths.append(source_file(c,c['config_file']))
+        try:raw=gh.content(repo,paths[-1],sha)
         except Blocked as e:
             if 'HTTP 404' not in str(e):raise
-    return last,gh.content(repo,source_file(last,last['config_file']),sha)
+            continue
+        if raw:return c,raw
+    raise Blocked(f'{repo} has no {" or ".join(paths)} at {sha} (missing or empty)')
 
 def find_provider(registry, repo):
     """repo's registry entry; a ValueError naming repo when the Store registry does not list it."""
