@@ -203,7 +203,8 @@ jobs:
               fail "${id}: the comparison target ${target} has a control character (newline, tab...) in its version: ${old_version}"; exit 1
             fi
             # Its tag and its config both give the target's version (compare reads the config's); neither may silently win.
-            if [ -n "${target_version}" ] && [ -s "$old" ] && ! python3 tooling/.addon-sync/upgrade_check.py check-target --name="${id}"                 --target="${target}" --tag-version="${target_version}" --config="${found}" --config-version="${old_version}"; then
+            # The PR's version must be newer than it: under ref_policy main too, so it fails here, before any scan.
+            if [ -s "$old" ] && ! python3 tooling/.addon-sync/upgrade_check.py check-target --name="${id}" --version="${version}"                 --target="${target}" --tag-version="${target_version}" --config="${found}" --config-version="${old_version}"; then
               status=1; continue
             fi
             if [ -s "$old" ]; then echo "${id}: comparing $(esc "${version}") with $(esc "${target}")"

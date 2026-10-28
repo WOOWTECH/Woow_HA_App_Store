@@ -406,9 +406,9 @@ class ComparisonTargetCommand(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,r'is not newer than 1\.3\.0, .*; raise the version$'):u.comparison_target(['1.3.0'],'1.2.0')
         self.assertEqual(u.comparison_target(['1.2.0','1.3.0'],'1.4.0-foo'),'1.3.0')
     def test_a_target_config_that_cannot_be_ordered_against_its_tag_disagrees(self):
-        u.check_target('v1.3','addon/config.yaml','1.3.0','1.3')
+        u.check_target('1.4','v1.3','addon/config.yaml','1.3.0','1.3')
         with self.assertRaisesRegex(ValueError,r'v1\.3 is version 1\.3 by its tag but 1\.3-foo by addon/config\.yaml; correct that Release'):
-            u.check_target('v1.3','addon/config.yaml','1.3-foo','1.3')
+            u.check_target('1.4','v1.3','addon/config.yaml','1.3-foo','1.3')
     def main(self,releases,component,components=('t',),version='99.0.0'):
         d=pathlib.Path(tempfile.mkdtemp());self.addCleanup(shutil.rmtree,d)
         (d/'registry.json').write_text(json.dumps({'providers':{'WOOWTECH/r':{'components':[{'id':c} for c in components]}}}))
@@ -736,6 +736,15 @@ class ComparisonTarget(StepHarness):
             with self.subTest(version):
                 r,plan,_=self.run_step('plan',releases=('v1.3.0','v1.2.4','v1.2.0'),version=version,skip='x')
                 self.assertEqual(r.returncode,1,r.stdout+r.stderr);self.assertIn(f'version {version} is not newer than 1.3.0',r.stdout);self.assertEqual(plan,{})
+    @needs_shell
+    def test_ref_policy_main_fails_a_version_not_newer_than_the_pr_base_before_scanning(self):
+        # As for ref_policy release: in the plan step, not after the Grype DB update and the SBOM wait (compare()).
+        sbom='upgrade-comparison-sbom-*'
+        r,plan,out=self.run_step('plan',policy='main',old={'version':'1.2.0'},version='1.3.0',sbom=sbom)
+        self.assertEqual(r.returncode,0,r.stdout+r.stderr);self.assertIn('scan=true',out)
+        r,plan,out=self.run_step('plan',policy='main',old={'version':'1.2.0'},version='1.1.0',sbom=sbom)
+        self.assertEqual(r.returncode,1,r.stdout+r.stderr);self.assertEqual(plan,{});self.assertNotIn('scan=true',out)
+        self.assertIn('t: version 1.1.0 is not newer than 1.2.0, the version users run now',r.stdout)
     @needs_shell
     def test_the_same_version_written_differently_fails_as_not_newer(self):
         # Detection compares the strings, so 1.3 -> 1.3.0 is a change; treated as unchanged, release() would later try to
