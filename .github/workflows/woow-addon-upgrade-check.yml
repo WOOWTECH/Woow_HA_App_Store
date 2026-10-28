@@ -114,7 +114,7 @@ jobs:
         if [ -z "$provider" ]; then echo "::error::${REPO} is not in the Store registry"; exit 1; fi
         # Skipping category 4 is approved per provider in the Store registry, with the reason; checked on every PR.
         if [ -n "${SKIP_VULNERABILITY_SCAN}" ] && [ -z "$(jq -r '.upgrade_comparison.skip_vulnerability_scan // ""' <<<"$provider")" ]; then
-          echo "::error title=Upgrade comparison failed::${REPO} passes skip_vulnerability_scan, but skipping the vulnerability comparison is not approved for it: the Store registry entry needs upgrade_comparison.skip_vulnerability_scan with the reason. Remove the input or get the skip approved in the registry."
+          fail "${REPO} passes skip_vulnerability_scan, but skipping the vulnerability comparison is not approved for it: the Store registry entry needs upgrade_comparison.skip_vulnerability_scan with the reason. Remove the input or get the skip approved in the registry."
           exit 1
         fi
         : > changed.tsv
@@ -126,7 +126,7 @@ jobs:
           current="$(yq -r '.version' "source/${path}")"
           # The version goes into changed.tsv and plan.txt; a newline, tab or separator in it would shift their fields.
           if [[ "${current}" == *[[:cntrl:]]* ]]; then
-            echo "::error title=Upgrade comparison failed::${id}: the version in ${path} contains a control character (newline, tab...): $(esc "${current}")"; exit 1
+            fail "${id}: the version in ${path} contains a control character (newline, tab...): ${current}"; exit 1
           fi
           previous="$(fetch "${path}" "${BASE_SHA}" | yq -r '.version // "none"')"
           if [ "${current}" != "${previous}" ]; then
@@ -179,7 +179,7 @@ jobs:
             elif [ "${policy}" = "main" ]; then echo "${id}: no config at the PR base, a new add-on"
             else
               # Users run this Release; an unreadable config there must not pass as "no comparison target".
-              echo "::error title=Upgrade comparison failed::${id}: the latest formal Release $(esc "${target}") has no ${path} (moved or deleted?), so there is nothing to compare with; restore the path or compare by hand"
+              fail "${id}: the latest formal Release ${target} has no ${path} (moved or deleted?), so there is nothing to compare with; restore the path or compare by hand"
               status=1; continue
             fi
           else
@@ -198,11 +198,11 @@ jobs:
           elif [ -z "$(yq -r '.image // ""' "${old}")" ]; then
             note="the comparison target ${target} has no prebuilt image"
           elif [ -z "${SBOM_ARTIFACT}" ]; then
-            echo "::error title=Upgrade comparison failed::${id} has a prebuilt image but the caller passes no sbom_artifact; run the addon-sbom action after the amd64 build and pass sbom_artifact: upgrade-comparison-sbom-*"
+            fail "${id} has a prebuilt image but the caller passes no sbom_artifact; run the addon-sbom action after the amd64 build and pass sbom_artifact: upgrade-comparison-sbom-*"
             status=1
           # shellcheck disable=SC2053 # SBOM_ARTIFACT is a glob on purpose
           elif [[ "${artifact}" != ${SBOM_ARTIFACT} ]]; then
-            echo "::error title=Upgrade comparison failed::${id}: sbom_artifact '$(esc "${SBOM_ARTIFACT}")' does not match ${artifact}, the artifact the addon-sbom action uploads for component ${id}"
+            fail "${id}: sbom_artifact '${SBOM_ARTIFACT}' does not match ${artifact}, the artifact the addon-sbom action uploads for component ${id}"
             status=1
           else
             old_image="$(yq -r '.image' "${old}")"; old_version="$(yq -r '.version' "${old}")"
@@ -210,7 +210,7 @@ jobs:
           fi
           # The comparison target's tag, image and version go into plan.txt like the PR's version (detect step).
           if [[ "${target}${ref}" == *[[:cntrl:]]* ]]; then
-            echo "::error title=Upgrade comparison failed::${id}: the comparison target $(esc "${target}") has a control character (newline, tab...) in its tag, image or version: $(esc "${ref}")"; exit 1
+            fail "${id}: the comparison target ${target} has a control character (newline, tab...) in its tag, image or version: ${ref}"; exit 1
           fi
           printf '%s\x1f%s\x1f%s\x1f%s\x1f%s\x1f%s\x1f%s\n' "${id}" "${path}" "${version}" "${notes}" "${target}" "${ref}" "${note}" >> plan.txt
         done < changed.tsv
@@ -245,10 +245,10 @@ jobs:
         while IFS=$'\x1f' read -r id _path _version _notes target ref _note; do
           [ -n "${ref}" ] || continue
           if ! docker pull --quiet --platform linux/amd64 "${ref}"; then
-            echo "::error title=Upgrade comparison failed::${id}: cannot pull the comparison target's image $(esc "${ref}") from the registry; re-run, or check that the image of $(esc "${target}") exists"; exit 1
+            fail "${id}: cannot pull the comparison target's image ${ref} from the registry; re-run, or check that the image of ${target} exists"; exit 1
           fi
           if ! "$RUNNER_TEMP/scanners/syft" scan "docker:${ref}" --config tooling/.github/actions/addon-sbom/syft.yaml -o "syft-json=$RUNNER_TEMP/${id}.old.syft.json"; then
-            echo "::error title=Upgrade comparison failed::${id}: Syft could not read $(esc "${ref}")"; exit 1
+            fail "${id}: Syft could not read ${ref}"; exit 1
           fi
           docker image rm --force "${ref}" > /dev/null
         done < plan.txt
@@ -265,6 +265,7 @@ jobs:
         WAIT_MINUTES: ${{ inputs.sbom_wait_minutes }}
       run: |
         set -euo pipefail
+        source tooling/.addon-sync/log.sh
         deadline=$(( $(date -u +%s) + WAIT_MINUTES * 60 )); idle=0; : > artifacts.tsv
         while :; do
           # Only this attempt's artifact (the addon-sbom action names it -attempt-<N>): a re-run judges its own build.
@@ -283,10 +284,10 @@ jobs:
             --jq '.jobs[] | select(.status != "completed") | .name' | wc -l)"
           if [ "${open}" -le 1 ]; then idle=$(( idle + 1 )); else idle=0; fi
           if [ "${idle}" -ge 2 ]; then
-            echo "::error title=Upgrade comparison failed::no SBOM of the new image for${missing}: every other job of attempt ${RUN_ATTEMPT} finished without uploading upgrade-comparison-sbom-<component>-attempt-${RUN_ATTEMPT}; check that the amd64 build passed and ran the addon-sbom action. On a re-run, use Re-run all jobs: an earlier attempt's SBOM is not used"; exit 1
+            fail "no SBOM of the new image for${missing}: every other job of attempt ${RUN_ATTEMPT} finished without uploading upgrade-comparison-sbom-<component>-attempt-${RUN_ATTEMPT}; check that the amd64 build passed and ran the addon-sbom action. On a re-run, use Re-run all jobs: an earlier attempt's SBOM is not used"; exit 1
           fi
           if [ "$(date -u +%s)" -ge "${deadline}" ]; then
-            echo "::error title=Upgrade comparison failed::no SBOM of the new image for${missing} after ${WAIT_MINUTES} minutes; the amd64 build with the addon-sbom action did not finish in time, re-run the check"; exit 1
+            fail "no SBOM of the new image for${missing} after ${WAIT_MINUTES} minutes; the amd64 build with the addon-sbom action did not finish in time, re-run the check"; exit 1
           fi
           echo "Waiting for the SBOM of${missing} (${open} jobs still open)..."; sleep 20
         done
@@ -317,12 +318,12 @@ jobs:
           if [ -z "${ref}" ]; then
             args+=(--scan-note "${note}")
           elif [ ! -s "sboms/${id}.syft.json" ]; then
-            echo "::error title=Upgrade comparison failed::${id}: the SBOM artifact of this attempt holds no ${id}.syft.json"; status=1; continue
+            fail "${id}: the SBOM artifact of this attempt holds no ${id}.syft.json"; status=1; continue
           else
             for side in old new; do
               sbom="$RUNNER_TEMP/${id}.old.syft.json"; [ "${side}" = old ] || sbom="sboms/${id}.syft.json"
               if ! "$RUNNER_TEMP/scanners/grype" "sbom:${sbom}" -o json --file "$RUNNER_TEMP/${id}.${side}.grype.json"; then
-                echo "::error title=Upgrade comparison failed::${id}: Grype could not scan the ${side} image's SBOM"; status=1; continue 2
+                fail "${id}: Grype could not scan the ${side} image's SBOM"; status=1; continue 2
               fi
             done
             echo "${id}: scanned $(esc "${ref}") ($(esc "${target}")) and the PR image with the same DB"

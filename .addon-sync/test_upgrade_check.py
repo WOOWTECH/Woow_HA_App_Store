@@ -600,7 +600,7 @@ class ComparisonTarget(StepHarness):
         import re
         for step in self.wf['jobs']['compare']['steps']:
             run=step.get('run','')
-            for helper,use in [('gh_raw.sh',r'\bfetch '),('log.sh',r'\besc "')]:
+            for helper,use in [('gh_raw.sh',r'\bfetch '),('log.sh',r'\b(esc|fail) "')]:
                 with self.subTest(step=step.get('name'),helper=helper):
                     self.assertEqual('source tooling/.addon-sync/'+helper in run,bool(re.search(use,run)))
 
@@ -613,17 +613,25 @@ class LogEscaping(StepHarness):
         text='50%\r\n::warning title=Injected::boom\n'
         r=subprocess.run([shutil.which('bash'),'-c','source "$1"; esc "$2"','-',(self.STORE/'.addon-sync/log.sh').as_posix(),text],capture_output=True)
         self.assertEqual(r.returncode,0,r.stderr);self.assertEqual(r.stdout.decode(),addon_sync.annotation(text))
+    @unittest.skipUnless(shutil.which('bash'),'needs bash')
+    def test_fail_is_the_escaped_error_line(self):
+        import subprocess,addon_sync
+        text='50%\r\n::warning title=Injected::boom\n'
+        r=subprocess.run([shutil.which('bash'),'-c','source "$1"; fail "$2"','-',(self.STORE/'.addon-sync/log.sh').as_posix(),text],capture_output=True)
+        self.assertEqual(r.returncode,0,r.stderr);self.assertEqual(r.stdout.decode(),addon_sync.workflow_command('error','Upgrade comparison failed',text)+'\n')
     def test_every_echo_escapes_pr_values(self):
         import re
         for step in self.wf['jobs']['compare']['steps']:
             run=step.get('run','')
             for line in run.splitlines():
                 # The step summary is Markdown, never read for workflow commands.
+                # The check's errors go through fail, which escapes the whole message.
+                self.assertNotIn('::error title=Upgrade comparison failed::',line)
                 if 'echo ' not in line or 'GITHUB_STEP_SUMMARY' in line or 'GITHUB_OUTPUT' in line:continue
                 bare=re.sub(r'\$\(esc "\$\{\w+\}"\)','',line[line.index('echo '):])
                 for name in self.PR_VALUES:
                     with self.subTest(step=step.get('name'),value=name):self.assertNotIn('${'+name+'}',bare)
-            if 'esc "' in run:
+            if 'esc "' in run or 'fail "' in run:
                 with self.subTest(step=step.get('name')):self.assertIn('source tooling/.addon-sync/log.sh',run)
 
 class SbomAttempt(unittest.TestCase):

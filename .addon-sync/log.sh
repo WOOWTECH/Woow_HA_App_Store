@@ -4,3 +4,7 @@
 esc() {
   local s="$1"; s="${s//'%'/%25}"; s="${s//$'\r'/%0D}"; s="${s//$'\n'/%0A}"; printf '%s' "${s}"
 }
+# fail <message>: the check's ::error line, the message escaped with esc (addon_sync.workflow_command).
+fail() {
+  printf '::error title=Upgrade comparison failed::%s\n' "$(esc "$1")"
+}
