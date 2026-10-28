@@ -272,6 +272,27 @@ class Tests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp,patch.object(s,'enforce_source_policy') as policy,patch.object(s,'source_archive',return_value=raw),patch.object(s,'image_ready',return_value=e['images']['amd64']):
             report,catalog=s.consume(GH(),{'providers':{'WOOWTECH/test':{'components':[component]}}},tmp)
         self.assertEqual(report[0]['state'],'synced',report);self.assertEqual(policy.call_args.args[3]['source_path'],'pkg')
+    def test_consumer_writes_a_renamed_config_under_the_registry_name(self):
+        # A notification from before a move from pkg/config.yml to addon/config.yaml: the Store gets config.yaml, and the
+        # config.yml an earlier sync left there is gone, so no stale file waits for the next publish.
+        body=b'name: Test\nslug: test\nversion: 1.0.0\narch: [amd64]\nimage: ghcr.io/example/test\nboot: auto\n'
+        raw=archive({'repo/pkg/config.yml':body});files=s.context_files(raw,'pkg')
+        e=dict(entry(archive()),config_file='config.yml',config_sha256=s.digest(files['config.yml'][0]),archive_sha256=s.digest(raw))
+        class GH:
+            def outbox(self,repo):return {'components':{'test':e}}
+            def api(self,repo,path):return {'conclusion':'success','status':'completed','path':'.github/workflows/woow-addon-sync.yml','event':'push','head_repository':{'full_name':repo}}
+            def fingerprint(self,repo,sha,subdir,material=False):return 'fp'
+        component={'id':'test','source_path':'addon','config_file':'config.yaml','store_path':'test','previous_config':'pkg/config.yml'}
+        registry={'providers':{'WOOWTECH/test':{'components':[component]}}}
+        with tempfile.TemporaryDirectory() as tmp,patch.object(s,'enforce_source_policy'),patch.object(s,'source_archive',return_value=raw),patch.object(s,'image_ready',return_value=e['images']['amd64']):
+            store=pathlib.Path(tmp)/'test';store.mkdir();(store/'config.yml').write_text('slug: test\nversion: 0.9.0\n')
+            report,_=s.consume(GH(),registry,tmp)
+            self.assertEqual(report[0]['state'],'synced',report)
+            self.assertEqual(sorted(p.name for p in store.iterdir()),['config.yaml']);self.assertEqual((store/'config.yaml').read_bytes(),body)
+            # The Store's version is still read before a sync (the downgrade guard) under the registry's name.
+            (pathlib.Path(tmp)/'.addon-sync/catalog.json').unlink();(store/'config.yaml').write_text('slug: test\nversion: 2.0.0\n')
+            report,_=s.consume(GH(),registry,tmp)
+            self.assertEqual(report[0].get('reason'),'Store ahead of source; downgrade refused',report)
     def test_publisher_workflow_reads_current_store_registry(self):
         # Source repos call this workflow at @main, so a registry change reaches every publisher without touching a source repo.
         path=pathlib.Path(__file__).resolve().parent.parent/'.github/workflows/woow-addon-publish.yml'

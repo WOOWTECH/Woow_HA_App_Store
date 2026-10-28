@@ -592,14 +592,16 @@ def consume(gh, registry, workspace, only=None):
                 report.append({'id':cid,'state':'unchanged'});continue
             try:
                 if not SLUG.fullmatch(comp['store_path']):raise Blocked('Unsafe registered destination')
-                # A notification from before a config move names previous_config's directory (locations).
+                # A notification from before a config move names previous_config's directory (locations); the Store keeps the
+                # registry's config_file name, so a renamed config leaves no stale file behind.
+                name=comp['config_file']
                 comp=next((c for c in locations(comp) if (c['source_path'],c['config_file'])==(entry.get('source_path'),entry.get('config_file'))),comp)
                 validate_entry(gh,repo,comp,entry,provider.get('default_branch'))
                 enforce_source_policy(gh,repo,provider,comp,entry)
                 if previous and previous['source_sha']!=entry['source_sha']:
                     comparison=gh.api(repo,'compare/'+previous['source_sha']+'...'+entry['source_sha'])
                     if comparison['status'] not in ['ahead','identical']:raise Blocked('Out-of-order or divergent source notification')
-                dest=workspace/comp['store_path'];existing=dest/comp['config_file']
+                dest=workspace/comp['store_path'];existing=next((dest/n for n in (name,comp['config_file']) if (dest/n).exists()),dest/name)
                 current=json.loads(existing.read_text()) if existing.exists() and existing.suffix=='.json' else yaml.safe_load(existing.read_text()) if existing.exists() else None
                 if current and current.get('slug')!=cid:raise Blocked('Destination belongs to another addon')
                 baseline=str(current['version']) if current else previous['version'] if previous else None
@@ -616,7 +618,7 @@ def consume(gh, registry, workspace, only=None):
                         if image_ready(ref,arch)!=entry['images'][arch]:raise Blocked('Published image changed after producer validation')
                 elif entry.get('images'):raise Blocked('Unexpected image receipts on a source-only addon')
                 with tempfile.TemporaryDirectory(prefix='.addon-sync-stage-',dir=workspace) as tmp:
-                    staged=pathlib.Path(tmp)/'new';write_context(staged,files)
+                    staged=pathlib.Path(tmp)/'new';write_context(staged,files);(staged/entry['config_file']).replace(staged/name)
                     # Apply trusted Store metadata policy before replacing the old context.
                     policy=workspace/'.github/scripts/sidebar_titles.py'
                     if policy.exists():
