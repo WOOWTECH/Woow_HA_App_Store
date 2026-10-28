@@ -313,6 +313,10 @@ def release_tag(provider, component, version):
     """v<version> for a single-addon repository; <slug>-v<version> when addons version independently."""
     return ('v' if len(provider['components'])==1 else component['id']+'-v')+version
 
+def source_file(comp, name):
+    """Repository path of file `name` in the add-on's directory (source_path; '.' is the repository root)."""
+    return str(safe_path(name) if comp['source_path']=='.' else safe_path(comp['source_path'])/safe_path(name))
+
 def find_component(registry, repo, cid):
     """(provider, component) of add-on cid in repo's registry entry; KeyError names an unknown repository or add-on."""
     provider=registry['providers'][repo]
@@ -434,7 +438,7 @@ def release_body(gh, repo, provider, comp, sha, version):
     """Release-notes sections for the add-on's upgrade-notes.yaml at sha (pipeline #119); '' when it declares nothing new.
     GitHub puts a body before its generated notes, so both appear. Only declarations since the add-on's last formal
     Release count; a malformed file blocks the Release rather than publishing it without the notes."""
-    path='upgrade-notes.yaml' if comp['source_path']=='.' else str(safe_path(comp['source_path'])/'upgrade-notes.yaml')
+    path=source_file(comp,'upgrade-notes.yaml')
     try:raw=gh.content(repo,path,sha)
     except Blocked as e:
         if 'HTTP 404' in str(e):return ''
@@ -455,7 +459,7 @@ def release(gh, registry, repo, sha, apply=False):
         cid=comp['id']
         if not comp.get('enabled',True) or comp.get('channel','stable')!='stable':report.append({'id':cid,'state':'excluded'});continue
         try:
-            manifest=comp['config_file'] if comp['source_path']=='.' else str(safe_path(comp['source_path'])/safe_path(comp['config_file']))
+            manifest=source_file(comp,comp['config_file'])
             cfg=yaml.safe_load(gh.content(repo,manifest,sha))
             if not isinstance(cfg,dict) or cfg.get('slug')!=cid:raise Blocked('Unexpected addon slug')
             version=str(cfg['version']);tag=release_tag(provider,comp,version)

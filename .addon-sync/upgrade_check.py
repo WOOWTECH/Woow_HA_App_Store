@@ -47,7 +47,7 @@ from __future__ import annotations
 import argparse, json, os, pathlib, re, secrets, sys
 import yaml
 # addon_sync owns the Release rules (version order, upgrade-notes.yaml parsing, Release notes); it does not import this module.
-from addon_sync import comparison_target, declaration_text, declarations, find_component, formal_versions, release_notes, release_tag, workflow_command
+from addon_sync import Blocked, comparison_target, declaration_text, declarations, find_component, formal_versions, release_notes, release_tag, source_file, workflow_command
 
 RANGED={'int','float','str'}
 
@@ -264,6 +264,14 @@ def _error(title, message):
     """An ::error workflow command; PR-controlled text is escaped (addon_sync.workflow_command)."""
     print(workflow_command('error',title,message))
 
+def components(registry, repo):
+    """What the reusable workflow needs from repo's registry entry: ref_policy, the approved reason to skip category 4
+    ('' when not approved) and each add-on's config.yaml and upgrade-notes.yaml paths (addon_sync.source_file)."""
+    if repo not in registry['providers']:raise ValueError('not in the Store registry')
+    provider=registry['providers'][repo]
+    return {'ref_policy':provider['ref_policy'],'skip_vulnerability_scan':(provider.get('upgrade_comparison') or {}).get('skip_vulnerability_scan',''),
+        'components':[{'id':c['id'],'config':source_file(c,c['config_file']),'notes':source_file(c,'upgrade-notes.yaml')} for c in provider['components']]}
+
 def main(argv=None):
     p=argparse.ArgumentParser(description=__doc__.splitlines()[0]);sub=p.add_subparsers(dest='command',required=True)
     c=sub.add_parser('compare',help='judge one add-on and write the report')
@@ -280,7 +288,14 @@ def main(argv=None):
     t.add_argument('--registry',required=True,help='Store registry.json');t.add_argument('--repo',required=True,help='source repository, owner/name')
     t.add_argument('--component',required=True,help='add-on id in the registry')
     t.add_argument('--version',help="the PR's version: fail unless the latest formal Release is older (as the Release notes require)")
+    k=sub.add_parser('components',help="print what the workflow needs from the repository's registry entry (JSON, see components())")
+    k.add_argument('--registry',required=True,help='Store registry.json');k.add_argument('--repo',required=True,help='source repository, owner/name')
     a=p.parse_args(argv)
+    if a.command=='components':
+        try:print(json.dumps(components(_load(a.registry,'json'),a.repo)))
+        except (ValueError,KeyError,TypeError,OSError,Blocked) as e:
+            _error('Upgrade comparison failed',f'{a.repo}: {e}');return 2
+        return 0
     if a.command=='latest-release':
         # The registry lookup, Release filter, tag rule and order are addon_sync's, so the PR check and the Release notes agree.
         try:

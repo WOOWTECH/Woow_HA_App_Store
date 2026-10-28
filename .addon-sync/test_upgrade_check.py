@@ -427,6 +427,24 @@ class ReleaseNotesCommand(unittest.TestCase):
         path=self.dir/'upgrade-notes.yaml';path.write_text('1.3: {}\n',encoding='utf-8')
         code,out=self.main('--notes',str(path),'--version','1.3.0')
         self.assertEqual(code,2);self.assertIn('::error',out)
+class ComponentsCommand(unittest.TestCase):
+    """What the reusable workflow reads from the registry; the paths follow addon_sync.source_file, as the Release does."""
+    def main(self,registry,repo='WOOWTECH/r'):
+        d=pathlib.Path(tempfile.mkdtemp());self.addCleanup(shutil.rmtree,d);(d/'registry.json').write_text(json.dumps(registry))
+        with contextlib.redirect_stdout(io.StringIO()) as out:code=u.main(['components','--registry',str(d/'registry.json'),'--repo',repo])
+        return code,out.getvalue()
+    def test_paths_policy_and_approved_skip(self):
+        comps=[{'id':'a','source_path':'.','config_file':'config.yaml'},{'id':'b','source_path':'addons/b','config_file':'config.yml'}]
+        code,out=self.main({'providers':{'WOOWTECH/r':{'ref_policy':'main','components':comps,'upgrade_comparison':{'skip_vulnerability_scan':'#1: why'}}}})
+        self.assertEqual(code,0);self.assertEqual(json.loads(out),{'ref_policy':'main','skip_vulnerability_scan':'#1: why','components':[
+            {'id':'a','config':'config.yaml','notes':'upgrade-notes.yaml'},{'id':'b','config':'addons/b/config.yml','notes':'addons/b/upgrade-notes.yaml'}]})
+        code,out=self.main({'providers':{'WOOWTECH/r':{'ref_policy':'release','components':comps}}})
+        self.assertEqual(json.loads(out)['skip_vulnerability_scan'],'')
+    def test_unknown_repository_or_unsafe_path_exits_2(self):
+        for name,registry in [('unknown',{'providers':{}}),('unsafe',{'providers':{'WOOWTECH/r':{'ref_policy':'release','components':[{'id':'a','source_path':'../x','config_file':'config.yaml'}]}}})]:
+            with self.subTest(name):
+                code,out=self.main(registry)
+                self.assertEqual(code,2);self.assertTrue(out.startswith('::error title=Upgrade comparison failed::WOOWTECH/r: '),out)
 class ReusableWorkflow(unittest.TestCase):
     """Shape that callers and the ruleset depend on; the shell itself is verified on pilot PRs (#89 Testing Decisions)."""
     def setUp(self):
@@ -470,9 +488,14 @@ class ReusableWorkflow(unittest.TestCase):
         # Multi-add-on repositories: an add-on whose version is unchanged is listed as unchanged and never compared.
         detect=self.step('Find add-ons whose version changed')
         self.assertIn('if [ "${current}" != "${previous}" ]; then',detect)
-        self.assertIn('>> changed.tsv',detect.split('else')[0])
-        self.assertIn('done < changed.tsv',self.step('Find the comparison targets'))
-        self.assertIn('done < plan.txt',self.step('Compare with the comparison target'))
+        self.assertIn('>> changed.jsonl',detect.split('else')[0])
+        self.assertIn('done < changed.jsonl',self.step('Find the comparison targets'))
+        self.assertIn('done < plan.jsonl',self.step('Compare with the comparison target'))
+    def test_registry_lookup_and_paths_are_left_to_python(self):
+        # One implementation of the registry layout and the source_path/'.' rule: addon_sync, through `components`.
+        self.assertIn('upgrade_check.py components --registry',self.step('Find add-ons whose version changed'))
+        for duplicate in ('.providers[','source_path','config_file','upgrade-notes.yaml"','[ "${dir}" = "." ]'):
+            with self.subTest(duplicate):self.assertNotIn(duplicate,self.text.split('jobs:',1)[1])
     def test_device_built_add_ons_are_reported_as_compared_in_90(self):
         self.assertIn('built on the device; the vulnerability comparison for these add-ons is #90',self.step('Find the comparison targets'))
     def step(self,name):return next(s for s in self.wf['jobs']['compare']['steps'] if s.get('name')==name)['run']
@@ -496,7 +519,10 @@ class StepHarness(unittest.TestCase):
         cfg=dict(BASE,image='ghcr.io/da-anda/addon-{arch}')
         (tmp/'source/addon/config.yaml').write_text(yaml.safe_dump(dict(cfg,version=version)))
         (tmp/'old.yaml').write_text(yaml.safe_dump(dict(cfg,**(old or {}))) if old_config else '')
-        (tmp/'changed.tsv').write_text('t\taddon\taddon/config.yaml\t1.1.0\n')
+        with contextlib.redirect_stdout(io.StringIO()) as provider:
+            self.assertEqual(u.main(['components','--registry',str(tmp/'tooling/.addon-sync/registry.json'),'--repo','WOOWTECH/t']),0)
+        (tmp/'provider.json').write_text(provider.getvalue())
+        (tmp/'changed.jsonl').write_text(json.dumps({'id':'t','config':'addon/config.yaml','notes':'addon/upgrade-notes.yaml','version':'1.1.0'})+'\n')
         gh=tmp/'bin/gh'
         gh.write_text('#!/bin/bash\ncase "$*" in\n  *releases*) [ -z "$RELEASES" ] || printf "%s\\n" "$RELEASES";;\n'
             '  *contents*) if [ -s "$OLD" ]; then cat "$OLD"; else echo "gh: Not Found (HTTP 404)" >&2; exit 1; fi;;\n  *) exit 1;;\nesac\n')
@@ -508,7 +534,7 @@ class StepHarness(unittest.TestCase):
             GITHUB_OUTPUT=str(tmp/'out'),GITHUB_STEP_SUMMARY=str(tmp/'summary'))
         (tmp/'step.sh').write_text(self.step(ident)['run'])
         r=subprocess.run(['bash',str(tmp/'step.sh')],cwd=tmp,env=env,capture_output=True,text=True)
-        plan=(tmp/'plan.txt').read_text().rstrip('\n').split('\x1f') if (tmp/'plan.txt').exists() and (tmp/'plan.txt').read_text() else []
+        plan=json.loads((tmp/'plan.jsonl').read_text().splitlines()[0]) if (tmp/'plan.jsonl').exists() and (tmp/'plan.jsonl').read_text() else {}
         return r,plan,(tmp/'out').read_text() if (tmp/'out').exists() else ''
 
 class SkipVulnerabilityScan(StepHarness):
@@ -543,7 +569,7 @@ class SkipVulnerabilityScan(StepHarness):
         r,plan,out=self.run_step('plan',skip=self.REASON,extra=self.APPROVED)
         self.assertEqual(r.returncode,0,r.stdout+r.stderr)
         # target still found (category 1 runs), no image ref to scan, the reason is the report's scan note
-        self.assertEqual(plan[4:],['v1.0.0','',f'skipped by the caller: {self.REASON}']);self.assertIn('scan=false',out)
+        self.assertEqual([plan['target'],plan['ref'],plan['note']],['v1.0.0','',f'skipped by the caller: {self.REASON}']);self.assertIn('scan=false',out)
     @needs_shell
     def test_without_skip_a_prebuilt_image_still_needs_its_sbom(self):
         r,_,_=self.run_step('plan')
@@ -554,30 +580,30 @@ class ComparisonTarget(StepHarness):
     @needs_shell
     def test_release_whose_config_cannot_be_read_fails(self):
         r,plan,_=self.run_step('plan',old_config=False,skip='x')
-        self.assertEqual(r.returncode,1);self.assertIn('v1.0.0 has no addon/config.yaml',r.stdout+r.stderr);self.assertEqual(plan,[])
+        self.assertEqual(r.returncode,1);self.assertIn('v1.0.0 has no addon/config.yaml',r.stdout+r.stderr);self.assertEqual(plan,{})
     @needs_shell
     def test_no_formal_release_has_no_comparison_target(self):
         r,plan,_=self.run_step('plan',releases=(),old_config=False)
-        self.assertEqual(r.returncode,0,r.stdout+r.stderr);self.assertEqual(plan[4:],['','','no comparison target'])
+        self.assertEqual(r.returncode,0,r.stdout+r.stderr);self.assertEqual([plan['target'],plan['ref'],plan['note']],['','','no comparison target'])
     @needs_shell
     def test_ref_policy_main_without_config_at_the_base_is_a_new_add_on(self):
         r,plan,_=self.run_step('plan',policy='main',old_config=False)
-        self.assertEqual(r.returncode,0,r.stdout+r.stderr);self.assertEqual(plan[4:],['b','','no comparison target'])
+        self.assertEqual(r.returncode,0,r.stdout+r.stderr);self.assertEqual([plan['target'],plan['ref'],plan['note']],['b','','no comparison target'])
     @needs_shell
     def test_latest_release_is_ordered_like_the_release_notes(self):
         # sort -V would pick v1.0.0rc1; version_cmp (PEP 440) puts the rc before 1.0.0.
         r,plan,_=self.run_step('plan',releases=('v0.9.0','v1.0.0','v1.0.0rc1'),skip='x')
-        self.assertEqual(r.returncode,0,r.stdout+r.stderr);self.assertEqual(plan[4],'v1.0.0')
+        self.assertEqual(r.returncode,0,r.stdout+r.stderr);self.assertEqual(plan['target'],'v1.0.0')
     @needs_shell
     def test_drafts_and_prereleases_are_not_comparison_targets(self):
         releases=('v1.0.0',{'tag_name':'v1.2.0','draft':True,'prerelease':False},{'tag_name':'v1.1.0','draft':False,'prerelease':True})
         r,plan,_=self.run_step('plan',releases=releases,skip='x')
-        self.assertEqual(r.returncode,0,r.stdout+r.stderr);self.assertEqual(plan[4],'v1.0.0')
+        self.assertEqual(r.returncode,0,r.stdout+r.stderr);self.assertEqual(plan['target'],'v1.0.0')
     @needs_shell
     def test_multi_add_on_repository_uses_the_slug_tag(self):
         comps=[{'id':i,'source_path':'addon','config_file':'config.yaml'} for i in ('t','t_2')]
         r,plan,_=self.run_step('plan',extra={'components':comps},releases=('v9.0.0','t_2-v2.0.0','t-v1.0.0'),skip='x')
-        self.assertEqual(r.returncode,0,r.stdout+r.stderr);self.assertEqual(plan[4],'t-v1.0.0')
+        self.assertEqual(r.returncode,0,r.stdout+r.stderr);self.assertEqual(plan['target'],'t-v1.0.0')
     @needs_shell
     def test_version_with_a_newline_is_rejected_before_it_reaches_the_log(self):
         r,_,_=self.run_step('detect',version='1.1.0\n::warning title=Injected::boom')
@@ -585,11 +611,11 @@ class ComparisonTarget(StepHarness):
         self.assertEqual([l for l in r.stdout.splitlines() if l.startswith('::') and not l.startswith('::error title=Upgrade comparison failed::')],[])
     @needs_shell
     def test_target_image_or_version_with_a_newline_is_rejected(self):
-        # The comparison target's config was released earlier, but a newline in it would still shift plan.txt fields.
+        # The comparison target's config was released earlier, but a newline in it is still refused before use.
         for key,value in [('image','ghcr.io/x/a-{arch}\n::warning title=Injected::boom'),('version','1.0.0\n::warning title=Injected::boom')]:
             with self.subTest(key):
                 r,plan,_=self.run_step('plan',old={key:value},sbom='*')
-                self.assertEqual(r.returncode,1,r.stdout+r.stderr);self.assertIn('control character',r.stdout);self.assertEqual(plan,[])
+                self.assertEqual(r.returncode,1,r.stdout+r.stderr);self.assertIn('control character',r.stdout);self.assertEqual(plan,{})
                 self.assertEqual([l for l in r.stdout.splitlines() if l.startswith('::') and not l.startswith('::error title=Upgrade comparison failed::')],[])
     def test_the_raw_file_fetch_is_defined_once(self):
         text=self.WF.read_text(encoding='utf-8')
@@ -642,10 +668,13 @@ class SbomAttempt(unittest.TestCase):
         upload=next(s for s in action['runs']['steps'] if s.get('uses','').startswith('actions/upload-artifact@'))
         self.assertEqual(upload['with']['name'],'upgrade-comparison-sbom-${{ inputs.component }}-attempt-${{ github.run_attempt }}')
     def test_wait_accepts_only_this_attempts_artifact(self):
-        wf=yaml.safe_load((self.STORE/'.github/workflows/woow-addon-upgrade-check.yml').read_text(encoding='utf-8'))
-        wait=next(s for s in wf['jobs']['compare']['steps'] if s.get('name')=="Wait for the new images' SBOMs")
-        self.assertEqual(wait['env']['RUN_ATTEMPT'],'${{ github.run_attempt }}')
-        self.assertIn('n="upgrade-comparison-sbom-${id}-attempt-${RUN_ATTEMPT}"',wait['run'])
+        # The plan names each add-on's artifact once, as the action does; the wait looks for exactly that name.
+        text=(self.STORE/'.github/workflows/woow-addon-upgrade-check.yml').read_text(encoding='utf-8');wf=yaml.safe_load(text)
+        steps={s.get('id') or s.get('name'):s for s in wf['jobs']['compare']['steps']}
+        self.assertEqual(steps['plan']['env']['RUN_ATTEMPT'],'${{ github.run_attempt }}')
+        self.assertIn('artifact="upgrade-comparison-sbom-${id}-attempt-${RUN_ATTEMPT}"',steps['plan']['run'])
+        self.assertEqual(text.count('upgrade-comparison-sbom-${id}'),1)
+        self.assertIn("[.id, .artifact]",steps["Wait for the new images' SBOMs"]['run'])
     def test_callers_glob_still_matches(self):
         import fnmatch
         self.assertTrue(fnmatch.fnmatchcase('upgrade-comparison-sbom-odoo18ce-attempt-2','upgrade-comparison-sbom-*'))
