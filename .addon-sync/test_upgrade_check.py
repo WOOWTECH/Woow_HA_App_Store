@@ -411,6 +411,12 @@ class LatestRelease(unittest.TestCase):
         self.assertEqual(self.main(releases,'woow_ha_core_2',both),(0,'woow_ha_core_2-v2.3.0\n'))
         self.assertEqual(self.main(releases,'woow_ha_core',both),(0,'woow_ha_core-v2.4.0\n'))
         self.assertEqual(self.main(releases,'t'),(0,'v9.0.0\n'))
+    def test_unknown_repository_is_the_registry_lookups_error(self):
+        # One provider lookup (addon_sync.find_provider) for latest-release and components.
+        d=pathlib.Path(tempfile.mkdtemp());self.addCleanup(shutil.rmtree,d);(d/'registry.json').write_text('{"providers":{}}')
+        with contextlib.redirect_stdout(io.StringIO()) as out,unittest.mock.patch('sys.stdin',io.StringIO('[]')):
+            code=u.main(['latest-release','--registry',str(d/'registry.json'),'--repo','WOOWTECH/x','--component','t','--version','1.0.0'])
+        self.assertEqual(code,2);self.assertIn('not in the Store registry',out.getvalue())
     def test_unknown_component_or_bad_input_exits_2(self):
         for releases,component in [(['v1.0.0'],'other'),('not json','t'),('{}','t')]:
             with self.subTest(component=component,releases=releases):
@@ -463,6 +469,7 @@ class ComponentsCommand(unittest.TestCase):
             with self.subTest(name):
                 code,out=self.main(registry)
                 self.assertEqual(code,2);self.assertTrue(out.startswith('::error title=Upgrade comparison failed::WOOWTECH/r: '),out)
+        self.assertIn('not in the Store registry',self.main({'providers':{}})[1])
 class ReusableWorkflow(unittest.TestCase):
     """Shape that callers and the ruleset depend on; the shell itself is verified on pilot PRs (#89 Testing Decisions)."""
     def setUp(self):

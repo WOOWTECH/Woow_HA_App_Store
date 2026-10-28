@@ -321,9 +321,14 @@ def source_file(comp, name):
     """Repository path of file `name` in the add-on's directory (source_path; '.' is the repository root)."""
     return str(safe_path(name) if comp['source_path']=='.' else safe_path(comp['source_path'])/safe_path(name))
 
+def find_provider(registry, repo):
+    """repo's registry entry; KeyError when the Store registry does not list it."""
+    if repo not in registry['providers']:raise KeyError('not in the Store registry')
+    return registry['providers'][repo]
+
 def find_component(registry, repo, cid):
     """(provider, component) of add-on cid in repo's registry entry; KeyError names an unknown repository or add-on."""
-    provider=registry['providers'][repo]
+    provider=find_provider(registry,repo)
     comp=next((c for c in provider['components'] if c['id']==cid),None)
     if comp is None:raise KeyError(f'no component {cid}')
     return provider,comp
