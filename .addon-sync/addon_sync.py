@@ -388,15 +388,11 @@ def version_cmp(a, b):
         if x==y:raise ValueError(f'cannot order versions {a!r} and {b!r}')
     return -1 if x<y else 1 if x>y else 0
 
-def _is_version(v):
-    """True when version_cmp can read `v` (PEP 440, a dotted number with a rebuild suffix, or a leading dotted number)."""
-    try:Version(v);return True
-    except InvalidVersion:return bool(re.match(r'^\d+(?:\.\d+)*',v))
-
-def _well_formed(v):
-    """True when version_cmp reads `v` as PEP 440 or a dotted number with a rebuild suffix, not by its leading number alone."""
-    try:Version(v);return True
-    except InvalidVersion:return bool(REBUILD.match(v))
+def _form(v):
+    """How version_cmp reads `v`: 2 whole (PEP 440, or a dotted number with a rebuild suffix), 1 by its leading dotted
+    number alone, 0 not at all."""
+    try:Version(v);return 2
+    except InvalidVersion:return 2 if REBUILD.match(v) else 1 if re.match(r'^\d+(?:\.\d+)*',v) else 0
 
 def require_newer(version, target):
     """ValueError unless `version` is newer than `target`, the version users run now."""
@@ -411,7 +407,7 @@ def comparison_target(released, version):
     (comparison target, version], so both take the target from here. A tag that is not a version (a stray `nightly`), or
     that cannot be ordered against `version` or a well-formed Release, is ignored: it must not block a Release."""
     target=None
-    for v in sorted((v for v in released if _is_version(v)),key=lambda v:not _well_formed(v)):  # well-formed first, so they win
+    for v in sorted((v for v in released if _form(v)),key=_form,reverse=True):  # read whole first, so they win
         try:
             version_cmp(v,version)
             if target is None or version_cmp(v,target)>0:target=v
