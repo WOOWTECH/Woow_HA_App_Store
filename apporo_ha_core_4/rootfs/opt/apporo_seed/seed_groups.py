@@ -13,7 +13,7 @@ Each group is handled on its own: an error in one keeps only that group.
 Only component code folders are ever deleted; config entries, .storage and YAML
 are never touched. A missing core.config_entries means Home Assistant never ran
 with these components, so it does not count as in use. Log lines go to stderr.
-See the 2.4.0 CHANGELOG entry.
+See the CHANGELOG entry that replaced the split components.
 
 Usage: python seed_groups.py <config_dir>
 """
@@ -46,6 +46,8 @@ GROUPS = [
     Group("protocol", ("woow_dmx", "woow_knx", "woow_modbus"), "woow_multi_protocol",
           data_dirs=("dmx", "knx", "modbus")),
 ]
+# apporo_seed.sh repeats GROUPS in COMPONENT_GROUPS, for when this script cannot run;
+# tests/test_seed.py checks they match.
 
 
 def log(message):
@@ -70,14 +72,14 @@ def is_successor(path):
             f"custom_components/{path.name}/manifest.json cannot be read ({err})") from err
 
 
-def old_folders(group, custom_components):
+def old_folders(group, custom_components, successor_in_old_folder):
     """The group's old folders present in custom_components."""
     return [name for name in group.old_domains
             if (custom_components / name).is_dir()
-            and not (name == group.successor and is_successor(custom_components / name))]
+            and not (name == group.successor and successor_in_old_folder)]
 
 
-def in_use(group, config, domains):
+def in_use_reason(group, config, domains):
     """Why the group counts as in use, or None. Raises when that cannot be told.
 
     Any one of these counts, for the given old domains: a config entry; a .storage
@@ -180,20 +182,22 @@ def remove(group, old, custom_components, trash):
 
 def replace(group, config, custom_components, trash):
     """Remove the group's old folders if it is not in use; otherwise keep() it."""
-    old = old_folders(group, custom_components)
+    successor = custom_components / group.successor
+    successor_in_old_folder = (group.successor in group.old_domains
+                               and successor.is_dir() and is_successor(successor))
+    old = old_folders(group, custom_components, successor_in_old_folder)
     if not old:
         return
     # Signals of the successor's own domain belong to the successor once it is present.
     domains = group.old_domains
-    successor = custom_components / group.successor
-    if group.successor in domains and successor.is_dir() and is_successor(successor):
+    if successor_in_old_folder:
         domains = tuple(d for d in domains if d != group.successor)
     try:
-        reason = in_use(group, config, domains)
+        reason = in_use_reason(group, config, domains)
     except Exception as err:  # noqa: BLE001 - any doubt keeps the group
         reason = f"could not check ({err})"
     if reason:
-        keep(group, f"in use ({reason})", " Migrate by hand, see CHANGELOG 2.4.0.")
+        keep(group, f"in use ({reason})", " Migrate by hand, see the CHANGELOG.")
         return
     try:
         remove(group, old, custom_components, trash)

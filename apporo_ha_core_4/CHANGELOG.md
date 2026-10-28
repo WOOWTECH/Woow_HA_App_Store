@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.4.1
+
+No change in what the add-on does. The check that replaces unused old component
+groups was tidied up, and its tests also cover commented and tab-indented
+`configuration.yaml` keys (these do not count as in use). The log line for a group that is kept in use now says "see the
+CHANGELOG" (the 2.4.0 entry below) instead of naming a version.
+
 ## 2.4.0
 
 The bundled custom components move to the consolidated upstream layout. Ten
