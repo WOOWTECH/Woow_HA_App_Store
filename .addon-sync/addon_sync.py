@@ -315,7 +315,7 @@ def release_tag(provider, component, version):
     return ('v' if len(provider['components'])==1 else component['id']+'-v')+version
 
 def publishes_releases(comp):
-    """True for an add-on release() publishes stable Releases for: enabled, on the stable channel."""
+    """True for an add-on release() publishes stable Releases for, and consume() syncs: enabled, on the stable channel."""
     return comp.get('enabled',True) and comp.get('channel','stable')=='stable'
 
 def source_file(comp, name):
@@ -578,7 +578,7 @@ def consume(gh, registry, workspace, only=None):
     catalog=json.loads(catpath.read_text()) if catpath.exists() else {'schema':1,'components':{}}
     report=[];outboxes={}
     for repo,provider in registry['providers'].items():
-        active=[c for c in provider['components'] if c.get('enabled',True) and c.get('channel','stable')=='stable' and (not only or c['id'] in only)]
+        active=[c for c in provider['components'] if publishes_releases(c) and (not only or c['id'] in only)]
         if not active:continue
         try:outboxes[repo]=gh.outbox(repo)
         except Blocked as e:
