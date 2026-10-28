@@ -353,18 +353,16 @@ def main(argv=None):
     t.add_argument('--component',required=True,help='add-on id in the registry')
     a=p.parse_args(argv)
     if a.command=='latest-release':
-        # The Release filter and tag rule are addon_sync's, so the PR check and the Release notes agree; addon_sync imports this module.
-        from addon_sync import formal_versions, release_tag
+        # The registry lookup, Release filter and tag rule are addon_sync's, so the PR check and the Release notes agree; addon_sync imports this module.
+        from addon_sync import find_component, latest_release_tag
         try:
-            provider=_load(a.registry,'json')['providers'][a.repo]
-            comp=next((c for c in provider['components'] if c['id']==a.component),None)
-            if comp is None:raise KeyError(f'no component {a.component}')
+            provider,comp=find_component(_load(a.registry,'json'),a.repo,a.component)
             releases=json.load(sys.stdin)
             if not isinstance(releases,list):raise ValueError('stdin is not a JSON array of Releases')
-            latest=latest_release(formal_versions(releases,release_tag(provider,comp,'')))
+            tag=latest_release_tag(provider,comp,releases)
         except (ValueError,KeyError,TypeError,AttributeError,OSError) as e:
             _error('Upgrade comparison failed',f'Releases of {a.repo} {a.component}: {e}');return 2
-        if latest is not None:print(release_tag(provider,comp,latest))
+        if tag is not None:print(tag)
         return 0
     if a.command=='release-notes':
         try:text=release_notes(_load(a.notes,'optional'),a.version,a.released)

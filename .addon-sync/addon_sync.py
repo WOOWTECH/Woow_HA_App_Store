@@ -314,6 +314,18 @@ def release_tag(provider, component, version):
     """v<version> for a single-addon repository; <slug>-v<version> when addons version independently."""
     return ('v' if len(provider['components'])==1 else component['id']+'-v')+version
 
+def find_component(registry, repo, cid):
+    """(provider, component) of add-on cid in repo's registry entry; KeyError names an unknown repository or add-on."""
+    provider=registry['providers'][repo]
+    comp=next((c for c in provider['components'] if c['id']==cid),None)
+    if comp is None:raise KeyError(f'no component {cid}')
+    return provider,comp
+
+def latest_release_tag(provider, comp, releases):
+    """Tag of the add-on's latest formal Release among GitHub's `releases`; None when it has none."""
+    latest=upgrade_check.latest_release(formal_versions(releases,release_tag(provider,comp,'')))
+    return None if latest is None else release_tag(provider,comp,latest)
+
 def formal_versions(releases, prefix):
     """Versions of the formal Releases (not draft, not prerelease) among GitHub's `releases` whose tag starts with prefix."""
     return [r['tag_name'][len(prefix):] for r in releases if not r.get('draft') and not r.get('prerelease') and r.get('tag_name','').startswith(prefix)]
