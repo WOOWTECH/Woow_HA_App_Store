@@ -47,7 +47,7 @@ from __future__ import annotations
 import argparse, json, os, pathlib, re, secrets, sys
 import yaml
 # addon_sync owns the Release rules (version order, upgrade-notes.yaml parsing, Release notes); it does not import this module.
-from addon_sync import declaration_text, declarations, find_component, formal_versions, latest_release, release_notes, release_tag, workflow_command
+from addon_sync import comparison_target, declaration_text, declarations, find_component, formal_versions, release_notes, release_tag, workflow_command
 
 RANGED={'int','float','str'}
 
@@ -201,6 +201,7 @@ def compare(old, new, old_version, new_version, notes=None, old_scan=None, new_s
     Returns blocked, vulnerabilities (None when not scanned), breaking [{change, key, declared}], notices,
     unmatched declarations, problems, and a Markdown report."""
     name=name or new.get('slug') or 'add-on'
+    if old is not None:comparison_target([old_version],new_version)  # the version must go up from the comparison target
     sections=declarations(notes,old_version,new_version);declared,accepted=sections['breaking'],sections['accepted_vulnerabilities']
     # The Release notes (#119) publish every migration and reason and fail on an empty one, so check them here
     # with or without a comparison target or scan: the merge is the release approval (ADR-0005).
@@ -278,6 +279,7 @@ def main(argv=None):
     t=sub.add_parser('latest-release',help="read the repository's Releases (GitHub API JSON array) on stdin, print the tag of the add-on's latest formal Release (nothing when none)")
     t.add_argument('--registry',required=True,help='Store registry.json');t.add_argument('--repo',required=True,help='source repository, owner/name')
     t.add_argument('--component',required=True,help='add-on id in the registry')
+    t.add_argument('--version',help="the PR's version: fail unless the latest formal Release is older (as the Release notes require)")
     a=p.parse_args(argv)
     if a.command=='latest-release':
         # The registry lookup, Release filter, tag rule and order are addon_sync's, so the PR check and the Release notes agree.
@@ -285,7 +287,7 @@ def main(argv=None):
             provider,comp=find_component(_load(a.registry,'json'),a.repo,a.component)
             releases=json.load(sys.stdin)
             if not isinstance(releases,list):raise ValueError('stdin is not a JSON array of Releases')
-            latest=latest_release(formal_versions(provider,comp,releases))
+            latest=comparison_target(formal_versions(provider,comp,releases),a.version)
         except (ValueError,KeyError,TypeError,AttributeError,OSError) as e:
             _error('Upgrade comparison failed',f'Releases of {a.repo} {a.component}: {e}');return 2
         if latest is not None:print(release_tag(provider,comp,latest))

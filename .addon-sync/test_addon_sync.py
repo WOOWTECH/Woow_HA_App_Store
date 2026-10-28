@@ -360,6 +360,12 @@ class Tests(unittest.TestCase):
                 gh=self.release_gh({'config.yaml':'name: Test\nslug: test\nversion: 1.2.0\n',**files},listing=[{'tag_name':'v1.0.0'}])
                 s.release(gh,self.single(),'WOOWTECH/test','a'*40,apply=True)
                 self.assertNotIn('body',gh.created[0]);self.assertTrue(gh.created[0]['generate_release_notes'])
+    def test_release_below_a_newer_formal_release_is_blocked(self):
+        # Same comparison target as the PR check: the latest formal Release, which must be older than the new version.
+        gh=self.release_gh({'config.yaml':'name: Test\nslug: test\nversion: 1.2.0\n','upgrade-notes.yaml':self.NOTES},
+            listing=[{'tag_name':'v1.1.0'},{'tag_name':'v1.3.0'}])
+        report=s.release(gh,self.single(),'WOOWTECH/test','a'*40,apply=True)
+        self.assertEqual(report[0]['state'],'blocked');self.assertIn('not newer than the comparison target 1.3.0',report[0]['reason']);self.assertEqual(gh.created,[])
     def test_malformed_upgrade_notes_block_the_release(self):
         gh=self.release_gh({'config.yaml':'name: Test\nslug: test\nversion: 1.2.0\n','upgrade-notes.yaml':'1.2: {}\n'})
         report=s.release(gh,self.single(),'WOOWTECH/test','a'*40,apply=True)

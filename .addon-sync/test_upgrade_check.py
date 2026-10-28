@@ -139,6 +139,11 @@ class Tests(unittest.TestCase):
         r=u.compare(None,new(),old_version=None,new_version='1.1.0',notes=self.notes(migration=''))
         self.assertTrue(r['blocked']);self.assertEqual(r['problems'],['1.1.0: option-removed workers has no migration'])
         self.assertIn('no comparison target',r['report']);self.assertIn('has no migration',r['report'])
+    def test_version_that_does_not_go_up_is_an_error(self):
+        # A comparison target at or above the PR's version (a newer formal Release, or a downgrade from the PR base) is no upgrade.
+        for old_version in ('1.1.0','1.2.0'):
+            with self.subTest(old_version):
+                with self.assertRaisesRegex(ValueError,'not newer than the comparison target'):run(new(),old=dict(BASE,version=old_version),old_version=old_version)
     def test_nonstandard_versions_order_by_their_leading_number(self):
         old=copy.deepcopy(BASE);old['version']='2.12.4-v2'
         cfg=self.REMOVED();cfg['version']='2.12.5-v1'
@@ -343,6 +348,9 @@ class ReleaseNotes(unittest.TestCase):
     def test_a_released_tag_that_is_not_a_version_is_ignored(self):
         # A stray tag on the Releases page must not block the Release it has nothing to do with.
         self.assertEqual(u.release_notes(NOTES,'1.3.0',released=['1.2.0','nightly']),u.release_notes(NOTES,'1.3.0',released=['1.2.0']))
+    def test_a_newer_formal_release_is_an_error(self):
+        # The PR check compares with the latest formal Release; the notes must not quietly use an older one instead.
+        with self.assertRaisesRegex(ValueError,'1.3.0 is not newer than the comparison target 1.4.0'):u.release_notes(NOTES,'1.3.0',released=['1.2.0','1.4.0'])
     def test_multiline_text_stays_inside_its_bullet(self):
         notes={'1.3.0':{'breaking':[dict(NOTES['1.3.0']['breaking'][0],migration='第一步。\n第二步。\n')]}}
         self.assertIn('：第一步。\n  第二步。\n',u.release_notes(notes,'1.3.0'))
@@ -359,16 +367,16 @@ class LatestRelease(unittest.TestCase):
         self.assertEqual(r.stdout.strip(),'False',r.stderr)
     def test_orders_with_version_cmp_where_sort_v_disagrees(self):
         # sort -V puts 1.2.0rc1 after 1.2.0 and 2026.9.1-10 is fine either way; PEP 440 says rc1 comes first.
-        self.assertEqual(u.latest_release(['1.2.0rc1','1.2.0','1.1.9']),'1.2.0')
-        self.assertEqual(u.latest_release(['2.12.4-v9','2.12.4-v10','2.12.4']),'2.12.4-v10')
-        self.assertEqual(u.latest_release(['1.9.0','1.10.0','nightly']),'1.10.0')
-        self.assertIsNone(u.latest_release(['nightly']));self.assertIsNone(u.latest_release([]))
-    def main(self,releases,component,components=('t',)):
+        self.assertEqual(u.comparison_target(['1.2.0rc1','1.2.0','1.1.9']),'1.2.0')
+        self.assertEqual(u.comparison_target(['2.12.4-v9','2.12.4-v10','2.12.4']),'2.12.4-v10')
+        self.assertEqual(u.comparison_target(['1.9.0','1.10.0','nightly']),'1.10.0')
+        self.assertIsNone(u.comparison_target(['nightly']));self.assertIsNone(u.comparison_target([]))
+    def main(self,releases,component,components=('t',),version=None):
         d=pathlib.Path(tempfile.mkdtemp());self.addCleanup(shutil.rmtree,d)
         (d/'registry.json').write_text(json.dumps({'providers':{'WOOWTECH/r':{'components':[{'id':c} for c in components]}}}))
         stdin=releases if isinstance(releases,str) else json.dumps([r if isinstance(r,dict) else {'tag_name':r,'draft':False,'prerelease':False} for r in releases])
         with contextlib.redirect_stdout(io.StringIO()) as out,unittest.mock.patch('sys.stdin',io.StringIO(stdin)):
-            code=u.main(['latest-release','--registry',str(d/'registry.json'),'--repo','WOOWTECH/r','--component',component])
+            code=u.main(['latest-release','--registry',str(d/'registry.json'),'--repo','WOOWTECH/r','--component',component]+(['--version',version] if version else []))
         return code,out.getvalue()
     def test_prints_the_tag_of_the_latest_formal_release(self):
         self.assertEqual(self.main(['v1.2.0rc1','v1.2.0','v1.1.0'],'t'),(0,'v1.2.0\n'))
@@ -377,6 +385,14 @@ class LatestRelease(unittest.TestCase):
         releases=[{'tag_name':'v2.0.0','draft':True,'prerelease':False},{'tag_name':'v1.9.0','draft':False,'prerelease':True},'x-v3.0.0','v1.1.0']
         self.assertEqual(self.main(releases,'t'),(0,'v1.1.0\n'))
         self.assertEqual(self.main(releases[:3],'t'),(0,''))
+    def test_version_must_be_newer_than_the_latest_formal_release(self):
+        # --version applies the Release notes' rule: the target is the latest formal Release, and it must be older.
+        self.assertEqual(self.main(['v1.2.0','v1.1.0'],'t',version='1.3.0'),(0,'v1.2.0\n'))
+        self.assertEqual(self.main([],'t',version='1.3.0'),(0,''))
+        for version in ('1.2.0','1.1.5'):
+            with self.subTest(version):
+                code,out=self.main(['v1.2.0','v1.1.0'],'t',version=version)
+                self.assertEqual(code,2);self.assertTrue(out.startswith('::error title=Upgrade comparison failed::'),out);self.assertIn('comparison target 1.2.0',out)
     def test_tag_rule_is_addon_syncs(self):
         # v<ver> for a single add-on, <slug>-v<ver> when the repository has several (addon_sync.release_tag).
         releases=['v9.0.0','woow_ha_core-v2.4.0','woow_ha_core_2-v2.3.0','woow_ha_core_2-v2.2.0']
