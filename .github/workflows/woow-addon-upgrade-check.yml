@@ -20,12 +20,12 @@
 # never arrives fails the check; it is never skipped.
 # Add-ons built on the device are reported as compared in #90. A caller whose
 # prebuilt image is not what its CI builds (knxd ships a third-party image),
-# or whose category 4 runs elsewhere, passes skip_vulnerability_scan with the
-# reason: category 4 is then skipped for every add-on in the call and the
-# report gives that reason; the configuration comparison still runs. Only a
-# provider whose Store registry entry has upgrade_comparison.
-# skip_vulnerability_scan (the approved reason and ticket) may pass it; any
-# other caller that passes it fails.
+# or whose category 4 runs elsewhere, passes skip_vulnerability_scan (any
+# non-empty text, e.g. the reason): category 4 is then skipped for every add-on
+# in the call; the configuration comparison still runs. Only a provider whose
+# Store registry entry has upgrade_comparison.skip_vulnerability_scan (the
+# approved reason and ticket) may pass it, and the report gives that approved
+# reason, not the caller's text; any other caller that passes it fails.
 #
 # Caller (in a workflow that also runs on push to the default branch, so
 # addon_sync's ci_gate keeps seeing a successful non-PR run; no path filter,
@@ -56,7 +56,7 @@ name: Upgrade comparison
         type: string
         default: ''
       skip_vulnerability_scan:
-        description: Reason to skip the vulnerability comparison (category 4) for every add-on in this call; it is printed in the report. Empty scans as usual.
+        description: Non-empty (e.g. the reason) skips the vulnerability comparison (category 4) for every add-on in this call; only for providers the Store registry approves, and the report gives the registry's approved reason. Empty scans as usual.
         type: string
         default: ''
       sbom_wait_minutes:
@@ -167,7 +167,7 @@ jobs:
         set -euo pipefail
         source tooling/.addon-sync/gh_raw.sh
         source tooling/.addon-sync/log.sh
-        policy="$(jq -r '.ref_policy' provider.json)"
+        policy="$(jq -r '.ref_policy' provider.json)"; approved="$(jq -r '.skip_vulnerability_scan' provider.json)"
         releases="$(gh api --paginate "repos/${REPO}/releases?per_page=100" --jq '.[]' | jq -sc .)"
         # plan.jsonl, one object per add-on: id, config, notes (paths), target, ref (old image; "" = no scan),
         # artifact (the addon-sbom artifact of its new image), note (why there is no scan).
@@ -203,7 +203,8 @@ jobs:
           image="$(yq -r '.image // ""' "source/${path}")"
           artifact="upgrade-comparison-sbom-${id}-attempt-${RUN_ATTEMPT}"
           if [ -n "${SKIP_VULNERABILITY_SCAN}" ]; then
-            note="skipped by the caller: ${SKIP_VULNERABILITY_SCAN//[[:cntrl:]]/ }"
+            # The detect step checked the approval; the report gives the registry's reason, never the caller's text.
+            note="skipped as approved in the Store registry: ${approved}"
           elif [ -z "${image}" ]; then
             note="built on the device; the vulnerability comparison for these add-ons is #90"
           elif [ ! -s "${old}" ]; then

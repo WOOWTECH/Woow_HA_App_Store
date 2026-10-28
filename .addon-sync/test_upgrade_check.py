@@ -568,8 +568,10 @@ class SkipVulnerabilityScan(StepHarness):
     def test_skip_drops_category_4_and_reports_the_reason(self):
         r,plan,out=self.run_step('plan',skip=self.REASON,extra=self.APPROVED)
         self.assertEqual(r.returncode,0,r.stdout+r.stderr)
-        # target still found (category 1 runs), no image ref to scan, the reason is the report's scan note
-        self.assertEqual([plan['target'],plan['ref'],plan['note']],['v1.0.0','',f'skipped by the caller: {self.REASON}']);self.assertIn('scan=false',out)
+        # target still found (category 1 runs), no image ref to scan; the report's scan note is the registry's approved
+        # reason, not the caller's text (owner decision: skip only where approved, and the report says why).
+        note=f"skipped as approved in the Store registry: {self.APPROVED['upgrade_comparison']['skip_vulnerability_scan']}"
+        self.assertEqual([plan['target'],plan['ref'],plan['note']],['v1.0.0','',note]);self.assertIn('scan=false',out)
     @needs_shell
     def test_without_skip_a_prebuilt_image_still_needs_its_sbom(self):
         r,_,_=self.run_step('plan')
