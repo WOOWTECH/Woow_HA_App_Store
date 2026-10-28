@@ -213,9 +213,13 @@ def _paste(version, items):
 
 BLOCKING_SEVERITIES={'critical','high'}
 
+def _severity(v):
+    """Grype's severity in lower case: it is compared in any case."""
+    return str(v.get('severity','')).lower()
+
 def _blocking(v):
     """Critical or High, in any case."""
-    return str(v.get('severity','')).lower() in BLOCKING_SEVERITIES
+    return _severity(v) in BLOCKING_SEVERITIES
 
 def _fixable(v):
     """Grype has a fixed version (fix.state fixed)."""
@@ -224,7 +228,7 @@ def _fixable(v):
 def _rank(m):
     """Sort key picking a pair's match: new fixable over Critical/High over the rest, then Critical, then a fixed tie-break."""
     v=m['vulnerability'];blocking=_blocking(v)
-    return (blocking and _fixable(v),blocking,str(v.get('severity','')).lower()=='critical',json.dumps(m,sort_keys=True))
+    return (blocking and _fixable(v),blocking,_severity(v)=='critical',json.dumps(m,sort_keys=True))
 
 def _findings(scan):
     """{(vulnerability id, package): match} from Grype JSON; one entry per pair however many locations match."""
