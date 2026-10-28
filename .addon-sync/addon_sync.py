@@ -10,6 +10,7 @@ new notification, with its schedule as the fallback.
 from __future__ import annotations
 import argparse, base64, hashlib, io, json, os, pathlib, re, shutil, subprocess, tarfile, tempfile, urllib.error, urllib.parse, urllib.request
 import yaml
+from enum import IntEnum
 from packaging.version import Version, InvalidVersion
 
 BRANCH = 'woow-addon-sync'
@@ -370,29 +371,30 @@ def formal_versions(provider, comp, releases):
 #         reason: Upstream base image not updated yet; replaced in 1.3.1.   # must not be empty
 # The Release notes (`upgrade_check.py release-notes`, release() through release_body, Woow_ha_odoo's release.yml) print
 # the declarations after the comparison target as two sections, 破壞性變更與遷移方式 and 已接受的漏洞; nothing when none.
-REBUILD=re.compile(r'^(\d+(?:\.\d+)*)(?:-v?(\d+))?$')
+REBUILD=re.compile(r'^(\d+(?:\.\d+)*)(?:-v?(\d+))?$');LEADING=re.compile(r'^\d+(?:\.\d+)*')
+
+class Form(IntEnum):
+    """How version_cmp reads a version (_read): not at all, by its leading dotted number alone, or whole."""
+    NONE=0;LEADING=1;WHOLE=2
+
+def _read(v):
+    """(Form, readings) of `v` for version_cmp, best first: PEP 440 (Woow_haos_ha_core `2026.9.1-1` is a post-release), a
+    dotted number with an optional rebuild suffix `-v<N>` or `-<N>` (nginxpm `2.12.4-v2` < `2.12.4-v3`; no suffix sorts
+    first), the leading dotted number alone; None where `v` does not read that way."""
+    try:pep=Version(v)
+    except InvalidVersion:pep=None
+    m,n=REBUILD.match(v),LEADING.match(v)
+    readings=(pep,(tuple(map(int,m[1].split('.'))),int(m[2] or -1)) if m else None,tuple(map(int,n[0].split('.'))) if n else None)
+    return (Form.WHOLE if readings[0] is not None or readings[1] is not None else Form.LEADING if n else Form.NONE),readings
 
 def version_cmp(a, b):
-    """-1, 0 or 1. PEP 440 where possible (Woow_haos_ha_core `2026.9.1-1` is a post-release); else a dotted number with an
-    optional rebuild suffix `-v<N>` or `-<N>` (nginxpm `2.12.4-v2` < `2.12.4-v3`; no suffix sorts first); else the leading
-    dotted number alone. A pair that cannot be ordered is an error."""
+    """-1, 0 or 1 by the first reading (_read) both versions have. A pair that cannot be ordered is an error."""
     if a==b:return 0
-    try:x,y=Version(a),Version(b)
-    except InvalidVersion:
-        m,n=REBUILD.match(a),REBUILD.match(b)
-        if m and n:x,y=(tuple(map(int,m[1].split('.'))),int(m[2] or -1)),(tuple(map(int,n[1].split('.'))),int(n[2] or -1))
-        else:
-            m,n=re.match(r'^(\d+(?:\.\d+)*)',a),re.match(r'^(\d+(?:\.\d+)*)',b)
-            if not m or not n:raise ValueError(f'cannot order versions {a!r} and {b!r}')
-            x,y=tuple(map(int,m[1].split('.'))),tuple(map(int,n[1].split('.')))
-        if x==y:raise ValueError(f'cannot order versions {a!r} and {b!r}')
+    for i,(x,y) in enumerate(zip(_read(a)[1],_read(b)[1])):
+        if x is not None and y is not None:break
+    else:raise ValueError(f'cannot order versions {a!r} and {b!r}')
+    if i and x==y:raise ValueError(f'cannot order versions {a!r} and {b!r}')
     return -1 if x<y else 1 if x>y else 0
-
-def _form(v):
-    """How version_cmp reads `v`: 2 whole (PEP 440, or a dotted number with a rebuild suffix), 1 by its leading dotted
-    number alone, 0 not at all."""
-    try:Version(v);return 2
-    except InvalidVersion:return 2 if REBUILD.match(v) else 1 if re.match(r'^\d+(?:\.\d+)*',v) else 0
 
 def require_newer(version, target):
     """ValueError unless `version` is newer than `target`, the version users run now."""
@@ -407,7 +409,7 @@ def comparison_target(released, version):
     (comparison target, version], so both take the target from here. A tag that is not a version (a stray `nightly`), or
     that cannot be ordered against `version` or a well-formed Release, is ignored: it must not block a Release."""
     target=None
-    for v in sorted((v for v in released if _form(v)),key=_form,reverse=True):  # read whole first, so they win
+    for v in sorted((v for v in released if _read(v)[0]),key=lambda v:_read(v)[0],reverse=True):  # read whole first, so they win
         try:
             version_cmp(v,version)
             if target is None or version_cmp(v,target)>0:target=v
