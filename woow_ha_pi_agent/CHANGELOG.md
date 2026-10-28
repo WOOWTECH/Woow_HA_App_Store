@@ -1,3 +1,9 @@
+## 0.15.16
+
+- Bundle the checksum-verified public Omnigent plugin 0.3.29 and Paseo plugin 0.1.13, the same versions that the root Pi Agent image 0.3.20 ships, so the HA add-on, the PaaS image and the GitHub releases carry one plugin generation. Omnigent is still bound only from Settings → Omnigent; no setup conversation is created or opened. Plugin 0.3.29 words its status messages as "Settings → Omnigent" and adds no-op first-boot onboarding hooks for images that still call them.
+- Settings → Paseo keeps using the add-on's own bridge (`/api/paseo`, started from the home directory), so the fresh-install fix in Paseo 0.1.13 for Pi Web's own `/api/plugin-paseo` route does not change this add-on; the plugin is bundled to stay aligned.
+- Keep Pi Web 0.12.0, add-on options, ports, architectures, user sessions, provider credentials and authorized-host recovery. No migration is needed.
+
 ## 0.15.15
 
 - Bundle Omnigent plugin 0.3.26 again, the same Settings-only plugin that the PaaS Pi Agent image `20261027.1105` ships. Installation, startup and restart bind only through Settings → Omnigent; no setup conversation is created or opened and the Settings link to one is gone. The runtime and tests return to the verified 0.15.13 behavior. Existing conversations, credentials, authorized-host recovery and model verification are unchanged.

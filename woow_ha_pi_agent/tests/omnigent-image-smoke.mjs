@@ -23,11 +23,13 @@ process.env.PATH = `${guardDir}:${process.env.PATH}`;
 let child;
 try {
   const pkg = JSON.parse(fs.readFileSync(`${BUNDLE}/package.json`, 'utf8'));
-  assert.equal(pkg.version, '0.3.26');
+  assert.equal(pkg.version, '0.3.29');
   assert.equal(JSON.parse(fs.readFileSync('/usr/local/lib/node_modules/@agegr/pi-web/package.json', 'utf8')).version, '0.12.0');
   console.log('SMOKE: loading registered image plugin');
   seed(); const plugin = await loadPlugin(); assert.equal(typeof plugin.runtime.resumeAuthorizedHost, 'function'); assert.equal((await plugin.lifecycle()).active, true);
-  assert.equal(typeof plugin.web.ensureOnboarding, 'undefined');
+  // Plugin 0.3.29 keeps an inert hook for older images: it must never create a setup conversation or state file.
+  assert.equal(typeof plugin.web.ensureOnboarding, 'function');
+  assert.deepEqual(await plugin.web.ensureOnboarding({}), { status: 'settings-only' });
   assert.equal(fs.existsSync(path.join(process.env.PI_OMNIGENT_STATE_DIR, 'onboarding.json')), false);
   const sdk = await plugin.web.loadPiSdk();
   const loader = new sdk.DefaultResourceLoader({ cwd: process.env.HOME, agentDir: temporary, noSkills: true, noPromptTemplates: true, noThemes: true, noContextFiles: true });
