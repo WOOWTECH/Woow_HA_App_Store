@@ -1,3 +1,9 @@
+## 0.1.13
+
+- Documentation and provenance only. The Paseo section of DOCS and the README now recommend plugin `v0.1.4-rc.6`, and the bundled host adapter provenance identifies the rc.6 source commit. The four packaged host files are byte-identical to 0.1.12; the add-on does not install or update the separately managed plugin.
+- Explain when the Dashboard reload is needed: Hermes 0.22.5 loads a newly installed plugin's backend on first use, so the reload is normally unnecessary. Reload only if the Paseo page keeps showing that the plugin API is not loaded. DOCS also records what the rc.6 HAOS verification covered.
+- No code, add-on option, port or data migration changes.
+
 ## 0.1.12
 
 - Refresh the bundled Paseo host adapter provenance to plugin v0.1.4-rc.5. The four packaged host files are byte-identical to 0.1.11; the add-on does not install or update the separately managed plugin.
