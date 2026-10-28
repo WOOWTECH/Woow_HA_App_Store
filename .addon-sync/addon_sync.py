@@ -313,6 +313,10 @@ def release_tag(provider, component, version):
     """v<version> for a single-addon repository; <slug>-v<version> when addons version independently."""
     return ('v' if len(provider['components'])==1 else component['id']+'-v')+version
 
+def publishes_releases(comp):
+    """True for an add-on release() publishes stable Releases for: enabled, on the stable channel."""
+    return comp.get('enabled',True) and comp.get('channel','stable')=='stable'
+
 def source_file(comp, name):
     """Repository path of file `name` in the add-on's directory (source_path; '.' is the repository root)."""
     return str(safe_path(name) if comp['source_path']=='.' else safe_path(comp['source_path'])/safe_path(name))
@@ -464,7 +468,7 @@ def release(gh, registry, repo, sha, apply=False):
     report=[]
     for comp in provider['components']:
         cid=comp['id']
-        if not comp.get('enabled',True) or comp.get('channel','stable')!='stable':report.append({'id':cid,'state':'excluded'});continue
+        if not publishes_releases(comp):report.append({'id':cid,'state':'excluded'});continue
         try:
             manifest=source_file(comp,comp['config_file'])
             cfg=yaml.safe_load(gh.content(repo,manifest,sha))

@@ -452,6 +452,11 @@ class ComponentsCommand(unittest.TestCase):
             {'id':'b','config':'addons/b/config.yml','notes':'addons/b/upgrade-notes.yaml','previous_config':''}]})
         code,out=self.main({'providers':{'WOOWTECH/r':{'ref_policy':'release','components':comps}}})
         self.assertEqual(json.loads(out)['skip_vulnerability_scan'],'')
+    def test_only_add_ons_that_get_releases_are_compared(self):
+        # The same filter as addon_sync.release: deleting a retired add-on's config must not fail the check.
+        comps=[{'id':i,'source_path':i,'config_file':'config.yaml',**extra} for i,extra in [('a',{}),('off',{'enabled':False}),('beta',{'channel':'prerelease'}),('b',{'channel':'stable'})]]
+        code,out=self.main({'providers':{'WOOWTECH/r':{'ref_policy':'release','components':comps}}})
+        self.assertEqual(code,0);self.assertEqual([c['id'] for c in json.loads(out)['components']],['a','b'])
     def test_unknown_repository_or_unsafe_path_exits_2(self):
         for name,registry in [('unknown',{'providers':{}}),('unsafe',{'providers':{'WOOWTECH/r':{'ref_policy':'release','components':[{'id':'a','source_path':'../x','config_file':'config.yaml'}]}}}),
                 ('unsafe previous',{'providers':{'WOOWTECH/r':{'ref_policy':'release','components':[{'id':'a','source_path':'a','config_file':'config.yaml','previous_config':'../x/config.yaml'}]}}})]:

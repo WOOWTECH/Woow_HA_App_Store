@@ -134,7 +134,7 @@ ha store add https://github.com/WOOWTECH/Woow_HA_App_Store
 （管線工作區 #89，ADR-0005。）
 
 - **每個受管來源 repo 的每個 PR 都跑必要檢查 `Upgrade comparison / compare`**，由共用的 [`woow-addon-upgrade-check.yml`](.github/workflows/woow-addon-upgrade-check.yml) 提供（呼叫端 job 名稱 `Upgrade comparison`，GitHub 把檢查名稱寫成「呼叫端 job / 內部 job」）。呼叫方式寫在那個檔案開頭；不設 path filter。
-  - PR 沒有修改任何 addon 的版本：幾秒內通過。PR 刪除或搬移了 registry 列出的 `config.yaml`（PR base 上有、PR 裡沒有）時檢查失敗：放回原處，或先改 Store registry 裡該 addon 的設定。PR 和 PR base 都沒有 registry 列出的路徑時也失敗（registry 路徑寫錯是工具錯誤，不放行）。
+  - PR 沒有修改任何 addon 的版本：幾秒內通過。PR 刪除或搬移了 registry 列出的 `config.yaml`（PR base 上有、PR 裡沒有）時檢查失敗：放回原處，或先改 Store registry 裡該 addon 的設定。PR 和 PR base 都沒有 registry 列出的路徑時也失敗（registry 路徑寫錯是工具錯誤，不放行）。只比對會發 Release 的 addon（和 `addon_sync.release` 同一個條件：沒停用、`channel` 是 stable），刪除已停用 addon 的 `config.yaml` 不會讓檢查失敗。
   - **搬移 `config.yaml`**（換目錄或檔名）：
     1. 先在來源 repo 開搬移 PR（只搬移，或同時升版都可以）；這時它的檢查會失敗。
     2. Store PR 把該 addon 的 registry 設定改成新位置，並加上 `previous_config: <舊的 config.yaml 在 repo 裡的路徑>`。合併後重跑搬移 PR 的檢查，通過就立刻合併；兩個 PR 之間該 repo 其他 PR 的檢查和發布都會失敗，所以要接著合併。
