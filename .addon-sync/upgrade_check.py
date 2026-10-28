@@ -243,7 +243,8 @@ def check_target(version, target, config, config_version, tag_version=None):
     """ValueError unless the comparison target's config (path `config`) gives the version its tag does (`tag_version`; None
     under ref_policy main, whose target is the PR base) and `version` is newer than it (require_newer), so a PR fails
     before any scan; compare() reads the config's and requires the same. Tag and config are compared with version_cmp,
-    so 1.3 and 1.3.0 agree; a pair that cannot be ordered does not."""
+    so 1.3 and 1.3.0 agree; a pair that cannot be ordered does not. A config with no version (None) is the target's fault."""
+    if config_version is None:raise ValueError(f'the comparison target {target} has no version in {config}; '+('correct that Release' if tag_version is not None else 'add a version to that config on the default branch')+', then re-run this check')
     try:same=tag_version is None or version_cmp(tag_version,config_version)==0
     except ValueError:same=False
     if not same:raise ValueError(f'the comparison target {target} is version {tag_version} by its tag but {config_version} by {config}; correct that Release so its tag and config agree, then re-run this check')
@@ -304,7 +305,7 @@ def main(argv=None):
     g.add_argument('--name',required=True,help='add-on id, for the error');g.add_argument('--version',required=True,help="the PR's version")
     g.add_argument('--target',required=True,help="the target's tag, or the PR base");g.add_argument('--tag-version',default='',help="the target's version by its tag; '' when it has none")
     g.add_argument('--config',required=True,help="path of the target's config.yaml in the repository")
-    g.add_argument('--config-version',required=True)
+    g.add_argument('--config-version',required=True,help="the target's version by its config ('' when it has none; upgrade_check.py version)")
     v=sub.add_parser('version',help="print the version of a config.yaml as Home Assistant Supervisor reads it (addon_sync.config_version; nothing when it has none)")
     v.add_argument('--file',required=True,help='the config.yaml');v.add_argument('--path',help='its path in the repository, for the error')
     v.add_argument('--name',required=True,help='add-on id, for the error')
@@ -337,7 +338,7 @@ def main(argv=None):
             _error('Upgrade comparison failed',f'{a.name}: {a.path or a.file}: {e}');return 2
         return 0
     if a.command=='check-target':
-        try:check_target(a.version,a.target,a.config,a.config_version,a.tag_version or None)
+        try:check_target(a.version,a.target,a.config,a.config_version or None,a.tag_version or None)
         except ValueError as e:
             _error('Upgrade comparison failed',f'{a.name}: {e}');return 2
         return 0

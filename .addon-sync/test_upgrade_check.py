@@ -409,6 +409,11 @@ class ComparisonTargetCommand(unittest.TestCase):
         u.check_target('1.4','v1.3','addon/config.yaml','1.3.0','1.3')
         with self.assertRaisesRegex(ValueError,r'v1\.3 is version 1\.3 by its tag but 1\.3-foo by addon/config\.yaml; correct that Release'):
             u.check_target('1.4','v1.3','addon/config.yaml','1.3-foo','1.3')
+    def test_a_target_config_without_a_version_is_the_targets_fault(self):
+        for tag_version,fix in [('1.3','correct that Release'),(None,'add a version to that config on the default branch')]:
+            with self.subTest(tag_version):
+                with self.assertRaisesRegex(ValueError,f'^the comparison target v1.3 has no version in addon/config.yaml; {fix}, then re-run this check$'):
+                    u.check_target('1.4','v1.3','addon/config.yaml',None,tag_version)
     def main(self,releases,component,components=('t',),version='99.0.0'):
         d=pathlib.Path(tempfile.mkdtemp());self.addCleanup(shutil.rmtree,d)
         (d/'registry.json').write_text(json.dumps({'providers':{'WOOWTECH/r':{'components':[{'id':c} for c in components]}}}))
@@ -775,6 +780,14 @@ class ComparisonTarget(StepHarness):
         # Under ref_policy main the target is the PR base: its config is the only source.
         r,plan,_=self.run_step('plan',policy='main',old={'version':'0.9.0'},skip='x')
         self.assertEqual(r.returncode,0,r.stdout+r.stderr);self.assertEqual(plan['target'],'b')
+    @needs_shell
+    def test_a_target_config_without_a_version_names_the_target(self):
+        # Not "1.1.0 cannot be ordered against null ...; use a newer version": the PR's version is not the problem.
+        for policy,target,fix in [('release','v1.0.0','correct that Release'),('main','b','add a version to that config on the default branch')]:
+            with self.subTest(policy):
+                r,plan,_=self.run_step('plan',policy=policy,raw_version={'old':'null'},skip='x')
+                self.assertEqual(r.returncode,1,r.stdout+r.stderr);self.assertEqual(plan,{});self.assertNotIn('null',r.stdout)
+                self.assertIn(f't: the comparison target {target} has no version in addon/config.yaml; {fix}, then re-run this check',r.stdout)
     @needs_shell
     def test_a_normal_bump_compares_with_the_latest_release(self):
         r,plan,_=self.run_step('plan',releases=('v1.0.0','v0.9.0','v1.1.0-foo'),version='1.1.0',skip='x')
