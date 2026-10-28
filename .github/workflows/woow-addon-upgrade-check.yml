@@ -203,8 +203,7 @@ jobs:
               fail "${id}: the comparison target ${target} has a control character (newline, tab...) in its version: ${old_version}"; exit 1
             fi
             # Its tag and its config both give the target's version (compare reads the config's); neither may silently win.
-            if [ -n "${target_version}" ] && [ -s "$old" ] && [ "${old_version}" != "${target_version}" ]; then
-              fail "${id}: the comparison target ${target} is version ${target_version} by its tag but ${old_version} by ${found}; correct that Release so its tag and config agree, then re-run this check"
+            if [ -n "${target_version}" ] && [ -s "$old" ] && ! python3 tooling/.addon-sync/upgrade_check.py check-target --name="${id}"                 --target="${target}" --tag-version="${target_version}" --config="${found}" --config-version="${old_version}"; then
               status=1; continue
             fi
             if [ -s "$old" ]; then echo "${id}: comparing $(esc "${version}") with $(esc "${target}")"

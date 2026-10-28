@@ -33,7 +33,7 @@ from __future__ import annotations
 import argparse, json, os, pathlib, re, secrets, sys
 import yaml
 # addon_sync owns the Release rules (version order, upgrade-notes.yaml parsing, Release notes); it does not import this module.
-from addon_sync import Blocked, comparison_target, declaration_text, declarations, find_component, find_provider, formal_versions, locations, publishes_releases, release_notes, release_tag, require_newer, source_file, workflow_command
+from addon_sync import Blocked, comparison_target, declaration_text, declarations, find_component, find_provider, formal_versions, locations, publishes_releases, release_notes, release_tag, require_newer, source_file, version_cmp, workflow_command
 
 RANGED={'int','float','str'}
 
@@ -239,6 +239,14 @@ def compare(old, new, old_version, new_version, notes=None, old_scan=None, new_s
         r.append(f'Report only (does not block): {n["in_old"]} already in {old_version}, {n["not_fixed"]} new with no fixed version, {n["low"]} new below High.')
     return {'blocked':blocked,'vulnerabilities':vulns,'breaking':breaking,'notices':notices,'unmatched':unmatched,'problems':problems,'report':'\n'.join(r)+'\n'}
 
+def check_target(target, config, config_version, tag_version):
+    """ValueError unless the comparison target's config (path `config`) gives the version its tag does: compare() reads
+    the config's, so neither may silently win. Compared with version_cmp, so 1.3 and 1.3.0 agree; a pair that cannot be
+    ordered does not."""
+    try:same=version_cmp(tag_version,config_version)==0
+    except ValueError:same=False
+    if not same:raise ValueError(f'the comparison target {target} is version {tag_version} by its tag but {config_version} by {config}; correct that Release so its tag and config agree, then re-run this check')
+
 def _load(path, kind):
     """Parsed YAML/JSON file, or None when `path` is not given or (for optional inputs) does not exist."""
     if not path:return None
@@ -284,6 +292,10 @@ def main(argv=None):
     t.add_argument('--registry',required=True,help='Store registry.json');t.add_argument('--repo',required=True,help='source repository, owner/name')
     t.add_argument('--component',required=True,help='add-on id in the registry')
     t.add_argument('--version',required=True,help="the PR's version: it must be newer than the target, as for the Release notes")
+    g=sub.add_parser('check-target',help="fail unless the comparison target's config gives the version its tag does (check_target)")
+    g.add_argument('--name',required=True,help='add-on id, for the error');g.add_argument('--target',required=True,help="the target's tag")
+    g.add_argument('--tag-version',required=True);g.add_argument('--config',required=True,help="path of the target's config.yaml in the repository")
+    g.add_argument('--config-version',required=True)
     k=sub.add_parser('components',help="print what the workflow needs from the repository's registry entry (JSON, see components())")
     k.add_argument('--registry',required=True,help='Store registry.json');k.add_argument('--repo',required=True,help='source repository, owner/name')
     a=p.parse_args(argv)
@@ -305,6 +317,11 @@ def main(argv=None):
         except (ValueError,KeyError,TypeError,AttributeError,OSError) as e:
             _error('Upgrade comparison failed',f'Releases of {a.repo} {a.component}: {e}');return 2
         if target is not None:print(release_tag(provider,comp,target)+'\t'+target)
+        return 0
+    if a.command=='check-target':
+        try:check_target(a.target,a.config,a.config_version,a.tag_version)
+        except ValueError as e:
+            _error('Upgrade comparison failed',f'{a.name}: {e}');return 2
         return 0
     if a.command=='release-notes':
         try:text=release_notes(_load(a.notes,'optional'),a.version,a.released)

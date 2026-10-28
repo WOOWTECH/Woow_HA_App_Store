@@ -405,6 +405,10 @@ class ComparisonTargetCommand(unittest.TestCase):
         self.assertNotIn('raise the version',str(e.exception))
         with self.assertRaisesRegex(ValueError,r'is not newer than 1\.3\.0, .*; raise the version$'):u.comparison_target(['1.3.0'],'1.2.0')
         self.assertEqual(u.comparison_target(['1.2.0','1.3.0'],'1.4.0-foo'),'1.3.0')
+    def test_a_target_config_that_cannot_be_ordered_against_its_tag_disagrees(self):
+        u.check_target('v1.3','addon/config.yaml','1.3.0','1.3')
+        with self.assertRaisesRegex(ValueError,r'v1\.3 is version 1\.3 by its tag but 1\.3-foo by addon/config\.yaml; correct that Release'):
+            u.check_target('v1.3','addon/config.yaml','1.3-foo','1.3')
     def main(self,releases,component,components=('t',),version='99.0.0'):
         d=pathlib.Path(tempfile.mkdtemp());self.addCleanup(shutil.rmtree,d)
         (d/'registry.json').write_text(json.dumps({'providers':{'WOOWTECH/r':{'components':[{'id':c} for c in components]}}}))
@@ -749,6 +753,12 @@ class ComparisonTarget(StepHarness):
         r,plan,_=self.run_step('plan',old={'version':'0.9.0'},skip='x')
         self.assertEqual(r.returncode,1,r.stdout+r.stderr);self.assertEqual(plan,{})
         self.assertIn('t: the comparison target v1.0.0 is version 1.0.0 by its tag but 0.9.0 by addon/config.yaml',r.stdout)
+        # The same version written differently agrees (version_cmp, not the strings); a different one does not.
+        r,plan,_=self.run_step('plan',releases=('v1.3',),old={'version':'1.3.0'},version='1.4.0',skip='x')
+        self.assertEqual(r.returncode,0,r.stdout+r.stderr);self.assertEqual(plan['target'],'v1.3')
+        r,plan,_=self.run_step('plan',releases=('v1.3',),old={'version':'1.4'},version='1.5.0',skip='x')
+        self.assertEqual(r.returncode,1,r.stdout+r.stderr);self.assertEqual(plan,{})
+        self.assertIn('t: the comparison target v1.3 is version 1.3 by its tag but 1.4 by addon/config.yaml; correct that Release',r.stdout)
         # Under ref_policy main the target is the PR base: its config is the only source.
         r,plan,_=self.run_step('plan',policy='main',old={'version':'0.9.0'},skip='x')
         self.assertEqual(r.returncode,0,r.stdout+r.stderr);self.assertEqual(plan['target'],'b')
