@@ -252,20 +252,22 @@ def compare(old, new, old_version, new_version, notes=None, old_scan=None, new_s
     Returns blocked, vulnerabilities (None when not scanned), breaking [{change, key, declared}], notices,
     unmatched declarations, problems, and a Markdown report."""
     name=name or new.get('slug') or 'add-on'
-    sections=declarations(notes,old_version,new_version);declared=sections['breaking']
-    if old is None:
-        report=[f'### {name} {new_version}','','**Passed**: no comparison target (no earlier formal Release), so there is nothing to compare.']
-        return {'blocked':False,'vulnerabilities':None,'breaking':[],'notices':[],'unmatched':[],'problems':[],'report':'\n'.join(report)+'\n'}
-    found,notes_only=category1(old,new)
+    sections=declarations(notes,old_version,new_version);declared,accepted=sections['breaking'],sections['accepted_vulnerabilities']
+    # The Release notes (#119) publish every migration and reason and fail on an empty one, so check them here
+    # with or without a comparison target or scan: the merge is the release approval (ADR-0005).
     problems=[f'{d["version"]}: {d["change"]} {d["key"]} has no migration' for d in declared if not _text(d,'migration')]
+    problems+=[f'{d["version"]}: accepted {d["id"]} {d["package"]} has no reason' for d in accepted if not _text(d,'reason')]
+    if old is None:
+        report=[f'### {name} {new_version}','',('**Blocked**: invalid declaration; ' if problems else '**Passed**: ')+'no comparison target (no earlier formal Release), so there is nothing to compare.']
+        if problems:report+=['','Invalid declarations:','']+[f'- {p}' for p in problems]
+        return {'blocked':bool(problems),'vulnerabilities':None,'breaking':[],'notices':[],'unmatched':[],'problems':problems,'report':'\n'.join(report)+'\n'}
+    found,notes_only=category1(old,new)
     valid={(d['change'],d['key']):d for d in declared if _text(d,'migration')}
     breaking=[{'change':c,'key':k,'declared':(c,k) in valid} for c,k in found]
     notices=[{'change':c,'key':k,'detail':d} for c,k,d in notes_only]
     unmatched=[{'change':d['change'],'key':d['key'],'version':d['version']} for d in declared if (d['change'],d['key']) not in set(found)]
     vulns=category4(old_scan,new_scan) if (old_scan,new_scan)!=(None,None) else None
     if vulns is not None:
-        accepted=sections['accepted_vulnerabilities']
-        problems+=[f'{d["version"]}: accepted {d["id"]} {d["package"]} has no reason' for d in accepted if not _text(d,'reason')]
         reasons={(d['id'],d['package']):_text(d,'reason') for d in accepted if _text(d,'reason')}
         for f in vulns['new_fixable']:
             f['accepted']=(f['id'],f['package']) in reasons

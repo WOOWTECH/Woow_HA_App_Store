@@ -134,6 +134,11 @@ class Tests(unittest.TestCase):
     def test_no_comparison_target_passes_and_says_so(self):
         r=u.compare(None,new(),old_version=None,new_version='1.1.0')
         self.assertFalse(r['blocked']);self.assertIn('no comparison target',r['report'])
+    def test_no_comparison_target_still_needs_a_migration(self):
+        # The Release notes (#119) reject an empty migration, so the PR must fail before the merge.
+        r=u.compare(None,new(),old_version=None,new_version='1.1.0',notes=self.notes(migration=''))
+        self.assertTrue(r['blocked']);self.assertEqual(r['problems'],['1.1.0: option-removed workers has no migration'])
+        self.assertIn('no comparison target',r['report']);self.assertIn('has no migration',r['report'])
     def test_nonstandard_versions_order_by_their_leading_number(self):
         old=copy.deepcopy(BASE);old['version']='2.12.4-v2'
         cfg=self.REMOVED();cfg['version']='2.12.5-v1'
@@ -193,6 +198,12 @@ class Vulnerabilities(unittest.TestCase):
         for reason in ['',' ',None]:
             with self.subTest(repr(reason)):
                 r=vrun(self.NEW(),notes=self.accept(reason=reason))
+                self.assertTrue(r['blocked']);self.assertEqual(r['problems'],['1.1.0: accepted CVE-2026-0002 zlib has no reason'])
+    def test_acceptance_needs_a_reason_without_a_scan(self):
+        # Device-built and skip_vulnerability_scan add-ons are not scanned, but the Release notes still publish the reason.
+        for name,old,old_version in [('not scanned',BASE,'1.0.0'),('no comparison target',None,None)]:
+            with self.subTest(name):
+                r=u.compare(old,new(),old_version,'1.1.0',notes=self.accept(reason=''))
                 self.assertTrue(r['blocked']);self.assertEqual(r['problems'],['1.1.0: accepted CVE-2026-0002 zlib has no reason'])
     def test_acceptance_with_no_matching_vulnerability_is_reported_only(self):
         r=vrun(scan(),notes=self.accept())

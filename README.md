@@ -135,7 +135,7 @@ ha store add https://github.com/WOOWTECH/Woow_HA_App_Store
 
 - **每個受管來源 repo 的每個 PR 都跑必要檢查 `Upgrade comparison / compare`**，由共用的 [`woow-addon-upgrade-check.yml`](.github/workflows/woow-addon-upgrade-check.yml) 提供（呼叫端 job 名稱 `Upgrade comparison`，GitHub 把檢查名稱寫成「呼叫端 job / 內部 job」）。呼叫方式寫在那個檔案開頭；不設 path filter。
   - PR 沒有修改任何 addon 的版本：幾秒內通過。
-  - 有修改：把每個改了版本的 addon 和**比對對象**相比。比對對象是該 addon 最新的正式 Release（tag 規則同上：`v<版本>` 或 `<slug>-v<版本>`）；`ref_policy: main`、從沒有正式 Release 的 repo，是 PR base 上的版本。第一次發布的 addon 沒有比對對象，通過並在報告註明。
+  - 有修改：把每個改了版本的 addon 和**比對對象**相比。比對對象是該 addon 最新的正式 Release（tag 規則同上：`v<版本>` 或 `<slug>-v<版本>`）；`ref_policy: main`、從沒有正式 Release 的 repo，是 PR base 上的版本。第一次發布的 addon 沒有比對對象，不做比對並在報告註明；`upgrade-notes.yaml` 有空的 `migration` 或 `reason` 時仍會擋下。
   - 結果只寫在 job summary，不在 PR 上留言。檢查工具出錯（拉不到舊映像、漏洞資料庫下載失敗或超過 120 小時）時檢查失敗，不放行，重跑即可。
 - **第 1 類 設定相容性**：比較新舊 `config.yaml`。下表的破壞性變更都要在 `upgrade-notes.yaml` 宣告，否則擋下。`key` 用 schema 的路徑，例如 `database.port`。
 
@@ -170,7 +170,7 @@ ha store add https://github.com/WOOWTECH/Woow_HA_App_Store
 
   - 只讀版本號在（比對對象, 新版本] 之間的段落；更早的段落不算數，不會蓋掉這次新出現的變更。
   - 版本先照 PEP 440 排序（`2026.9.1-1` 是 2026.9.1 之後的修訂）；不符合時用點分數字加上 `-v<N>`／`-<N>` 重建序號（`2.12.4-v2` < `2.12.4-v3`，沒有序號的排最前）。無法排序的版本號會讓檢查失敗。
-  - 每項破壞性變更要有 `change`、`key` 完全相同的一筆；接受的漏洞要有 `id`、`package` 完全相同的一筆。`migration`、`reason` 不能是空的。報告會列出可以直接貼上的 `change`／`key`。
+  - 每項破壞性變更要有 `change`、`key` 完全相同的一筆；接受的漏洞要有 `id`、`package` 完全相同的一筆。`migration`、`reason` 不能是空的；Release 說明會刊出它們，所以不論有沒有比對對象、有沒有做第 4 類都會檢查。報告會列出可以直接貼上的 `change`／`key`。
   - 寫了宣告、但檢查沒找到對應的變更：只寫進報告，不擋。
 - **Release 說明**：發 Release 時，上一個正式 Release 之後各版的宣告自動整理成「破壞性變更與遷移方式」「已接受的漏洞」兩段，放在 GitHub 自動產生的說明前面；共用的 `woow-addon-release.yml` 和 `Woow_ha_odoo` 的 `release.yml` 都這樣做。沒有宣告就不加；檔案格式錯誤時不發 Release。
 - 判定規則與欄位的權威說明在 [`.addon-sync/upgrade_check.py`](.addon-sync/upgrade_check.py) 開頭；兩者不一致時以程式為準，並修正本段。
