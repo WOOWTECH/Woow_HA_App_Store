@@ -260,8 +260,10 @@ def components(registry, repo):
     provider=find_provider(registry,repo)
     def paths(comp):
         out={'previous_config':'','previous_notes':''}
-        for prefix,c in zip(('','previous_'),locations(comp)):
-            out[prefix+'config'],out[prefix+'notes']=source_file(c,c['config_file']),source_file(c,'upgrade-notes.yaml')
+        try:
+            for prefix,c in zip(('','previous_'),locations(comp)):
+                out[prefix+'config'],out[prefix+'notes']=source_file(c,c['config_file']),source_file(c,'upgrade-notes.yaml')
+        except Blocked as e:raise ValueError(f'{repo} {comp["id"]}: {e}') from None
         return out
     return {'ref_policy':provider['ref_policy'],'skip_vulnerability_scan':(provider.get('upgrade_comparison') or {}).get('skip_vulnerability_scan',''),
         'components':[{'id':c['id'],**paths(c)} for c in provider['components'] if publishes_releases(c)]}
@@ -286,14 +288,17 @@ def main(argv=None):
     k.add_argument('--registry',required=True,help='Store registry.json');k.add_argument('--repo',required=True,help='source repository, owner/name')
     a=p.parse_args(argv)
     if a.command=='components':
+        # Its errors name the repository (find_provider, components).
         try:print(json.dumps(components(_load(a.registry,'json'),a.repo)))
         except (ValueError,KeyError,TypeError,OSError,Blocked) as e:
-            _error('Upgrade comparison failed',f'{a.repo}: {e}');return 2
+            _error('Upgrade comparison failed',str(e));return 2
         return 0
     if a.command=='comparison-target':
         # The registry lookup, Release filter, tag rule and order are addon_sync's, so the PR check and the Release notes agree.
+        try:provider,comp=find_component(_load(a.registry,'json'),a.repo,a.component)
+        except (ValueError,KeyError,TypeError,OSError) as e:
+            _error('Upgrade comparison failed',str(e));return 2  # names the repository and add-on
         try:
-            provider,comp=find_component(_load(a.registry,'json'),a.repo,a.component)
             releases=json.load(sys.stdin)
             if not isinstance(releases,list):raise ValueError('stdin is not a JSON array of Releases')
             target=comparison_target(formal_versions(provider,comp,releases),a.version)

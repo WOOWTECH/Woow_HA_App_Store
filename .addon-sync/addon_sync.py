@@ -341,15 +341,15 @@ def locate(gh, repo, comp, sha):
     return last,gh.content(repo,source_file(last,last['config_file']),sha)
 
 def find_provider(registry, repo):
-    """repo's registry entry; KeyError when the Store registry does not list it."""
-    if repo not in registry['providers']:raise KeyError('not in the Store registry')
+    """repo's registry entry; a ValueError naming repo when the Store registry does not list it."""
+    if repo not in registry['providers']:raise ValueError(f'{repo} is not in the Store registry')
     return registry['providers'][repo]
 
 def find_component(registry, repo, cid):
-    """(provider, component) of add-on cid in repo's registry entry; KeyError names an unknown repository or add-on."""
+    """(provider, component) of add-on cid in repo's registry entry; a ValueError names an unknown repository or add-on."""
     provider=find_provider(registry,repo)
     comp=next((c for c in provider['components'] if c['id']==cid),None)
-    if comp is None:raise KeyError(f'no component {cid}')
+    if comp is None:raise ValueError(f'{repo} has no add-on {cid} in the Store registry')
     return provider,comp
 
 def formal_versions(provider, comp, releases):

@@ -424,7 +424,10 @@ class ComparisonTargetCommand(unittest.TestCase):
         d=pathlib.Path(tempfile.mkdtemp());self.addCleanup(shutil.rmtree,d);(d/'registry.json').write_text('{"providers":{}}')
         with contextlib.redirect_stdout(io.StringIO()) as out,unittest.mock.patch('sys.stdin',io.StringIO('[]')):
             code=u.main(['comparison-target','--registry',str(d/'registry.json'),'--repo','WOOWTECH/x','--component','t','--version','1.0.0'])
-        self.assertEqual(code,2);self.assertIn('not in the Store registry',out.getvalue())
+        # A ValueError naming the repository, printed once and unquoted (a KeyError's str() is quoted).
+        self.assertEqual(code,2);self.assertEqual(out.getvalue(),'::error title=Upgrade comparison failed::WOOWTECH/x is not in the Store registry\n')
+        code,out=self.main(['v1.0.0'],'other')
+        self.assertEqual(out,'::error title=Upgrade comparison failed::WOOWTECH/r has no add-on other in the Store registry\n')
     def test_unknown_component_or_bad_input_exits_2(self):
         for releases,component in [(['v1.0.0'],'other'),('not json','t'),('{}','t')]:
             with self.subTest(component=component,releases=releases):
@@ -483,8 +486,8 @@ class ComponentsCommand(unittest.TestCase):
                 ('unsafe previous',{'providers':{'WOOWTECH/r':{'ref_policy':'release','components':[{'id':'a','source_path':'a','config_file':'config.yaml','previous_config':'../x/config.yaml'}]}}})]:
             with self.subTest(name):
                 code,out=self.main(registry)
-                self.assertEqual(code,2);self.assertTrue(out.startswith('::error title=Upgrade comparison failed::WOOWTECH/r: '),out)
-        self.assertIn('not in the Store registry',self.main({'providers':{}})[1])
+                self.assertEqual(code,2);self.assertTrue(out.startswith('::error title=Upgrade comparison failed::WOOWTECH/r '),out)
+        self.assertEqual(self.main({'providers':{}})[1],'::error title=Upgrade comparison failed::WOOWTECH/r is not in the Store registry\n')
 class ReusableWorkflow(unittest.TestCase):
     """Shape that callers and the ruleset depend on; the shell itself is verified on pilot PRs (#89 Testing Decisions)."""
     def setUp(self):
