@@ -227,7 +227,8 @@ class Vulnerabilities(unittest.TestCase):
         with self.assertRaises(ValueError):vrun(dict(scan(),descriptor=db('2026-10-26T00:00:00Z')))
     def test_scan_without_database_info_is_an_error(self):
         # Without descriptor.db there is no proof both images were scanned with the same DB.
-        for name,descriptor in [('no descriptor',None),('no db',{}),('empty status',{'db':{'status':{}}})]:
+        for name,descriptor in [('no descriptor',None),('no db',{}),('empty status',{'db':{'status':{}}}),
+                ('descriptor not a mapping','x'),('db not a mapping',{'db':[]}),('status not a mapping',{'db':{'status':'ok'}})]:
             without=lambda s:{'matches':s['matches']} if descriptor is None else dict(s,descriptor=descriptor)
             for side,new_scan,old_scan in [('old',scan(),without(OLD_SCAN)),('new',without(scan()),OLD_SCAN),('both',without(scan()),without(OLD_SCAN))]:
                 with self.subTest(name,side=side):
@@ -461,7 +462,7 @@ class StepHarness(unittest.TestCase):
     WF=STORE/'.github/workflows/woow-addon-upgrade-check.yml'
     def setUp(self):self.wf=yaml.safe_load(self.WF.read_text(encoding='utf-8'))
     def step(self,ident):return next(s for s in self.wf['jobs']['compare']['steps'] if ident in (s.get('id'),s.get('name')))
-    def run_step(self,ident,*,policy='release',extra=None,releases=('v1.0.0',),old_config=True,skip='',sbom='',version='1.1.0'):
+    def run_step(self,ident,*,policy='release',extra=None,releases=('v1.0.0',),old_config=True,skip='',sbom='',version='1.1.0',old=None):
         import os,subprocess
         tmp=pathlib.Path(tempfile.mkdtemp());self.addCleanup(shutil.rmtree,tmp)
         (tmp/'tooling/.addon-sync').mkdir(parents=True);(tmp/'source/addon').mkdir(parents=True);(tmp/'bin').mkdir()
@@ -471,7 +472,7 @@ class StepHarness(unittest.TestCase):
             {'id':'t','source_path':'addon','config_file':'config.yaml'}],**(extra or {})}}}))
         cfg=dict(BASE,image='ghcr.io/da-anda/addon-{arch}')
         (tmp/'source/addon/config.yaml').write_text(yaml.safe_dump(dict(cfg,version=version)))
-        (tmp/'old.yaml').write_text(yaml.safe_dump(cfg) if old_config else '')
+        (tmp/'old.yaml').write_text(yaml.safe_dump(dict(cfg,**(old or {}))) if old_config else '')
         (tmp/'changed.tsv').write_text('t\taddon\taddon/config.yaml\t1.1.0\n')
         gh=tmp/'bin/gh'
         gh.write_text('#!/bin/bash\ncase "$*" in\n  *releases*) [ -z "$RELEASES" ] || printf "%s\\n" "$RELEASES";;\n'
@@ -559,6 +560,14 @@ class ComparisonTarget(StepHarness):
         r,_,_=self.run_step('detect',version='1.1.0\n::warning title=Injected::boom')
         self.assertEqual(r.returncode,1);self.assertIn('contains a control character',r.stdout)
         self.assertEqual([l for l in r.stdout.splitlines() if l.startswith('::') and not l.startswith('::error title=Upgrade comparison failed::')],[])
+    @needs_shell
+    def test_target_image_or_version_with_a_newline_is_rejected(self):
+        # The comparison target's config was released earlier, but a newline in it would still shift plan.txt fields.
+        for key,value in [('image','ghcr.io/x/a-{arch}\n::warning title=Injected::boom'),('version','1.0.0\n::warning title=Injected::boom')]:
+            with self.subTest(key):
+                r,plan,_=self.run_step('plan',old={key:value},sbom='*')
+                self.assertEqual(r.returncode,1,r.stdout+r.stderr);self.assertIn('control character',r.stdout);self.assertEqual(plan,[])
+                self.assertEqual([l for l in r.stdout.splitlines() if l.startswith('::') and not l.startswith('::error title=Upgrade comparison failed::')],[])
     def test_the_raw_file_fetch_is_defined_once(self):
         text=self.WF.read_text(encoding='utf-8')
         self.assertNotIn('fetch() {',text);self.assertTrue((self.STORE/'.addon-sync/gh_raw.sh').exists())

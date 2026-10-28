@@ -206,6 +206,10 @@ jobs:
             old_image="$(yq -r '.image' "${old}")"; old_version="$(yq -r '.version' "${old}")"
             ref="${old_image//\{arch\}/amd64}:${old_version}"; echo "${id}" >> scan.txt
           fi
+          # The comparison target's tag, image and version go into plan.txt like the PR's version (detect step).
+          if [[ "${target}${ref}" == *[[:cntrl:]]* ]]; then
+            echo "::error title=Upgrade comparison failed::${id}: the comparison target $(esc "${target}") has a control character (newline, tab...) in its tag, image or version: $(esc "${ref}")"; exit 1
+          fi
           printf '%s\x1f%s\x1f%s\x1f%s\x1f%s\x1f%s\x1f%s\n' "${id}" "${path}" "${version}" "${notes}" "${target}" "${ref}" "${note}" >> plan.txt
         done < changed.tsv
         if [ -s scan.txt ]; then echo "scan=true" >> "$GITHUB_OUTPUT"; else echo "scan=false" >> "$GITHUB_OUTPUT"; fi

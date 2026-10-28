@@ -232,8 +232,10 @@ def _findings(scan):
 
 def _database(scan):
     """The DB a Grype scan used (Grype 0.120: descriptor.db.status), or None when the JSON does not say."""
-    db=(scan.get('descriptor') or {}).get('db') or {}
-    status=db.get('status') or db
+    # A descriptor, db or status that is not a mapping says nothing either (ValueError in category4, not an AttributeError).
+    def mapping(v):return v if isinstance(v,dict) else {}
+    db=mapping(mapping(scan.get('descriptor')).get('db'))
+    status=mapping(db.get('status')) or db
     found=(status.get('built'),status.get('from') or status.get('checksum'))
     return found if all(found) else None
 
