@@ -389,6 +389,8 @@ class ComparisonTargetCommand(unittest.TestCase):
         for released,version in [(['1.2.4','1.3.0'],'1.2.5'),(['1.3.0'],'1.3.0'),(['1.3.0'],'1.3')]:
             with self.subTest(released=released,version=version):
                 with self.assertRaisesRegex(ValueError,f'version {re.escape(version)} is not newer than 1.3.0'):u.comparison_target(released,version)
+        with self.assertRaisesRegex(ValueError,r'version 1\.3 is not newer than 1\.3\.0 \(the same version, written differently\), the version users run now'):
+            u.comparison_target(['1.3.0'],'1.3')
     def test_a_tag_that_cannot_be_ordered_is_ignored(self):
         # Only a version that reads whole (PEP 440 or a rebuild suffix) can be the target: a stray v9.0-test, read by its
         # leading number alone, would otherwise be higher than every real Release and block every PR.
@@ -725,6 +727,17 @@ class ComparisonTarget(StepHarness):
             with self.subTest(version):
                 r,plan,_=self.run_step('plan',releases=('v1.3.0','v1.2.4','v1.2.0'),version=version,skip='x')
                 self.assertEqual(r.returncode,1,r.stdout+r.stderr);self.assertIn(f'version {version} is not newer than 1.3.0',r.stdout);self.assertEqual(plan,{})
+    @needs_shell
+    def test_the_same_version_written_differently_fails_as_not_newer(self):
+        # Detection compares the strings, so 1.3 -> 1.3.0 is a change; treated as unchanged, release() would later try to
+        # release v1.3.0 and be blocked on main. It fails here instead, saying why.
+        for policy,steps in [('release',('detect','plan')),('main',('detect','plan','Compare with the comparison target'))]:
+            with self.subTest(policy):
+                r,_,_=self.run_step(steps,policy=policy,releases=('v1.3',),old={'version':1.3},version='1.3.0',skip='x',
+                    extra={'upgrade_comparison':{'skip_vulnerability_scan':'x'}})
+                self.assertEqual(r.returncode,1,r.stdout+r.stderr)
+                self.assertIn('changed=true',(self.tmp/'out').read_text())
+                self.assertIn('version 1.3.0 is not newer than 1.3 (the same version, written differently)',r.stdout)
     @needs_shell
     def test_a_normal_bump_compares_with_the_latest_release(self):
         r,plan,_=self.run_step('plan',releases=('v1.0.0','v0.9.0','v1.1.0-foo'),version='1.1.0',skip='x')

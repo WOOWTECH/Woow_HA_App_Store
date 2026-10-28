@@ -399,11 +399,12 @@ def version_cmp(a, b):
 
 def require_newer(version, target):
     """ValueError unless `version` is newer than `target`, the version users run now."""
-    try:newer=version_cmp(version,target)>0
-    except ValueError:newer=None
-    if not newer:
-        raise ValueError(f'version {version} '+('cannot be ordered against' if newer is None else 'is not newer than')+f' {target}, the version users '
-            'run now (the latest formal Release; the PR base under ref_policy: main); raise the version')
+    try:order=version_cmp(version,target)
+    except ValueError:order=None
+    if order is None or order<=0:
+        why='cannot be ordered against' if order is None else 'is not newer than'
+        raise ValueError(f'version {version} {why} {target}'+(' (the same version, written differently)' if order==0 and version!=target else '')+
+            ', the version users run now (the latest formal Release; the PR base under ref_policy: main); raise the version')
 
 def comparison_target(released, version):
     """The latest of `released` (an add-on's formal Release versions), or None; `version` must be newer (require_newer).
