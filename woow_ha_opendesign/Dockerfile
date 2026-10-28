@@ -142,7 +142,7 @@ RUN sh /tmp/mcp-runtime/install.sh && rm -rf /tmp/mcp-runtime
 
 # amd64 only: the core image is built for linux/amd64.
 ARG BUILD_ARCH=amd64
-ARG BUILD_VERSION=0.2.8
+ARG BUILD_VERSION=0.2.9
 ENV WOOW_ADDON_VERSION=${BUILD_VERSION}
 ARG BUILD_DATE
 ARG BUILD_DESCRIPTION="OpenDesign for Home Assistant"

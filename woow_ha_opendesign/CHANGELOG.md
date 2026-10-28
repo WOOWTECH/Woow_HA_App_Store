@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.9
+
+- Update the bundled Paseo runtime from 0.2.1 to the public 0.2.2 release. Its setup page recognizes Claude Code's official `claude.com` authorization URL, accepts the authorization code in the protected page, sends it to the Claude CLI, and waits up to 15 minutes for the provider to complete login.
+- Keep the OpenDesign core at the same immutable 20261026.1751 digest and retain the existing add-on slug, architecture, Ingress routes, options, data paths, projects, provider homes, and backup exclusions. Updating from 0.2.8 requires no data migration; a provider account that is not signed in still needs its own official authorization.
+
+## 0.2.8
+
+- Pin the public shared OpenDesign core 20261026.1751. The native Paseo plugin card and setup page open on first use; amd64 Home Assistant OS install and GUI acceptance are recorded separately from this source changelog.
+
 ## 0.2.7
 
 - 原生備份還原後，在服務啟動前恢復已知 CLI 憑證／設定檔的 0600 與

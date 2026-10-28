@@ -7,4 +7,4 @@ extracting/installing; tests verify metadata, lock dependencies and required
 runtime files. Package licences are included in the archive.
 
 This directory owns no OpenDesign source patch. Native launcher and MCP CAS
-come from the shared core. See ../docs/paseo-release.md before updating pins.
+come from the shared core. See ../docs/paseo-runtime-0.2.2.md for the current HA 0.2.9 release gate and ../docs/paseo-release.md for the earlier 0.2.7 gate.

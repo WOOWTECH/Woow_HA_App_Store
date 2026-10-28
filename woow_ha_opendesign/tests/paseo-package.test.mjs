@@ -13,7 +13,7 @@ test('shared runtime archive and separately retained npm lock match the reviewed
   assert.equal(crypto.createHash('sha256').update(fs.readFileSync(path.join(root,'paseo-runtime',name))).digest('hex'),expected);
   assert.ok(read('paseo-runtime/checksums.sha256').includes(`${expected}  ${name}`));
  }
- assert.match(manifest.commit,/^[0-9a-f]{40}$/);assert.equal(manifest.version,'0.2.1');
+ assert.match(manifest.commit,/^[0-9a-f]{40}$/);assert.equal(manifest.version,'0.2.2');
  const archive=spawnSync('tar',['-xOzf',path.join(root,'paseo-runtime/package.tgz'),'package/package.json'],{encoding:'utf8'});
  assert.equal(archive.status,0,archive.stderr);const pkg=JSON.parse(archive.stdout);
  const lock=JSON.parse(read('paseo-runtime/package-lock.json'));
