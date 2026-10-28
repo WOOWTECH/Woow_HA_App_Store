@@ -357,8 +357,8 @@ def find_component(registry, repo, cid):
     if comp is None:raise ValueError(f'{repo} has no add-on {cid} in the Store registry')
     return provider,comp
 
-def formal_versions(provider, comp, releases):
-    """Versions of the add-on's formal Releases (not draft, not prerelease) among GitHub's `releases`, by its tag rule."""
+def stable_versions(provider, comp, releases):
+    """Versions of the add-on's stable Releases (not draft, not prerelease) among GitHub's `releases`, by its tag rule."""
     prefix=release_tag(provider,comp,'')
     return [r['tag_name'][len(prefix):] for r in releases if not r.get('draft') and not r.get('prerelease') and r.get('tag_name','').startswith(prefix)]
 
@@ -408,7 +408,7 @@ def require_newer(version, target):
     if order is None or order<=0:
         why,fix=('cannot be ordered against','use a newer version that reads whole: PEP 440, or a dotted number with a rebuild suffix -v<N>') if order is None else ('is not newer than','raise the version')
         raise ValueError(f'version {version} {why} {target}'+(' (the same version, written differently)' if order==0 and version!=target else '')+
-            f', the version users run now (the latest formal Release; the PR base under ref_policy: main); {fix}')
+            f', the version users run now (the latest stable Release; the PR base under ref_policy: main); {fix}')
 
 def config_version(raw, as_written=False):
     """The version in config.yaml text `raw` as Home Assistant Supervisor reads it, or None when it has none: YAML (Supervisor
@@ -425,7 +425,7 @@ def config_version(raw, as_written=False):
     return text
 
 def comparison_target(released, version):
-    """The latest of `released` (an add-on's formal Release versions), or None; `version` must be newer (require_newer).
+    """The latest of `released` (an add-on's stable Release versions), or None; `version` must be newer (require_newer).
     Releases are cut only from the default branch and each becomes the latest (release(), make_latest), which publish()
     ships, so a lower version would be a downgrade. The PR check and the Release notes both read upgrade-notes.yaml in
     (comparison target, version], so both take the target from here. Only a version that reads whole (_read) can be the
@@ -467,7 +467,7 @@ RELEASE_SECTIONS=(('breaking','破壞性變更與遷移方式',lambda e:f'`{e["c
 def release_notes(notes, version, released=()):
     """Markdown the Release of `version` adds to its notes; '' when nothing is declared.
 
-    `released`: versions that already have a formal Release. Only sections after their comparison_target (the latest;
+    `released`: versions that already have a stable Release. Only sections after their comparison_target (the latest;
     ValueError unless `version` is newer) count, the same (comparison target, new] range the PR check used, so a
     declaration appears on one Release only."""
     after=comparison_target([v for v in released if v!=version],version)  # a listed Release of `version` is this one
@@ -508,7 +508,7 @@ def all_releases(gh, repo):
 def release_body(gh, repo, comp, sha, version, released):
     """Release-notes sections for the add-on's upgrade-notes.yaml at sha (pipeline #119); '' when it declares nothing new.
     GitHub puts a body before its generated notes, so both appear. Only declarations after the comparison target (the
-    latest of `released`, its formal Release versions) count; a malformed file blocks the Release rather than publishing it without the notes."""
+    latest of `released`, its stable Release versions) count; a malformed file blocks the Release rather than publishing it without the notes."""
     path=source_file(comp,'upgrade-notes.yaml')
     try:raw=gh.content(repo,path,sha)
     except Blocked as e:
@@ -539,8 +539,8 @@ def release(gh, registry, repo, sha, apply=False):
             if get_or_none(gh,repo,'releases/tags/'+urllib.parse.quote(tag,safe='')) is not None:report.append({'id':cid,'state':'already-released','tag':tag,'version':version});continue
             if tagged_commit(gh,repo,tag) not in [None,sha]:raise Blocked('Tag '+tag+' points at another commit; release or delete it by hand')
             if releases is None:releases=all_releases(gh,repo)
-            released=formal_versions(provider,comp,releases)
-            # The new Release becomes the latest: a version not newer than the latest formal Release is blocked whether or
+            released=stable_versions(provider,comp,releases)
+            # The new Release becomes the latest: a version not newer than the latest stable Release is blocked whether or
             # not upgrade-notes.yaml exists.
             try:comparison_target(released,version)
             except ValueError as e:raise Blocked(str(e)) from None
@@ -666,6 +666,10 @@ def annotation(value):
 def workflow_command(kind, title, message):
     """A ::error or ::warning line; the title is a property value, so : and , are escaped there too."""
     return f'::{kind} title='+annotation(title).replace(':','%3A').replace(',','%2C')+'::'+annotation(message)
+
+def markdown_cell(value):
+    """Text for a Markdown table cell: a | or a line break would end the cell or the row."""
+    return re.sub(r'\r\n|\r|\n','<br>',str(value).replace('|','\\|'))
 
 def summary(report):
     text='## WOOW addon synchronization\n\n'+ '\n'.join('- '+json.dumps(r,ensure_ascii=False) for r in report)+'\n'

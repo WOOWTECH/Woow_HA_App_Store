@@ -30,10 +30,10 @@ values, required made optional, added optional keys, added keys with a default.
 upgrade-notes.yaml format, version order and Release notes (#119): addon_sync, the comment above REBUILD.
 """
 from __future__ import annotations
-import argparse, json, os, pathlib, re, secrets, sys
+import argparse, contextlib, json, os, pathlib, secrets, sys
 import yaml
 # addon_sync owns the Release rules (version order, upgrade-notes.yaml parsing, Release notes); it does not import this module.
-from addon_sync import Blocked, comparison_target, config_version, declaration_text, declarations, find_component, find_provider, formal_versions, locations, publishes_releases, release_notes, release_tag, require_newer, source_file, version_cmp, workflow_command
+from addon_sync import Blocked, comparison_target, config_version, declaration_text, declarations, find_component, find_provider, locations, markdown_cell, publishes_releases, release_notes, release_tag, require_newer, source_file, stable_versions, version_cmp, workflow_command
 
 RANGED={'int','float','str'}
 
@@ -114,10 +114,6 @@ def category1(old, new):
     if old.get('image')!=new.get('image'):found.append(('image-changed','image'))
     return found,notices
 
-def _cell(value):
-    """Text for a Markdown table cell: a | or a line break would end the cell or the row (as branch_rules.main does)."""
-    return re.sub(r'\r\n|\r|\n','<br>',str(value).replace('|','\\|'))
-
 def _paste(version, items):
     return '\n'.join([f'"{version}":','  breaking:']+[f'    - change: {i["change"]}\n      key: {i["key"]}\n      migration: ' for i in items])
 
@@ -186,7 +182,7 @@ def compare(old, new, old_version, new_version, notes=None, old_scan=None, new_s
     `scan_note`: report text for why there are no scan results.
     ValueError unless new_version is newer than old_version (addon_sync.require_newer; the plan step already checked, check_target).
     Returns blocked, vulnerabilities (None when not scanned), breaking [{change, key, declared}], notices,
-    unmatched declarations, problems, and a Markdown report."""
+    unmatched declarations, problems, and a Markdown report (_first_report, _report)."""
     name=name or new.get('slug') or 'add-on'
     if old is not None:require_newer(new_version,old_version)
     sections=declarations(notes,old_version,new_version);declared,accepted=sections['breaking'],sections['accepted_vulnerabilities']
@@ -195,12 +191,10 @@ def compare(old, new, old_version, new_version, notes=None, old_scan=None, new_s
     problems=[f'{d["version"]}: {d["change"]} {d["key"]} has no migration' for d in declared if not declaration_text(d,'migration')]
     problems+=[f'{d["version"]}: accepted {d["id"]} {d["package"]} has no reason' for d in accepted if not declaration_text(d,'reason')]
     if old is None:
-        report=[f'### {name} {new_version}','',('**Blocked**: invalid declaration; ' if problems else '**Passed**: ')+'no comparison target (no earlier formal Release), so there is nothing to compare.']
-        if problems:report+=['','Invalid declarations:','']+[f'- {p}' for p in problems]
-        return {'blocked':bool(problems),'vulnerabilities':None,'breaking':[],'notices':[],'unmatched':[],'problems':problems,'report':'\n'.join(report)+'\n'}
+        return {'blocked':bool(problems),'vulnerabilities':None,'breaking':[],'notices':[],'unmatched':[],'problems':problems,'report':_first_report(name,new_version,problems)}
     found,notes_only=category1(old,new)
-    valid={(d['change'],d['key']):d for d in declared if declaration_text(d,'migration')}
-    breaking=[{'change':c,'key':k,'declared':(c,k) in valid} for c,k in found]
+    migrations={(d['change'],d['key']):declaration_text(d,'migration') for d in declared if declaration_text(d,'migration')}
+    breaking=[{'change':c,'key':k,'declared':(c,k) in migrations} for c,k in found]
     notices=[{'change':c,'key':k,'detail':d} for c,k,d in notes_only]
     unmatched=[{'change':d['change'],'key':d['key'],'version':d['version']} for d in declared if (d['change'],d['key']) not in set(found)]
     vulns=category4(old_scan,new_scan) if (old_scan,new_scan)!=(None,None) else None
@@ -212,16 +206,28 @@ def compare(old, new, old_version, new_version, notes=None, old_scan=None, new_s
         listed={(f['id'],f['package']) for f in vulns['new_fixable']}
         vulns['unmatched_accepted']=[{'id':d['id'],'package':d['package'],'version':d['version']} for d in accepted if (d['id'],d['package']) not in listed]
     blocked=any(not b['declared'] for b in breaking) or bool(problems) or bool(vulns and any(not f['accepted'] for f in vulns['new_fixable']))
-    r=[f'### {name} {old_version} → {new_version}','',('**Blocked**: undeclared breaking change, new fixable vulnerability, or invalid declaration.' if blocked else '**Passed**.'),'']
+    result={'blocked':blocked,'vulnerabilities':vulns,'breaking':breaking,'notices':notices,'unmatched':unmatched,'problems':problems}
+    return {**result,'report':_report(result,migrations,name,old_version,new_version,notes_path,scan_note)}
+
+def _first_report(name, new_version, problems):
+    """The report when there is no comparison target: only the declarations are checked."""
+    report=[f'### {name} {new_version}','',('**Blocked**: invalid declaration; ' if problems else '**Passed**: ')+'no comparison target (no earlier stable Release), so there is nothing to compare.']
+    if problems:report+=['','Invalid declarations:','']+[f'- {p}' for p in problems]
+    return '\n'.join(report)+'\n'
+
+def _report(result, migrations, name, old_version, new_version, notes_path, scan_note):
+    """The Markdown report of compare()'s `result`; `migrations`: {(change, key): migration} of the valid declarations."""
+    breaking,notices,unmatched,problems,vulns=(result[k] for k in ('breaking','notices','unmatched','problems','vulnerabilities'))
+    r=[f'### {name} {old_version} → {new_version}','',('**Blocked**: undeclared breaking change, new fixable vulnerability, or invalid declaration.' if result['blocked'] else '**Passed**.'),'']
     if breaking:
         r+=['Breaking changes (each needs an entry in `'+notes_path+'`):','','| change | key | declared | migration |','|---|---|---|---|']
-        r+=[f'| `{_cell(b["change"])}` | `{_cell(b["key"])}` | {"yes" if b["declared"] else "**no**"} | {_cell(declaration_text(valid[(b["change"],b["key"])],"migration")) if b["declared"] else ""} |' for b in breaking]
+        r+=[f'| `{markdown_cell(b["change"])}` | `{markdown_cell(b["key"])}` | {"yes" if b["declared"] else "**no**"} | {markdown_cell(migrations[(b["change"],b["key"])]) if b["declared"] else ""} |' for b in breaking]
         missing=[b for b in breaking if not b['declared']]
         if missing:r+=['','Add to `'+notes_path+'` and write the migration:','','```yaml',_paste(new_version,missing),'```']
         r.append('')
     else:r+=['No breaking configuration changes.','']
     if notices:
-        r+=['Report only (does not block):','','| change | key | detail |','|---|---|---|']+[f'| `{n["change"]}` | `{_cell(n["key"])}` | {_cell(n["detail"])} |' for n in notices]+['']
+        r+=['Report only (does not block):','','| change | key | detail |','|---|---|---|']+[f'| `{n["change"]}` | `{markdown_cell(n["key"])}` | {markdown_cell(n["detail"])} |' for n in notices]+['']
     if unmatched:
         r+=['Declarations with no matching change (check the spelling of `change` and `key`):','']+[f'- {u["version"]}: `{u["change"]}` `{u["key"]}`' for u in unmatched]+['']
     if problems:r+=['Invalid declarations:','']+[f'- {p}' for p in problems]+['']
@@ -231,32 +237,32 @@ def compare(old, new, old_version, new_version, notes=None, old_scan=None, new_s
         if vulns['new_fixable']:
             r+=['New fixable vulnerabilities (Critical/High with a fixed version, not in '+old_version+'; each blocks unless accepted in `'+notes_path+'`):','',
                 '| id | package | severity | fixed in | accepted |','|---|---|---|---|---|']
-            r+=[f'| {_cell(f["id"])} | {_cell(f["package"])} | {_cell(f["severity"])} | {_cell(", ".join(f["fixed_in"]))} | {_cell(f["reason"]) if f["accepted"] else "**no**"} |' for f in vulns['new_fixable']]+['']
+            r+=[f'| {markdown_cell(f["id"])} | {markdown_cell(f["package"])} | {markdown_cell(f["severity"])} | {markdown_cell(", ".join(f["fixed_in"]))} | {markdown_cell(f["reason"]) if f["accepted"] else "**no**"} |' for f in vulns['new_fixable']]+['']
         else:r+=['No new fixable vulnerabilities.','']
         n=vulns['not_blocking']
         if vulns['unmatched_accepted']:
             r+=['Accepted vulnerabilities that are not new fixable ones (check `id` and `package`):','']+[f'- {d["version"]}: {d["id"]} {d["package"]}' for d in vulns['unmatched_accepted']]+['']
         r.append(f'Report only (does not block): {n["in_old"]} already in {old_version}, {n["not_fixed"]} new with no fixed version, {n["low"]} new below High.')
-    return {'blocked':blocked,'vulnerabilities':vulns,'breaking':breaking,'notices':notices,'unmatched':unmatched,'problems':problems,'report':'\n'.join(r)+'\n'}
+    return '\n'.join(r)+'\n'
 
-def check_target(version, target, config, config_version, tag_version=None):
+def check_target(version, target, config, target_config_version, tag_version=None):
     """ValueError unless the comparison target's config (path `config`) gives the version its tag does (`tag_version`; None
     under ref_policy main, whose target is the PR base) and `version` is newer than it (require_newer), so a PR fails
     before any scan; compare() reads the config's and requires the same. Tag and config are compared with version_cmp,
     so 1.3 and 1.3.0 agree; a pair that cannot be ordered does not. A config with no version (None) is the target's fault."""
-    if config_version is None:raise ValueError(f'the comparison target {target} has no version in {config}; '+('correct that Release' if tag_version is not None else 'add a version to that config on the default branch')+', then re-run this check')
-    try:same=tag_version is None or version_cmp(tag_version,config_version)==0
+    if target_config_version is None:raise ValueError(f'the comparison target {target} has no version in {config}; '+('correct that Release' if tag_version is not None else 'add a version to that config on the default branch')+', then re-run this check')
+    try:same=tag_version is None or version_cmp(tag_version,target_config_version)==0
     except ValueError:same=False
-    if not same:raise ValueError(f'the comparison target {target} is version {tag_version} by its tag but {config_version} by {config}; correct that Release so its tag and config agree, then re-run this check')
-    require_newer(version,config_version)
+    if not same:raise ValueError(f'the comparison target {target} is version {tag_version} by its tag but {target_config_version} by {config}; correct that Release so its tag and config agree, then re-run this check')
+    require_newer(version,target_config_version)
 
-def _load(path, kind):
-    """Parsed YAML/JSON file, or None when `path` is not given or (for optional inputs) does not exist."""
+def _load(path, fmt, optional=False):
+    """Parsed `fmt` ('yaml' or 'json') file, or None when `path` is not given or, if `optional`, does not exist."""
     if not path:return None
     p=pathlib.Path(path)
-    if kind=='optional' and not p.exists():return None
+    if optional and not p.exists():return None
     text=p.read_text(encoding='utf-8')
-    return json.loads(text) if kind=='json' else yaml.safe_load(text)
+    return json.loads(text) if fmt=='json' else yaml.safe_load(text)
 
 def _version(path, as_written=False):
     """The version of the config.yaml at `path` (addon_sync.config_version); ValueError when it has none."""
@@ -285,6 +291,60 @@ def components(registry, repo):
     return {'ref_policy':provider['ref_policy'],'skip_vulnerability_scan':(provider.get('upgrade_comparison') or {}).get('skip_vulnerability_scan',''),
         'components':[{'id':c['id'],**paths(c)} for c in provider['components'] if publishes_releases(c)]}
 
+class _Failed(Exception):
+    """A command's expected failure: main() reports it as an ::error (title, message) and exits 2."""
+
+@contextlib.contextmanager
+def _failing(errors, prefix='', title='Upgrade comparison failed'):
+    """Raise _Failed for `errors` raised inside, with `prefix` before the message."""
+    try:yield
+    except errors as e:raise _Failed(title,prefix+str(e)) from None
+
+def _components(a):
+    # Its errors name the repository (find_provider, components).
+    with _failing((ValueError,KeyError,TypeError,OSError,Blocked)):print(json.dumps(components(_load(a.registry,'json'),a.repo)))
+    return 0
+
+def _comparison_target(a):
+    # The registry lookup, Release filter, tag rule and order are addon_sync's, so the PR check and the Release notes agree.
+    with _failing((ValueError,KeyError,TypeError,OSError)):provider,comp=find_component(_load(a.registry,'json'),a.repo,a.component)  # names the repository and add-on
+    with _failing((ValueError,KeyError,TypeError,AttributeError,OSError),f'Releases of {a.repo} {a.component}: '):
+        releases=json.load(sys.stdin)
+        if not isinstance(releases,list):raise ValueError('stdin is not a JSON array of Releases')
+        target=comparison_target(stable_versions(provider,comp,releases),a.version)
+    if target is not None:print(release_tag(provider,comp,target)+'\t'+target)
+    return 0
+
+def _version_command(a):
+    with _failing((ValueError,OSError,yaml.YAMLError),f'{a.name}: {a.path or a.file}: '):print(config_version(pathlib.Path(a.file).read_text(encoding='utf-8'),a.as_written) or '')
+    return 0
+
+def _check_target(a):
+    with _failing(ValueError,f'{a.name}: '):check_target(a.version,a.target,a.config,a.config_version or None,a.tag_version or None)
+    return 0
+
+def _release_notes(a):
+    with _failing((ValueError,TypeError,OSError,yaml.YAMLError),f'{a.notes}: ','Release notes failed'):text=release_notes(_load(a.notes,'yaml',optional=True),a.version,a.released)
+    print(text,end='');return 0
+
+def _compare(a):
+    with _failing((ValueError,KeyError,TypeError,OSError,yaml.YAMLError),f'{a.name or a.new}: '):
+        old,new=_load(a.old,'yaml'),_load(a.new,'yaml')
+        r=compare(old,new,old_version=_version(a.old) if old else None,new_version=_version(a.new,True),notes=_load(a.notes,'yaml',optional=True),
+            old_scan=_load(a.old_scan,'json'),new_scan=_load(a.new_scan,'json'),name=a.name,notes_path=a.notes_path,scan_note=a.scan_note)
+    # The report quotes PR text; GitHub must not read a line of it as a workflow command.
+    token=secrets.token_hex(16);print('::stop-commands::'+token);print(r['report']);print('::'+token+'::')
+    if a.summary:
+        with open(a.summary,'a',encoding='utf-8') as f:f.write(r['report']+'\n')
+    for b in r['breaking']:
+        if not b['declared']:_error('Undeclared breaking change',f'{b["change"]} {b["key"]} — declare it in {a.notes_path}')
+    for f in (r.get('vulnerabilities') or {}).get('new_fixable',[]):
+        if not f['accepted']:_error('New fixable vulnerability',f'{f["id"]} {f["package"]} ({f["severity"]}, fixed in {", ".join(f["fixed_in"])}) — upgrade the package or accept it in {a.notes_path}')
+    for problem in r['problems']:_error('Invalid declaration',problem)
+    return 1 if r['blocked'] else 0
+
+COMMANDS={'components':_components,'comparison-target':_comparison_target,'version':_version_command,'check-target':_check_target,'release-notes':_release_notes,'compare':_compare}
+
 def main(argv=None):
     p=argparse.ArgumentParser(description=__doc__.splitlines()[0]);sub=p.add_subparsers(dest='command',required=True)
     c=sub.add_parser('compare',help='judge one add-on and write the report')
@@ -296,8 +356,8 @@ def main(argv=None):
     n=sub.add_parser('release-notes',help="print the Release-notes sections for a version's declarations ('' when none)")
     n.add_argument('--notes',required=True,help='upgrade-notes.yaml at the released commit (may be absent)')
     n.add_argument('--version',required=True,help='version being released')
-    n.add_argument('--released',nargs='*',default=[],help='versions that already have a formal Release')
-    t=sub.add_parser('comparison-target',help="read the repository's Releases (GitHub API JSON array) on stdin, print the tag of the add-on's latest formal Release and its version, tab-separated (nothing when none); fails unless --version is newer")
+    n.add_argument('--released',nargs='*',default=[],help='versions that already have a stable Release')
+    t=sub.add_parser('comparison-target',help="read the repository's Releases (GitHub API JSON array) on stdin, print the tag of the add-on's latest stable Release and its version, tab-separated (nothing when none); fails unless --version is newer")
     t.add_argument('--registry',required=True,help='Store registry.json');t.add_argument('--repo',required=True,help='source repository, owner/name')
     t.add_argument('--component',required=True,help='add-on id in the registry')
     t.add_argument('--version',required=True,help="the PR's version: it must be newer than the target, as for the Release notes")
@@ -313,55 +373,8 @@ def main(argv=None):
     k=sub.add_parser('components',help="print what the workflow needs from the repository's registry entry (JSON, see components())")
     k.add_argument('--registry',required=True,help='Store registry.json');k.add_argument('--repo',required=True,help='source repository, owner/name')
     a=p.parse_args(argv)
-    if a.command=='components':
-        # Its errors name the repository (find_provider, components).
-        try:print(json.dumps(components(_load(a.registry,'json'),a.repo)))
-        except (ValueError,KeyError,TypeError,OSError,Blocked) as e:
-            _error('Upgrade comparison failed',str(e));return 2
-        return 0
-    if a.command=='comparison-target':
-        # The registry lookup, Release filter, tag rule and order are addon_sync's, so the PR check and the Release notes agree.
-        try:provider,comp=find_component(_load(a.registry,'json'),a.repo,a.component)
-        except (ValueError,KeyError,TypeError,OSError) as e:
-            _error('Upgrade comparison failed',str(e));return 2  # names the repository and add-on
-        try:
-            releases=json.load(sys.stdin)
-            if not isinstance(releases,list):raise ValueError('stdin is not a JSON array of Releases')
-            target=comparison_target(formal_versions(provider,comp,releases),a.version)
-        except (ValueError,KeyError,TypeError,AttributeError,OSError) as e:
-            _error('Upgrade comparison failed',f'Releases of {a.repo} {a.component}: {e}');return 2
-        if target is not None:print(release_tag(provider,comp,target)+'\t'+target)
-        return 0
-    if a.command=='version':
-        try:print(config_version(pathlib.Path(a.file).read_text(encoding='utf-8'),a.as_written) or '')
-        except (ValueError,OSError,yaml.YAMLError) as e:
-            _error('Upgrade comparison failed',f'{a.name}: {a.path or a.file}: {e}');return 2
-        return 0
-    if a.command=='check-target':
-        try:check_target(a.version,a.target,a.config,a.config_version or None,a.tag_version or None)
-        except ValueError as e:
-            _error('Upgrade comparison failed',f'{a.name}: {e}');return 2
-        return 0
-    if a.command=='release-notes':
-        try:text=release_notes(_load(a.notes,'optional'),a.version,a.released)
-        except (ValueError,TypeError,OSError,yaml.YAMLError) as e:
-            _error('Release notes failed',f'{a.notes}: {e}');return 2
-        print(text,end='');return 0
-    try:
-        old,new=_load(a.old,'yaml'),_load(a.new,'yaml')
-        r=compare(old,new,old_version=_version(a.old) if old else None,new_version=_version(a.new,True),notes=_load(a.notes,'optional'),
-            old_scan=_load(a.old_scan,'json'),new_scan=_load(a.new_scan,'json'),name=a.name,notes_path=a.notes_path,scan_note=a.scan_note)
-    except (ValueError,KeyError,TypeError,OSError,yaml.YAMLError) as e:
-        _error('Upgrade comparison failed',f'{a.name or a.new}: {e}');return 2
-    # The report quotes PR text; GitHub must not read a line of it as a workflow command.
-    token=secrets.token_hex(16);print('::stop-commands::'+token);print(r['report']);print('::'+token+'::')
-    if a.summary:
-        with open(a.summary,'a',encoding='utf-8') as f:f.write(r['report']+'\n')
-    for b in r['breaking']:
-        if not b['declared']:_error('Undeclared breaking change',f'{b["change"]} {b["key"]} — declare it in {a.notes_path}')
-    for f in (r.get('vulnerabilities') or {}).get('new_fixable',[]):
-        if not f['accepted']:_error('New fixable vulnerability',f'{f["id"]} {f["package"]} ({f["severity"]}, fixed in {", ".join(f["fixed_in"])}) — upgrade the package or accept it in {a.notes_path}')
-    for problem in r['problems']:_error('Invalid declaration',problem)
-    return 1 if r['blocked'] else 0
+    try:return COMMANDS[a.command](a)
+    except _Failed as e:
+        _error(*e.args);return 2
 
 if __name__=='__main__':sys.exit(main())

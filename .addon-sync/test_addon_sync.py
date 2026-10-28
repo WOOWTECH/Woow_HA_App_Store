@@ -399,7 +399,7 @@ class Tests(unittest.TestCase):
         self.assertEqual([c['tag_name'] for c in gh.created],['two-v1.2.0'])
         self.assertIn('Old news.',gh.created[0]['body']);self.assertIn('ssl_port',gh.created[0]['body'])
     def test_release_notes_read_every_page_of_releases(self):
-        # Past 100 Releases the add-on's last formal Release can be on page 2; missing it would repeat old declarations.
+        # Past 100 Releases the add-on's last stable Release can be on page 2; missing it would repeat old declarations.
         noise=[{'tag_name':f'other-v0.{i}'} for i in range(130)]
         gh=self.release_gh({'config.yaml':'name: Test\nslug: test\nversion: 1.2.0\n','upgrade-notes.yaml':self.NOTES},
             listing=noise+[{'tag_name':'v1.1.0'}])

@@ -346,7 +346,7 @@ class ReleaseNotes(unittest.TestCase):
         for name,notes in [('no file',None),('empty file',{}),('empty sections',{'1.3.0':{'breaking':[]}}),
                 ('only an already released version',{'1.2.0':NOTES['1.3.0']}),('only a later version',{'1.4.0':NOTES['1.3.0']})]:
             with self.subTest(name):self.assertEqual(u.release_notes(notes,'1.3.0',released=['1.1.0','1.2.0']),'')
-    def test_versions_since_the_last_formal_release_all_count(self):
+    def test_versions_since_the_last_stable_release_all_count(self):
         # 1.2.1 never got a Release, so its declarations belong to the 1.3.0 Release; 1.2.0's were on its own page.
         notes={'1.2.0':{'breaking':[dict(NOTES['1.3.0']['breaking'][0],key='old_port')]},'1.2.1':{'breaking':[dict(NOTES['1.3.0']['breaking'][0],key='mid_port')]},**NOTES}
         text=u.release_notes(notes,'1.3.0',released=['1.1.0','1.2.0','1.3.0'])
@@ -421,16 +421,16 @@ class ComparisonTargetCommand(unittest.TestCase):
         with contextlib.redirect_stdout(io.StringIO()) as out,unittest.mock.patch('sys.stdin',io.StringIO(stdin)):
             code=u.main(['comparison-target','--registry',str(d/'registry.json'),'--repo','WOOWTECH/r','--component',component,'--version',version])
         return code,out.getvalue()
-    def test_prints_the_tag_of_the_latest_formal_release(self):
+    def test_prints_the_tag_of_the_latest_stable_release(self):
         # And its version, tab-separated: the plan step checks that the config at the tag says the same version.
         self.assertEqual(self.main(['v1.2.0rc1','v1.2.0','v1.1.0'],'t'),(0,'v1.2.0\t1.2.0\n'))
         self.assertEqual(self.main([],'t'),(0,''))
-    def test_drafts_prereleases_and_other_prefixes_are_not_formal_releases(self):
+    def test_drafts_prereleases_and_other_prefixes_are_not_stable_releases(self):
         releases=[{'tag_name':'v2.0.0','draft':True,'prerelease':False},{'tag_name':'v1.9.0','draft':False,'prerelease':True},'x-v3.0.0','v1.1.0']
         self.assertEqual(self.main(releases,'t'),(0,'v1.1.0\t1.1.0\n'))
         self.assertEqual(self.main(releases[:3],'t'),(0,''))
     def test_a_version_not_newer_than_the_latest_release_exits_2(self):
-        # --version applies the Release notes' rule: the target is the latest formal Release and the version must be newer.
+        # --version applies the Release notes' rule: the target is the latest stable Release and the version must be newer.
         self.assertEqual(self.main(['v1.2.0','v1.1.0'],'t',version='1.3.0'),(0,'v1.2.0\t1.2.0\n'))
         self.assertEqual(self.main([],'t',version='1.3.0'),(0,''))
         for version in ('1.2.5','1.3.0'):
@@ -550,7 +550,7 @@ class ReusableWorkflow(unittest.TestCase):
         self.assertEqual(self.wf['on']['workflow_call']['inputs']['sbom_wait_minutes']['default'],40)
         self.assertGreater(self.wf['jobs']['compare']['timeout-minutes'],40)
     def test_ref_policy_main_compares_with_the_pr_base(self):
-        # apporo_ha_multi_ha_core, Woow_haos_ha_core, nginxpm have no formal Release: the Store follows main (#121).
+        # apporo_ha_multi_ha_core, Woow_haos_ha_core, nginxpm have no stable Release: the Store follows main (#121).
         plan=self.step('Find the comparison targets')
         self.assertRegex(plan,r'if \[ "\$\{policy\}" = "main" \]; then\s+(#.*\s+)*target="\$\{BASE_SHA\}"')
         self.assertEqual(self.step_env('Find the comparison targets')['BASE_SHA'],'${{ github.event.pull_request.base.sha }}')
@@ -608,7 +608,7 @@ class StepHarness(unittest.TestCase):
         gh.write_text('#!/bin/bash\ncase "$*" in\n  *releases*) [ -z "$RELEASES" ] || printf "%s\\n" "$RELEASES";;\n'
             '  *contents*) if [ -s "$OLD" ] && [[ -z "$OLD_PATH" || "$*" == *"contents/$OLD_PATH?"* ]]; then cat "$OLD"; else echo "gh: Not Found (HTTP 404)" >&2; exit 1; fi;;\n  *) exit 1;;\nesac\n')
         gh.chmod(0o755)
-        # What `gh api --paginate .../releases --jq '.[]'` prints: one Release object per line; a bare tag is a formal Release.
+        # What `gh api --paginate .../releases --jq '.[]'` prints: one Release object per line; a bare tag is a stable Release.
         releases='\n'.join(json.dumps(r if isinstance(r,dict) else {'tag_name':r,'draft':False,'prerelease':False}) for r in releases)
         env=dict(os.environ,PATH=f"{tmp/'bin'}{os.pathsep}{os.environ['PATH']}",OLD=str(tmp/'old.yaml'),OLD_PATH=old_path,RELEASES=releases,REPO='WOOWTECH/t',BASE_SHA='b',
             GH_TOKEN='x',DB_MAX_AGE_HOURS='120',SBOM_ARTIFACT=sbom,SKIP_VULNERABILITY_SCAN=skip,RUNNER_TEMP=str(tmp),RUN_ATTEMPT='1',
@@ -661,13 +661,13 @@ class SkipVulnerabilityScan(StepHarness):
         self.assertEqual(r.returncode,1);self.assertIn('passes no sbom_artifact',r.stdout+r.stderr)
 
 class ComparisonTarget(StepHarness):
-    """"No comparison target" only when there is no formal Release (or, for ref_policy main, no config at the PR base)."""
+    """"No comparison target" only when there is no stable Release (or, for ref_policy main, no config at the PR base)."""
     @needs_shell
     def test_release_whose_config_cannot_be_read_fails(self):
         r,plan,_=self.run_step('plan',old_config=False,skip='x')
         self.assertEqual(r.returncode,1);self.assertIn('v1.0.0 has no addon/config.yaml',r.stdout+r.stderr);self.assertEqual(plan,{})
     @needs_shell
-    def test_no_formal_release_has_no_comparison_target(self):
+    def test_no_stable_release_has_no_comparison_target(self):
         r,plan,_=self.run_step('plan',releases=(),old_config=False)
         self.assertEqual(r.returncode,0,r.stdout+r.stderr);self.assertEqual([plan['target'],plan['ref'],plan['note']],['','','no comparison target'])
     @needs_shell
