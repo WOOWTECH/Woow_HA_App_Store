@@ -114,6 +114,7 @@ jobs:
         set -euo pipefail
         source tooling/.addon-sync/gh_raw.sh
         source tooling/.addon-sync/log.sh
+        source tooling/.addon-sync/fields.sh
         # The registry entry and each add-on's file paths, by addon_sync's rules; the later steps read provider.json too.
         provider="$(python3 tooling/.addon-sync/upgrade_check.py components --registry tooling/.addon-sync/registry.json --repo "${REPO}")" \
           || { printf '%s\n' "${provider}"; exit 1; }  # on failure the output is its ::error (already escaped)
@@ -127,7 +128,7 @@ jobs:
         echo "## Upgrade comparison" >> "$GITHUB_STEP_SUMMARY"
         # Same detection as Woow_ha_odoo's CI: the version in the PR against the version on the PR base.
         while IFS= read -r component; do
-          eval "$(jq -r '@sh "id=\(.id) path=\(.config) previous=\(.previous_config)"' <<<"${component}")"  # @sh quotes each value for eval
+          fields "${component}" id=id path=config previous=previous_config
           # A config moved in this PR (the registry already lists the new path) is read at the base from previous_config.
           base="$(fetch_config "${path}" "${previous}" "${BASE_SHA}")"
           if [ ! -f "source/${path}" ]; then
@@ -168,13 +169,14 @@ jobs:
         set -euo pipefail
         source tooling/.addon-sync/gh_raw.sh
         source tooling/.addon-sync/log.sh
+        source tooling/.addon-sync/fields.sh
         policy="$(jq -r '.ref_policy' provider.json)"; approved="$(jq -r '.skip_vulnerability_scan' provider.json)"
         releases="$(gh api --paginate "repos/${REPO}/releases?per_page=100" --jq '.[]' | jq -sc .)"
         # plan.jsonl, one object per add-on: id, config, notes (paths), target, ref (old image; "" = no scan),
         # artifact (the addon-sbom artifact of its new image), note (why there is no scan).
         : > plan.jsonl; status=0
         while IFS= read -r component; do
-          eval "$(jq -r '@sh "id=\(.id) path=\(.config) previous=\(.previous_config) notes=\(.notes) version=\(.version)"' <<<"${component}")"  # @sh quotes each value for eval
+          fields "${component}" id=id path=config previous=previous_config notes=notes version=version
           old="$RUNNER_TEMP/${id}.old.yaml"; rm -f "$old"; touch "$old"; target=""; ref=""; note=""
           if [ "${policy}" = "main" ]; then
             # ref_policy main: the Store follows the default branch, so users run what the PR base has.
@@ -257,9 +259,10 @@ jobs:
       run: |
         set -euo pipefail
         source tooling/.addon-sync/log.sh
+        source tooling/.addon-sync/fields.sh
         export SYFT_CHECK_FOR_APP_UPDATE=false
         while IFS= read -r row; do
-          eval "$(jq -r '@sh "id=\(.id) target=\(.target) ref=\(.ref)"' <<<"${row}")"  # @sh quotes each value for eval
+          fields "${row}" id=id target=target ref=ref
           if ! docker pull --quiet --platform linux/amd64 "${ref}"; then
             fail "${id}: cannot pull the comparison target's image ${ref} from the registry; re-run, or check that the image of ${target} exists"; exit 1
           fi
@@ -323,11 +326,12 @@ jobs:
       run: |
         set -euo pipefail
         source tooling/.addon-sync/log.sh
+        source tooling/.addon-sync/fields.sh
         export GRYPE_DB_CACHE_DIR="$RUNNER_TEMP/grype-db" GRYPE_DB_AUTO_UPDATE=false GRYPE_DB_VALIDATE_AGE=true \
           GRYPE_DB_MAX_ALLOWED_BUILT_AGE="${DB_MAX_AGE_HOURS}h" GRYPE_CHECK_FOR_APP_UPDATE=false
         status=0
         while IFS= read -r row; do
-          eval "$(jq -r '@sh "id=\(.id) path=\(.config) notes=\(.notes) target=\(.target) ref=\(.ref) note=\(.note)"' <<<"${row}")"  # @sh quotes each value for eval
+          fields "${row}" id=id path=config notes=notes target=target ref=ref note=note
           old="$RUNNER_TEMP/${id}.old.yaml"
           args=(--name "${id}" --new "source/${path}" --notes "source/${notes}" --notes-path "${notes}")
           [ ! -s "${old}" ] || args+=(--old "${old}")

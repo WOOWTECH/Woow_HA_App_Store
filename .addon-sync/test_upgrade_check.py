@@ -696,9 +696,27 @@ class ComparisonTarget(StepHarness):
         import re
         for step in self.wf['jobs']['compare']['steps']:
             run=step.get('run','')
-            for helper,use in [('gh_raw.sh',r'\bfetch(_config)? '),('log.sh',r'\b(esc|fail) "')]:
+            for helper,use in [('gh_raw.sh',r'\bfetch(_config)? '),('log.sh',r'\b(esc|fail) "'),('fields.sh',r'\bfields "')]:
                 with self.subTest(step=step.get('name'),helper=helper):
                     self.assertEqual('source tooling/.addon-sync/'+helper in run,bool(re.search(use,run)))
+
+class Fields(StepHarness):
+    """fields (fields.sh) reads one JSON line into shell variables for every step."""
+    def bash(self,script,*args):
+        import subprocess
+        return subprocess.run([shutil.which('bash'),'-c','set -euo pipefail; source "$1"; shift; '+script,'-',(self.STORE/'.addon-sync/fields.sh').as_posix(),*args],capture_output=True,text=True)
+    @needs_shell
+    def test_values_are_quoted_for_eval(self):
+        value='a b\'"$(touch x)";`id`\n::warning::x'
+        r=self.bash('fields "$1" id=id path=config; printf "%s|%s" "${id}" "${path}"',json.dumps({'id':value,'config':'c/config.yaml'}))
+        self.assertEqual(r.returncode,0,r.stderr);self.assertEqual(r.stdout,value+'|c/config.yaml')
+    @needs_shell
+    def test_a_bad_line_stops_the_step(self):
+        # eval of jq's empty output returned 0 and kept the previous line's values.
+        r=self.bash('id=previous; fields "$1" id=id; echo "reached ${id}"','not json')
+        self.assertNotEqual(r.returncode,0);self.assertNotIn('reached',r.stdout)
+    def test_no_step_evals_jq_output_itself(self):
+        self.assertNotIn('eval "$(jq',self.WF.read_text(encoding='utf-8'))
 
 class LogEscaping(StepHarness):
     """Values from the PR or its Releases are echoed through esc (log.sh), the escaping addon_sync.annotation uses."""

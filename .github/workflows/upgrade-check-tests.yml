@@ -13,6 +13,7 @@ name: Upgrade comparison tests
     - .addon-sync/requirements.txt
     - .addon-sync/gh_raw.sh
     - .addon-sync/log.sh
+    - .addon-sync/fields.sh
     - .addon-sync/registry.json
     - .github/workflows/woow-addon-upgrade-check.yml
     - .github/workflows/upgrade-check-tests.yml
@@ -27,6 +28,7 @@ name: Upgrade comparison tests
     - .addon-sync/requirements.txt
     - .addon-sync/gh_raw.sh
     - .addon-sync/log.sh
+    - .addon-sync/fields.sh
     - .addon-sync/registry.json
     - .github/workflows/woow-addon-upgrade-check.yml
     - .github/workflows/upgrade-check-tests.yml
