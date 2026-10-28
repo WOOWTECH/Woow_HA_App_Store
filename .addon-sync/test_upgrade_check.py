@@ -369,7 +369,7 @@ class ReleaseNotes(unittest.TestCase):
         for section,field in [('breaking','migration'),('accepted_vulnerabilities','reason')]:
             with self.subTest(section):
                 with self.assertRaises(ValueError):u.release_notes({'1.3.0':{section:[dict(NOTES['1.3.0'][section][0],**{field:' '})]}},'1.3.0')
-class LatestRelease(unittest.TestCase):
+class ComparisonTargetCommand(unittest.TestCase):
     """The PR check's comparison target and the Release notes' window use one ordering: version_cmp."""
     def test_addon_sync_does_not_import_this_module(self):
         # One direction only: upgrade_check uses addon_sync's Release rules, addon_sync never needs upgrade_check.
@@ -395,7 +395,7 @@ class LatestRelease(unittest.TestCase):
         (d/'registry.json').write_text(json.dumps({'providers':{'WOOWTECH/r':{'components':[{'id':c} for c in components]}}}))
         stdin=releases if isinstance(releases,str) else json.dumps([r if isinstance(r,dict) else {'tag_name':r,'draft':False,'prerelease':False} for r in releases])
         with contextlib.redirect_stdout(io.StringIO()) as out,unittest.mock.patch('sys.stdin',io.StringIO(stdin)):
-            code=u.main(['latest-release','--registry',str(d/'registry.json'),'--repo','WOOWTECH/r','--component',component,'--version',version])
+            code=u.main(['comparison-target','--registry',str(d/'registry.json'),'--repo','WOOWTECH/r','--component',component,'--version',version])
         return code,out.getvalue()
     def test_prints_the_tag_of_the_latest_formal_release(self):
         self.assertEqual(self.main(['v1.2.0rc1','v1.2.0','v1.1.0'],'t'),(0,'v1.2.0\n'))
@@ -420,10 +420,10 @@ class LatestRelease(unittest.TestCase):
         self.assertEqual(self.main(releases,'woow_ha_core',both),(0,'woow_ha_core-v2.4.0\n'))
         self.assertEqual(self.main(releases,'t'),(0,'v9.0.0\n'))
     def test_unknown_repository_is_the_registry_lookups_error(self):
-        # One provider lookup (addon_sync.find_provider) for latest-release and components.
+        # One provider lookup (addon_sync.find_provider) for comparison-target and components.
         d=pathlib.Path(tempfile.mkdtemp());self.addCleanup(shutil.rmtree,d);(d/'registry.json').write_text('{"providers":{}}')
         with contextlib.redirect_stdout(io.StringIO()) as out,unittest.mock.patch('sys.stdin',io.StringIO('[]')):
-            code=u.main(['latest-release','--registry',str(d/'registry.json'),'--repo','WOOWTECH/x','--component','t','--version','1.0.0'])
+            code=u.main(['comparison-target','--registry',str(d/'registry.json'),'--repo','WOOWTECH/x','--component','t','--version','1.0.0'])
         self.assertEqual(code,2);self.assertIn('not in the Store registry',out.getvalue())
     def test_unknown_component_or_bad_input_exits_2(self):
         for releases,component in [(['v1.0.0'],'other'),('not json','t'),('{}','t')]:
@@ -433,7 +433,7 @@ class LatestRelease(unittest.TestCase):
     def test_workflow_leaves_the_filter_and_tag_rule_to_python(self):
         wf=yaml.safe_load((pathlib.Path(__file__).resolve().parent.parent/'.github/workflows/woow-addon-upgrade-check.yml').read_text(encoding='utf-8'))
         plan=next(s for s in wf['jobs']['compare']['steps'] if s.get('id')=='plan')['run']
-        self.assertIn('upgrade_check.py latest-release --registry',plan)
+        self.assertIn('upgrade_check.py comparison-target --registry',plan)
         for duplicate in ('sort -V','prerelease','draft','-v"','prefix='):
             with self.subTest(duplicate):self.assertNotIn(duplicate,plan)
 class ReleaseNotesCommand(unittest.TestCase):

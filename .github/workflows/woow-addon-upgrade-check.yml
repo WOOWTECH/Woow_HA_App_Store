@@ -189,7 +189,7 @@ jobs:
             target="${BASE_SHA}"
           else
             # Formal-Release filter, tag rule, ordering and "the version must be newer" are the Release notes' (addon_sync).
-            target="$(python3 tooling/.addon-sync/upgrade_check.py latest-release --registry tooling/.addon-sync/registry.json --repo "${REPO}" --component "${id}" --version "${version}" <<<"${releases}")" \
+            target="$(python3 tooling/.addon-sync/upgrade_check.py comparison-target --registry tooling/.addon-sync/registry.json --repo "${REPO}" --component "${id}" --version "${version}" <<<"${releases}")" \
               || { printf '%s\n' "${target}"; exit 1; }  # on failure the output is its ::error (already escaped)
           fi
           # Like the PR's version (detect step): refused with a control character before use.

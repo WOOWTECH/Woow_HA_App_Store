@@ -278,7 +278,7 @@ def main(argv=None):
     n.add_argument('--notes',required=True,help='upgrade-notes.yaml at the released commit (may be absent)')
     n.add_argument('--version',required=True,help='version being released')
     n.add_argument('--released',nargs='*',default=[],help='versions that already have a formal Release')
-    t=sub.add_parser('latest-release',help="read the repository's Releases (GitHub API JSON array) on stdin, print the tag of the add-on's latest formal Release (nothing when none); fails unless --version is newer")
+    t=sub.add_parser('comparison-target',help="read the repository's Releases (GitHub API JSON array) on stdin, print the tag of the add-on's latest formal Release (nothing when none); fails unless --version is newer")
     t.add_argument('--registry',required=True,help='Store registry.json');t.add_argument('--repo',required=True,help='source repository, owner/name')
     t.add_argument('--component',required=True,help='add-on id in the registry')
     t.add_argument('--version',required=True,help="the PR's version: it must be newer than the target, as for the Release notes")
@@ -290,7 +290,7 @@ def main(argv=None):
         except (ValueError,KeyError,TypeError,OSError,Blocked) as e:
             _error('Upgrade comparison failed',f'{a.repo}: {e}');return 2
         return 0
-    if a.command=='latest-release':
+    if a.command=='comparison-target':
         # The registry lookup, Release filter, tag rule and order are addon_sync's, so the PR check and the Release notes agree.
         try:
             provider,comp=find_component(_load(a.registry,'json'),a.repo,a.component)
