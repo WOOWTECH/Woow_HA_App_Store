@@ -1,0 +1,26 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Woow 多協定連接",
+        "description": "此整合會在側邊欄新增一個統一面板，整合您的 KNX、DMX 及 Modbus 設定指南。\n\n點擊「提交」以安裝。"
+      }
+    },
+    "abort": {
+      "already_configured": "Woow 多協定連接已設定完成。"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "協定",
+        "description": "選擇面板要顯示哪些協定分頁。儲存後將重新載入整合。",
+        "data": {
+          "enable_knx": "啟用 KNX",
+          "enable_dmx": "啟用 DMX",
+          "enable_modbus": "啟用 Modbus"
+        }
+      }
+    }
+  }
+}

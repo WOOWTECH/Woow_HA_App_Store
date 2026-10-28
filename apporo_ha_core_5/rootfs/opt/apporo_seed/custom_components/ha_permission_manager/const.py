@@ -33,7 +33,11 @@ PANEL_TITLE = "Permission Manager"
 PANEL_TITLE_ZH = "權限管理器"
 PANEL_ICON = "mdi:shield-lock"
 PANEL_URL = "ha_permission_manager"
-PANEL_VERSION = "1.0.3"
+
+# URL prefix the frontend/ directory is mounted at (see __init__.py).
+FRONTEND_URL_BASE = "/ha_permission_manager_frontend"
+
+PANEL_VERSION = "2.0.15"
 
 # Control Panel configuration (unified area/label control)
 CONTROL_PANEL_URL = "ha-control-panel"
@@ -44,15 +48,6 @@ CONTROL_PANEL_ICON = "mdi:view-dashboard"
 # Tab Configuration for Control Panel
 CONTROL_PANEL_TABS = ["areas", "labels"]
 DEFAULT_TAB = "areas"
-
-# Legacy panel references (for migration/compatibility)
-AREA_PANEL_URL = "area-control"
-AREA_PANEL_TITLE = "Area Control"
-AREA_PANEL_ICON = "mdi:floor-plan"
-
-LABEL_PANEL_URL = "label-control"
-LABEL_PANEL_TITLE = "Label Control"
-LABEL_PANEL_ICON = "mdi:label"
 
 # Service names
 SERVICE_SET_PERMISSION = "set_permission"
@@ -77,12 +72,6 @@ RESOURCE_TYPE_PREFIX_MAP = {
     "area": PREFIX_AREA,
     "label": PREFIX_LABEL,
 }
-
-# WebSocket Commands
-WS_GET_PERMITTED_AREAS = "ha_permission_manager/get_permitted_areas"
-WS_GET_PERMITTED_LABELS = "ha_permission_manager/get_permitted_labels"
-WS_GET_ENTITIES_FOR_AREA = "ha_permission_manager/get_entities_for_area"
-WS_GET_ENTITIES_FOR_LABEL = "ha_permission_manager/get_entities_for_label"
 
 # Domain Configuration (for entity grouping in control panel)
 DOMAIN_ICONS = {

@@ -1,0 +1,24 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "权限管理器",
+        "description": "这将为所有用户与资源（区域、标签、面板）创建权限选择实体。\n\n您可以通过侧边栏面板或直接通过实体来管理权限。"
+      }
+    },
+    "abort": {
+      "already_configured": "权限管理器已设置。",
+      "single_instance_allowed": "已经设置完成，只能设置一次。"
+    }
+  },
+  "entity": {
+    "select": {
+      "permission": {
+        "state": {
+          "0": "关闭",
+          "1": "查看"
+        }
+      }
+    }
+  }
+}

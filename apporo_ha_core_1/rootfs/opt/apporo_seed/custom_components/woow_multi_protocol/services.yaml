@@ -1,0 +1,121 @@
+# Woow Multi-Protocol Connect — service layer
+# One service set fronts KNX / DMX / Modbus; every call takes a `protocol` field
+# and is sandboxed to the <config>/woow_multi_protocol/<protocol>/ subdirectory.
+# See services.py, ADR-0001 (path guard) and ADR-0002 (apply semantics).
+
+list_files:
+  name: List config files
+  description: >-
+    List config files under a protocol's subdirectory. Returns {files: [...]}.
+  fields:
+    protocol:
+      name: Protocol
+      description: Which protocol's sandbox to address.
+      required: true
+      example: knx
+      selector:
+        select:
+          options:
+            - knx
+            - dmx
+            - modbus
+    ext:
+      name: Extension
+      description: File extension to list, or "all" for every allowed type.
+      default: yaml
+      example: yaml
+      selector:
+        text:
+    depth:
+      name: Depth
+      description: Maximum directory depth to descend.
+      default: 10
+      selector:
+        number:
+          min: 1
+          max: 25
+          mode: box
+
+load_file:
+  name: Load config file
+  description: >-
+    Read a UTF-8 file under a protocol's subdirectory. Returns {content, path}.
+  fields:
+    protocol:
+      name: Protocol
+      description: Which protocol's sandbox to address.
+      required: true
+      example: knx
+      selector:
+        select:
+          options:
+            - knx
+            - dmx
+            - modbus
+    path:
+      name: Path
+      description: Path relative to the protocol's subdirectory.
+      required: true
+      example: knx_main.yaml
+      selector:
+        text:
+
+save_file:
+  name: Save config file
+  description: >-
+    Atomically write a file under a protocol's subdirectory. Writes only — call
+    "apply" afterwards to make the change live. Returns {success, path}.
+  fields:
+    protocol:
+      name: Protocol
+      description: Which protocol's sandbox to address.
+      required: true
+      example: knx
+      selector:
+        select:
+          options:
+            - knx
+            - dmx
+            - modbus
+    path:
+      name: Path
+      description: Path relative to the protocol's subdirectory.
+      required: true
+      example: knx_main.yaml
+      selector:
+        text:
+    content:
+      name: Content
+      description: Full file content to write.
+      required: true
+      selector:
+        text:
+          multiline: true
+
+apply:
+  name: Apply config
+  description: >-
+    Reload the underlying integration for a protocol (knx / artnet / modbus) so
+    saved config takes effect. If no reload is available it reports
+    restart_required without restarting, unless force_restart is set. Returns
+    {reloaded, restart_required, ...}.
+  fields:
+    protocol:
+      name: Protocol
+      description: Which protocol to apply.
+      required: true
+      example: knx
+      selector:
+        select:
+          options:
+            - knx
+            - dmx
+            - modbus
+    force_restart:
+      name: Force restart
+      description: >-
+        Restart Home Assistant when the underlying integration cannot hot-reload.
+        Default false — never restarts unattended.
+      default: false
+      selector:
+        boolean:

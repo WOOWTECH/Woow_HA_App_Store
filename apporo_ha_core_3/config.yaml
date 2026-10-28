@@ -1,6 +1,6 @@
 name: "Apporo HA Core 3"
 description: "Apporo Home Assistant Core instance 3"
-version: "2.3.0"
+version: "2.4.0"
 slug: "apporo_ha_core_3"
 init: false
 webui: "http://[HOST]:[PORT:8123]/"

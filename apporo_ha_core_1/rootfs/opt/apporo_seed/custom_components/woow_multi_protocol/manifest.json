@@ -1,0 +1,11 @@
+{
+  "domain": "woow_multi_protocol",
+  "name": "Woow Multi-Protocol Connect",
+  "codeowners": ["@woowtech"],
+  "config_flow": true,
+  "dependencies": ["frontend", "http"],
+  "documentation": "https://github.com/WOOWTECH/Woow_ha_multi_protocol_connect",
+  "iot_class": "calculated",
+  "issue_tracker": "https://github.com/WOOWTECH/Woow_ha_multi_protocol_connect/issues",
+  "version": "3.0.0"
+}

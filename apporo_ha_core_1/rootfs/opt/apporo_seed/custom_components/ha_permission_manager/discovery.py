@@ -14,6 +14,7 @@ from .const import (
     PREFIX_PANEL,
     SELF_PANEL_ID,
 )
+from .panel_policy import unroutable_panel_ids as _unroutable_panel_ids
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
@@ -61,29 +62,50 @@ def discover_labels(hass: HomeAssistant) -> list[Resource]:
     return resources
 
 
+def get_registered_panels(hass: HomeAssistant) -> dict:
+    """Return the panels Home Assistant has registered, whatever it keeps them in."""
+    # Method 1: frontend_panels (modern HA)
+    if "frontend_panels" in hass.data:
+        return hass.data["frontend_panels"]
+
+    # Method 2: frontend -> panels
+    if "frontend" in hass.data:
+        frontend_data = hass.data["frontend"]
+        if isinstance(frontend_data, dict):
+            return frontend_data.get("panels", {})
+        if hasattr(frontend_data, "panels"):
+            return frontend_data.panels or {}
+
+    return {}
+
+
+def unroutable_panel_ids(hass: HomeAssistant) -> set[str]:
+    """Panel ids that Home Assistant registers but never routes to.
+
+    The Home Assistant adapter over panel_policy.unroutable_panel_ids, which
+    holds the decision itself and is unit tested offline.
+    """
+    return _unroutable_panel_ids(get_registered_panels(hass))
+
+
 def discover_panels(hass: HomeAssistant) -> list[Resource]:
     """Discover all sidebar panels."""
     resources = []
 
-    # Try multiple locations where panels might be stored
-    panels = {}
-
-    # Method 1: frontend_panels (modern HA)
-    if "frontend_panels" in hass.data:
-        panels = hass.data["frontend_panels"]
-    # Method 2: frontend -> panels
-    elif "frontend" in hass.data:
-        frontend_data = hass.data["frontend"]
-        if isinstance(frontend_data, dict):
-            panels = frontend_data.get("panels", {})
-        elif hasattr(frontend_data, "panels"):
-            panels = frontend_data.panels or {}
+    panels = get_registered_panels(hass)
+    unroutable = unroutable_panel_ids(hass)
 
     _LOGGER.debug("Found panels data: %s", list(panels.keys()) if panels else "None")
+    if unroutable:
+        _LOGGER.debug("Skipping panels Home Assistant does not route to: %s", unroutable)
 
     for panel_id, panel in panels.items():
         # Skip our own panel (we'll add it manually)
         if panel_id == "ha_permission_manager":
+            continue
+
+        # Never offer a Resource whose Permission level cannot be honoured
+        if panel_id in unroutable:
             continue
 
         # Get panel title

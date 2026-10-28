@@ -7,7 +7,18 @@
       }
     },
     "abort": {
-      "already_configured": "Permission Manager is already configured."
+      "already_configured": "Permission Manager is already configured.",
+      "single_instance_allowed": "Already configured. Only a single configuration possible."
+    }
+  },
+  "entity": {
+    "select": {
+      "permission": {
+        "state": {
+          "0": "Closed",
+          "1": "View"
+        }
+      }
     }
   }
 }

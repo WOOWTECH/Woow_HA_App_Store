@@ -221,8 +221,9 @@ async def async_handle_set_permission(call: ServiceCall) -> None:
 async def async_handle_bulk_set_permissions(call: ServiceCall) -> None:
     """Handle bulk_set_permissions service call.
 
-    Sets multiple permission entries in one call.
-    Fires permission_manager_updated event once after all entries are applied.
+    Sets multiple permission entries in one call. Validates every entry before
+    applying any, then hands the batch to async_bulk_set_permissions, which
+    saves and announces once for the whole of it.
     """
     hass = call.hass
     await _async_validate_admin(hass, call)
@@ -234,28 +235,9 @@ async def async_handle_bulk_set_permissions(call: ServiceCall) -> None:
         _validate_user_id(entry["user_id"])
         _validate_resource_id(entry["resource_id"])
 
-    # Apply all permissions
-    from . import async_save_permissions
+    from . import async_bulk_set_permissions
 
-    domain_data = _get_domain_data(hass)
-    permissions = domain_data.setdefault("permissions", {})
-
-    for entry in permissions_list:
-        uid = entry["user_id"]
-        rid = entry["resource_id"]
-        lvl = entry["level"]
-
-        if uid not in permissions:
-            permissions[uid] = {}
-        permissions[uid][rid] = lvl
-
-    # Save once (batched) and fire event once
-    await async_save_permissions(hass)
-
-    hass.bus.async_fire("permission_manager_updated", {
-        "action": "bulk_set",
-        "count": len(permissions_list),
-    })
+    await async_bulk_set_permissions(hass, permissions_list)
 
     _LOGGER.info(
         "Service bulk_set_permissions: applied %d entries",
@@ -308,16 +290,9 @@ async def async_handle_reset_all_permissions(call: ServiceCall) -> None:
     await _async_validate_admin(hass, call)
 
     # confirm is already validated by schema to be True
-    from . import async_save_permissions
+    from . import async_reset_all_permissions
 
-    domain_data = _get_domain_data(hass)
-    domain_data["permissions"] = {}
-
-    await async_save_permissions(hass)
-
-    hass.bus.async_fire("permission_manager_updated", {
-        "action": "reset_all",
-    })
+    await async_reset_all_permissions(hass)
 
     _LOGGER.warning("Service reset_all_permissions: all permissions cleared")
 
