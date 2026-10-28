@@ -1,6 +1,6 @@
 name: "Woowtech HA Core 1"
 description: "Woowtech Home Assistant Core instance 1"
-version: "2.3.0"
+version: "2.4.1"
 slug: "woow_ha_core_1"
 init: false
 webui: "http://[HOST]:[PORT:8123]/"

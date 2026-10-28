@@ -16,45 +16,9 @@
       "permission": {
         "state": {
           "0": "Closed",
-          "1": "View",
-          "2": "Limited",
-          "3": "Edit"
+          "1": "View"
         }
       }
-    }
-  },
-  "panel": {
-    "tabs": {
-      "areas": "Areas",
-      "labels": "Labels"
-    },
-    "area_control": {
-      "title": "Area Control",
-      "setup_title": "Setup Area Control",
-      "setup_description": "Click submit to install the Area Control panel.",
-      "select_area": "Select an area",
-      "no_permitted_areas": "No permitted areas",
-      "entities_in_area": "Entities in {area}"
-    },
-    "label_control": {
-      "title": "Label Control",
-      "setup_title": "Setup Label Control",
-      "setup_description": "Click submit to install the Label Control panel.",
-      "select_label": "Select a label",
-      "no_permitted_labels": "No permitted labels",
-      "entities_with_label": "Entities with {label}"
-    },
-    "domain_groups": {
-      "light": "Lights",
-      "switch": "Switches",
-      "sensor": "Sensors",
-      "binary_sensor": "Binary Sensors",
-      "climate": "Climate",
-      "cover": "Covers",
-      "fan": "Fans",
-      "lock": "Locks",
-      "media_player": "Media Players",
-      "other": "Other"
     }
   }
 }

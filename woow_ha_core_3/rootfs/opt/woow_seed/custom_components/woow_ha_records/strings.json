@@ -1,0 +1,917 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Woow HA Records",
+        "description": "Adds finance, asset, health and note records. Accounts, members, assets and notes are created afterwards from the panels or services."
+      }
+    },
+    "abort": {
+      "already_configured": "Woow HA Records is already set up."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "balance_display": {
+        "name": "Balance"
+      },
+      "last_transaction": {
+        "name": "Last Transaction"
+      },
+      "last_note": {
+        "name": "Last Note"
+      },
+      "last_time": {
+        "name": "Last Time"
+      },
+      "plan_next_date": {
+        "name": "{title} Next Date"
+      },
+      "plan_last_executed": {
+        "name": "{title} Last Executed"
+      },
+      "record": {
+        "name": "{record_name} Record"
+      }
+    },
+    "datetime": {
+      "purchase_at": {
+        "name": "Purchase Date"
+      },
+      "warranty_until": {
+        "name": "Warranty Until"
+      }
+    },
+    "text": {
+      "brand": {
+        "name": "Brand"
+      },
+      "manual_md": {
+        "name": "Manual"
+      },
+      "maintenance_md": {
+        "name": "Maintenance"
+      },
+      "record_note": {
+        "name": "{record_name} Note"
+      }
+    },
+    "number": {
+      "value": {
+        "name": "Value"
+      },
+      "record_value": {
+        "name": "{record_name} Value"
+      }
+    },
+    "button": {
+      "record_log": {
+        "name": "{record_name} Log"
+      }
+    }
+  },
+  "exceptions": {
+    "finance": {
+      "account_not_found": {
+        "message": "Account {account_id} not found."
+      },
+      "transaction_not_found": {
+        "message": "Transaction {transaction_id} not found."
+      },
+      "plan_not_found": {
+        "message": "Plan {plan_id} not found."
+      },
+      "transaction_failed": {
+        "message": "Failed to create transaction."
+      },
+      "invalid_name": {
+        "message": "Account name cannot be empty."
+      },
+      "duplicate_name": {
+        "message": "Account with name {name} already exists."
+      },
+      "invalid_amount": {
+        "message": "Transaction amount must be a valid, finite number."
+      }
+    },
+    "asset": {
+      "invalid_datetime": {
+        "message": "Invalid datetime for {field}: {value}"
+      },
+      "asset_not_found": {
+        "message": "Asset {asset_id} not found."
+      },
+      "name_required": {
+        "message": "Asset name cannot be empty."
+      },
+      "category_error": {
+        "message": "Could not save the category. The name may be empty, too long, or already in use."
+      },
+      "category_name_required": {
+        "message": "Category name cannot be empty."
+      },
+      "category_not_empty": {
+        "message": "Category {name} still holds {asset_count} asset(s), and deleting it deletes them too. Pass force: true to confirm."
+      },
+      "category_not_found": {
+        "message": "Category {category_id} not found."
+      }
+    },
+    "health": {
+      "member_not_found": {
+        "message": "Member {member_id} not found."
+      },
+      "record_type_not_found": {
+        "message": "Record type {record_type} not found for member {member_id}."
+      },
+      "record_not_found": {
+        "message": "Record not found for member {member_id}, record type {type_id} at {timestamp}."
+      },
+      "invalid_datetime": {
+        "message": "Invalid datetime for {field}: {value}"
+      },
+      "log_failed": {
+        "message": "Failed to log record."
+      },
+      "invalid_type_id": {
+        "message": "Name must contain at least one alphanumeric character."
+      },
+      "type_exists": {
+        "message": "Record type {type_id} already exists."
+      },
+      "type_not_found": {
+        "message": "Record type {type_id} not found."
+      },
+      "invalid_member_id": {
+        "message": "Member ID is empty after sanitization."
+      },
+      "member_exists": {
+        "message": "Member {member_id} already exists."
+      }
+    },
+    "note": {
+      "create_failed": {
+        "message": "Failed to create note."
+      },
+      "delete_failed": {
+        "message": "Failed to delete note."
+      },
+      "category_name_required": {
+        "message": "Category name cannot be empty."
+      },
+      "category_not_found": {
+        "message": "Category {category_id} not found."
+      },
+      "note_not_found": {
+        "message": "Note {note_id} not found."
+      },
+      "title_required": {
+        "message": "Note title cannot be empty."
+      },
+      "title_too_long": {
+        "message": "Note title exceeds the maximum length of {max_length} characters."
+      },
+      "title_duplicate": {
+        "message": "A note with this title already exists in this category."
+      },
+      "content_too_long": {
+        "message": "Note content exceeds the maximum length of {max_length} characters."
+      },
+      "category_name_too_long": {
+        "message": "Category name exceeds the maximum length of {max_length} characters."
+      },
+      "category_duplicate": {
+        "message": "A category with this name already exists."
+      },
+      "category_not_empty": {
+        "message": "Category {name} still holds {note_count} note(s), and deleting it deletes them too. Pass force: true to confirm."
+      },
+      "delete_category_failed": {
+        "message": "Failed to delete category."
+      },
+      "update_failed": {
+        "message": "Failed to update note."
+      }
+    }
+  },
+  "services": {
+    "finance_get_accounts": {
+      "name": "Get Accounts",
+      "description": "List all financial accounts with their current balance."
+    },
+    "finance_get_account": {
+      "name": "Get Account",
+      "description": "Get full details of a specific account including transactions and recurring plans.",
+      "fields": {
+        "account_id": {
+          "name": "Account ID",
+          "description": "The unique account identifier."
+        }
+      }
+    },
+    "finance_get_chart_data": {
+      "name": "Get Chart Data",
+      "description": "Get monthly income vs. expense chart data for an account.",
+      "fields": {
+        "account_id": {
+          "name": "Account ID",
+          "description": "The unique account identifier."
+        },
+        "months": {
+          "name": "Months",
+          "description": "Number of months to include (default 6)."
+        }
+      }
+    },
+    "finance_export_csv": {
+      "name": "Export CSV",
+      "description": "Export all transactions for an account as CSV text.",
+      "fields": {
+        "account_id": {
+          "name": "Account ID",
+          "description": "The unique account identifier."
+        }
+      }
+    },
+    "finance_add_transaction": {
+      "name": "Add Transaction",
+      "description": "Record a new transaction (income or expense) to an account.",
+      "fields": {
+        "account_id": {
+          "name": "Account ID",
+          "description": "The unique account identifier."
+        },
+        "amount": {
+          "name": "Amount",
+          "description": "Transaction amount. Positive for income, negative for expense."
+        },
+        "note": {
+          "name": "Note",
+          "description": "Optional description for the transaction."
+        },
+        "transaction_type": {
+          "name": "Transaction Type",
+          "description": "Type: manual (default), recurring, or adjustment."
+        }
+      }
+    },
+    "finance_update_transaction": {
+      "name": "Update Transaction",
+      "description": "Modify an existing transaction's amount and/or note. Balance is adjusted by the difference.",
+      "fields": {
+        "account_id": {
+          "name": "Account ID",
+          "description": "The unique account identifier."
+        },
+        "transaction_id": {
+          "name": "Transaction ID",
+          "description": "The unique transaction identifier (e.g. tx_abcd1234)."
+        },
+        "amount": {
+          "name": "Amount",
+          "description": "New amount. Balance is adjusted by the difference from the old amount."
+        },
+        "note": {
+          "name": "Note",
+          "description": "New note."
+        }
+      }
+    },
+    "finance_delete_transaction": {
+      "name": "Delete Transaction",
+      "description": "Delete a transaction and revert its effect on the account balance.",
+      "fields": {
+        "account_id": {
+          "name": "Account ID",
+          "description": "The unique account identifier."
+        },
+        "transaction_id": {
+          "name": "Transaction ID",
+          "description": "The unique transaction identifier."
+        }
+      }
+    },
+    "finance_add_plan": {
+      "name": "Add Recurring Plan",
+      "description": "Create a new recurring income/expense plan that auto-executes on schedule.",
+      "fields": {
+        "account_id": {
+          "name": "Account ID",
+          "description": "The unique account identifier."
+        },
+        "title": {
+          "name": "Title",
+          "description": "Human-readable plan name (e.g. 'Monthly Rent')."
+        },
+        "amount": {
+          "name": "Amount",
+          "description": "Recurring amount. Positive for income, negative for expense."
+        },
+        "frequency": {
+          "name": "Frequency",
+          "description": "Recurrence: daily, weekly, monthly, or yearly."
+        },
+        "day": {
+          "name": "Day",
+          "description": "Day of recurrence. 1-28 for monthly/yearly, 1-7 (Mon-Sun) for weekly."
+        },
+        "month": {
+          "name": "Month",
+          "description": "Month (1-12) for yearly frequency only. Default 1."
+        },
+        "active": {
+          "name": "Active",
+          "description": "Whether the plan is active on creation. Default true."
+        }
+      }
+    },
+    "finance_update_plan": {
+      "name": "Update Recurring Plan",
+      "description": "Modify an existing recurring plan's settings.",
+      "fields": {
+        "account_id": {
+          "name": "Account ID",
+          "description": "The unique account identifier."
+        },
+        "plan_id": {
+          "name": "Plan ID",
+          "description": "The unique plan identifier (e.g. plan_abcd1234)."
+        },
+        "title": {
+          "name": "Title",
+          "description": "New plan name."
+        },
+        "amount": {
+          "name": "Amount",
+          "description": "New recurring amount."
+        },
+        "frequency": {
+          "name": "Frequency",
+          "description": "New frequency: daily, weekly, monthly, or yearly."
+        },
+        "day": {
+          "name": "Day",
+          "description": "New day of recurrence."
+        },
+        "month": {
+          "name": "Month",
+          "description": "New month (yearly only)."
+        },
+        "active": {
+          "name": "Active",
+          "description": "Enable or disable the plan."
+        }
+      }
+    },
+    "finance_delete_plan": {
+      "name": "Delete Recurring Plan",
+      "description": "Remove a recurring plan and its associated sensor entities.",
+      "fields": {
+        "account_id": {
+          "name": "Account ID",
+          "description": "The unique account identifier."
+        },
+        "plan_id": {
+          "name": "Plan ID",
+          "description": "The unique plan identifier."
+        }
+      }
+    },
+    "finance_add_account": {
+      "name": "Add Account",
+      "description": "Create a new financial account with optional initial balance.",
+      "fields": {
+        "name": {
+          "name": "Name",
+          "description": "Account display name."
+        },
+        "initial_balance": {
+          "name": "Initial Balance",
+          "description": "Starting balance. Default 0."
+        }
+      }
+    },
+    "finance_update_account": {
+      "name": "Update Account",
+      "description": "Rename an account or update its remark.",
+      "fields": {
+        "account_id": {
+          "name": "Account ID",
+          "description": "The unique account identifier."
+        },
+        "name": {
+          "name": "Name",
+          "description": "New account name. Cannot be empty or duplicate."
+        },
+        "note": {
+          "name": "Remark",
+          "description": "Free-form remark for the account."
+        }
+      }
+    },
+    "finance_delete_account": {
+      "name": "Delete Account",
+      "description": "Delete an account and all its transactions, plans, and sensor entities.",
+      "fields": {
+        "account_id": {
+          "name": "Account ID",
+          "description": "The account to delete."
+        }
+      }
+    },
+    "finance_adjust_balance": {
+      "name": "Adjust Balance",
+      "description": "Set an account's balance to a specific value. Creates an adjustment transaction for the difference.",
+      "fields": {
+        "account_id": {
+          "name": "Account ID",
+          "description": "The unique account identifier."
+        },
+        "new_balance": {
+          "name": "New Balance",
+          "description": "Target balance value."
+        }
+      }
+    },
+    "asset_list_assets": {
+      "name": "List Assets",
+      "description": "List all assets and asset categories."
+    },
+    "asset_get_asset": {
+      "name": "Get Asset",
+      "description": "Get full details of a specific asset.",
+      "fields": {
+        "asset_id": {
+          "name": "Asset ID",
+          "description": "The unique asset identifier."
+        }
+      }
+    },
+    "asset_list_categories": {
+      "name": "List Categories",
+      "description": "List all asset categories."
+    },
+    "asset_export_csv": {
+      "name": "Export CSV",
+      "description": "Export all assets as CSV text."
+    },
+    "asset_create_asset": {
+      "name": "Create Asset",
+      "description": "Create a new asset. Only the name is required.",
+      "fields": {
+        "name": {
+          "name": "Name",
+          "description": "Asset display name."
+        },
+        "brand": {
+          "name": "Brand",
+          "description": "Manufacturer or brand name."
+        },
+        "category_id": {
+          "name": "Category ID",
+          "description": "The category to file the asset under. Leave empty for uncategorized."
+        },
+        "value": {
+          "name": "Value",
+          "description": "Monetary value or purchase price. Default 0."
+        },
+        "purchase_at": {
+          "name": "Purchase Date",
+          "description": "Date of purchase (ISO 8601)."
+        },
+        "warranty_until": {
+          "name": "Warranty Expiry",
+          "description": "Date the warranty expires (ISO 8601)."
+        },
+        "manual_md": {
+          "name": "Manual",
+          "description": "Markdown text for the user manual or operating instructions."
+        },
+        "maintenance_md": {
+          "name": "Maintenance",
+          "description": "Markdown text for the maintenance schedule and service history."
+        }
+      }
+    },
+    "asset_update_asset": {
+      "name": "Update Asset",
+      "description": "Modify one or more fields on an existing asset. Omitted fields are left unchanged.",
+      "fields": {
+        "asset_id": {
+          "name": "Asset ID",
+          "description": "The unique asset identifier."
+        },
+        "name": {
+          "name": "Name",
+          "description": "New asset name. Cannot be empty."
+        },
+        "brand": {
+          "name": "Brand",
+          "description": "New brand name."
+        },
+        "category_id": {
+          "name": "Category ID",
+          "description": "New category for the asset."
+        },
+        "value": {
+          "name": "Value",
+          "description": "New monetary value."
+        },
+        "purchase_at": {
+          "name": "Purchase Date",
+          "description": "New purchase date (ISO 8601). Pass an empty string to clear."
+        },
+        "warranty_until": {
+          "name": "Warranty Expiry",
+          "description": "New warranty expiry date (ISO 8601). Pass an empty string to clear."
+        },
+        "manual_md": {
+          "name": "Manual",
+          "description": "New manual text. Pass an empty string to clear."
+        },
+        "maintenance_md": {
+          "name": "Maintenance",
+          "description": "New maintenance text. Pass an empty string to clear."
+        }
+      }
+    },
+    "asset_delete_asset": {
+      "name": "Delete Asset",
+      "description": "Delete an asset and its associated entities.",
+      "fields": {
+        "asset_id": {
+          "name": "Asset ID",
+          "description": "The asset to delete."
+        }
+      }
+    },
+    "asset_create_category": {
+      "name": "Create Category",
+      "description": "Create a new asset category.",
+      "fields": {
+        "name": {
+          "name": "Name",
+          "description": "Category display name. Must be unique."
+        }
+      }
+    },
+    "asset_update_category": {
+      "name": "Update Category",
+      "description": "Rename an existing asset category.",
+      "fields": {
+        "category_id": {
+          "name": "Category ID",
+          "description": "The unique category identifier."
+        },
+        "name": {
+          "name": "Name",
+          "description": "New category name. Cannot be empty or duplicate."
+        }
+      }
+    },
+    "asset_delete_category": {
+      "name": "Delete Category",
+      "description": "Delete a category. A category that still holds assets is refused unless force is set, because deleting it deletes them too.",
+      "fields": {
+        "category_id": {
+          "name": "Category ID",
+          "description": "The category to delete."
+        },
+        "force": {
+          "name": "Force",
+          "description": "Delete the assets filed under the category along with it. Without this the call is refused and nothing is deleted."
+        }
+      }
+    },
+    "health_get_members": {
+      "name": "Get Members",
+      "description": "List all family members and their record types."
+    },
+    "health_get_records": {
+      "name": "Get Records",
+      "description": "Query health records within a time range.",
+      "fields": {
+        "start_time": {
+          "name": "Start Time",
+          "description": "Start of the time range (ISO 8601)."
+        },
+        "end_time": {
+          "name": "End Time",
+          "description": "End of the time range (ISO 8601)."
+        }
+      }
+    },
+    "health_export_csv": {
+      "name": "Export CSV",
+      "description": "Export all records for a member as CSV text.",
+      "fields": {
+        "member_id": {
+          "name": "Member ID",
+          "description": "The member's unique identifier."
+        }
+      }
+    },
+    "health_log_record": {
+      "name": "Log Record",
+      "description": "Log a new health record for a member.",
+      "fields": {
+        "member_id": {
+          "name": "Member ID",
+          "description": "The member's unique identifier."
+        },
+        "record_type": {
+          "name": "Record Type",
+          "description": "The record type ID (e.g. weight, feeding)."
+        },
+        "value": {
+          "name": "Value",
+          "description": "The measured value."
+        },
+        "note": {
+          "name": "Note",
+          "description": "Optional free-text note."
+        },
+        "timestamp": {
+          "name": "Timestamp",
+          "description": "Optional ISO 8601 timestamp. Defaults to now."
+        }
+      }
+    },
+    "health_update_record": {
+      "name": "Update Record",
+      "description": "Update an existing health record.",
+      "fields": {
+        "member_id": {
+          "name": "Member ID",
+          "description": "The member's unique identifier."
+        },
+        "type_id": {
+          "name": "Type ID",
+          "description": "The record type ID."
+        },
+        "timestamp": {
+          "name": "Timestamp",
+          "description": "ISO 8601 timestamp to locate the record."
+        },
+        "record_id": {
+          "name": "Record ID",
+          "description": "Optional UUID of the record (preferred over timestamp)."
+        },
+        "value": {
+          "name": "Value",
+          "description": "New value for the record."
+        },
+        "note": {
+          "name": "Note",
+          "description": "New note for the record."
+        },
+        "new_timestamp": {
+          "name": "New Timestamp",
+          "description": "Replacement timestamp (ISO 8601)."
+        }
+      }
+    },
+    "health_delete_record": {
+      "name": "Delete Record",
+      "description": "Delete a single health record.",
+      "fields": {
+        "member_id": {
+          "name": "Member ID",
+          "description": "The member's unique identifier."
+        },
+        "type_id": {
+          "name": "Type ID",
+          "description": "The record type ID."
+        },
+        "timestamp": {
+          "name": "Timestamp",
+          "description": "ISO 8601 timestamp to locate the record."
+        },
+        "record_id": {
+          "name": "Record ID",
+          "description": "Optional UUID of the record (preferred over timestamp)."
+        }
+      }
+    },
+    "health_add_record_type": {
+      "name": "Add Record Type",
+      "description": "Add a new record type to a member.",
+      "fields": {
+        "member_id": {
+          "name": "Member ID",
+          "description": "The member's unique identifier."
+        },
+        "name": {
+          "name": "Name",
+          "description": "Human-readable name for the record type."
+        },
+        "unit": {
+          "name": "Unit",
+          "description": "Unit of measurement (e.g. kg, bpm)."
+        },
+        "default_value": {
+          "name": "Default Value",
+          "description": "Initial default value."
+        },
+        "default_value_mode": {
+          "name": "Default Value Mode",
+          "description": "\"fixed\" or \"last_value\"."
+        }
+      }
+    },
+    "health_update_record_type": {
+      "name": "Update Record Type",
+      "description": "Update the settings of an existing record type.",
+      "fields": {
+        "member_id": {
+          "name": "Member ID",
+          "description": "The member's unique identifier."
+        },
+        "type_id": {
+          "name": "Type ID",
+          "description": "The record type ID to update."
+        },
+        "name": {
+          "name": "Name",
+          "description": "New human-readable name."
+        },
+        "unit": {
+          "name": "Unit",
+          "description": "New unit of measurement."
+        },
+        "default_value": {
+          "name": "Default Value",
+          "description": "New default value."
+        },
+        "default_value_mode": {
+          "name": "Default Value Mode",
+          "description": "\"fixed\" or \"last_value\"."
+        }
+      }
+    },
+    "health_delete_record_type": {
+      "name": "Delete Record Type",
+      "description": "Delete a record type and its associated entities.",
+      "fields": {
+        "member_id": {
+          "name": "Member ID",
+          "description": "The member's unique identifier."
+        },
+        "type_id": {
+          "name": "Type ID",
+          "description": "The record type ID to delete."
+        }
+      }
+    },
+    "health_add_member": {
+      "name": "Add Member",
+      "description": "Add a new family member to track health records.",
+      "fields": {
+        "name": {
+          "name": "Name",
+          "description": "Display name of the new member."
+        },
+        "member_id": {
+          "name": "Member ID",
+          "description": "Optional unique identifier. Auto-generated from name if omitted."
+        },
+        "note": {
+          "name": "Note",
+          "description": "Optional free-text note."
+        }
+      }
+    },
+    "health_update_member": {
+      "name": "Update Member",
+      "description": "Update a member's display name and note.",
+      "fields": {
+        "member_id": {
+          "name": "Member ID",
+          "description": "The member's unique identifier."
+        },
+        "name": {
+          "name": "Name",
+          "description": "New display name."
+        },
+        "note": {
+          "name": "Note",
+          "description": "New note."
+        }
+      }
+    },
+    "health_delete_member": {
+      "name": "Delete Member",
+      "description": "Delete a member and all associated data.",
+      "fields": {
+        "member_id": {
+          "name": "Member ID",
+          "description": "The member's unique identifier."
+        }
+      }
+    },
+    "note_list_notes": {
+      "name": "List Notes",
+      "description": "List all notes and note categories."
+    },
+    "note_get_note": {
+      "name": "Get Note",
+      "description": "Get full details of a specific note.",
+      "fields": {
+        "note_id": {
+          "name": "Note ID",
+          "description": "The unique note identifier."
+        }
+      }
+    },
+    "note_list_categories": {
+      "name": "List Categories",
+      "description": "List all note categories."
+    },
+    "note_export_markdown": {
+      "name": "Export Markdown",
+      "description": "Export all notes as Markdown text, grouped by category."
+    },
+    "note_create_note": {
+      "name": "Create Note",
+      "description": "Create a new note in an existing category.",
+      "fields": {
+        "category_id": {
+          "name": "Category ID",
+          "description": "The category to file the note under."
+        },
+        "title": {
+          "name": "Title",
+          "description": "Note title. Must be unique within the category. Max 200 characters."
+        },
+        "content": {
+          "name": "Content",
+          "description": "Markdown body of the note. Max 100000 characters."
+        },
+        "pinned": {
+          "name": "Pinned",
+          "description": "Whether the note is pinned above the rest. Default false."
+        }
+      }
+    },
+    "note_update_note": {
+      "name": "Update Note",
+      "description": "Modify one or more fields on an existing note. Omitted fields are left unchanged.",
+      "fields": {
+        "note_id": {
+          "name": "Note ID",
+          "description": "The unique note identifier."
+        },
+        "category_id": {
+          "name": "Category ID",
+          "description": "Move the note into this category. Omit to leave it where it is."
+        },
+        "title": {
+          "name": "Title",
+          "description": "New note title. Must be unique within the category. Max 200 characters."
+        },
+        "content": {
+          "name": "Content",
+          "description": "New Markdown body. Max 100000 characters."
+        },
+        "pinned": {
+          "name": "Pinned",
+          "description": "Whether the note is pinned above the rest."
+        }
+      }
+    },
+    "note_delete_note": {
+      "name": "Delete Note",
+      "description": "Delete a note and its associated entities.",
+      "fields": {
+        "note_id": {
+          "name": "Note ID",
+          "description": "The note to delete."
+        }
+      }
+    },
+    "note_create_category": {
+      "name": "Create Category",
+      "description": "Create a new note category.",
+      "fields": {
+        "name": {
+          "name": "Name",
+          "description": "Category display name. Must be unique. Max 100 characters."
+        }
+      }
+    },
+    "note_delete_category": {
+      "name": "Delete Category",
+      "description": "Delete a category. A category that still holds notes is refused unless force is set, because deleting it deletes them too.",
+      "fields": {
+        "category_id": {
+          "name": "Category ID",
+          "description": "The category to delete."
+        },
+        "force": {
+          "name": "Force",
+          "description": "Delete the notes filed under the category along with it. Without this the call is refused and nothing is deleted."
+        }
+      }
+    }
+  }
+}

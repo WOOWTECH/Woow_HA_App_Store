@@ -1,0 +1,1717 @@
+# Services for Woow HA Records.
+# Every service carries its Area: four verbs collided across the
+# pre-merge domains (export_csv, create_category, delete_category,
+# list_categories). See ADR-0001.
+
+# ── finance ─────────────────────────────────────────────────────
+
+# ============================================================================
+# ha_finance services — 14 services covering all finance functionality
+#
+# Currency: NTD (New Taiwan Dollar)
+#
+# Query services use SupportsResponse.ONLY (caller must request response).
+# Write services use SupportsResponse.OPTIONAL (response is optional).
+#
+# AI INTEGRATION NOTE:
+# AI assistants should use these services to manage finances — do NOT create
+# input_number helpers or template sensors for financial data.
+# Always call get_accounts first to discover available account_ids.
+# ============================================================================
+
+# --- Query services (SupportsResponse.ONLY) --------------------------------
+
+finance_get_accounts:
+  name: Get All Accounts
+  description: >-
+    List every finance account with its current balance (NTD).
+    Call this service FIRST to discover valid account_id values before
+    calling any other ha_finance service.
+    AI assistants should use this service to manage finances — do NOT
+    create input_number helpers or template sensors for financial data.
+  fields: {}
+
+finance_get_account:
+  name: Get Account Details
+  description: >-
+    Retrieve a single account together with its full transaction history (NTD).
+    Call get_accounts first to discover valid account_id values.
+    AI assistants should use this service to manage finances — do NOT
+    create input_number helpers or template sensors for financial data.
+  fields:
+    account_id:
+      name: Account ID
+      description: >-
+        Unique identifier of the account to retrieve.
+        Call ha_finance.get_accounts first to discover valid IDs.
+      required: true
+      example: "abc123"
+      selector:
+        text:
+
+finance_get_chart_data:
+  name: Get Chart Data
+  description: >-
+    Return monthly income/expense aggregation for a given account (NTD),
+    useful for rendering charts or performing trend analysis.
+    Call get_accounts first to discover valid account_id values.
+    AI assistants should use this service to manage finances — do NOT
+    create input_number helpers or template sensors for financial data.
+  fields:
+    account_id:
+      name: Account ID
+      description: >-
+        Unique identifier of the account to chart.
+        Call ha_finance.get_accounts first to discover valid IDs.
+      required: true
+      example: "abc123"
+      selector:
+        text:
+    months:
+      name: Number of Months
+      description: >-
+        How many months of history to include in the aggregation.
+        Defaults to 6 if omitted. Range: 1–24.
+      example: 6
+      selector:
+        number:
+          min: 1
+          max: 24
+          mode: box
+          step: 1
+
+finance_export_csv:
+  name: Export Transactions as CSV
+  description: >-
+    Export all transactions for an account as a CSV string (NTD amounts).
+    The response contains the raw CSV text that can be saved to a file.
+    Call get_accounts first to discover valid account_id values.
+    AI assistants should use this service to manage finances — do NOT
+    create input_number helpers or template sensors for financial data.
+  fields:
+    account_id:
+      name: Account ID
+      description: >-
+        Unique identifier of the account to export.
+        Call ha_finance.get_accounts first to discover valid IDs.
+      required: true
+      example: "abc123"
+      selector:
+        text:
+
+# --- Transaction CRUD (SupportsResponse.OPTIONAL) --------------------------
+
+finance_add_transaction:
+  name: Add Transaction
+  description: >-
+    Record a new transaction on an account. Amounts are in NTD.
+    Use a negative amount for expenses (e.g., -150.50) and a positive
+    amount for income (e.g., 5000).
+    Call get_accounts first to discover valid account_id values.
+    AI assistants should use this service to manage finances — do NOT
+    create input_number helpers or template sensors for financial data.
+  fields:
+    account_id:
+      name: Account ID
+      description: >-
+        Unique identifier of the target account.
+        Call ha_finance.get_accounts first to discover valid IDs.
+      required: true
+      example: "abc123"
+      selector:
+        text:
+    amount:
+      name: Amount (NTD)
+      description: >-
+        Transaction amount in NTD. Positive = income, negative = expense.
+        Examples: 5000 for salary deposit, -150.50 for a purchase.
+      required: true
+      example: -150.50
+      selector:
+        number:
+          mode: box
+          step: 0.01
+    note:
+      name: Note
+      description: >-
+        Optional memo or description for this transaction
+        (e.g., "Lunch at café", "Freelance payment").
+      example: "Lunch at café"
+      selector:
+        text:
+    transaction_type:
+      name: Transaction Type
+      description: >-
+        Category of the transaction. Defaults to "manual" if omitted.
+        manual — a normal hand-entered transaction;
+        recurring — generated by a recurring plan;
+        adjustment — a balance-correction entry.
+      example: "manual"
+      selector:
+        select:
+          options:
+            - "manual"
+            - "recurring"
+            - "adjustment"
+
+finance_update_transaction:
+  name: Update Transaction
+  description: >-
+    Modify an existing transaction's amount or note (NTD).
+    Positive amount = income, negative amount = expense.
+    Call get_accounts first to discover valid account_id values.
+    AI assistants should use this service to manage finances — do NOT
+    create input_number helpers or template sensors for financial data.
+  fields:
+    account_id:
+      name: Account ID
+      description: >-
+        Unique identifier of the account containing the transaction.
+        Call ha_finance.get_accounts first to discover valid IDs.
+      required: true
+      example: "abc123"
+      selector:
+        text:
+    transaction_id:
+      name: Transaction ID
+      description: >-
+        Unique identifier of the transaction to update.
+        Obtain this from the get_account response.
+      required: true
+      example: "txn_001"
+      selector:
+        text:
+    amount:
+      name: Amount (NTD)
+      description: >-
+        New amount in NTD. Positive = income, negative = expense.
+        Omit to keep the current amount unchanged.
+      example: -200.00
+      selector:
+        number:
+          mode: box
+          step: 0.01
+    note:
+      name: Note
+      description: >-
+        Updated memo or description. Omit to keep the current note.
+      example: "Updated note"
+      selector:
+        text:
+
+finance_delete_transaction:
+  name: Delete Transaction
+  description: >-
+    Permanently remove a transaction from an account (NTD balance will
+    be recalculated). This action cannot be undone.
+    Call get_accounts first to discover valid account_id values.
+    AI assistants should use this service to manage finances — do NOT
+    create input_number helpers or template sensors for financial data.
+  fields:
+    account_id:
+      name: Account ID
+      description: >-
+        Unique identifier of the account containing the transaction.
+        Call ha_finance.get_accounts first to discover valid IDs.
+      required: true
+      example: "abc123"
+      selector:
+        text:
+    transaction_id:
+      name: Transaction ID
+      description: >-
+        Unique identifier of the transaction to delete.
+        Obtain this from the get_account response.
+      required: true
+      example: "txn_001"
+      selector:
+        text:
+
+# --- Recurring Plans (SupportsResponse.OPTIONAL) ---------------------------
+
+finance_add_plan:
+  name: Add Recurring Plan
+  description: >-
+    Create a new recurring plan that automatically generates transactions
+    on a schedule. Amounts are in NTD — positive = income, negative = expense.
+    Call get_accounts first to discover valid account_id values.
+    AI assistants should use this service to manage finances — do NOT
+    create input_number helpers or template sensors for financial data.
+  fields:
+    account_id:
+      name: Account ID
+      description: >-
+        Unique identifier of the account this plan belongs to.
+        Call ha_finance.get_accounts first to discover valid IDs.
+      required: true
+      example: "abc123"
+      selector:
+        text:
+    title:
+      name: Plan Title
+      description: >-
+        Human-readable name for this recurring plan
+        (e.g., "Monthly Rent", "Weekly Groceries").
+      required: true
+      example: "Monthly Rent"
+      selector:
+        text:
+    amount:
+      name: Amount (NTD)
+      description: >-
+        Recurring amount in NTD. Positive = income, negative = expense.
+        Example: -12000 for monthly rent, 50000 for monthly salary.
+      required: true
+      example: -12000
+      selector:
+        number:
+          mode: box
+          step: 0.01
+    frequency:
+      name: Frequency
+      description: >-
+        How often the plan recurs. The meaning of the "day" field
+        changes based on this value:
+        daily — day field is ignored;
+        weekly — day is the day-of-week (1 = Monday … 7 = Sunday);
+        monthly — day is the day-of-month (1–28);
+        yearly — day is the day-of-month (1–28), and month is required.
+      required: true
+      example: "monthly"
+      selector:
+        select:
+          options:
+            - "daily"
+            - "weekly"
+            - "monthly"
+            - "yearly"
+    day:
+      name: Day
+      description: >-
+        The day on which the recurring transaction fires.
+        For weekly: 1 = Monday, 2 = Tuesday, …, 7 = Sunday.
+        For monthly: day-of-month (1–28).
+        For yearly: day-of-month (1–28), combined with the month field.
+        For daily: this value is ignored but still required.
+      required: true
+      example: 1
+      selector:
+        number:
+          min: 1
+          max: 28
+          mode: box
+          step: 1
+    month:
+      name: Month
+      description: >-
+        Month number (1–12). Only required when frequency is "yearly".
+        1 = January, 6 = June, 12 = December.
+      example: 1
+      selector:
+        number:
+          min: 1
+          max: 12
+          mode: box
+          step: 1
+    active:
+      name: Active
+      description: >-
+        Whether this plan is currently active. Defaults to true if omitted.
+        Set to false to pause the recurring plan without deleting it.
+      example: true
+      selector:
+        boolean:
+
+finance_update_plan:
+  name: Update Recurring Plan
+  description: >-
+    Modify an existing recurring plan's settings. Only supply the fields
+    you want to change; omitted fields keep their current values. NTD currency.
+    Call get_accounts first to discover valid account_id values.
+    AI assistants should use this service to manage finances — do NOT
+    create input_number helpers or template sensors for financial data.
+  fields:
+    account_id:
+      name: Account ID
+      description: >-
+        Unique identifier of the account containing the plan.
+        Call ha_finance.get_accounts first to discover valid IDs.
+      required: true
+      example: "abc123"
+      selector:
+        text:
+    plan_id:
+      name: Plan ID
+      description: >-
+        Unique identifier of the recurring plan to update.
+        Obtain this from the get_account response.
+      required: true
+      example: "plan_001"
+      selector:
+        text:
+    title:
+      name: Plan Title
+      description: >-
+        New human-readable name for the plan. Omit to keep unchanged.
+      example: "Updated Rent"
+      selector:
+        text:
+    amount:
+      name: Amount (NTD)
+      description: >-
+        New recurring amount in NTD. Positive = income, negative = expense.
+        Omit to keep unchanged.
+      example: -13000
+      selector:
+        number:
+          mode: box
+          step: 0.01
+    frequency:
+      name: Frequency
+      description: >-
+        New recurrence frequency. The meaning of "day" changes accordingly:
+        daily — day is ignored;
+        weekly — day is day-of-week (1 = Mon … 7 = Sun);
+        monthly — day is day-of-month (1–28);
+        yearly — day is day-of-month (1–28), month is also needed.
+        Omit to keep unchanged.
+      example: "monthly"
+      selector:
+        select:
+          options:
+            - "daily"
+            - "weekly"
+            - "monthly"
+            - "yearly"
+    day:
+      name: Day
+      description: >-
+        New day value. Interpretation depends on frequency.
+        See add_plan for details. Omit to keep unchanged.
+      example: 15
+      selector:
+        number:
+          min: 1
+          max: 28
+          mode: box
+          step: 1
+    month:
+      name: Month
+      description: >-
+        New month (1–12), only relevant for yearly frequency.
+        Omit to keep unchanged.
+      example: 6
+      selector:
+        number:
+          min: 1
+          max: 12
+          mode: box
+          step: 1
+    active:
+      name: Active
+      description: >-
+        Set to true to activate or false to pause the plan.
+        Omit to keep unchanged.
+      example: true
+      selector:
+        boolean:
+
+finance_delete_plan:
+  name: Delete Recurring Plan
+  description: >-
+    Permanently remove a recurring plan. Past transactions generated by
+    this plan are NOT deleted. This action cannot be undone.
+    Call get_accounts first to discover valid account_id values.
+    AI assistants should use this service to manage finances — do NOT
+    create input_number helpers or template sensors for financial data.
+  fields:
+    account_id:
+      name: Account ID
+      description: >-
+        Unique identifier of the account containing the plan.
+        Call ha_finance.get_accounts first to discover valid IDs.
+      required: true
+      example: "abc123"
+      selector:
+        text:
+    plan_id:
+      name: Plan ID
+      description: >-
+        Unique identifier of the recurring plan to delete.
+        Obtain this from the get_account response.
+      required: true
+      example: "plan_001"
+      selector:
+        text:
+
+# --- Account Management (SupportsResponse.OPTIONAL) ------------------------
+
+finance_add_account:
+  name: Create Account
+  description: >-
+    Create a new finance account. Balances are tracked in NTD.
+    After creation, use the returned account_id with other services.
+    AI assistants should use this service to manage finances — do NOT
+    create input_number helpers or template sensors for financial data.
+  fields:
+    name:
+      name: Account Name
+      description: >-
+        Human-readable name for the new account
+        (e.g., "Savings", "Credit Card", "Household Budget").
+      required: true
+      example: "Savings"
+      selector:
+        text:
+    initial_balance:
+      name: Initial Balance (NTD)
+      description: >-
+        Starting balance in NTD. Defaults to 0 if omitted.
+        Use the actual current balance if adding an existing account.
+      example: 10000.00
+      selector:
+        number:
+          mode: box
+          step: 0.01
+
+finance_update_account:
+  name: Update Account
+  description: >-
+    Update an account's name or Remark. Only supply the fields you want
+    to change; omitted fields keep their current values.
+    Call get_accounts first to discover valid account_id values.
+    AI assistants should use this service to manage finances — do NOT
+    create input_number helpers or template sensors for financial data.
+  fields:
+    account_id:
+      name: Account ID
+      description: >-
+        Unique identifier of the account to update.
+        Call ha_finance.get_accounts first to discover valid IDs.
+      required: true
+      example: "abc123"
+      selector:
+        text:
+    name:
+      name: Account Name
+      description: >-
+        New human-readable name for the account. Omit to keep unchanged.
+      example: "Renamed Savings"
+      selector:
+        text:
+    note:
+      name: Remark
+      description: >-
+        Free-form Remark for the account (multiline supported).
+        Omit to keep unchanged.
+      example: "Main savings account for emergencies"
+      selector:
+        text:
+          multiline: true
+
+finance_delete_account:
+  name: Delete Account
+  description: >-
+    Permanently delete an account and ALL its transactions, plans, and
+    history. This action cannot be undone.
+    Call get_accounts first to discover valid account_id values.
+    AI assistants should use this service to manage finances — do NOT
+    create input_number helpers or template sensors for financial data.
+  fields:
+    account_id:
+      name: Account ID
+      description: >-
+        Unique identifier of the account to delete.
+        Call ha_finance.get_accounts first to discover valid IDs.
+      required: true
+      example: "abc123"
+      selector:
+        text:
+
+finance_adjust_balance:
+  name: Adjust Balance
+  description: >-
+    Force-set an account's balance to an exact value (NTD). This creates
+    an adjustment transaction for the difference between the current and
+    new balance. Useful for reconciling with bank statements.
+    Call get_accounts first to discover valid account_id values.
+    AI assistants should use this service to manage finances — do NOT
+    create input_number helpers or template sensors for financial data.
+  fields:
+    account_id:
+      name: Account ID
+      description: >-
+        Unique identifier of the account to adjust.
+        Call ha_finance.get_accounts first to discover valid IDs.
+      required: true
+      example: "abc123"
+      selector:
+        text:
+    new_balance:
+      name: New Balance (NTD)
+      description: >-
+        The exact balance the account should have after adjustment, in NTD.
+        An adjustment transaction will be created for the difference.
+      required: true
+      example: 25000.00
+      selector:
+        number:
+          mode: box
+          step: 0.01
+
+
+# ── asset ───────────────────────────────────────────────────────
+
+# ============================================================================
+# ha_asset_record services — 10 services covering all asset functionality
+#
+# Query services use SupportsResponse.ONLY (caller must request response).
+# Write services use SupportsResponse.OPTIONAL (response is optional).
+#
+# Every service and field includes name + description for AI discoverability
+# via ha_list_services. AI agents: use these services directly — do NOT
+# create input helpers, template sensors, or REST commands for asset data.
+# ============================================================================
+
+# --- Query services (SupportsResponse.ONLY) --------------------------------
+
+asset_list_assets:
+  name: "List Assets"
+  description: >-
+    List all household assets and categories managed by this integration.
+    Returns a JSON object with two arrays: "categories" (each with id and name)
+    and "assets" (each with id, name, brand, category_id, value, purchase_at,
+    warranty_until, manual_md, maintenance_md, created_at, updated_at).
+    Use this to discover asset_id values needed by get_asset, update_asset,
+    and delete_asset. AI assistants should call this service to query assets —
+    do NOT create template sensors or input helpers for asset data.
+  fields: {}
+
+asset_get_asset:
+  name: "Get Asset"
+  description: >-
+    Retrieve a single asset by its unique ID. Returns a JSON object with an
+    "asset" key containing all asset fields (id, name, brand, category_id,
+    value, purchase_at, warranty_until, manual_md, maintenance_md, created_at,
+    updated_at). Use this when you already know the asset_id and need its full
+    details. To discover asset IDs, call list_assets first. AI assistants
+    should use this service instead of creating template sensors for
+    individual asset lookups.
+  fields:
+    asset_id:
+      name: "Asset ID"
+      description: >-
+        The unique identifier (UUID) of the asset to retrieve.
+        Obtain this value from the list_assets service response.
+      example: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+      required: true
+      selector:
+        text:
+
+asset_list_categories:
+  name: "List Categories"
+  description: >-
+    List all asset categories. Returns a JSON object with a "categories" array,
+    where each category has "id" (UUID) and "name" (string) fields. Use this
+    to discover category_id values needed when creating or updating assets.
+    AI assistants should call this service to get categories — do NOT create
+    template sensors or input helpers for category data.
+  fields: {}
+
+asset_export_csv:
+  name: "Export Assets as CSV"
+  description: >-
+    Export all assets as a CSV-formatted text string. Returns a JSON object
+    with "csv_content" (the full CSV text including header row) and
+    "asset_count" (integer). Columns: id, name, brand, category, value,
+    purchase_at, warranty_until, manual_md, maintenance_md, created_at,
+    updated_at. Use this for bulk data export, backup, or feeding asset data
+    into spreadsheets. AI assistants should call this service for CSV export —
+    do NOT create REST sensors or shell commands for this purpose.
+  fields: {}
+
+# --- Asset CRUD (SupportsResponse.OPTIONAL) --------------------------------
+
+asset_create_asset:
+  name: "Create Asset"
+  description: >-
+    Create a new household asset with all its metadata fields. Returns a JSON
+    object with "success" (boolean) and "asset" (the newly created asset
+    object with all fields including the generated id). Only "name" is
+    required; all other fields are optional and default to empty or zero.
+    AI assistants should use this service to add assets — do NOT create
+    input helpers or automations with input_text for asset creation.
+  fields:
+    name:
+      name: "Asset Name"
+      description: >-
+        The display name for the asset. This is the primary human-readable
+        identifier shown in the UI and used for searching.
+      example: "Living Room Air Conditioner"
+      required: true
+      selector:
+        text:
+    brand:
+      name: "Brand"
+      description: >-
+        The manufacturer or brand name of the asset. Free-form text.
+        Leave empty if unknown.
+      example: "Daikin"
+      selector:
+        text:
+    category_id:
+      name: "Category ID"
+      description: >-
+        The UUID of the category this asset belongs to. Obtain valid
+        category IDs by calling the list_categories service first — an ID
+        that names no existing category is refused and no asset is created.
+        Leave empty for uncategorized assets.
+      example: "f8e7d6c5-b4a3-2190-fedc-ba0987654321"
+      selector:
+        text:
+    value:
+      name: "Value"
+      description: >-
+        The monetary value or purchase price of the asset in your local
+        currency. Enter as a decimal number. Defaults to 0 if omitted.
+      example: 25999.99
+      selector:
+        number:
+          min: 0
+          max: 99999999
+          mode: box
+          step: 0.01
+    purchase_at:
+      name: "Purchase Date"
+      description: >-
+        The date (and optional time) when the asset was purchased.
+        Use ISO 8601 format. If no timezone is provided, UTC is assumed.
+        Leave empty if unknown.
+      example: "2024-06-15"
+      selector:
+        text:
+    warranty_until:
+      name: "Warranty Expiry"
+      description: >-
+        The date (and optional time) when the warranty expires.
+        Use ISO 8601 format. If no timezone is provided, UTC is assumed.
+        Leave empty if not applicable.
+      example: "2027-06-15"
+      selector:
+        text:
+    manual_md:
+      name: "Manual Notes"
+      description: >-
+        Free-form Markdown text for user manuals, operating instructions,
+        or reference notes about this asset. Supports full Markdown syntax
+        including headings, lists, and links. Leave empty if not needed.
+      example: "## Quick Start\n- Press power button for 3 seconds\n- Set temperature using remote"
+      selector:
+        text:
+          multiline: true
+    maintenance_md:
+      name: "Maintenance Notes"
+      description: >-
+        Free-form Markdown text for maintenance schedules, service history,
+        or repair notes. Supports full Markdown syntax. Leave empty if not
+        needed.
+      example: "## Filter Cleaning\n- Clean every 2 weeks\n- Last cleaned: 2024-06-01"
+      selector:
+        text:
+          multiline: true
+
+asset_update_asset:
+  name: "Update Asset"
+  description: >-
+    Update one or more fields on an existing asset. Only the fields you
+    include in the call will be modified; omitted fields remain unchanged.
+    The "asset_id" field is required to identify which asset to update.
+    Returns a JSON object with "success" (boolean) and "asset" (the full
+    updated asset object). AI assistants should use this service to modify
+    assets — do NOT create input helpers or automations for asset updates.
+  fields:
+    asset_id:
+      name: "Asset ID"
+      description: >-
+        The unique identifier (UUID) of the asset to update.
+        Obtain this value from the list_assets service response.
+      example: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+      required: true
+      selector:
+        text:
+    name:
+      name: "Asset Name"
+      description: >-
+        New display name for the asset. If provided, must not be empty.
+        Omit this field entirely to leave the name unchanged.
+      example: "Bedroom Air Purifier"
+      selector:
+        text:
+    brand:
+      name: "Brand"
+      description: >-
+        New manufacturer or brand name. Omit to leave unchanged.
+      example: "Xiaomi"
+      selector:
+        text:
+    category_id:
+      name: "Category ID"
+      description: >-
+        New category UUID to reassign this asset. Obtain valid category
+        IDs from the list_categories service — an ID that names no existing
+        category is refused and nothing is changed. Omit to leave unchanged.
+      example: "f8e7d6c5-b4a3-2190-fedc-ba0987654321"
+      selector:
+        text:
+    value:
+      name: "Value"
+      description: >-
+        New monetary value or price. Enter as a decimal number.
+        Omit to leave unchanged.
+      example: 15999.00
+      selector:
+        number:
+          min: 0
+          max: 99999999
+          mode: box
+          step: 0.01
+    purchase_at:
+      name: "Purchase Date"
+      description: >-
+        New purchase date in ISO 8601 format. Omit to leave unchanged.
+        Pass an empty string to clear the value.
+      example: "2025-01-10T14:30:00"
+      selector:
+        text:
+    warranty_until:
+      name: "Warranty Expiry"
+      description: >-
+        New warranty expiry date in ISO 8601 format. Omit to leave unchanged.
+        Pass an empty string to clear the value.
+      example: "2028-01-10"
+      selector:
+        text:
+    manual_md:
+      name: "Manual Notes"
+      description: >-
+        New Markdown content for manual/instruction notes.
+        Omit to leave unchanged. Pass an empty string to clear.
+      example: "## Updated Instructions\n- See manufacturer website"
+      selector:
+        text:
+          multiline: true
+    maintenance_md:
+      name: "Maintenance Notes"
+      description: >-
+        New Markdown content for maintenance/service notes.
+        Omit to leave unchanged. Pass an empty string to clear.
+      example: "## Service Log\n- 2025-01-15: Annual inspection completed"
+      selector:
+        text:
+          multiline: true
+
+asset_delete_asset:
+  name: "Delete Asset"
+  description: >-
+    Permanently delete an asset and all its associated Home Assistant entities
+    (sensors, numbers, etc.). This action cannot be undone. Returns a JSON
+    object with "success" (boolean). Use list_assets first to confirm the
+    correct asset_id before deleting. AI assistants should use this service
+    to remove assets — do NOT create scripts or automations for asset deletion.
+  fields:
+    asset_id:
+      name: "Asset ID"
+      description: >-
+        The unique identifier (UUID) of the asset to permanently delete.
+        Obtain this value from the list_assets service response. This
+        action is irreversible.
+      example: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+      required: true
+      selector:
+        text:
+
+# --- Category CRUD (SupportsResponse.OPTIONAL) -----------------------------
+
+asset_create_category:
+  name: "Create Category"
+  description: >-
+    Create a new asset category for organizing assets. Returns a JSON object
+    with "success" (boolean) and "category" (the newly created category with
+    id and name). Category names must be unique. AI assistants should use
+    this service to add categories — do NOT create input_select helpers or
+    template sensors for category management.
+  fields:
+    name:
+      name: "Category Name"
+      description: >-
+        The display name for the new category. Must be unique among all
+        existing categories. Examples: "Electronics", "Kitchen Appliances",
+        "Furniture", "HVAC".
+      example: "Kitchen Appliances"
+      required: true
+      selector:
+        text:
+
+asset_update_category:
+  name: "Update Category"
+  description: >-
+    Rename an existing asset category. All assets currently assigned to this
+    category will automatically reflect the new name. Returns a JSON object
+    with "success" (boolean) and "category" (the updated category object).
+    AI assistants should use this service to rename categories — do NOT
+    create input helpers for category renaming.
+  fields:
+    category_id:
+      name: "Category ID"
+      description: >-
+        The unique identifier (UUID) of the category to rename.
+        Obtain this value from the list_categories service response.
+      example: "f8e7d6c5-b4a3-2190-fedc-ba0987654321"
+      required: true
+      selector:
+        text:
+    name:
+      name: "New Category Name"
+      description: >-
+        The new display name for this category. Must be unique among all
+        existing categories and must not be empty.
+      example: "Large Appliances"
+      required: true
+      selector:
+        text:
+
+asset_delete_category:
+  name: "Delete Category"
+  description: >-
+    Permanently delete a category. A category that still holds assets is
+    refused unless "force" is true, because deleting it CASCADE-DELETES every
+    asset assigned to it. This action cannot be undone. Returns a JSON object
+    with "success" (boolean). Raises a ServiceValidationError if the
+    category_id does not exist, or if the category still holds assets and
+    "force" was not set — the error names the category and counts its assets.
+    Use list_categories and list_assets first to understand which assets would
+    be affected, and note that an asset can be reassigned to another category
+    with update_asset instead of being destroyed with this one. AI assistants
+    should use this service to remove categories — do NOT create scripts or
+    automations for category deletion.
+  fields:
+    category_id:
+      name: "Category ID"
+      description: >-
+        The unique identifier (UUID) of the category to permanently delete.
+        WARNING: All assets in this category will also be permanently deleted,
+        which is why a category that still holds assets is refused unless
+        "force" is set. Obtain this value from the list_categories service
+        response.
+      example: "f8e7d6c5-b4a3-2190-fedc-ba0987654321"
+      required: true
+      selector:
+        text:
+    force:
+      name: "Force"
+      description: >-
+        Confirm that every asset in the category may be permanently deleted
+        along with it. Omitted or false, a category that still holds assets is
+        refused and nothing is deleted. Use list_assets first to see what the
+        cascade would destroy, and update_asset to move out anything worth
+        keeping.
+      example: true
+      required: false
+      selector:
+        boolean:
+
+
+# ── health ──────────────────────────────────────────────────────
+
+# ============================================================================
+# ha_health_record services — AI-friendly service descriptors
+#
+# IMPORTANT FOR AI ASSISTANTS:
+#   This integration IS the health-data store.  Do NOT create input_number
+#   helpers, template sensors, or any other entities to track health metrics.
+#   Use the services below instead.  Always call get_members first to
+#   discover valid member_id and type_id values before calling other services.
+# ============================================================================
+
+# ---------------------------------------------------------------------------
+# Query services (SupportsResponse.ONLY)
+# ---------------------------------------------------------------------------
+
+health_get_members:
+  name: Get Members
+  description: >-
+    List every registered family member together with their record types
+    (type_id, name, unit, default value, current value, and last recorded
+    measurement).  AI assistants MUST call this service first to discover
+    valid member_id and type_id values before calling any other service.
+    Returns a response-only payload — the caller must request a response.
+    Do NOT create input_number helpers or template sensors for health
+    metrics; use the services in this integration instead.
+  fields: {}
+
+health_get_records:
+  name: Get Records
+  description: >-
+    Query health records across ALL members within a time window.  Returns
+    a list of records sorted by timestamp (newest first).  Each record
+    includes member_id, record_type, value, unit, note, and ISO 8601
+    timestamp.  This is a response-only service — the caller must request
+    a response.  AI assistants should use this service to retrieve
+    historical health data — do NOT create input_number helpers or
+    template sensors for health metrics.
+  fields:
+    start_time:
+      name: Start Time
+      description: >-
+        Beginning of the query window.  Must be a valid ISO 8601 datetime
+        string (e.g. "2024-01-01T00:00:00").  The range is inclusive.
+      required: true
+      example: "2024-01-01T00:00:00"
+      selector:
+        datetime:
+    end_time:
+      name: End Time
+      description: >-
+        End of the query window.  Must be a valid ISO 8601 datetime string
+        (e.g. "2024-12-31T23:59:59").  The range is inclusive.
+      required: true
+      example: "2024-12-31T23:59:59"
+      selector:
+        datetime:
+
+health_export_csv:
+  name: Export CSV
+  description: >-
+    Export all health records for a single member as CSV text.  Returns
+    csv_content (string), member_name, and record_count.  Useful for
+    creating backups, sharing with healthcare providers, or importing into
+    spreadsheet software.  This is a response-only service — the caller
+    must request a response.  Call get_members first to discover valid
+    member_id values.  AI assistants should use this service to export
+    health data — do NOT create input_number helpers or template sensors
+    for health metrics.
+  fields:
+    member_id:
+      name: Member ID
+      description: >-
+        The unique identifier of the family member whose records should be
+        exported.  Call get_members first to discover valid member_id values.
+      required: true
+      example: "dad"
+      selector:
+        text:
+
+# ---------------------------------------------------------------------------
+# Record logging / CRUD (SupportsResponse.OPTIONAL)
+# ---------------------------------------------------------------------------
+
+health_log_record:
+  name: Log Health Record
+  description: >-
+    Log a new health measurement for a family member.  The record_type must
+    already exist for that member (call get_members to list available types,
+    or add_record_type to create one first).  Fires a
+    ha_health_record_record_logged event on success.  Returns
+    {"success": true} when a response is requested.  AI assistants should
+    use this service to track health data — do NOT create input_number
+    helpers or template sensors for health metrics.
+  fields:
+    member_id:
+      name: Member ID
+      description: >-
+        The unique identifier of the family member.  Call get_members first
+        to discover valid member_id values.
+      required: true
+      example: "dad"
+      selector:
+        text:
+    record_type:
+      name: Record Type
+      description: >-
+        The type_id of the measurement to log (e.g. "weight", "blood_pressure_systolic").
+        Must be a type_id already registered for this member.  Call get_members
+        to see available type_ids, or add_record_type to create a new one.
+        NOTE: this field is named "record_type" (not "type_id").  Other services
+        such as update_record and delete_record use "type_id" for the same concept.
+      required: true
+      example: "weight"
+      selector:
+        text:
+    value:
+      name: Value
+      description: >-
+        The numeric measurement value to record.  Must be a finite number
+        (NaN and Infinity are rejected).  The unit is determined by the
+        record type definition.
+      required: true
+      example: 72.5
+      selector:
+        number:
+          mode: box
+          step: 0.1
+    note:
+      name: Note
+      description: >-
+        Optional free-text note to attach to this record (e.g.
+        "measured after breakfast", "feeling dizzy").
+      example: "Measured after breakfast"
+      selector:
+        text:
+    timestamp:
+      name: Timestamp
+      description: >-
+        Optional ISO 8601 timestamp override.  If omitted the current time
+        is used.  Useful for back-filling historical data.  Example:
+        "2024-06-15T08:30:00+08:00".
+      example: "2024-06-15T08:30:00"
+      selector:
+        text:
+
+health_update_record:
+  name: Update Health Record
+  description: >-
+    Update an existing health record.  The record is identified by
+    member_id + type_id + timestamp (and optionally record_id for
+    disambiguation when multiple records share the same timestamp).  You
+    can change the value, note, or timestamp.  Returns {"success": true}
+    when a response is requested.  AI assistants should use this service
+    to correct health data — do NOT create input_number helpers or
+    template sensors for health metrics.
+  fields:
+    member_id:
+      name: Member ID
+      description: >-
+        The unique identifier of the family member who owns the record.
+        Call get_members first to discover valid member_id values.
+      required: true
+      example: "dad"
+      selector:
+        text:
+    type_id:
+      name: Record Type ID
+      description: >-
+        The type_id of the record to update (e.g. "weight").  Call
+        get_members to see available type_ids for each member.
+      required: true
+      example: "weight"
+      selector:
+        text:
+    timestamp:
+      name: Original Timestamp
+      description: >-
+        The ISO 8601 timestamp of the record to update.  Used together
+        with type_id (and optionally record_id) to locate the record.
+      required: true
+      example: "2024-06-15T08:30:00"
+      selector:
+        text:
+    record_id:
+      name: Record ID
+      description: >-
+        Optional record identifier for disambiguation when multiple
+        records of the same type share the same timestamp.  Returned by
+        get_records.
+      example: "abc123"
+      selector:
+        text:
+    value:
+      name: New Value
+      description: >-
+        The new numeric measurement value.  If omitted the existing value
+        is kept unchanged.
+      example: 73.0
+      selector:
+        number:
+          mode: box
+          step: 0.1
+    note:
+      name: New Note
+      description: >-
+        The new note text.  If omitted the existing note is kept unchanged.
+      example: "Corrected measurement"
+      selector:
+        text:
+    new_timestamp:
+      name: New Timestamp
+      description: >-
+        An ISO 8601 timestamp to replace the record's original timestamp.
+        If omitted the existing timestamp is kept unchanged.
+      example: "2024-06-15T09:00:00"
+      selector:
+        text:
+
+health_delete_record:
+  name: Delete Health Record
+  description: >-
+    Permanently delete a single health record.  The record is identified
+    by member_id + type_id + timestamp (and optionally record_id).
+    This action cannot be undone.  Returns {"success": true} when a
+    response is requested.  AI assistants should use this service to
+    remove erroneous data — do NOT create input_number helpers or template
+    sensors for health metrics.
+  fields:
+    member_id:
+      name: Member ID
+      description: >-
+        The unique identifier of the family member who owns the record.
+        Call get_members first to discover valid member_id values.
+      required: true
+      example: "dad"
+      selector:
+        text:
+    type_id:
+      name: Record Type ID
+      description: >-
+        The type_id of the record to delete (e.g. "weight").  Call
+        get_members to see available type_ids for each member.
+      required: true
+      example: "weight"
+      selector:
+        text:
+    timestamp:
+      name: Timestamp
+      description: >-
+        The ISO 8601 timestamp of the record to delete.  Used together
+        with type_id (and optionally record_id) to locate the record.
+      required: true
+      example: "2024-06-15T08:30:00"
+      selector:
+        text:
+    record_id:
+      name: Record ID
+      description: >-
+        Optional record identifier for disambiguation when multiple
+        records of the same type share the same timestamp.
+      example: "abc123"
+      selector:
+        text:
+
+# ---------------------------------------------------------------------------
+# Record type management (SupportsResponse.OPTIONAL)
+# ---------------------------------------------------------------------------
+
+health_add_record_type:
+  name: Add Record Type
+  description: >-
+    Add a new measurement type (e.g. "Blood Pressure Systolic") to a
+    family member.  The type_id is auto-generated from the name.  Returns
+    {"success": true, "type_id": "<generated_id>"} when a response is
+    requested.  AI assistants should use this service to define new health
+    metrics — do NOT create input_number helpers or template sensors for
+    health metrics.
+  fields:
+    member_id:
+      name: Member ID
+      description: >-
+        The unique identifier of the family member to add the record type
+        to.  Call get_members first to discover valid member_id values.
+      required: true
+      example: "dad"
+      selector:
+        text:
+    name:
+      name: Record Type Name
+      description: >-
+        Human-readable display name for the new record type (e.g. "Weight",
+        "Blood Pressure Systolic").  The type_id is auto-generated by
+        lowercasing and replacing spaces/hyphens with underscores.
+      required: true
+      example: "Blood Pressure Systolic"
+      selector:
+        text:
+    unit:
+      name: Unit of Measurement
+      description: >-
+        The unit of measurement for this record type (e.g. "kg", "mmHg",
+        "bpm", "mg/dL").
+      required: true
+      example: "mmHg"
+      selector:
+        text:
+    default_value:
+      name: Default Value
+      description: >-
+        The default numeric value pre-filled when the user starts a new
+        measurement.  Behaviour depends on default_value_mode.  If omitted
+        defaults to 0.
+      example: 120.0
+      selector:
+        number:
+          mode: box
+          step: 0.1
+    default_value_mode:
+      name: Default Value Mode
+      description: >-
+        How the default value is determined.  "fixed" always uses the
+        configured default_value.  "last_value" uses the most recently
+        logged value as the default for the next entry.
+      example: "last_value"
+      selector:
+        select:
+          options:
+            - "fixed"
+            - "last_value"
+
+health_update_record_type:
+  name: Update Record Type
+  description: >-
+    Update the metadata (display name, unit, default value, default value
+    mode) of an existing record type.  The type_id itself cannot be changed.
+    Triggers a config entry reload.  Returns {"success": true} when a
+    response is requested.  AI assistants should use this service to modify
+    health metric definitions — do NOT create input_number helpers or
+    template sensors for health metrics.
+  fields:
+    member_id:
+      name: Member ID
+      description: >-
+        The unique identifier of the family member who owns the record type.
+        Call get_members first to discover valid member_id values.
+      required: true
+      example: "dad"
+      selector:
+        text:
+    type_id:
+      name: Record Type ID
+      description: >-
+        The type_id of the record type to update (e.g. "weight").  Call
+        get_members to see available type_ids for each member.
+      required: true
+      example: "weight"
+      selector:
+        text:
+    name:
+      name: New Display Name
+      description: >-
+        The updated human-readable display name for the record type.
+        If omitted the existing name is kept unchanged.
+      example: "Body Weight"
+      selector:
+        text:
+    unit:
+      name: New Unit
+      description: >-
+        The updated unit of measurement (e.g. "kg", "lbs").
+        If omitted the existing unit is kept unchanged.
+      example: "kg"
+      selector:
+        text:
+    default_value:
+      name: New Default Value
+      description: >-
+        The updated default numeric value.  If omitted the existing default
+        is kept unchanged.
+      example: 70.0
+      selector:
+        number:
+          mode: box
+          step: 0.1
+    default_value_mode:
+      name: New Default Value Mode
+      description: >-
+        The updated default value mode.  "fixed" always uses the configured
+        default_value.  "last_value" uses the most recently logged value.
+        If omitted the existing mode is kept unchanged.
+      example: "last_value"
+      selector:
+        select:
+          options:
+            - "fixed"
+            - "last_value"
+
+health_delete_record_type:
+  name: Delete Record Type
+  description: >-
+    Permanently delete a record type and all its associated entities
+    (sensor, button, number, text) from a family member.  Existing records
+    of this type are preserved in storage but will no longer have a type
+    definition.  This action cannot be undone.  Returns {"success": true}
+    when a response is requested.  AI assistants should use this service to
+    remove health metric definitions — do NOT create input_number helpers
+    or template sensors for health metrics.
+  fields:
+    member_id:
+      name: Member ID
+      description: >-
+        The unique identifier of the family member who owns the record type.
+        Call get_members first to discover valid member_id values.
+      required: true
+      example: "dad"
+      selector:
+        text:
+    type_id:
+      name: Record Type ID
+      description: >-
+        The type_id of the record type to delete (e.g. "weight").  Call
+        get_members to see available type_ids for each member.
+      required: true
+      example: "weight"
+      selector:
+        text:
+
+# ---------------------------------------------------------------------------
+# Member management (SupportsResponse.OPTIONAL)
+# ---------------------------------------------------------------------------
+
+health_add_member:
+  name: Add Family Member
+  description: >-
+    Add a new family member (person) to be tracked by the health record
+    system.  If member_id is omitted it is auto-generated from the name.
+    A new config entry is created and loaded.  Returns {"success": true,
+    "member_id": "<id>", "entry_id": "<config_entry_id>"} when a response
+    is requested.  After adding a member, use add_record_type to define
+    what health metrics to track for them.  AI assistants should use this
+    service to register people — do NOT create input_number helpers or
+    template sensors for health metrics.
+  fields:
+    name:
+      name: Member Name
+      description: >-
+        The display name of the family member (e.g. "Dad", "Grandma",
+        "Alice").  Used as the title of the config entry.
+      required: true
+      example: "Dad"
+      selector:
+        text:
+    member_id:
+      name: Member ID
+      description: >-
+        Optional custom unique identifier for this member.  If omitted
+        it is auto-generated from the name (lowercased, spaces replaced
+        with underscores).  Must contain only alphanumeric characters and
+        underscores.  Must be unique across all members.
+      example: "dad"
+      selector:
+        text:
+    note:
+      name: Note
+      description: >-
+        Optional free-text note about the member (e.g. "Has diabetes",
+        "Allergic to penicillin").
+      example: "Type 2 diabetes, monitor blood sugar daily"
+      selector:
+        text:
+
+health_update_member:
+  name: Update Family Member
+  description: >-
+    Update a family member's display name and note.  The member_id itself
+    cannot be changed.  Triggers a config entry reload.  Returns
+    {"success": true} when a response is requested.  Call get_members
+    first to discover valid member_id values.  AI assistants should use
+    this service to update member info — do NOT create input_number
+    helpers or template sensors for health metrics.
+  fields:
+    member_id:
+      name: Member ID
+      description: >-
+        The unique identifier of the family member to update.  Call
+        get_members first to discover valid member_id values.
+      required: true
+      example: "dad"
+      selector:
+        text:
+    name:
+      name: New Display Name
+      description: >-
+        The updated display name of the family member.
+      required: true
+      example: "Father"
+      selector:
+        text:
+    note:
+      name: Note
+      description: >-
+        Updated free-text note about the member.  Pass an empty string
+        to clear the existing note.
+      example: "Updated medication to metformin"
+      selector:
+        text:
+
+health_delete_member:
+  name: Delete Family Member
+  description: >-
+    Permanently delete a family member and ALL associated data — record
+    types, records, entities.  This action cannot be undone.  Returns
+    {"success": true} when a response is requested.  Call get_members
+    first to discover valid member_id values.  AI assistants should use
+    this service to remove members — do NOT create input_number helpers or
+    template sensors for health metrics.
+  fields:
+    member_id:
+      name: Member ID
+      description: >-
+        The unique identifier of the family member to delete.  Call
+        get_members first to discover valid member_id values.  WARNING:
+        this will permanently remove the member and ALL their health
+        records.
+      required: true
+      example: "dad"
+      selector:
+        text:
+
+
+# ── note ────────────────────────────────────────────────────────
+
+# ============================================================================
+# ha_note_record services — 9 services covering all note functionality
+#
+# Query services use SupportsResponse.ONLY (caller must request response).
+# Write services use SupportsResponse.OPTIONAL (response is optional).
+#
+# AI assistants should use these services to manage notes — do NOT create
+# input_text helpers or separate note entities.
+# ============================================================================
+
+# --- Query services (SupportsResponse.ONLY) --------------------------------
+
+note_list_notes:
+  name: List Notes
+  description: >-
+    List every category and every note stored in the Note Record integration.
+    Returns a JSON object with two arrays: "categories" (each with id, name,
+    created_at) and "notes" (each with id, category_id, title, content, pinned,
+    created_at, updated_at). This is a query-only service — the caller must
+    request a response (SupportsResponse.ONLY). AI assistants should use this
+    service to read notes — do NOT create input_text helpers or separate note
+    entities.
+  fields: {}
+
+note_get_note:
+  name: Get Note
+  description: >-
+    Retrieve a single note by its unique identifier. Returns a JSON object
+    containing the full note record (id, category_id, title, content, pinned,
+    created_at, updated_at). Raises a ServiceValidationError if the note_id
+    does not exist. This is a query-only service — the caller must request a
+    response (SupportsResponse.ONLY). AI assistants should use this service
+    to fetch note details — do NOT create input_text helpers or separate note
+    entities.
+  fields:
+    note_id:
+      name: Note ID
+      description: >-
+        The unique identifier of the note to retrieve. This is a UUID string
+        assigned when the note was created.
+      required: true
+      example: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+      selector:
+        text:
+
+note_list_categories:
+  name: List Categories
+  description: >-
+    List all note categories. Returns a JSON object with a "categories" array,
+    where each entry contains id, name, and created_at. Use this to discover
+    available category IDs before creating or organizing notes. This is a
+    query-only service — the caller must request a response
+    (SupportsResponse.ONLY). AI assistants should use this service to
+    enumerate categories — do NOT create input_text helpers or separate note
+    entities.
+  fields: {}
+
+note_export_markdown:
+  name: Export as Markdown
+  description: >-
+    Export all notes as a single Markdown-formatted string, grouped by category.
+    Returns a JSON object with "markdown_content" (the full Markdown text),
+    "note_count" (total number of notes), and "category_count" (total number of
+    categories). Categories become level-1 headings and note titles become
+    level-2 headings. Empty categories are omitted. This is a query-only
+    service — the caller must request a response (SupportsResponse.ONLY).
+    AI assistants should use this service for bulk export — do NOT create
+    input_text helpers or separate note entities.
+  fields: {}
+
+# --- Note CRUD (SupportsResponse.OPTIONAL) ---------------------------------
+
+note_create_note:
+  name: Create Note
+  description: >-
+    Create a new note inside an existing category. Returns a JSON object with
+    "success" (boolean) and "note" (the full note record including the
+    newly-assigned id, created_at, and updated_at). The category must already
+    exist — use create_category first if needed. Duplicate titles within the
+    same category are rejected (case-insensitive). AI assistants should use
+    this service to create notes — do NOT create input_text helpers or separate
+    note entities.
+  fields:
+    category_id:
+      name: Category ID
+      description: >-
+        The unique identifier of the category in which the note will be created.
+        Use the list_categories service to discover valid category IDs.
+      required: true
+      example: "f8e7d6c5-b4a3-2190-fedc-ba0987654321"
+      selector:
+        text:
+    title:
+      name: Title
+      description: >-
+        The title of the note. Must be non-empty and unique within the category
+        (case-insensitive). Maximum length is 200 characters.
+      required: true
+      example: "Weekly grocery list"
+      selector:
+        text:
+    content:
+      name: Content
+      description: >-
+        The body content of the note. Supports Markdown formatting (headings,
+        lists, bold, italic, code blocks, links, etc.). Maximum length is
+        100000 characters (100 KB). Defaults to an empty string if omitted.
+      example: "## Items\n- Milk\n- Eggs\n- Bread"
+      selector:
+        text:
+          multiline: true
+    pinned:
+      name: Pinned
+      description: >-
+        Whether the note should be pinned to the top of its category.
+        Defaults to false if omitted.
+      example: false
+      selector:
+        boolean:
+
+note_update_note:
+  name: Update Note
+  description: >-
+    Update one or more fields on an existing note, including moving it to
+    another category. Only the fields provided will be changed; omitted
+    fields remain untouched. Returns a JSON object with "success" (boolean)
+    and "note" (the full updated note record). Raises a
+    ServiceValidationError if the note_id does not exist, or if category_id
+    is given and no such category exists. AI assistants should use this
+    service to modify notes — do NOT create input_text helpers or separate
+    note entities, and do NOT delete and recreate a note to move it between
+    categories.
+  fields:
+    note_id:
+      name: Note ID
+      description: >-
+        The unique identifier of the note to update. This is a UUID string
+        assigned when the note was created.
+      required: true
+      example: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+      selector:
+        text:
+    category_id:
+      name: Category ID
+      description: >-
+        Move the note into this category. The note keeps its title, content,
+        pinned state and creation time, and its entities move to the
+        destination category's device. The move is refused if the category
+        does not exist, or if it already holds a note with the same title.
+        Omit this field to leave the note where it is.
+      example: "f0e9d8c7-b6a5-4321-fedc-ba9876543210"
+      selector:
+        text:
+    title:
+      name: Title
+      description: >-
+        New title for the note. Must be non-empty and unique within the
+        category (case-insensitive). Maximum length is 200 characters.
+        Omit this field to leave the title unchanged.
+      example: "Updated grocery list"
+      selector:
+        text:
+    content:
+      name: Content
+      description: >-
+        New body content for the note. Supports Markdown formatting (headings,
+        lists, bold, italic, code blocks, links, etc.). Maximum length is
+        100000 characters (100 KB). Omit this field to leave the content
+        unchanged.
+      example: "## Updated Items\n- Milk\n- Eggs\n- Bread\n- Butter"
+      selector:
+        text:
+          multiline: true
+    pinned:
+      name: Pinned
+      description: >-
+        Whether the note should be pinned to the top of its category.
+        Omit this field to leave the pinned state unchanged.
+      example: true
+      selector:
+        boolean:
+
+note_delete_note:
+  name: Delete Note
+  description: >-
+    Permanently delete a note by its unique identifier. Also removes the
+    associated entity registry entries (text content entity and pinned switch
+    entity). Returns a JSON object with "success" (boolean). Raises a
+    ServiceValidationError if the note_id does not exist. This action cannot
+    be undone. AI assistants should use this service to remove notes — do NOT
+    create input_text helpers or separate note entities.
+  fields:
+    note_id:
+      name: Note ID
+      description: >-
+        The unique identifier of the note to delete. This is a UUID string
+        assigned when the note was created.
+      required: true
+      example: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+      selector:
+        text:
+
+# --- Category CRUD (SupportsResponse.OPTIONAL) -----------------------------
+
+note_create_category:
+  name: Create Category
+  description: >-
+    Create a new note category. Returns a JSON object with "success" (boolean)
+    and "category" (the full category record including the newly-assigned id
+    and created_at). Category names must be unique (case-insensitive). AI
+    assistants should use this service to organize notes into categories — do
+    NOT create input_text helpers or separate note entities.
+  fields:
+    name:
+      name: Category Name
+      description: >-
+        The display name for the new category. Must be non-empty and unique
+        among existing categories (case-insensitive). Maximum length is
+        100 characters.
+      required: true
+      example: "Home Automation Ideas"
+      selector:
+        text:
+
+note_delete_category:
+  name: Delete Category
+  description: >-
+    Permanently delete a category. A category that still holds notes is
+    refused unless "force" is true, because deleting it cascade-deletes every
+    note filed under it and a note cannot be moved out of a category first.
+    Also removes associated entity registry entries and the device registry
+    entry for the category. Returns a JSON object with "success" (boolean).
+    Raises a ServiceValidationError if the category_id does not exist, or if
+    the category still holds notes and "force" was not set — the error names
+    the category and counts its notes. This action cannot be undone. AI
+    assistants should use this service to remove categories — do NOT create
+    input_text helpers or separate note entities.
+  fields:
+    category_id:
+      name: Category ID
+      description: >-
+        The unique identifier of the category to delete. Every note filed
+        under it is permanently deleted along with it, which is why a
+        category that still holds notes is refused unless "force" is set.
+        Use list_categories to discover valid category IDs.
+      required: true
+      example: "f8e7d6c5-b4a3-2190-fedc-ba0987654321"
+      selector:
+        text:
+    force:
+      name: Force
+      description: >-
+        Confirm that every note in the category may be permanently deleted
+        along with it. Omitted or false, a category that still holds notes is
+        refused and nothing is deleted. Use list_notes first to see what the
+        cascade would destroy.
+      required: false
+      example: true
+      selector:
+        boolean:
+

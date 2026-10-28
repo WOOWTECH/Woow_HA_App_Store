@@ -1,0 +1,917 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Woow HA Records",
+        "description": "Adds finance, asset, health and note records. Accounts, members, assets and notes are created afterwards from the panels or services."
+      }
+    },
+    "abort": {
+      "already_configured": "Woow HA Records is already set up."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "balance_display": {
+        "name": "餘額"
+      },
+      "last_transaction": {
+        "name": "最後交易金額"
+      },
+      "last_note": {
+        "name": "最後交易備註"
+      },
+      "last_time": {
+        "name": "最後交易時間"
+      },
+      "plan_next_date": {
+        "name": "{title} 下次執行日"
+      },
+      "plan_last_executed": {
+        "name": "{title} 上次執行時間"
+      },
+      "record": {
+        "name": "{record_name} 紀錄"
+      }
+    },
+    "datetime": {
+      "purchase_at": {
+        "name": "購買時間"
+      },
+      "warranty_until": {
+        "name": "保固到期"
+      }
+    },
+    "text": {
+      "brand": {
+        "name": "品牌"
+      },
+      "manual_md": {
+        "name": "使用說明"
+      },
+      "maintenance_md": {
+        "name": "維修說明"
+      },
+      "record_note": {
+        "name": "{record_name} 備註"
+      }
+    },
+    "number": {
+      "value": {
+        "name": "價值"
+      },
+      "record_value": {
+        "name": "{record_name} 數值"
+      }
+    },
+    "button": {
+      "record_log": {
+        "name": "{record_name} 紀錄"
+      }
+    }
+  },
+  "exceptions": {
+    "finance": {
+      "account_not_found": {
+        "message": "找不到帳戶「{account_id}」。"
+      },
+      "transaction_not_found": {
+        "message": "找不到交易「{transaction_id}」。"
+      },
+      "plan_not_found": {
+        "message": "找不到計畫「{plan_id}」。"
+      },
+      "transaction_failed": {
+        "message": "建立交易失敗。"
+      },
+      "invalid_name": {
+        "message": "帳戶名稱不可為空。"
+      },
+      "duplicate_name": {
+        "message": "名稱為「{name}」的帳戶已存在。"
+      },
+      "invalid_amount": {
+        "message": "交易金額必須是有效且有限的數字。"
+      }
+    },
+    "asset": {
+      "invalid_datetime": {
+        "message": "欄位「{field}」的日期時間格式無效：{value}"
+      },
+      "asset_not_found": {
+        "message": "找不到資產「{asset_id}」。"
+      },
+      "name_required": {
+        "message": "資產名稱不可為空。"
+      },
+      "category_error": {
+        "message": "無法儲存分類。名稱可能為空、過長，或已被其他分類使用。"
+      },
+      "category_name_required": {
+        "message": "分類名稱不可為空。"
+      },
+      "category_not_empty": {
+        "message": "分類 {name} 下仍有 {asset_count} 項資產，刪除分類會一併刪除。請傳入 force: true 確認。"
+      },
+      "category_not_found": {
+        "message": "找不到分類「{category_id}」。"
+      }
+    },
+    "health": {
+      "member_not_found": {
+        "message": "找不到成員「{member_id}」。"
+      },
+      "record_type_not_found": {
+        "message": "在成員「{member_id}」中找不到紀錄類型「{record_type}」。"
+      },
+      "record_not_found": {
+        "message": "在成員「{member_id}」中找不到紀錄類型「{type_id}」於 {timestamp} 的紀錄。"
+      },
+      "invalid_datetime": {
+        "message": "欄位「{field}」的日期時間格式無效：{value}"
+      },
+      "log_failed": {
+        "message": "紀錄寫入失敗。"
+      },
+      "invalid_type_id": {
+        "message": "名稱必須包含至少一個英數字元。"
+      },
+      "type_exists": {
+        "message": "紀錄類型「{type_id}」已存在。"
+      },
+      "type_not_found": {
+        "message": "找不到紀錄類型「{type_id}」。"
+      },
+      "invalid_member_id": {
+        "message": "清理後的成員 ID 為空。"
+      },
+      "member_exists": {
+        "message": "成員「{member_id}」已存在。"
+      }
+    },
+    "note": {
+      "create_failed": {
+        "message": "建立筆記失敗。"
+      },
+      "delete_failed": {
+        "message": "刪除筆記失敗。"
+      },
+      "category_name_required": {
+        "message": "分類名稱不可為空。"
+      },
+      "category_not_found": {
+        "message": "找不到分類「{category_id}」。"
+      },
+      "note_not_found": {
+        "message": "找不到筆記「{note_id}」。"
+      },
+      "title_required": {
+        "message": "筆記標題不可為空。"
+      },
+      "title_too_long": {
+        "message": "筆記標題超過 {max_length} 個字元的長度上限。"
+      },
+      "title_duplicate": {
+        "message": "此分類中已存在相同標題的筆記。"
+      },
+      "content_too_long": {
+        "message": "筆記內容超過 {max_length} 個字元的長度上限。"
+      },
+      "category_name_too_long": {
+        "message": "分類名稱超過 {max_length} 個字元的長度上限。"
+      },
+      "category_duplicate": {
+        "message": "已存在相同名稱的分類。"
+      },
+      "category_not_empty": {
+        "message": "分類 {name} 下仍有 {note_count} 則筆記，刪除分類會一併刪除。請傳入 force: true 確認。"
+      },
+      "delete_category_failed": {
+        "message": "刪除分類失敗。"
+      },
+      "update_failed": {
+        "message": "更新筆記失敗。"
+      }
+    }
+  },
+  "services": {
+    "finance_get_accounts": {
+      "name": "取得帳戶列表",
+      "description": "列出所有財務帳戶及其目前餘額。"
+    },
+    "finance_get_account": {
+      "name": "取得帳戶",
+      "description": "取得指定帳戶的完整資料，包含交易紀錄與週期計畫。",
+      "fields": {
+        "account_id": {
+          "name": "帳戶 ID",
+          "description": "帳戶的唯一識別碼。"
+        }
+      }
+    },
+    "finance_get_chart_data": {
+      "name": "取得圖表資料",
+      "description": "取得帳戶的每月收入與支出圖表資料。",
+      "fields": {
+        "account_id": {
+          "name": "帳戶 ID",
+          "description": "帳戶的唯一識別碼。"
+        },
+        "months": {
+          "name": "月數",
+          "description": "要涵蓋的月份數量（預設 6）。"
+        }
+      }
+    },
+    "finance_export_csv": {
+      "name": "匯出 CSV",
+      "description": "將帳戶的所有交易紀錄匯出為 CSV 文字。",
+      "fields": {
+        "account_id": {
+          "name": "帳戶 ID",
+          "description": "帳戶的唯一識別碼。"
+        }
+      }
+    },
+    "finance_add_transaction": {
+      "name": "新增交易",
+      "description": "為帳戶新增一筆交易（收入或支出）。",
+      "fields": {
+        "account_id": {
+          "name": "帳戶 ID",
+          "description": "帳戶的唯一識別碼。"
+        },
+        "amount": {
+          "name": "金額",
+          "description": "交易金額。正數為收入，負數為支出。"
+        },
+        "note": {
+          "name": "備註",
+          "description": "選填的交易說明。"
+        },
+        "transaction_type": {
+          "name": "交易類型",
+          "description": "類型：manual（手動，預設）、recurring（週期）或 adjustment（調整）。"
+        }
+      }
+    },
+    "finance_update_transaction": {
+      "name": "更新交易",
+      "description": "修改既有交易的金額與／或備註。餘額會依差額調整。",
+      "fields": {
+        "account_id": {
+          "name": "帳戶 ID",
+          "description": "帳戶的唯一識別碼。"
+        },
+        "transaction_id": {
+          "name": "交易 ID",
+          "description": "交易的唯一識別碼（如 tx_abcd1234）。"
+        },
+        "amount": {
+          "name": "金額",
+          "description": "新的金額。餘額會依與原金額的差額調整。"
+        },
+        "note": {
+          "name": "備註",
+          "description": "新的備註。"
+        }
+      }
+    },
+    "finance_delete_transaction": {
+      "name": "刪除交易",
+      "description": "刪除一筆交易並回復其對帳戶餘額的影響。",
+      "fields": {
+        "account_id": {
+          "name": "帳戶 ID",
+          "description": "帳戶的唯一識別碼。"
+        },
+        "transaction_id": {
+          "name": "交易 ID",
+          "description": "交易的唯一識別碼。"
+        }
+      }
+    },
+    "finance_add_plan": {
+      "name": "新增週期計畫",
+      "description": "建立新的週期計畫，並依排程自動執行。",
+      "fields": {
+        "account_id": {
+          "name": "帳戶 ID",
+          "description": "帳戶的唯一識別碼。"
+        },
+        "title": {
+          "name": "標題",
+          "description": "易讀的計畫名稱（如「每月房租」）。"
+        },
+        "amount": {
+          "name": "金額",
+          "description": "週期金額。正數為收入，負數為支出。"
+        },
+        "frequency": {
+          "name": "頻率",
+          "description": "重複週期：daily（每日）、weekly（每週）、monthly（每月）或 yearly（每年）。"
+        },
+        "day": {
+          "name": "日期",
+          "description": "重複發生日。每月／每年為 1-28，每週為 1-7（週一至週日）。"
+        },
+        "month": {
+          "name": "月份",
+          "description": "月份（1-12），僅用於每年頻率。預設 1。"
+        },
+        "active": {
+          "name": "啟用",
+          "description": "建立時是否啟用此計畫。預設為是。"
+        }
+      }
+    },
+    "finance_update_plan": {
+      "name": "更新週期計畫",
+      "description": "修改既有週期計畫的設定。",
+      "fields": {
+        "account_id": {
+          "name": "帳戶 ID",
+          "description": "帳戶的唯一識別碼。"
+        },
+        "plan_id": {
+          "name": "計畫 ID",
+          "description": "計畫的唯一識別碼（如 plan_abcd1234）。"
+        },
+        "title": {
+          "name": "標題",
+          "description": "新的計畫名稱。"
+        },
+        "amount": {
+          "name": "金額",
+          "description": "新的週期金額。"
+        },
+        "frequency": {
+          "name": "頻率",
+          "description": "新的頻率：daily（每日）、weekly（每週）、monthly（每月）或 yearly（每年）。"
+        },
+        "day": {
+          "name": "日期",
+          "description": "新的重複發生日。"
+        },
+        "month": {
+          "name": "月份",
+          "description": "新的月份（僅每年頻率）。"
+        },
+        "active": {
+          "name": "啟用",
+          "description": "啟用或停用此計畫。"
+        }
+      }
+    },
+    "finance_delete_plan": {
+      "name": "刪除週期計畫",
+      "description": "移除週期計畫及其關聯的感應器實體。",
+      "fields": {
+        "account_id": {
+          "name": "帳戶 ID",
+          "description": "帳戶的唯一識別碼。"
+        },
+        "plan_id": {
+          "name": "計畫 ID",
+          "description": "計畫的唯一識別碼。"
+        }
+      }
+    },
+    "finance_add_account": {
+      "name": "新增帳戶",
+      "description": "建立新的財務帳戶，可選填初始餘額。",
+      "fields": {
+        "name": {
+          "name": "名稱",
+          "description": "帳戶的顯示名稱。"
+        },
+        "initial_balance": {
+          "name": "初始餘額",
+          "description": "起始餘額。預設 0。"
+        }
+      }
+    },
+    "finance_update_account": {
+      "name": "更新帳戶",
+      "description": "重新命名帳戶或更新其備註。",
+      "fields": {
+        "account_id": {
+          "name": "帳戶 ID",
+          "description": "帳戶的唯一識別碼。"
+        },
+        "name": {
+          "name": "名稱",
+          "description": "新的帳戶名稱。不可為空，也不可與其他帳戶重複。"
+        },
+        "note": {
+          "name": "備註",
+          "description": "帳戶的自由格式備註。"
+        }
+      }
+    },
+    "finance_delete_account": {
+      "name": "刪除帳戶",
+      "description": "刪除帳戶及其所有交易、計畫與感應器實體。",
+      "fields": {
+        "account_id": {
+          "name": "帳戶 ID",
+          "description": "要刪除的帳戶。"
+        }
+      }
+    },
+    "finance_adjust_balance": {
+      "name": "調整餘額",
+      "description": "將帳戶餘額設定為指定數值，並為差額建立一筆調整交易。",
+      "fields": {
+        "account_id": {
+          "name": "帳戶 ID",
+          "description": "帳戶的唯一識別碼。"
+        },
+        "new_balance": {
+          "name": "新餘額",
+          "description": "目標餘額數值。"
+        }
+      }
+    },
+    "asset_list_assets": {
+      "name": "列出資產",
+      "description": "列出所有資產與資產分類。"
+    },
+    "asset_get_asset": {
+      "name": "取得資產",
+      "description": "取得指定資產的完整資料。",
+      "fields": {
+        "asset_id": {
+          "name": "資產 ID",
+          "description": "資產的唯一識別碼。"
+        }
+      }
+    },
+    "asset_list_categories": {
+      "name": "列出分類",
+      "description": "列出所有資產分類。"
+    },
+    "asset_export_csv": {
+      "name": "匯出 CSV",
+      "description": "將所有資產匯出為 CSV 文字。"
+    },
+    "asset_create_asset": {
+      "name": "新增資產",
+      "description": "建立新的資產，僅名稱為必填。",
+      "fields": {
+        "name": {
+          "name": "名稱",
+          "description": "資產的顯示名稱。"
+        },
+        "brand": {
+          "name": "品牌",
+          "description": "製造商或品牌名稱。"
+        },
+        "category_id": {
+          "name": "分類 ID",
+          "description": "資產所屬的分類。留空則為未分類。"
+        },
+        "value": {
+          "name": "價值",
+          "description": "資產的價值或購買金額。預設 0。"
+        },
+        "purchase_at": {
+          "name": "購買時間",
+          "description": "購買日期（ISO 8601 格式）。"
+        },
+        "warranty_until": {
+          "name": "保固到期",
+          "description": "保固到期日期（ISO 8601 格式）。"
+        },
+        "manual_md": {
+          "name": "使用說明",
+          "description": "使用說明或操作指引的 Markdown 內容。"
+        },
+        "maintenance_md": {
+          "name": "維修說明",
+          "description": "保養排程或維修說明的 Markdown 內容。"
+        }
+      }
+    },
+    "asset_update_asset": {
+      "name": "更新資產",
+      "description": "修改既有資產的一個或多個欄位，未提供的欄位維持不變。",
+      "fields": {
+        "asset_id": {
+          "name": "資產 ID",
+          "description": "資產的唯一識別碼。"
+        },
+        "name": {
+          "name": "名稱",
+          "description": "新的資產名稱。不可為空。"
+        },
+        "brand": {
+          "name": "品牌",
+          "description": "新的品牌名稱。"
+        },
+        "category_id": {
+          "name": "分類 ID",
+          "description": "資產的新分類。"
+        },
+        "value": {
+          "name": "價值",
+          "description": "新的資產價值。"
+        },
+        "purchase_at": {
+          "name": "購買時間",
+          "description": "新的購買日期（ISO 8601 格式）。傳入空字串可清除。"
+        },
+        "warranty_until": {
+          "name": "保固到期",
+          "description": "新的保固到期日期（ISO 8601 格式）。傳入空字串可清除。"
+        },
+        "manual_md": {
+          "name": "使用說明",
+          "description": "新的使用說明內容。傳入空字串可清除。"
+        },
+        "maintenance_md": {
+          "name": "維修說明",
+          "description": "新的維修說明內容。傳入空字串可清除。"
+        }
+      }
+    },
+    "asset_delete_asset": {
+      "name": "刪除資產",
+      "description": "刪除資產及其關聯的實體。",
+      "fields": {
+        "asset_id": {
+          "name": "資產 ID",
+          "description": "要刪除的資產。"
+        }
+      }
+    },
+    "asset_create_category": {
+      "name": "新增分類",
+      "description": "建立新的資產分類。",
+      "fields": {
+        "name": {
+          "name": "名稱",
+          "description": "分類的顯示名稱。不可與其他分類重複。"
+        }
+      }
+    },
+    "asset_update_category": {
+      "name": "更新分類",
+      "description": "重新命名既有的資產分類。",
+      "fields": {
+        "category_id": {
+          "name": "分類 ID",
+          "description": "分類的唯一識別碼。"
+        },
+        "name": {
+          "name": "名稱",
+          "description": "新的分類名稱。不可為空，也不可與其他分類重複。"
+        }
+      }
+    },
+    "asset_delete_category": {
+      "name": "刪除分類",
+      "description": "刪除分類。若分類下仍有資產，除非設定 force，否則會拒絕該呼叫，因為刪除分類會一併刪除資產。",
+      "fields": {
+        "category_id": {
+          "name": "分類 ID",
+          "description": "要刪除的分類。"
+        },
+        "force": {
+          "name": "強制刪除",
+          "description": "連同分類下的資產一併刪除。未設定時會拒絕該呼叫，且不會刪除任何資料。"
+        }
+      }
+    },
+    "health_get_members": {
+      "name": "取得成員列表",
+      "description": "列出所有家庭成員及其紀錄類型。"
+    },
+    "health_get_records": {
+      "name": "取得紀錄",
+      "description": "查詢時間範圍內的健康紀錄。",
+      "fields": {
+        "start_time": {
+          "name": "開始時間",
+          "description": "時間範圍的起點（ISO 8601 格式）。"
+        },
+        "end_time": {
+          "name": "結束時間",
+          "description": "時間範圍的終點（ISO 8601 格式）。"
+        }
+      }
+    },
+    "health_export_csv": {
+      "name": "匯出 CSV",
+      "description": "將成員的所有紀錄匯出為 CSV 文字。",
+      "fields": {
+        "member_id": {
+          "name": "成員 ID",
+          "description": "成員的唯一識別碼。"
+        }
+      }
+    },
+    "health_log_record": {
+      "name": "記錄數值",
+      "description": "為成員新增一筆健康紀錄。",
+      "fields": {
+        "member_id": {
+          "name": "成員 ID",
+          "description": "成員的唯一識別碼。"
+        },
+        "record_type": {
+          "name": "紀錄類型",
+          "description": "紀錄類型 ID（如 weight、feeding）。"
+        },
+        "value": {
+          "name": "數值",
+          "description": "測量值。"
+        },
+        "note": {
+          "name": "備註",
+          "description": "選填的文字備註。"
+        },
+        "timestamp": {
+          "name": "時間戳記",
+          "description": "選填的 ISO 8601 時間戳記，預設為現在。"
+        }
+      }
+    },
+    "health_update_record": {
+      "name": "更新紀錄",
+      "description": "更新既有的健康紀錄。",
+      "fields": {
+        "member_id": {
+          "name": "成員 ID",
+          "description": "成員的唯一識別碼。"
+        },
+        "type_id": {
+          "name": "類型 ID",
+          "description": "紀錄類型 ID。"
+        },
+        "timestamp": {
+          "name": "時間戳記",
+          "description": "用來定位紀錄的 ISO 8601 時間戳記。"
+        },
+        "record_id": {
+          "name": "紀錄 ID",
+          "description": "選填的紀錄 UUID（優先於時間戳記）。"
+        },
+        "value": {
+          "name": "數值",
+          "description": "新的紀錄數值。"
+        },
+        "note": {
+          "name": "備註",
+          "description": "新的紀錄備註。"
+        },
+        "new_timestamp": {
+          "name": "新時間戳記",
+          "description": "替換用的時間戳記（ISO 8601）。"
+        }
+      }
+    },
+    "health_delete_record": {
+      "name": "刪除紀錄",
+      "description": "刪除一筆健康紀錄。",
+      "fields": {
+        "member_id": {
+          "name": "成員 ID",
+          "description": "成員的唯一識別碼。"
+        },
+        "type_id": {
+          "name": "類型 ID",
+          "description": "紀錄類型 ID。"
+        },
+        "timestamp": {
+          "name": "時間戳記",
+          "description": "用來定位紀錄的 ISO 8601 時間戳記。"
+        },
+        "record_id": {
+          "name": "紀錄 ID",
+          "description": "選填的紀錄 UUID（優先於時間戳記）。"
+        }
+      }
+    },
+    "health_add_record_type": {
+      "name": "新增紀錄類型",
+      "description": "為成員新增一個紀錄類型。",
+      "fields": {
+        "member_id": {
+          "name": "成員 ID",
+          "description": "成員的唯一識別碼。"
+        },
+        "name": {
+          "name": "名稱",
+          "description": "紀錄類型的顯示名稱。"
+        },
+        "unit": {
+          "name": "單位",
+          "description": "量測單位（如 kg、bpm）。"
+        },
+        "default_value": {
+          "name": "預設值",
+          "description": "初始預設值。"
+        },
+        "default_value_mode": {
+          "name": "預設值模式",
+          "description": "\"fixed\"（固定值）或 \"last_value\"（上次值）。"
+        }
+      }
+    },
+    "health_update_record_type": {
+      "name": "更新紀錄類型",
+      "description": "更新既有紀錄類型的設定。",
+      "fields": {
+        "member_id": {
+          "name": "成員 ID",
+          "description": "成員的唯一識別碼。"
+        },
+        "type_id": {
+          "name": "類型 ID",
+          "description": "要更新的紀錄類型 ID。"
+        },
+        "name": {
+          "name": "名稱",
+          "description": "新的顯示名稱。"
+        },
+        "unit": {
+          "name": "單位",
+          "description": "新的量測單位。"
+        },
+        "default_value": {
+          "name": "預設值",
+          "description": "新的預設值。"
+        },
+        "default_value_mode": {
+          "name": "預設值模式",
+          "description": "\"fixed\"（固定值）或 \"last_value\"（上次值）。"
+        }
+      }
+    },
+    "health_delete_record_type": {
+      "name": "刪除紀錄類型",
+      "description": "刪除紀錄類型及其關聯的實體。",
+      "fields": {
+        "member_id": {
+          "name": "成員 ID",
+          "description": "成員的唯一識別碼。"
+        },
+        "type_id": {
+          "name": "類型 ID",
+          "description": "要刪除的紀錄類型 ID。"
+        }
+      }
+    },
+    "health_add_member": {
+      "name": "新增成員",
+      "description": "新增一位家庭成員來追蹤健康紀錄。",
+      "fields": {
+        "name": {
+          "name": "名稱",
+          "description": "新成員的顯示名稱。"
+        },
+        "member_id": {
+          "name": "成員 ID",
+          "description": "選填的唯一識別碼，留空則從名稱自動產生。"
+        },
+        "note": {
+          "name": "備註",
+          "description": "選填的文字備註。"
+        }
+      }
+    },
+    "health_update_member": {
+      "name": "更新成員",
+      "description": "更新成員的顯示名稱和備註。",
+      "fields": {
+        "member_id": {
+          "name": "成員 ID",
+          "description": "成員的唯一識別碼。"
+        },
+        "name": {
+          "name": "名稱",
+          "description": "新的顯示名稱。"
+        },
+        "note": {
+          "name": "備註",
+          "description": "新的備註。"
+        }
+      }
+    },
+    "health_delete_member": {
+      "name": "刪除成員",
+      "description": "刪除成員及其所有相關資料。",
+      "fields": {
+        "member_id": {
+          "name": "成員 ID",
+          "description": "成員的唯一識別碼。"
+        }
+      }
+    },
+    "note_list_notes": {
+      "name": "列出筆記",
+      "description": "列出所有筆記與筆記分類。"
+    },
+    "note_get_note": {
+      "name": "取得筆記",
+      "description": "取得指定筆記的完整資料。",
+      "fields": {
+        "note_id": {
+          "name": "筆記 ID",
+          "description": "筆記的唯一識別碼。"
+        }
+      }
+    },
+    "note_list_categories": {
+      "name": "列出分類",
+      "description": "列出所有筆記分類。"
+    },
+    "note_export_markdown": {
+      "name": "匯出 Markdown",
+      "description": "將所有筆記依分類匯出為 Markdown 文字。"
+    },
+    "note_create_note": {
+      "name": "新增筆記",
+      "description": "在既有分類中建立新的筆記。",
+      "fields": {
+        "category_id": {
+          "name": "分類 ID",
+          "description": "筆記所屬的分類。"
+        },
+        "title": {
+          "name": "標題",
+          "description": "筆記標題。在同一分類中不可重複，最多 200 個字元。"
+        },
+        "content": {
+          "name": "內容",
+          "description": "筆記的 Markdown 內容，最多 100000 個字元。"
+        },
+        "pinned": {
+          "name": "置頂",
+          "description": "是否將筆記置頂於分類最上方。預設為否。"
+        }
+      }
+    },
+    "note_update_note": {
+      "name": "更新筆記",
+      "description": "修改既有筆記的一個或多個欄位，未提供的欄位維持不變。",
+      "fields": {
+        "note_id": {
+          "name": "筆記 ID",
+          "description": "筆記的唯一識別碼。"
+        },
+        "category_id": {
+          "name": "分類 ID",
+          "description": "將筆記移動到這個分類。省略則維持原本的分類。"
+        },
+        "title": {
+          "name": "標題",
+          "description": "新的筆記標題。在同一分類中不可重複，最多 200 個字元。"
+        },
+        "content": {
+          "name": "內容",
+          "description": "新的 Markdown 內容，最多 100000 個字元。"
+        },
+        "pinned": {
+          "name": "置頂",
+          "description": "是否將筆記置頂於分類最上方。"
+        }
+      }
+    },
+    "note_delete_note": {
+      "name": "刪除筆記",
+      "description": "刪除筆記及其關聯的實體。",
+      "fields": {
+        "note_id": {
+          "name": "筆記 ID",
+          "description": "要刪除的筆記。"
+        }
+      }
+    },
+    "note_create_category": {
+      "name": "新增分類",
+      "description": "建立新的筆記分類。",
+      "fields": {
+        "name": {
+          "name": "名稱",
+          "description": "分類的顯示名稱。不可與其他分類重複，最多 100 個字元。"
+        }
+      }
+    },
+    "note_delete_category": {
+      "name": "刪除分類",
+      "description": "刪除分類。若分類下仍有筆記，除非設定 force，否則會拒絕該呼叫，因為刪除分類會一併刪除筆記。",
+      "fields": {
+        "category_id": {
+          "name": "分類 ID",
+          "description": "要刪除的分類。"
+        },
+        "force": {
+          "name": "強制刪除",
+          "description": "連同分類下的筆記一併刪除。未設定時會拒絕該呼叫，且不會刪除任何資料。"
+        }
+      }
+    }
+  }
+}

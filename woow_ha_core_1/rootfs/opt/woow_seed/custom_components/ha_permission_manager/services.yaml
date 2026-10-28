@@ -35,8 +35,10 @@ set_permission:
     (panel, area, or label). Level 0 = Closed (hidden), Level 1 = View (accessible).
     Call get_users first to discover valid user_id values, and get_resources
     to discover valid resource_id values.
+    Fires a permission_manager_updated event, so open pages re-read the store.
     設定某用戶對某資源（面板、區域或標籤）的權限等級。0=關閉（隱藏），1=可見（可訪問）。
     請先呼叫 get_users 查詢用戶 ID，get_resources 查詢資源 ID。
+    會觸發 permission_manager_updated 事件，已開啟的頁面會重新讀取權限。
   fields:
     user_id:
       name: "User ID / 用戶 ID"
@@ -98,7 +100,9 @@ remove_user_permissions:
   description: >
     Delete all permissions for a specific user. Typically used when a user leaves
     or needs to be reset. The user will lose access to all restricted resources.
+    Fires a permission_manager_updated event, so open pages re-read the store.
     刪除某用戶的所有權限。通常用於用戶離開或需要重置權限時。該用戶將失去所有受限資源的訪問權。
+    會觸發 permission_manager_updated 事件，已開啟的頁面會重新讀取權限。
   fields:
     user_id:
       name: "User ID / 用戶 ID"
@@ -117,8 +121,10 @@ remove_resource_permissions:
     Delete all permissions for a specific resource across all users.
     Typically used when a resource (area, label, panel) is removed or renamed.
     Call get_resources first to discover valid resource IDs.
+    Fires a permission_manager_updated event, so open pages re-read the store.
     刪除某資源在所有用戶中的權限記錄。通常用於資源被移除或重命名時。
     請先呼叫 get_resources 查詢有效的資源 ID。
+    會觸發 permission_manager_updated 事件，已開啟的頁面會重新讀取權限。
   fields:
     resource_id:
       name: "Resource ID / 資源 ID"
@@ -135,8 +141,10 @@ reset_all_permissions:
   description: >
     WARNING: Clears the entire permission table. All users will lose all configured
     permissions. This action cannot be undone. Requires confirm=true as a safety lock.
+    Fires a permission_manager_updated event, so open pages re-read the store.
     警告：清空整個權限表。所有用戶將失去所有已配置的權限。此操作不可撤銷。
     需要 confirm=true 作為安全鎖。
+    會觸發 permission_manager_updated 事件，已開啟的頁面會重新讀取權限。
   fields:
     confirm:
       name: "Confirm / 確認"
