@@ -278,6 +278,7 @@ def publish(gh, registry, repo, apply=False, only=None):
         if only and cid not in only: continue
         if not comp.get('enabled',True): report.append({'id':cid,'state':'excluded','reason':comp['reason']});continue
         try:
+            comp,_=locate(gh,repo,comp,sha)
             fp=gh.fingerprint(repo,sha,comp['source_path'])
             previous=old['components'].get(cid)
             # Under release, the outbox must name the Release commit even when its files match an earlier main snapshot.
@@ -320,6 +321,24 @@ def publishes_releases(comp):
 def source_file(comp, name):
     """Repository path of file `name` in the add-on's directory (source_path; '.' is the repository root)."""
     return str(safe_path(name) if comp['source_path']=='.' else safe_path(comp['source_path'])/safe_path(name))
+
+def locations(comp):
+    """Where the add-on's files can be: its registry entry and, while a config move is in progress, the same entry with the
+    source_path and config_file of its previous_config (a config at the root of its add-on directory; moving a config,
+    Store README). Readers of the add-on at a commit use the first whose config is there (locate)."""
+    out=[comp]
+    if comp.get('previous_config'):
+        p=safe_path(comp['previous_config']);out.append(dict(comp,source_path=str(p.parent),config_file=p.name))
+    return out
+
+def locate(gh, repo, comp, sha):
+    """(the location of the add-on at commit sha, among locations(comp), its config file); Blocked when none has it."""
+    *first,last=locations(comp)
+    for c in first:
+        try:return c,gh.content(repo,source_file(c,c['config_file']),sha)
+        except Blocked as e:
+            if 'HTTP 404' not in str(e):raise
+    return last,gh.content(repo,source_file(last,last['config_file']),sha)
 
 def find_provider(registry, repo):
     """repo's registry entry; KeyError when the Store registry does not list it."""
@@ -494,8 +513,8 @@ def release(gh, registry, repo, sha, apply=False):
         cid=comp['id']
         if not publishes_releases(comp):report.append({'id':cid,'state':'excluded'});continue
         try:
-            manifest=source_file(comp,comp['config_file'])
-            cfg=yaml.safe_load(gh.content(repo,manifest,sha))
+            comp,raw=locate(gh,repo,comp,sha)
+            cfg=yaml.safe_load(raw)
             if not isinstance(cfg,dict) or cfg.get('slug')!=cid:raise Blocked('Unexpected addon slug')
             version=str(cfg['version']);tag=release_tag(provider,comp,version)
             if get_or_none(gh,repo,'releases/tags/'+urllib.parse.quote(tag,safe='')) is not None:report.append({'id':cid,'state':'already-released','tag':tag,'version':version});continue
@@ -571,6 +590,8 @@ def consume(gh, registry, workspace, only=None):
                 report.append({'id':cid,'state':'unchanged'});continue
             try:
                 if not SLUG.fullmatch(comp['store_path']):raise Blocked('Unsafe registered destination')
+                # A notification from before a config move names previous_config's directory (locations).
+                comp=next((c for c in locations(comp) if (c['source_path'],c['config_file'])==(entry.get('source_path'),entry.get('config_file'))),comp)
                 validate_entry(gh,repo,comp,entry,provider.get('default_branch'))
                 enforce_source_policy(gh,repo,provider,comp,entry)
                 if previous and previous['source_sha']!=entry['source_sha']:

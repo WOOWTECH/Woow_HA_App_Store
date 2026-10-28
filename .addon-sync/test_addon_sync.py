@@ -209,9 +209,12 @@ class Tests(unittest.TestCase):
             root=pathlib.Path(tmp);target=root/'test';target.mkdir();(target/'config.yaml').write_text('slug: test\nversion: 0.9.0\n')
             policy=root/'.github/scripts/sidebar_titles.py';policy.parent.mkdir(parents=True);policy.write_text('TITLES={"test":"Test"}\ndef normalize(*args):raise ValueError("broken policy")\n')
             report,catalog=s.consume(GH(),registry,tmp);self.assertEqual(report[0]['state'],'blocked');self.assertIn('0.9.0',(target/'config.yaml').read_text());self.assertEqual(catalog['components'],{})
-    def publish_gh(self,runs=()):
+    def publish_gh(self,runs=(),configs=('pkg/config.yaml',)):
         class GH:
             def head(self,repo):return 'main','b'*40
+            def content(self,repo,path,ref):
+                if path not in configs:raise s.Blocked('GitHub '+repo+'/contents HTTP 404')
+                return b'slug: test\n'
             def api(self,repo,path):
                 if path=='releases/latest':return {'tag_name':'v1.0.0'}
                 if path=='commits/v1.0.0':return {'sha':'a'*40}
@@ -242,6 +245,24 @@ class Tests(unittest.TestCase):
             self.assertEqual(report[0]['state'],'ready');self.assertEqual(outbox['components']['test']['source_sha'],'a'*40)
             report,outbox=s.publish(gh,{'providers':{'WOOWTECH/test':{'ref_policy':'main','components':[component]}}},'WOOWTECH/test')
             self.assertEqual(report[0]['state'],'unchanged')
+    def test_publish_reads_a_release_from_before_a_move_at_the_previous_path(self):
+        # releases/latest predates the move until the next Release: its context is previous_config's directory.
+        raw=archive();component={'id':'test','source_path':'addon','config_file':'config.yaml','previous_config':'pkg/config.yaml'}
+        with patch.object(s,'source_archive',return_value=raw),patch.object(s,'image_ready',return_value={'digest':'sha256:'+'a'*64}):
+            report,outbox=s.publish(self.publish_gh(),{'providers':{'WOOWTECH/test':{'ref_policy':'release','components':[component]}}},'WOOWTECH/test')
+        self.assertEqual(report[0]['state'],'ready',report)
+        self.assertEqual((outbox['components']['test']['source_path'],outbox['components']['test']['config_file']),('pkg','config.yaml'))
+    def test_consumer_accepts_a_notification_from_before_a_move(self):
+        # The outbox entry publish wrote from a Release before the move names previous_config's directory.
+        raw=archive();e=entry(raw)
+        class GH:
+            def outbox(self,repo):return {'components':{'test':e}}
+            def api(self,repo,path):return {'conclusion':'success','status':'completed','path':'.github/workflows/woow-addon-sync.yml','event':'push','head_repository':{'full_name':repo}}
+            def fingerprint(self,repo,sha,subdir,material=False):return 'fp' if subdir=='pkg' else 'other'
+        component={'id':'test','source_path':'addon','config_file':'config.yaml','store_path':'test','previous_config':'pkg/config.yaml'}
+        with tempfile.TemporaryDirectory() as tmp,patch.object(s,'enforce_source_policy') as policy,patch.object(s,'source_archive',return_value=raw),patch.object(s,'image_ready',return_value=e['images']['amd64']):
+            report,catalog=s.consume(GH(),{'providers':{'WOOWTECH/test':{'components':[component]}}},tmp)
+        self.assertEqual(report[0]['state'],'synced',report);self.assertEqual(policy.call_args.args[3]['source_path'],'pkg')
     def test_publisher_workflow_reads_current_store_registry(self):
         # Source repos call this workflow at @main, so a registry change reaches every publisher without touching a source repo.
         path=pathlib.Path(__file__).resolve().parent.parent/'.github/workflows/woow-addon-publish.yml'
@@ -373,6 +394,17 @@ class Tests(unittest.TestCase):
         report=s.release(gh,self.single(),'WOOWTECH/test','a'*40,apply=True)
         self.assertEqual(report[0]['state'],'released',report)
         self.assertIn('ssl_port',gh.created[0]['body']);self.assertNotIn('Old news.',gh.created[0]['body'])
+    def test_release_reads_a_config_at_its_previous_path(self):
+        # The Store PR comes first: until the move merges, default-branch commits have the config at previous_config,
+        # with upgrade-notes.yaml beside it; after the move the registry path wins.
+        registry={'providers':{'WOOWTECH/test':{'components':[self.release_component('test','addon',previous_config='old/config.yaml')]}}}
+        for name,files,notes in [('before the move',{'old/config.yaml':'name: Test\nslug: test\nversion: 1.2.0\n','old/upgrade-notes.yaml':self.NOTES},True),
+                ('after the move',{'addon/config.yaml':'name: Test\nslug: test\nversion: 1.2.0\n','old/config.yaml':'name: Test\nslug: test\nversion: 0.1.0\n'},False)]:
+            with self.subTest(name):
+                gh=self.release_gh(files,listing=[{'tag_name':'v1.1.0'}])
+                report=s.release(gh,registry,'WOOWTECH/test','a'*40,apply=True)
+                self.assertEqual(report[0],{'id':'test','state':'released','tag':'v1.2.0','version':'1.2.0'})
+                self.assertEqual('ssl_port' in gh.created[0].get('body',''),notes)
     def test_malformed_upgrade_notes_block_the_release(self):
         gh=self.release_gh({'config.yaml':'name: Test\nslug: test\nversion: 1.2.0\n','upgrade-notes.yaml':'1.2: {}\n'})
         report=s.release(gh,self.single(),'WOOWTECH/test','a'*40,apply=True)

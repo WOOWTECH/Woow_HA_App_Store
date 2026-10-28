@@ -462,10 +462,17 @@ class ComponentsCommand(unittest.TestCase):
         comps=[{'id':'a','source_path':'.','config_file':'config.yaml'},{'id':'b','source_path':'addons/b','config_file':'config.yml'}]
         code,out=self.main({'providers':{'WOOWTECH/r':{'ref_policy':'main','components':comps,'upgrade_comparison':{'skip_vulnerability_scan':'#1: why'}}}})
         self.assertEqual(code,0);self.assertEqual(json.loads(out),{'ref_policy':'main','skip_vulnerability_scan':'#1: why','components':[
-            {'id':'a','config':'config.yaml','notes':'upgrade-notes.yaml','previous_config':''},
-            {'id':'b','config':'addons/b/config.yml','notes':'addons/b/upgrade-notes.yaml','previous_config':''}]})
+            {'id':'a','config':'config.yaml','notes':'upgrade-notes.yaml','previous_config':'','previous_notes':''},
+            {'id':'b','config':'addons/b/config.yml','notes':'addons/b/upgrade-notes.yaml','previous_config':'','previous_notes':''}]})
         code,out=self.main({'providers':{'WOOWTECH/r':{'ref_policy':'release','components':comps}}})
         self.assertEqual(json.loads(out)['skip_vulnerability_scan'],'')
+    def test_a_move_in_progress_gives_the_previous_config_and_its_notes(self):
+        # addon_sync.locations: previous_config is a config at the root of its add-on directory, with upgrade-notes.yaml beside it.
+        comps=[{'id':'a','source_path':'addons/a','config_file':'config.yaml','previous_config':'a/config.yml'},
+            {'id':'b','source_path':'b','config_file':'config.yaml','previous_config':'config.yaml'}]
+        code,out=self.main({'providers':{'WOOWTECH/r':{'ref_policy':'release','components':comps}}})
+        self.assertEqual(code,0,out);self.assertEqual([(c['previous_config'],c['previous_notes']) for c in json.loads(out)['components']],
+            [('a/config.yml','a/upgrade-notes.yaml'),('config.yaml','upgrade-notes.yaml')])
     def test_only_add_ons_that_get_releases_are_compared(self):
         # The same filter as addon_sync.release: deleting a retired add-on's config must not fail the check.
         comps=[{'id':i,'source_path':i,'config_file':'config.yaml',**extra} for i,extra in [('a',{}),('off',{'enabled':False}),('beta',{'channel':'prerelease'}),('b',{'channel':'stable'})]]
@@ -522,7 +529,7 @@ class ReusableWorkflow(unittest.TestCase):
     def test_only_add_ons_whose_version_changed_are_compared(self):
         # Multi-add-on repositories: an add-on whose version is unchanged is listed as unchanged and never compared.
         detect=self.step('Find add-ons whose version changed')
-        self.assertIn('if [ "${current}" != "${previous}" ]; then',detect)
+        self.assertIn('if [ "${current}" != "${before}" ]; then',detect)
         self.assertLess(detect.index('>> changed.jsonl'),detect.index('version ${current} unchanged'))
         self.assertIn('done < changed.jsonl',self.step('Find the comparison targets'))
         self.assertIn('done < plan.jsonl',self.step('Compare with the comparison target'))
@@ -543,16 +550,23 @@ class StepHarness(unittest.TestCase):
     WF=STORE/'.github/workflows/woow-addon-upgrade-check.yml'
     def setUp(self):self.wf=yaml.safe_load(self.WF.read_text(encoding='utf-8'))
     def step(self,ident):return next(s for s in self.wf['jobs']['compare']['steps'] if ident in (s.get('id'),s.get('name')))
-    def run_step(self,ident,*,policy='release',extra=None,releases=('v1.0.0',),old_config=True,new_config=True,skip='',sbom='',version='1.1.0',old=None,old_path=''):
+    def run_step(self,ident,*,policy='release',extra=None,releases=('v1.0.0',),old_config=True,new_config=True,skip='',sbom='',version='1.1.0',old=None,old_path='',
+            new_path='addon/config.yaml',new=None,files=None):
+        """ident: one step, or a tuple run in order until one fails. new_path: where the PR has the config; new: changes to it;
+        files: more files of the PR checkout. self.tmp is the job's directory (also RUNNER_TEMP)."""
         import os,subprocess
-        tmp=pathlib.Path(tempfile.mkdtemp());self.addCleanup(shutil.rmtree,tmp)
-        (tmp/'tooling/.addon-sync').mkdir(parents=True);(tmp/'source/addon').mkdir(parents=True);(tmp/'bin').mkdir()
+        tmp=self.tmp=pathlib.Path(tempfile.mkdtemp());self.addCleanup(shutil.rmtree,tmp)
+        (tmp/'tooling/.addon-sync').mkdir(parents=True);(tmp/'source').mkdir();(tmp/'bin').mkdir()
         for f in (self.STORE/'.addon-sync').iterdir():
             if f.suffix in ('.py','.sh'):shutil.copy(f,tmp/'tooling/.addon-sync'/f.name)
         (tmp/'tooling/.addon-sync/registry.json').write_text(json.dumps({'providers':{'WOOWTECH/t':{'ref_policy':policy,'components':[
             {'id':'t','source_path':'addon','config_file':'config.yaml'}],**(extra or {})}}}))
         cfg=dict(BASE,image='ghcr.io/da-anda/addon-{arch}')
-        if new_config:(tmp/'source/addon/config.yaml').write_text(yaml.safe_dump(dict(cfg,version=version)))
+        if new_config:
+            # The checkout, and what the detect step leaves for the later steps.
+            text=yaml.safe_dump(dict(cfg,version=version,**(new or {})));(tmp/'source'/new_path).parent.mkdir(parents=True,exist_ok=True)
+            (tmp/'source'/new_path).write_text(text);(tmp/'t.new.yaml').write_text(text)
+        for name,text in (files or {}).items():(tmp/'source'/name).parent.mkdir(parents=True,exist_ok=True);(tmp/'source'/name).write_text(text)
         (tmp/'old.yaml').write_text(yaml.safe_dump(dict(cfg,**(old or {}))) if old_config else '')
         with contextlib.redirect_stdout(io.StringIO()) as provider:
             self.assertEqual(u.main(['components','--registry',str(tmp/'tooling/.addon-sync/registry.json'),'--repo','WOOWTECH/t']),0)
@@ -565,10 +579,12 @@ class StepHarness(unittest.TestCase):
         # What `gh api --paginate .../releases --jq '.[]'` prints: one Release object per line; a bare tag is a formal Release.
         releases='\n'.join(json.dumps(r if isinstance(r,dict) else {'tag_name':r,'draft':False,'prerelease':False}) for r in releases)
         env=dict(os.environ,PATH=f"{tmp/'bin'}{os.pathsep}{os.environ['PATH']}",OLD=str(tmp/'old.yaml'),OLD_PATH=old_path,RELEASES=releases,REPO='WOOWTECH/t',BASE_SHA='b',
-            GH_TOKEN='x',SBOM_ARTIFACT=sbom,SKIP_VULNERABILITY_SCAN=skip,RUNNER_TEMP=str(tmp),RUN_ATTEMPT='1',
+            GH_TOKEN='x',DB_MAX_AGE_HOURS='120',SBOM_ARTIFACT=sbom,SKIP_VULNERABILITY_SCAN=skip,RUNNER_TEMP=str(tmp),RUN_ATTEMPT='1',
             GITHUB_OUTPUT=str(tmp/'out'),GITHUB_STEP_SUMMARY=str(tmp/'summary'))
-        (tmp/'step.sh').write_text(self.step(ident)['run'])
-        r=subprocess.run(['bash',str(tmp/'step.sh')],cwd=tmp,env=env,capture_output=True,text=True)
+        for one in (ident if isinstance(ident,tuple) else (ident,)):
+            (tmp/'step.sh').write_text(self.step(one)['run'])
+            r=subprocess.run(['bash',str(tmp/'step.sh')],cwd=tmp,env=env,capture_output=True,text=True)
+            if r.returncode:break
         plan=json.loads((tmp/'plan.jsonl').read_text().splitlines()[0]) if (tmp/'plan.jsonl').exists() and (tmp/'plan.jsonl').read_text() else {}
         return r,plan,(tmp/'out').read_text() if (tmp/'out').exists() else ''
 
@@ -649,6 +665,29 @@ class ComparisonTarget(StepHarness):
                 self.assertEqual(r.returncode,0,r.stdout+r.stderr);self.assertIn('t: comparing 1.1.0 with',r.stdout)
                 self.assertEqual(plan['ref'],'ghcr.io/da-anda/addon-amd64:1.0.0')
     @needs_shell
+    def test_a_pr_from_before_the_move_reads_the_previous_path(self):
+        # The Store PR comes first: until the move merges, PRs and their base have the config only at previous_config.
+        for policy in ('release','main'):
+            with self.subTest(policy):
+                r,_,out=self.run_step('detect',policy=policy,extra=self.MOVED,version='1.0.0',old_path='old/config.yaml',new_path='old/config.yaml')
+                self.assertEqual(r.returncode,0,r.stdout+r.stderr);self.assertIn('changed=false',out)
+                r,_,out=self.run_step('detect',policy=policy,extra=self.MOVED,old_path='old/config.yaml',new_path='old/config.yaml')
+                self.assertEqual(r.returncode,0,r.stdout+r.stderr);self.assertIn('changed=true',out)
+                # Its upgrade-notes.yaml is next to the config it has.
+                self.assertEqual(json.loads((self.tmp/'changed.jsonl').read_text())['notes'],'old/upgrade-notes.yaml')
+                r,plan,_=self.run_step('plan',policy=policy,extra=self.MOVED,sbom='*',old_path='old/config.yaml',new_path='old/config.yaml')
+                self.assertEqual(r.returncode,0,r.stdout+r.stderr);self.assertEqual(plan['ref'],'ghcr.io/da-anda/addon-amd64:1.0.0')
+    @needs_shell
+    def test_a_pr_from_before_the_move_is_judged_with_the_notes_next_to_its_config(self):
+        steps=('detect','plan','Compare with the comparison target')
+        extra={**self.MOVED,'upgrade_comparison':{'skip_vulnerability_scan':'x'}}
+        removed=dict(new={'ports':{'8069/tcp':8069}},extra=extra,skip='x',old_path='old/config.yaml',new_path='old/config.yaml')
+        notes={'old/upgrade-notes.yaml':'"1.1.0":\n  breaking:\n    - {change: port-removed, key: 8072/tcp, migration: Use 8069.}\n'}
+        r,_,_=self.run_step(steps,**removed,files=notes)
+        self.assertEqual(r.returncode,0,r.stdout+r.stderr);self.assertIn('t 1.0.0 → 1.1.0',r.stdout)
+        r,_,_=self.run_step(steps,**removed)
+        self.assertEqual(r.returncode,1,r.stdout+r.stderr);self.assertIn('Undeclared breaking change::port-removed 8072/tcp',r.stdout)
+    @needs_shell
     def test_a_target_after_the_move_is_read_at_the_new_path(self):
         r,plan,_=self.run_step('plan',extra=self.MOVED,sbom='*',old_path='addon/config.yaml')
         self.assertEqual(r.returncode,0,r.stdout+r.stderr);self.assertEqual(plan['ref'],'ghcr.io/da-anda/addon-amd64:1.0.0')
@@ -657,7 +696,7 @@ class ComparisonTarget(StepHarness):
         r,_,_=self.run_step('plan',sbom='*',old_path='old/config.yaml')
         self.assertEqual(r.returncode,1,r.stdout+r.stderr);self.assertIn('has no addon/config.yaml, so there is nothing to compare with; if the config moved, see moving a config in the Store README',r.stdout)
         r,_,_=self.run_step('detect',new_config=False)
-        self.assertIn('to move it, see moving a config in the Store README',r.stdout)
+        self.assertIn('to move it, first merge a Store PR that lists the new path with previous_config: addon/config.yaml',r.stdout)
     @needs_shell
     def test_ref_policy_main_without_config_at_the_base_is_a_new_add_on(self):
         r,plan,_=self.run_step('plan',policy='main',old_config=False)
@@ -710,7 +749,7 @@ class ComparisonTarget(StepHarness):
         import re
         for step in self.wf['jobs']['compare']['steps']:
             run=step.get('run','')
-            for helper,use in [('gh_raw.sh',r'\bfetch(_config)? '),('log.sh',r'\b(esc|fail) "'),('fields.sh',r'\bfields "')]:
+            for helper,use in [('gh_raw.sh',r'\b(fetch|config_at) '),('log.sh',r'\b(esc|fail) "'),('fields.sh',r'\bfields "')]:
                 with self.subTest(step=step.get('name'),helper=helper):
                     self.assertEqual('source tooling/.addon-sync/'+helper in run,bool(re.search(use,run)))
 

@@ -129,26 +129,30 @@ jobs:
         echo "## Upgrade comparison" >> "$GITHUB_STEP_SUMMARY"
         # Same detection as Woow_ha_odoo's CI: the version in the PR against the version on the PR base.
         while IFS= read -r component; do
-          fields "${component}" id=id path=config previous=previous_config
-          # A config moved in this PR (the registry already lists the new path) is read at the base from previous_config.
-          base="$(fetch_config "${path}" "${previous}" "${BASE_SHA}")"
-          if [ ! -f "source/${path}" ]; then
+          fields "${component}" id=id path=config notes=notes previous=previous_config previous_notes=previous_notes
+          # During a config move (previous_config in the registry) either side may still have the config at the old path.
+          base="$RUNNER_TEMP/${id}.base.yaml"; new="$RUNNER_TEMP/${id}.new.yaml"
+          config_at "${BASE_SHA}" "${path}" "${previous}" "${base}" > /dev/null
+          found="$(config_at "" "${path}" "${previous}" "${new}")"
+          if [ -z "${found}" ]; then
             # A config the PR deletes or moves, or a registry path that is wrong, must not pass as "nothing to compare".
-            if [ -n "${base}" ]; then
-              fail "${id}: this PR deletes or moves ${path}, the config the Store registry lists for this add-on; restore it, or to move it, see moving a config in the Store README"
+            if [ -s "${base}" ]; then
+              fail "${id}: this PR deletes or moves ${path}, the config the Store registry lists for this add-on; restore it, or to move it, first merge a Store PR that lists the new path with previous_config: ${path}, then re-run this check (moving a config, Store README)"
             else
-              fail "${id}: the Store registry lists ${path} for this add-on, but neither this PR nor its base has it; correct the path in the add-on's registry entry (to move a config, see moving a config in the Store README)"
+              fail "${id}: the Store registry lists ${path}${previous:+ (or previous_config ${previous})} for this add-on, but neither this PR nor its base has it; correct the registry entry, or for a new add-on, add it to the registry only after its config is merged here (Store README)"
             fi
             status=1; continue
           fi
-          current="$(yq -r '.version' "source/${path}")"
+          # Its upgrade-notes.yaml is next to the config it has.
+          [ "${found}" = "${path}" ] || notes="${previous_notes}"
+          current="$(yq -r '.version' "${new}")"
           # Besides esc on every echo: a value from the PR or its Releases with a control character is refused before use.
           if [[ "${current}" == *[[:cntrl:]]* ]]; then
-            fail "${id}: the version in ${path} contains a control character (newline, tab...): ${current}"; exit 1
+            fail "${id}: the version in ${found} contains a control character (newline, tab...): ${current}"; exit 1
           fi
-          previous="none"; [ -z "${base}" ] || previous="$(yq -r '.version // "none"' <<<"${base}")"
-          if [ "${current}" != "${previous}" ]; then
-            jq -c --arg version "${current}" '. + {version: $version}' <<<"${component}" >> changed.jsonl
+          before="none"; [ ! -s "${base}" ] || before="$(yq -r '.version // "none"' "${base}")"
+          if [ "${current}" != "${before}" ]; then
+            jq -c --arg version "${current}" --arg notes "${notes}" '. + {version: $version, notes: $notes}' <<<"${component}" >> changed.jsonl
           else
             echo "- ${id}: version ${current} unchanged" >> "$GITHUB_STEP_SUMMARY"
           fi
@@ -173,8 +177,9 @@ jobs:
         source tooling/.addon-sync/fields.sh
         policy="$(jq -r '.ref_policy' provider.json)"; approved="$(jq -r '.skip_vulnerability_scan' provider.json)"
         releases="$(gh api --paginate "repos/${REPO}/releases?per_page=100" --jq '.[]' | jq -sc .)"
-        # plan.jsonl, one object per add-on: id, config, notes (paths), target, ref (old image; "" = no scan),
-        # artifact (the addon-sbom artifact of its new image), note (why there is no scan).
+        # plan.jsonl, one object per add-on: id, notes (path in the PR), target, ref (old image; "" = no scan),
+        # artifact (the addon-sbom artifact of its new image), note (why there is no scan). The detect step left the
+        # PR's config in $RUNNER_TEMP/<id>.new.yaml.
         : > plan.jsonl; status=0
         while IFS= read -r component; do
           fields "${component}" id=id path=config previous=previous_config notes=notes version=version
@@ -192,8 +197,7 @@ jobs:
             fail "${id}: the comparison target's tag has a control character (newline, tab...): ${target}"; exit 1
           fi
           if [ -n "${target}" ]; then
-            # A target from before a move has the config at previous_config.
-            fetch_config "${path}" "${previous}" "${target}" > "$old"
+            config_at "${target}" "${path}" "${previous}" "${old}" > /dev/null
             if [ -s "$old" ]; then echo "${id}: comparing $(esc "${version}") with $(esc "${target}")"
             elif [ "${policy}" = "main" ]; then echo "${id}: no config at the PR base, a new add-on"
             else
@@ -205,7 +209,7 @@ jobs:
             echo "${id}: no formal Release yet"
           fi
           # Category 4: needs a prebuilt image and a comparison target; then the new image's SBOM is mandatory.
-          image="$(yq -r '.image // ""' "source/${path}")"
+          image="$(yq -r '.image // ""' "$RUNNER_TEMP/${id}.new.yaml")"
           artifact="upgrade-comparison-sbom-${id}-attempt-${RUN_ATTEMPT}"
           if [ -n "${SKIP_VULNERABILITY_SCAN}" ]; then
             # The detect step checked the approval; the report gives the registry's reason, never the caller's text.
@@ -230,7 +234,7 @@ jobs:
             fi
             ref="${old_image//\{arch\}/amd64}:${old_version}"
           fi
-          jq -nc --arg id "${id}" --arg config "${path}" --arg notes "${notes}" --arg target "${target}" --arg ref "${ref}" \
+          jq -nc --arg id "${id}" --arg notes "${notes}" --arg target "${target}" --arg ref "${ref}" \
             --arg artifact "${artifact}" --arg note "${note}" '$ARGS.named' >> plan.jsonl
         done < changed.jsonl
         if [ -n "$(jq -r 'select(.ref != "") | .id' plan.jsonl)" ]; then echo "scan=true" >> "$GITHUB_OUTPUT"; else echo "scan=false" >> "$GITHUB_OUTPUT"; fi
@@ -332,9 +336,9 @@ jobs:
           GRYPE_DB_MAX_ALLOWED_BUILT_AGE="${DB_MAX_AGE_HOURS}h" GRYPE_CHECK_FOR_APP_UPDATE=false
         status=0
         while IFS= read -r row; do
-          fields "${row}" id=id path=config notes=notes target=target ref=ref note=note
+          fields "${row}" id=id notes=notes target=target ref=ref note=note
           old="$RUNNER_TEMP/${id}.old.yaml"
-          args=(--name "${id}" --new "source/${path}" --notes "source/${notes}" --notes-path "${notes}")
+          args=(--name "${id}" --new "$RUNNER_TEMP/${id}.new.yaml" --notes "source/${notes}" --notes-path "${notes}")
           [ ! -s "${old}" ] || args+=(--old "${old}")
           if [ -z "${ref}" ]; then
             args+=(--scan-note "${note}")

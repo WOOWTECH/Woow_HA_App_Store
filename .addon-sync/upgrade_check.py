@@ -33,7 +33,7 @@ from __future__ import annotations
 import argparse, json, os, pathlib, re, secrets, sys
 import yaml
 # addon_sync owns the Release rules (version order, upgrade-notes.yaml parsing, Release notes); it does not import this module.
-from addon_sync import Blocked, comparison_target, declaration_text, declarations, find_component, find_provider, formal_versions, publishes_releases, release_notes, release_tag, require_newer, safe_path, source_file, workflow_command
+from addon_sync import Blocked, comparison_target, declaration_text, declarations, find_component, find_provider, formal_versions, locations, publishes_releases, release_notes, release_tag, require_newer, source_file, workflow_command
 
 RANGED={'int','float','str'}
 
@@ -254,12 +254,17 @@ def _error(title, message):
 def components(registry, repo):
     """What the reusable workflow needs from repo's registry entry: ref_policy, the approved reason to skip category 4
     ('' when not approved) and, for each add-on it releases (addon_sync.publishes_releases: a retired or prerelease add-on
-    is not compared), its config.yaml and upgrade-notes.yaml paths (addon_sync.source_file), with
-    previous_config: the repository path its config.yaml was moved from, read where the new path is absent ('' when none)."""
+    is not compared), the repository paths of its config and upgrade-notes.yaml (config, notes) and, while a config move
+    is in progress, of the location it left (previous_config, previous_notes; '' when none). The workflow reads the
+    previous ones at a commit that does not have the registry's path, as addon_sync.locate does."""
     provider=find_provider(registry,repo)
+    def paths(comp):
+        out={'previous_config':'','previous_notes':''}
+        for prefix,c in zip(('','previous_'),locations(comp)):
+            out[prefix+'config'],out[prefix+'notes']=source_file(c,c['config_file']),source_file(c,'upgrade-notes.yaml')
+        return out
     return {'ref_policy':provider['ref_policy'],'skip_vulnerability_scan':(provider.get('upgrade_comparison') or {}).get('skip_vulnerability_scan',''),
-        'components':[{'id':c['id'],'config':source_file(c,c['config_file']),'notes':source_file(c,'upgrade-notes.yaml'),
-            'previous_config':str(safe_path(c['previous_config'])) if c.get('previous_config') else ''} for c in provider['components'] if publishes_releases(c)]}
+        'components':[{'id':c['id'],**paths(c)} for c in provider['components'] if publishes_releases(c)]}
 
 def main(argv=None):
     p=argparse.ArgumentParser(description=__doc__.splitlines()[0]);sub=p.add_subparsers(dest='command',required=True)

@@ -6,10 +6,21 @@ fetch() {
   if grep -q 'HTTP 404' "$err"; then return 0; fi
   cat "$err" >&2; return 1
 }
-# fetch_config <path> <previous> <ref>: an add-on's config at a ref; when <path> is not there and the Store registry
-# names the path the config was moved from (previous_config, "" when none), the file at <previous>.
-fetch_config() {
-  local out; out="$(fetch "$1" "$3")" || return 1
-  if [ -z "${out}" ] && [ -n "$2" ]; then out="$(fetch "$2" "$3")" || return 1; fi
-  [ -z "${out}" ] || printf '%s\n' "${out}"
+# config_at <ref> <path> <previous> <out>: writes an add-on's config at <ref> ("" = the PR checkout in source/) to <out>
+# and prints the path it was read from: <path>, or, when that is not there, <previous> (previous_config of a config move
+# in progress, "" when none; addon_sync.locate is the same rule). Prints nothing and leaves <out> empty when neither is there.
+config_at() {
+  local p
+  : > "$4"
+  for p in "$2" "$3"; do
+    [ -n "${p}" ] || continue
+    if [ -z "$1" ]; then
+      [ -f "source/${p}" ] || continue
+      cp "source/${p}" "$4"
+    else
+      fetch "${p}" "$1" > "$4" || return 1
+      [ -s "$4" ] || continue
+    fi
+    printf '%s\n' "${p}"; return 0
+  done
 }
