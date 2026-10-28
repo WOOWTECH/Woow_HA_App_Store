@@ -213,10 +213,18 @@ def _paste(version, items):
 
 BLOCKING_SEVERITIES={'critical','high'}
 
+def _blocking(v):
+    """Critical or High, in any case."""
+    return str(v.get('severity','')).lower() in BLOCKING_SEVERITIES
+
+def _fixable(v):
+    """Grype has a fixed version (fix.state fixed)."""
+    return (v.get('fix') or {}).get('state')=='fixed'
+
 def _rank(m):
     """Sort key picking a pair's match: new fixable over Critical/High over the rest, then Critical, then a fixed tie-break."""
-    v=m['vulnerability'];severity=str(v.get('severity','')).lower();blocking=severity in BLOCKING_SEVERITIES
-    return (blocking and (v.get('fix') or {}).get('state')=='fixed',blocking,severity=='critical',json.dumps(m,sort_keys=True))
+    v=m['vulnerability'];blocking=_blocking(v)
+    return (blocking and _fixable(v),blocking,str(v.get('severity','')).lower()=='critical',json.dumps(m,sort_keys=True))
 
 def _findings(scan):
     """{(vulnerability id, package): match} from Grype JSON; one entry per pair however many locations match."""
@@ -251,8 +259,8 @@ def category4(old_scan, new_scan):
     for (vid,package),m in new.items():
         v=m['vulnerability'];fix=v.get('fix') or {}
         if (vid,package) in old:skipped['in_old']+=1;continue
-        if str(v.get('severity','')).lower() not in BLOCKING_SEVERITIES:skipped['low']+=1;continue
-        if fix.get('state')!='fixed':skipped['not_fixed']+=1;continue
+        if not _blocking(v):skipped['low']+=1;continue
+        if not _fixable(v):skipped['not_fixed']+=1;continue
         fixable.append({'id':vid,'package':package,'severity':v.get('severity'),'fixed_in':list(fix.get('versions') or []),'accepted':False})
     return {'old_count':len(old),'new_count':len(new),'new_fixable':fixable,'not_blocking':skipped}
 

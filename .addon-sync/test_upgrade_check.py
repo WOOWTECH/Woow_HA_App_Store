@@ -239,7 +239,9 @@ class Vulnerabilities(unittest.TestCase):
                 [{'id':'CVE-2026-0002','package':'zlib','severity':'High','fixed_in':['1.3.1'],'accepted':False}]),
             ('below High and Critical',match('CVE-2026-0002','zlib','Low'),match('CVE-2026-0002','zlib','Critical',versions=('1.3.1',)),
                 [{'id':'CVE-2026-0002','package':'zlib','severity':'Critical','fixed_in':['1.3.1'],'accepted':False}]),
-            ('below High and not fixed',match('CVE-2026-0002','zlib','Low'),match('CVE-2026-0002','zlib','Critical',state='not-fixed',versions=()),[])]
+            ('below High and not fixed',match('CVE-2026-0002','zlib','Low'),match('CVE-2026-0002','zlib','Critical',state='not-fixed',versions=()),[]),
+            ('below High and upper-case HIGH',match('CVE-2026-0002','zlib','Low',versions=('1.3.1',)),match('CVE-2026-0002','zlib','HIGH',versions=('1.3.1',)),
+                [{'id':'CVE-2026-0002','package':'zlib','severity':'HIGH','fixed_in':['1.3.1'],'accepted':False}])]
         for name,a,b,fixable in rows:
             with self.subTest(name):
                 ab,ba=vrun(scan(a,b))['vulnerabilities'],vrun(scan(b,a))['vulnerabilities']
