@@ -332,9 +332,9 @@ def _load(path, kind):
     return json.loads(text) if kind=='json' else yaml.safe_load(text)
 
 def _error(title, message):
-    """An ::error workflow command; PR-controlled text is escaped the way branch_rules does (addon_sync.annotation)."""
-    from addon_sync import annotation  # addon_sync imports this module, so import it here, not at the top
-    print('::error title='+annotation(title).replace(':','%3A').replace(',','%2C')+'::'+annotation(message))
+    """An ::error workflow command; PR-controlled text is escaped (addon_sync.workflow_command)."""
+    from addon_sync import workflow_command  # addon_sync imports this module, so import it here, not at the top
+    print(workflow_command('error',title,message))
 
 def main(argv=None):
     p=argparse.ArgumentParser(description=__doc__.splitlines()[0]);sub=p.add_subparsers(dest='command',required=True)

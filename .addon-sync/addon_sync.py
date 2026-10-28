@@ -499,13 +499,17 @@ def annotation(value):
     # GitHub workflow-command escaping, so a reason can never inject a command.
     return str(value).replace('%','%25').replace('\r','%0D').replace('\n','%0A')
 
+def workflow_command(kind, title, message):
+    """A ::error or ::warning line; the title is a property value, so : and , are escaped there too."""
+    return f'::{kind} title='+annotation(title).replace(':','%3A').replace(',','%2C')+'::'+annotation(message)
+
 def summary(report):
     text='## WOOW addon synchronization\n\n'+ '\n'.join('- '+json.dumps(r,ensure_ascii=False) for r in report)+'\n'
     print(text)
     # A green run can still leave components behind; surface each one on the run page.
     for r in report:
         if r['state'] in ATTENTION:
-            print('::warning title='+annotation('WOOW addon '+r['state']).replace(':','%3A').replace(',','%2C')+'::'+annotation(str(r.get('id',r.get('repository')))+': '+r.get('reason',r['state'])))
+            print(workflow_command('warning','WOOW addon '+r['state'],str(r.get('id',r.get('repository')))+': '+r.get('reason',r['state'])))
     if os.environ.get('GITHUB_STEP_SUMMARY'):
         with open(os.environ['GITHUB_STEP_SUMMARY'],'a') as f:f.write(text)
 

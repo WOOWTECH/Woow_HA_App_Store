@@ -10,7 +10,7 @@ upstream fork, retired sources) carry `branch_rules.exempt` with the reason.
 """
 from __future__ import annotations
 import argparse, json, os, pathlib, sys
-from addon_sync import Blocked, GitHub, annotation
+from addon_sync import Blocked, GitHub, workflow_command
 
 REQUIRED_RULES = ['pull_request', 'required_status_checks', 'deletion', 'non_fast_forward']
 # Pipeline #89: the caller job `Upgrade comparison` of woow-addon-upgrade-check.yml (inner job `compare`).
@@ -74,7 +74,7 @@ def main():
     lines=['## Source branch rules','','| Repository | Result |','|---|---|']
     for repo,problems in report.items():
         lines.append(f'| {repo} | '+('OK' if not problems else '<br>'.join(problems).replace('|','\\|'))+' |')
-        for problem in problems:print('::error title='+annotation(repo).replace(':','%3A').replace(',','%2C')+'::'+annotation(problem))
+        for problem in problems:print(workflow_command('error',repo,problem))
     if not admin_token:
         print('::warning title=Bypass not checked::BRANCH_RULES_TOKEN is not set, so bypass_actors were not checked (GitHub shows them only to a token with Administration read).')
         lines+=['','Bypass actors not checked: BRANCH_RULES_TOKEN is not set.']
