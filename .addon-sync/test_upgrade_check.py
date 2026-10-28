@@ -488,7 +488,7 @@ class ReusableWorkflow(unittest.TestCase):
         # Multi-add-on repositories: an add-on whose version is unchanged is listed as unchanged and never compared.
         detect=self.step('Find add-ons whose version changed')
         self.assertIn('if [ "${current}" != "${previous}" ]; then',detect)
-        self.assertIn('>> changed.jsonl',detect.split('else')[0])
+        self.assertLess(detect.index('>> changed.jsonl'),detect.index('version ${current} unchanged'))
         self.assertIn('done < changed.jsonl',self.step('Find the comparison targets'))
         self.assertIn('done < plan.jsonl',self.step('Compare with the comparison target'))
     def test_registry_lookup_and_paths_are_left_to_python(self):
@@ -508,7 +508,7 @@ class StepHarness(unittest.TestCase):
     WF=STORE/'.github/workflows/woow-addon-upgrade-check.yml'
     def setUp(self):self.wf=yaml.safe_load(self.WF.read_text(encoding='utf-8'))
     def step(self,ident):return next(s for s in self.wf['jobs']['compare']['steps'] if ident in (s.get('id'),s.get('name')))
-    def run_step(self,ident,*,policy='release',extra=None,releases=('v1.0.0',),old_config=True,skip='',sbom='',version='1.1.0',old=None):
+    def run_step(self,ident,*,policy='release',extra=None,releases=('v1.0.0',),old_config=True,new_config=True,skip='',sbom='',version='1.1.0',old=None):
         import os,subprocess
         tmp=pathlib.Path(tempfile.mkdtemp());self.addCleanup(shutil.rmtree,tmp)
         (tmp/'tooling/.addon-sync').mkdir(parents=True);(tmp/'source/addon').mkdir(parents=True);(tmp/'bin').mkdir()
@@ -517,7 +517,7 @@ class StepHarness(unittest.TestCase):
         (tmp/'tooling/.addon-sync/registry.json').write_text(json.dumps({'providers':{'WOOWTECH/t':{'ref_policy':policy,'components':[
             {'id':'t','source_path':'addon','config_file':'config.yaml'}],**(extra or {})}}}))
         cfg=dict(BASE,image='ghcr.io/da-anda/addon-{arch}')
-        (tmp/'source/addon/config.yaml').write_text(yaml.safe_dump(dict(cfg,version=version)))
+        if new_config:(tmp/'source/addon/config.yaml').write_text(yaml.safe_dump(dict(cfg,version=version)))
         (tmp/'old.yaml').write_text(yaml.safe_dump(dict(cfg,**(old or {}))) if old_config else '')
         with contextlib.redirect_stdout(io.StringIO()) as provider:
             self.assertEqual(u.main(['components','--registry',str(tmp/'tooling/.addon-sync/registry.json'),'--repo','WOOWTECH/t']),0)
@@ -585,6 +585,15 @@ class ComparisonTarget(StepHarness):
     def test_no_formal_release_has_no_comparison_target(self):
         r,plan,_=self.run_step('plan',releases=(),old_config=False)
         self.assertEqual(r.returncode,0,r.stdout+r.stderr);self.assertEqual([plan['target'],plan['ref'],plan['note']],['','','no comparison target'])
+    @needs_shell
+    def test_config_deleted_or_moved_by_the_pr_fails(self):
+        # Spec: a tool error fails the check; a registry add-on whose config the PR removes is not "unchanged".
+        r,_,_=self.run_step('detect',new_config=False)
+        self.assertEqual(r.returncode,1,r.stdout+r.stderr);self.assertIn('this PR deletes or moves addon/config.yaml',r.stdout)
+    @needs_shell
+    def test_config_absent_in_the_pr_and_its_base_is_not_compared(self):
+        r,_,out=self.run_step('detect',new_config=False,old_config=False)
+        self.assertEqual(r.returncode,0,r.stdout+r.stderr);self.assertIn('changed=false',out)
     @needs_shell
     def test_ref_policy_main_without_config_at_the_base_is_a_new_add_on(self):
         r,plan,_=self.run_step('plan',policy='main',old_config=False)
