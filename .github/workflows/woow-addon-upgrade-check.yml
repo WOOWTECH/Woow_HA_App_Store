@@ -145,12 +145,16 @@ jobs:
           fi
           # Its upgrade-notes.yaml is next to the config it has.
           [ "${found}" = "${path}" ] || notes="${previous_notes}"
-          current="$(yq -r '.version' "${new}")"
+          # A version is read as Home Assistant Supervisor reads it (addon_sync.config_version); the PR's also as written.
+          current="$(python3 tooling/.addon-sync/upgrade_check.py version --file "${new}" --path "${found}" --name "${id}" --as-written)" \
+            || { printf '%s\n' "${current}"; exit 1; }  # on failure the output is its ::error (already escaped)
+          if [ -z "${current}" ]; then fail "${id}: ${found} has no version"; status=1; continue; fi
           # Besides esc on every echo: a value from the PR or its Releases with a control character is refused before use.
           if [[ "${current}" == *[[:cntrl:]]* ]]; then
             fail "${id}: the version in ${found} contains a control character (newline, tab...): ${current}"; exit 1
           fi
-          before="none"; [ ! -s "${base}" ] || before="$(yq -r '.version // "none"' "${base}")"
+          before=""; [ ! -s "${base}" ] || before="$(python3 tooling/.addon-sync/upgrade_check.py version --file "${base}" --name "${id}")" \
+            || { printf '%s\n' "${before}"; exit 1; }
           if [ "${current}" != "${before}" ]; then
             jq -c --arg version "${current}" --arg notes "${notes}" --arg new "${new}" '. + {version: $version, notes: $notes, new: $new}' <<<"${component}" >> changed.jsonl
           else
@@ -198,7 +202,8 @@ jobs:
           fi
           if [ -n "${target}" ]; then
             found="$(config_at "${target}" "${path}" "${previous}" "${old}")"
-            old_version=""; [ ! -s "$old" ] || old_version="$(yq -r '.version' "${old}")"
+            old_version=""; [ ! -s "$old" ] || old_version="$(python3 tooling/.addon-sync/upgrade_check.py version --file "${old}" --path "${found}" --name "${id}")" \
+              || { printf '%s\n' "${old_version}"; exit 1; }
             if [[ "${old_version}" == *[[:cntrl:]]* ]]; then
               fail "${id}: the comparison target ${target} has a control character (newline, tab...) in its version: ${old_version}"; exit 1
             fi

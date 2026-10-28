@@ -410,6 +410,20 @@ def require_newer(version, target):
         raise ValueError(f'version {version} {why} {target}'+(' (the same version, written differently)' if order==0 and version!=target else '')+
             f', the version users run now (the latest formal Release; the PR base under ref_policy: main); {fix}')
 
+def config_version(raw, as_written=False):
+    """The version in config.yaml text `raw` as Home Assistant Supervisor reads it, or None when it has none: YAML (Supervisor
+    utils/yaml.py, SafeLoader), then text (validate.version_tag, AwesomeVersion of str()), so an unquoted 1.10 is the float 1.1.
+    The one reader of a config's version for the PR check and release(). `as_written`: a version being released must also
+    read as its text does, or the author meant another version (ValueError: quote it)."""
+    cfg=yaml.safe_load(raw);value=cfg.get('version') if isinstance(cfg,dict) else None
+    if value is None:return None
+    if isinstance(value,(dict,list)):raise ValueError('version must be a quoted string, e.g. version: "1.0.0"')
+    text=str(value)
+    if as_written and not isinstance(value,str):
+        written=[v.value for k,v in yaml.compose(raw).value if isinstance(k,yaml.ScalarNode) and k.value=='version'][-1]
+        if written!=text:raise ValueError(f'version {written} is read by YAML, and by Home Assistant Supervisor, as {text}; quote it: version: "{written}"')
+    return text
+
 def comparison_target(released, version):
     """The latest of `released` (an add-on's formal Release versions), or None; `version` must be newer (require_newer).
     Releases are cut only from the default branch and each becomes the latest (release(), make_latest), which publish()
@@ -518,7 +532,10 @@ def release(gh, registry, repo, sha, apply=False):
             comp,raw=locate(gh,repo,comp,sha)
             cfg=yaml.safe_load(raw)
             if not isinstance(cfg,dict) or cfg.get('slug')!=cid:raise Blocked('Unexpected addon slug')
-            version=str(cfg['version']);tag=release_tag(provider,comp,version)
+            try:version=config_version(raw,as_written=True)
+            except ValueError as e:raise Blocked(f'{source_file(comp,comp["config_file"])}: {e}') from None
+            if version is None:raise Blocked(source_file(comp,comp['config_file'])+' has no version')
+            tag=release_tag(provider,comp,version)
             if get_or_none(gh,repo,'releases/tags/'+urllib.parse.quote(tag,safe='')) is not None:report.append({'id':cid,'state':'already-released','tag':tag,'version':version});continue
             if tagged_commit(gh,repo,tag) not in [None,sha]:raise Blocked('Tag '+tag+' points at another commit; release or delete it by hand')
             if releases is None:releases=all_releases(gh,repo)

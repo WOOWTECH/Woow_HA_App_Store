@@ -418,6 +418,15 @@ class Tests(unittest.TestCase):
                 gh=self.release_gh({'config.yaml':'name: Test\nslug: test\nversion: 1.2.0\n',**files},listing=[{'tag_name':'v1.3.0'},{'tag_name':'v1.1.0'}])
                 report=s.release(gh,self.single(),'WOOWTECH/test','a'*40,apply=True)
                 self.assertEqual(report[0]['state'],'blocked',report);self.assertIn('not newer than 1.3.0',report[0]['reason']);self.assertEqual(gh.created,[])
+    def test_release_reads_the_version_as_supervisor_does(self):
+        # The one reader (config_version): Supervisor reads an unquoted 1.10 as 1.1, so tagging either v1.1 or v1.10 is a guess.
+        gh=self.release_gh({'config.yaml':'name: Test\nslug: test\nversion: 1.10\n'},listing=[{'tag_name':'v1.2'}])
+        report=s.release(gh,self.single(),'WOOWTECH/test','a'*40,apply=True)
+        self.assertEqual(report[0]['state'],'blocked',report);self.assertIn('quote it: version: "1.10"',report[0]['reason']);self.assertEqual(gh.created,[])
+        gh=self.release_gh({'config.yaml':'name: Test\nslug: test\nversion: "1.10"\n'},listing=[{'tag_name':'v1.2'}])
+        self.assertEqual(s.release(gh,self.single(),'WOOWTECH/test','a'*40,apply=True)[0]['tag'],'v1.10')
+        gh=self.release_gh({'config.yaml':'name: Test\nslug: test\n'})
+        self.assertEqual(s.release(gh,self.single(),'WOOWTECH/test','a'*40,apply=True)[0]['reason'],'config.yaml has no version')
     def test_a_tag_that_cannot_be_ordered_does_not_block_the_release(self):
         gh=self.release_gh({'config.yaml':'name: Test\nslug: test\nversion: 1.2.0\n','upgrade-notes.yaml':self.NOTES},
             listing=[{'tag_name':'v1.2.0-foo'},{'tag_name':'nightly'},{'tag_name':'v9.0-test'},{'tag_name':'v1.1.0'}])

@@ -33,7 +33,7 @@ from __future__ import annotations
 import argparse, json, os, pathlib, re, secrets, sys
 import yaml
 # addon_sync owns the Release rules (version order, upgrade-notes.yaml parsing, Release notes); it does not import this module.
-from addon_sync import Blocked, comparison_target, declaration_text, declarations, find_component, find_provider, formal_versions, locations, publishes_releases, release_notes, release_tag, require_newer, source_file, version_cmp, workflow_command
+from addon_sync import Blocked, comparison_target, config_version, declaration_text, declarations, find_component, find_provider, formal_versions, locations, publishes_releases, release_notes, release_tag, require_newer, source_file, version_cmp, workflow_command
 
 RANGED={'int','float','str'}
 
@@ -257,6 +257,12 @@ def _load(path, kind):
     text=p.read_text(encoding='utf-8')
     return json.loads(text) if kind=='json' else yaml.safe_load(text)
 
+def _version(path, as_written=False):
+    """The version of the config.yaml at `path` (addon_sync.config_version); ValueError when it has none."""
+    version=config_version(pathlib.Path(path).read_text(encoding='utf-8'),as_written)
+    if version is None:raise ValueError(f"{path} has no version")
+    return version
+
 def _error(title, message):
     """An ::error workflow command; PR-controlled text is escaped (addon_sync.workflow_command)."""
     print(workflow_command('error',title,message))
@@ -299,6 +305,10 @@ def main(argv=None):
     g.add_argument('--target',required=True,help="the target's tag, or the PR base");g.add_argument('--tag-version',default='',help="the target's version by its tag; '' when it has none")
     g.add_argument('--config',required=True,help="path of the target's config.yaml in the repository")
     g.add_argument('--config-version',required=True)
+    v=sub.add_parser('version',help="print the version of a config.yaml as Home Assistant Supervisor reads it (addon_sync.config_version; nothing when it has none)")
+    v.add_argument('--file',required=True,help='the config.yaml');v.add_argument('--path',help='its path in the repository, for the error')
+    v.add_argument('--name',required=True,help='add-on id, for the error')
+    v.add_argument('--as-written',action='store_true',help="the PR's version: fail unless it reads as its text does (unquoted 1.10 is 1.1)")
     k=sub.add_parser('components',help="print what the workflow needs from the repository's registry entry (JSON, see components())")
     k.add_argument('--registry',required=True,help='Store registry.json');k.add_argument('--repo',required=True,help='source repository, owner/name')
     a=p.parse_args(argv)
@@ -321,6 +331,11 @@ def main(argv=None):
             _error('Upgrade comparison failed',f'Releases of {a.repo} {a.component}: {e}');return 2
         if target is not None:print(release_tag(provider,comp,target)+'\t'+target)
         return 0
+    if a.command=='version':
+        try:print(config_version(pathlib.Path(a.file).read_text(encoding='utf-8'),a.as_written) or '')
+        except (ValueError,OSError,yaml.YAMLError) as e:
+            _error('Upgrade comparison failed',f'{a.name}: {a.path or a.file}: {e}');return 2
+        return 0
     if a.command=='check-target':
         try:check_target(a.version,a.target,a.config,a.config_version,a.tag_version or None)
         except ValueError as e:
@@ -333,7 +348,7 @@ def main(argv=None):
         print(text,end='');return 0
     try:
         old,new=_load(a.old,'yaml'),_load(a.new,'yaml')
-        r=compare(old,new,old_version=str(old['version']) if old else None,new_version=str(new['version']),notes=_load(a.notes,'optional'),
+        r=compare(old,new,old_version=_version(a.old) if old else None,new_version=_version(a.new,True),notes=_load(a.notes,'optional'),
             old_scan=_load(a.old_scan,'json'),new_scan=_load(a.new_scan,'json'),name=a.name,notes_path=a.notes_path,scan_note=a.scan_note)
     except (ValueError,KeyError,TypeError,OSError,yaml.YAMLError) as e:
         _error('Upgrade comparison failed',f'{a.name or a.new}: {e}');return 2

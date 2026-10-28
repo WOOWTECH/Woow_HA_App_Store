@@ -574,9 +574,10 @@ class StepHarness(unittest.TestCase):
     def setUp(self):self.wf=yaml.safe_load(self.WF.read_text(encoding='utf-8'))
     def step(self,ident):return next(s for s in self.wf['jobs']['compare']['steps'] if ident in (s.get('id'),s.get('name')))
     def run_step(self,ident,*,policy='release',extra=None,releases=('v1.0.0',),old_config=True,new_config=True,skip='',sbom='',version='1.1.0',old=None,old_path='',
-            new_path='addon/config.yaml',new=None,files=None):
+            new_path='addon/config.yaml',new=None,files=None,raw_version=None):
         """ident: one step, or a tuple run in order until one fails. new_path: where the PR has the config; new: changes to it;
-        files: more files of the PR checkout. self.tmp is the job's directory (also RUNNER_TEMP)."""
+        files: more files of the PR checkout; raw_version: {'old'/'new': the version line's YAML as written, e.g. 1.10 unquoted}.
+        self.tmp is the job's directory (also RUNNER_TEMP)."""
         import os,subprocess
         tmp=self.tmp=pathlib.Path(tempfile.mkdtemp());self.addCleanup(shutil.rmtree,tmp)
         (tmp/'tooling/.addon-sync').mkdir(parents=True);(tmp/'source').mkdir();(tmp/'bin').mkdir()
@@ -585,12 +586,15 @@ class StepHarness(unittest.TestCase):
         (tmp/'tooling/.addon-sync/registry.json').write_text(json.dumps({'providers':{'WOOWTECH/t':{'ref_policy':policy,'components':[
             {'id':'t','source_path':'addon','config_file':'config.yaml'}],**(extra or {})}}}))
         cfg=dict(BASE,image='ghcr.io/da-anda/addon-{arch}')
+        def dump(c,side):
+            text=yaml.safe_dump(c)
+            return re.sub(r'(?m)^version: .*$','version: '+raw_version[side],text) if side in (raw_version or {}) else text
         if new_config:
             # The checkout, and what the detect step leaves for the later steps.
-            text=yaml.safe_dump(dict(cfg,version=version,**(new or {})));(tmp/'source'/new_path).parent.mkdir(parents=True,exist_ok=True)
+            text=dump(dict(cfg,version=version,**(new or {})),'new');(tmp/'source'/new_path).parent.mkdir(parents=True,exist_ok=True)
             (tmp/'source'/new_path).write_text(text);(tmp/'t.new.yaml').write_text(text)
         for name,text in (files or {}).items():(tmp/'source'/name).parent.mkdir(parents=True,exist_ok=True);(tmp/'source'/name).write_text(text)
-        (tmp/'old.yaml').write_text(yaml.safe_dump(dict(cfg,**(old or {}))) if old_config else '')
+        (tmp/'old.yaml').write_text(dump(dict(cfg,**(old or {})),'old') if old_config else '')
         with contextlib.redirect_stdout(io.StringIO()) as provider:
             self.assertEqual(u.main(['components','--registry',str(tmp/'tooling/.addon-sync/registry.json'),'--repo','WOOWTECH/t']),0)
         (tmp/'provider.json').write_text(provider.getvalue())
@@ -816,6 +820,50 @@ class ComparisonTarget(StepHarness):
             for helper,use in [('gh_raw.sh',r'\b(fetch|config_at) '),('log.sh',r'\b(esc|fail) "'),('fields.sh',r'\bfields "')]:
                 with self.subTest(step=step.get('name'),helper=helper):
                     self.assertEqual('source tooling/.addon-sync/'+helper in run,bool(re.search(use,run)))
+
+class VersionReading(StepHarness):
+    """One reader of a config's version (addon_sync.config_version) for the workflow's steps, compare() and release():
+    Home Assistant Supervisor's (YAML, then str), so an unquoted 1.10 is 1.1. The PR's version must read as written."""
+    SKIP=dict(skip='x',extra={'upgrade_comparison':{'skip_vulnerability_scan':'x'}})
+    STEPS=('detect','plan','Compare with the comparison target')
+    def cli(self,text,*args):
+        d=pathlib.Path(tempfile.mkdtemp());self.addCleanup(shutil.rmtree,d);(d/'config.yaml').write_text(text)
+        with contextlib.redirect_stdout(io.StringIO()) as out:code=u.main(['version','--file',str(d/'config.yaml'),'--path','addon/config.yaml','--name','t',*args])
+        return code,out.getvalue()
+    def test_version_command_reads_as_supervisor_does(self):
+        self.assertEqual(self.cli('slug: t\nversion: 1.10\n'),(0,'1.1\n'))
+        self.assertEqual(self.cli('slug: t\nversion: "1.10"\n','--as-written'),(0,'1.10\n'))
+        self.assertEqual(self.cli('slug: t\nversion: 2\n','--as-written'),(0,'2\n'))
+        self.assertEqual(self.cli('slug: t\n'),(0,'\n'))
+        code,out=self.cli('slug: t\nversion: 1.10\n','--as-written')
+        self.assertEqual(code,2)
+        self.assertEqual(out,'::error title=Upgrade comparison failed::t: addon/config.yaml: version 1.10 is read by YAML, and by Home Assistant Supervisor, as 1.1; quote it: version: "1.10"\n')
+    @needs_shell
+    def test_an_unquoted_pr_version_fails_the_same_in_the_workflow_and_compare(self):
+        # Base 1.2, PR unquoted 1.10: yq read 1.10 (newer), compare() 1.1 (not newer), so the plan passed and compare failed.
+        quote='version 1.10 is read by YAML, and by Home Assistant Supervisor, as 1.1; quote it: version: "1.10"'
+        for policy in ('release','main'):
+            with self.subTest(policy):
+                r,plan,_=self.run_step(self.STEPS,policy=policy,releases=('v1.2',),old={'version':'1.2'},raw_version={'new':'1.10'},**self.SKIP)
+                self.assertEqual(r.returncode,1,r.stdout+r.stderr);self.assertIn(quote,r.stdout);self.assertEqual(plan,{})
+        with contextlib.redirect_stdout(io.StringIO()) as out:
+            code=u.main(['compare','--old',str(self.tmp/'old.yaml'),'--new',str(self.tmp/'t.new.yaml'),'--summary',str(self.tmp/'s.md')])
+        self.assertEqual(code,2);self.assertIn(quote,out.getvalue())
+    @needs_shell
+    def test_a_pr_config_without_a_version_fails(self):
+        r,_,out=self.run_step('detect',raw_version={'new':'null'})
+        self.assertEqual(r.returncode,1,r.stdout+r.stderr);self.assertIn('t: addon/config.yaml has no version',r.stdout);self.assertNotIn('changed=true',out)
+    @needs_shell
+    def test_a_quoted_version_is_read_as_written(self):
+        for policy in ('release','main'):
+            with self.subTest(policy):
+                r,_,_=self.run_step(self.STEPS,policy=policy,releases=('v1.2',),old={'version':'1.2'},raw_version={'new':'"1.10"'},**self.SKIP)
+                self.assertEqual(r.returncode,0,r.stdout+r.stderr);self.assertIn('t 1.2 → 1.10',r.stdout)
+    @needs_shell
+    def test_an_unquoted_target_version_is_what_users_run(self):
+        # Users of a base with unquoted 1.10 run 1.1 (Supervisor's reading); a PR quoting "1.2" is newer, in every step.
+        r,_,_=self.run_step(self.STEPS,policy='main',old={'version':'x'},raw_version={'old':'1.10'},version='1.2',**self.SKIP)
+        self.assertEqual(r.returncode,0,r.stdout+r.stderr);self.assertIn('t 1.1 → 1.2',r.stdout)
 
 class ConfigAt(StepHarness):
     """config_at (gh_raw.sh) and addon_sync.locate read a config the same way: a missing or empty file is skipped."""
