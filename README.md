@@ -179,7 +179,7 @@ ha store add https://github.com/WOOWTECH/Woow_HA_App_Store
   - 版本先照 PEP 440 排序（`2026.9.1-1` 是 2026.9.1 之後的修訂）；不符合時用點分數字加上 `-v<N>`／`-<N>` 重建序號（`2.12.4-v2` < `2.12.4-v3`，沒有序號的排最前）。無法排序的版本號會讓檢查失敗。
   - 每項破壞性變更要有 `change`、`key` 完全相同的一筆；接受的漏洞要有 `id`、`package` 完全相同的一筆。`migration`、`reason` 不能是空的；Release 說明會刊出它們，所以不論有沒有比對對象、有沒有做第 4 類都會檢查。報告會列出可以直接貼上的 `change`／`key`。
   - 寫了宣告、但檢查沒找到對應的變更：只寫進報告，不擋。
-- **Release 說明**：發 Release 時，比對對象（最新的正式 Release，`ref_policy: main` 為 PR base；新版本必須比它新）之後各版的宣告自動整理成「破壞性變更與遷移方式」「已接受的漏洞」兩段，放在 GitHub 自動產生的說明前面；共用的 `woow-addon-release.yml` 和 `Woow_ha_odoo` 的 `release.yml` 都這樣做。沒有宣告就不加；檔案格式錯誤時不發 Release。
+- **Release 說明**：發 Release 時，比對對象（一律是最新的正式 Release，新版本必須比它新；PR base 只用在 `ref_policy: main` 的 PR 檢查）之後各版的宣告自動整理成「破壞性變更與遷移方式」「已接受的漏洞」兩段，放在 GitHub 自動產生的說明前面；共用的 `woow-addon-release.yml` 和 `Woow_ha_odoo` 的 `release.yml` 都這樣做。沒有宣告就不加；檔案格式錯誤時不發 Release。
 - 判定規則與 `change` 名稱的權威說明在 [`.addon-sync/upgrade_check.py`](.addon-sync/upgrade_check.py) 開頭，`upgrade-notes.yaml` 的格式、版本排序與 Release 說明在 [`.addon-sync/addon_sync.py`](.addon-sync/addon_sync.py)（`REBUILD` 上方的說明）；兩者不一致時以程式為準，並修正本段。
 
 ### 同步流程
