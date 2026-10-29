@@ -830,7 +830,7 @@ class ComparisonTarget(StepHarness):
         import re
         for step in self.wf['jobs']['compare']['steps']:
             run=step.get('run','')
-            for helper,use in [('gh_raw.sh',r'\b(fetch|config_at) '),('log.sh',r'\b(esc|fail) "'),('fields.sh',r'\bfields "')]:
+            for helper,use in [('gh_raw.sh',r'\b(fetch|config_at) '),('log.sh',r'\b(esc|fail|fail_output|no_cntrl) "'),('fields.sh',r'\bfields "')]:
                 with self.subTest(step=step.get('name'),helper=helper):
                     self.assertEqual('source tooling/.addon-sync/'+helper in run,bool(re.search(use,run)))
 
