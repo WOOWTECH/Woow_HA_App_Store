@@ -16,9 +16,9 @@ supply-chain gate（2026-10-11），以測過的 image ID 推送、匿名拉取�
 此 token 具**廣泛 Core 管理能力**（`homeassistant_api: true`），負責人已於 2026-10-08 核准本 Add-on 使用（與其他六支相同，
 只用於管理面板確認 HA owner／管理員）。`panel_admin` 不是角色授權。
 
-**支援的 Core 版本**：管理面板只在本版審查過的 HA Core 版本運作（0.1.7、0.1.8：2026.7.2–2026.9.4 與 2026.10.0；0.1.9 起再加 2026.10.1；下一版（未發佈）再加 2026.10.2–2026.10.4；和其他六支共用同一個驗證器）。
+**支援的 Core 版本**：管理面板只在本版審查過的 HA Core 版本運作（0.1.7、0.1.8：2026.7.2–2026.9.4 與 2026.10.0；0.1.9 起再加 2026.10.1；0.4.2 起再加 2026.10.2–2026.10.4；和其他六支共用同一個驗證器）。
 其他版本（含之後的 patch 與 beta）整個管理面板都回 403；0.4.1 以前看起來和「不是管理員」完全一樣（add-on 紀錄也沒有訊息），0.4.2 起管理面板改顯示「這個 HA Core 版本尚未審核：<版本>」，add-on 紀錄也記一行同樣的說明（不含權杖）；
-MCP 端點（Bearer token）不經這項檢查，不受影響。新的 Core 版本要等 add-on 發新版才支援，升級 Core 前請先對照這份清單。
+MCP 端點（Bearer token）不經這項檢查，不受影響。新的 Core 版本要等 add-on 發新版才支援，升級 Core 前請先對照這份清單。0.4.3 起，舊版升級後自動全開的設定在未審核的 Core 上也無法用管理面板還原或調整：請先把 add-on 更新到審過這個 Core 的版本，再到管理面板「還原升級前的限制」；需要立刻限制 MCP 時先停止 add-on（進階的離線還原步驟見 [legacy migration](https://github.com/WOOWTECH/Woow_ha_mcp_addons/blob/claude-delivery/docs/operations/legacy-migration.md#when-the-panel-refuses-an-unreviewed-core)）。
 
 本產品 runtime：**FastMCP 4.1.3 / MCP SDK 2.3.0**（0.4.0 起；0.3.4 是 FastMCP 3.4.11 / SDK 1.30.0，之前 FastMCP 3.4.5），子程序是 WOOWTECH 的 MIT 套件 `nextcloud_mcp_server` v0.1.5（commit 4e09c86）
 放在 `apps/nextcloud/vendor`，對上游的修改逐檔記在 `docs/provenance/runtime-sources.json`。上游 9 個工具全部支援：
@@ -34,7 +34,7 @@ MCP 端點（Bearer token）不經這項檢查，不受影響。新的 Core 版�
 | `delete_file_checked` | 寫：etag 相符才刪單一檔案（進垃圾桶） | 開，可逐一關閉 |
 
 逐名 schema／預設以 [工具對照](https://github.com/WOOWTECH/Woow_ha_mcp_addons/blob/claude-delivery/docs/tool-surface.md) 與 [machine manifest](https://github.com/WOOWTECH/Woow_ha_mcp_addons/blob/claude-delivery/docs/tool-surface.json) 為準。
-「預設」指新安裝，以及從 0.1.x 升級時一次（state schema 4 遷移：四個寫入 grant 全開、0.1.x 的停用清單清空，token 與連線保留）；之後管理員取消的寫入或停用的工具，重啟與升級都維持。**風險：網址＝這個帳號的完整檔案權限**，client 不需先授權就能建立、覆寫、上傳與刪除檔案；App 密碼用權限最小的帳號，只保留需要的寫入（見 [寫入預設開啟](https://github.com/WOOWTECH/Woow_ha_mcp_addons/blob/claude-delivery/docs/operations/guide.md#寫入預設開啟)）。0.2.1 起 tools/list 用子程序自己的 inputSchema，tools/call 參數原樣轉給子程序驗證；請求上限 16 MiB（上傳 10 MiB）。錯誤訊息在對照文字後附上 Nextcloud 自己的訊息（0.2.1 起，含 403 與 5xx；401、429 仍為固定文字）。
+「預設」指新安裝，以及從 0.1.x 升級時一次（state schema 4 遷移：四個寫入 grant 全開、0.1.x 的停用清單清空，token 與連線保留）；之後管理員取消的寫入或停用的工具，重啟與升級都維持。從 0.1.x 升級在 0.3.0–0.4.1 要先經管理面板的升級確認頁；**下一版起（未發版，負責人 2026-10-27 決定）**第一次啟動自動一次性全開、MCP 立刻可用，事後通知只在管理面板（與 add-on log 的一行），升級後請打開管理面板查看，可在那裡「還原升級前的限制」（只關回舊設定停用的工具與沒授權的寫入）或「保持全開，不再提示」（[legacy migration](https://github.com/WOOWTECH/Woow_ha_mcp_addons/blob/claude-delivery/docs/operations/legacy-migration.md)）。**風險：網址＝這個帳號的完整檔案權限**，client 不需先授權就能建立、覆寫、上傳與刪除檔案；App 密碼用權限最小的帳號，只保留需要的寫入（見 [寫入預設開啟](https://github.com/WOOWTECH/Woow_ha_mcp_addons/blob/claude-delivery/docs/operations/guide.md#寫入預設開啟)）。0.2.1 起 tools/list 用子程序自己的 inputSchema，tools/call 參數原樣轉給子程序驗證；請求上限 16 MiB（上傳 10 MiB）。錯誤訊息在對照文字後附上 Nextcloud 自己的訊息（0.2.1 起，含 403 與 5xx；401、429 仍為固定文字）。
 寫入授權只認逐工具的 exact grant；舊的全域寫入開關不授權任何 Nextcloud 工具。停用（disabled）永遠優先。
 政策一變更，子程序就以新的環境變數重啟：有授權寫入工具才 `NEXTCLOUD_MCP_READONLY=false`，有授權
 `delete_file_checked` 才 `NEXTCLOUD_MCP_ALLOW_DELETE=true`，其他沒開放的工具列入 `NEXTCLOUD_MCP_DISABLED_TOOLS`，
