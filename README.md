@@ -103,6 +103,8 @@ ha store add https://github.com/WOOWTECH/Woow_HA_App_Store
 > `woow_ha_code_server` 取代。兩者是**不同的 addon**（slug、選項 schema、映像都不同），
 > 不是版本升級 —— 已安裝舊 `vscode` 的人不會被自動換掉，但本 store 不再提供它。
 
+Hermes Paseo 的最新[安裝與首次 project 建立教學](https://github.com/WOOWTECH/hermes-paseo-plugin/blob/main/docs/install.zh-TW.md#home-assistant-add-on)及[HA 實機驗收報告](https://github.com/WOOWTECH/hermes-paseo-plugin/blob/main/docs/ha-acceptance-20261026.zh-TW.md)由插件來源 repo 維護。商店套件版本以 `woow-hermes/config.yaml` 與正式 Release 為準；支援 amd64。
+
 ## 版本策略與同步
 
 ### 放行：通過必要檢查的升版合併
