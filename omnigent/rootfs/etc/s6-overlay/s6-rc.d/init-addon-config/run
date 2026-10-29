@@ -40,8 +40,23 @@ optget() {
 }
 
 # --- Admin identity (feeds init-admin-claim + omnigent-server bootstrap) ----
+# There is no default password. Releases up to 0.1.15 pre-filled one that
+# anyone could read in this repository, and init-admin-claim turns whatever is
+# configured here into the admin account on first boot. An empty password
+# therefore stops the add-on (every later service depends on this one) instead
+# of falling back silently. An install that still uses the retired default
+# keeps running, but is warned at every start.
 ADMIN_USERNAME="$(optget admin_username 'woow')"
-ADMIN_PASSWORD="$(optget admin_password 'woowtech2026')"
+ADMIN_PASSWORD="$(optget admin_password '')"
+if [ -z "${ADMIN_PASSWORD}" ]; then
+    log "FATAL: admin_password is empty. Set a strong password on the add-on Configuration tab, then start the add-on again."
+    exit 1
+fi
+# sha256 of the retired default, so the value itself is no longer in the tree.
+RETIRED_DEFAULT_SHA256="e0919cec1e5a7cec9e68fff36ae0fec69070339e8849c0e672d82b4e048f42a9"
+if [ "$(printf '%s' "${ADMIN_PASSWORD}" | sha256sum | cut -d' ' -f1)" = "${RETIRED_DEFAULT_SHA256}" ]; then
+    log "WARNING: admin_password is the default that releases up to 0.1.15 documented publicly. Anyone who can reach port 8000 can sign in as admin. Change the password now (DOCS.md, section 'Security')."
+fi
 set_env OMNIGENT_ADMIN_USERNAME "${ADMIN_USERNAME}"
 set_env OMNIGENT_ADMIN_PASSWORD "${ADMIN_PASSWORD}"
 

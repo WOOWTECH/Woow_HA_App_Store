@@ -2671,22 +2671,22 @@
     "woow-omnigent": {
       "id": "woow-omnigent",
       "name": "Woow Omnigent",
-      "version": "0.1.15",
+      "version": "0.1.16",
       "repository": "WOOWTECH/Woow_ha_omnigent_addon",
-      "source_sha": "4a2f012c44ee86f2c5889412f88ec01b4b7ff757",
+      "source_sha": "2f3fa4be503174328a479d8d1988e96415d96d19",
       "source_path": "omnigent",
       "config_file": "config.yaml",
-      "config_sha256": "sha256:c1246556a8c3004dba50aa18b10f6706e4130e7e1286a15db9998d95a697101d",
-      "archive_sha256": "sha256:da8995719c3e87ff23b4591ecca24220bf13bd6792c62fa5ca00ff5af2c183de",
-      "context_fingerprint": "sha256:324236bf6c3fe26d33ff16545e69f447babe1e1f2b5b539dae076f650733a84d",
-      "material_fingerprint": "sha256:969af37b50c41a47ceb924aa86634e64cfc0866d7f1182a43aa1e22539920dbf",
+      "config_sha256": "sha256:590293abc4726b6df96955bb1f4a1a378b72d0474026f621f4c301d85a4a437c",
+      "archive_sha256": "sha256:879195c7f2ed4494b3d765c326f4de8a1a3f263d0a2ec39150db09e75a451643",
+      "context_fingerprint": "sha256:1268540b0237ec3e17c8285aa8dc69006083f6722dcc289add1cff0a745486f8",
+      "material_fingerprint": "sha256:aa7285ec5855e519c430bb13d8fe71db4258b0c40cae36e970e70ceac59c000d",
       "architectures": [
         "amd64",
         "aarch64"
       ],
       "config": {
         "name": "Woow Omnigent",
-        "version": "0.1.15",
+        "version": "0.1.16",
         "slug": "woow-omnigent",
         "image": "ghcr.io/woowtech/woow-ha-omnigent-{arch}",
         "description": "Omnigent 0.12.0 meta-harness — orchestration server + bundled Postgres. External runners (pi / claude / codex / …) register from wherever via `omnigent host --server http://homeassistant.local:8000`. HTTP for LAN; pair with the Cloudflared add-on for HTTPS.",
@@ -2745,7 +2745,7 @@
         },
         "options": {
           "admin_username": "woow",
-          "admin_password": "woowtech2026",
+          "admin_password": "",
           "base_url": "",
           "features": "usage_page,harness_install",
           "env_vars": []
@@ -2754,21 +2754,21 @@
       "source_build_supported": true,
       "images": {
         "amd64": {
-          "reference": "ghcr.io/woowtech/woow-ha-omnigent-amd64:0.1.15",
-          "index_digest": "sha256:162d518f76b30797aab8d6bcd915c26a98926fea53ea11c96caa9fe78f899dcc",
-          "digest": "sha256:8ba1b25ce212626699733df4b317275318a9aeb887164f266204ecd8f974f610",
+          "reference": "ghcr.io/woowtech/woow-ha-omnigent-amd64:0.1.16",
+          "index_digest": "sha256:fc48bf4a3697bd7704702b40dc0047ce37df2959592ff21af3375d907b53cd9b",
+          "digest": "sha256:d8facc74975d238e26fd09780f12f01bd63837db1eecd35258e7810829bcdee7",
           "source_revision": "0101855defe81ac8b156c68d6eb411a7ae874d0b"
         },
         "aarch64": {
-          "reference": "ghcr.io/woowtech/woow-ha-omnigent-aarch64:0.1.15",
-          "index_digest": "sha256:8287fd21bb7b457de584f66ffbba5ac56e367070813f361d51f5282d7a5bf358",
-          "digest": "sha256:2f327c41e7bc3d880637f887ab47426b53ed3eebacfc07a643ed66f907e6fa65",
+          "reference": "ghcr.io/woowtech/woow-ha-omnigent-aarch64:0.1.16",
+          "index_digest": "sha256:0f4a64eb49b8eaeaf1592f506e17a6946fbea906457a3a5bb3bd30c68adb0466",
+          "digest": "sha256:200072bd105949f39c591376480bfaf21068f319423d3dd1c339222eec9b6a11",
           "source_revision": "0101855defe81ac8b156c68d6eb411a7ae874d0b"
         }
       },
       "delivery": "published-image",
       "validation": "manifest+architecture-images+configured-CI",
-      "publisher_run_id": "37410512898",
+      "publisher_run_id": "40865317899",
       "channel": "stable",
       "store_path": "omnigent"
     },
@@ -3632,5 +3632,5 @@
       "store_path": "woow_mcp_nextcloud"
     }
   },
-  "catalog_id": "sha256:8c07a87109ca8278ca378c6eebe289e87e1cbe32e4efcbf96998c7183b9b2b66"
+  "catalog_id": "sha256:8164aa82de094a1f407aae4131bcedd9a52b434c7b90081550a0a7feba705365"
 }

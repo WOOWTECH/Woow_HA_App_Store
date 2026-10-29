@@ -1,5 +1,5 @@
 name: Woow Omnigent
-version: 0.1.15
+version: 0.1.16
 slug: woow-omnigent
 image: ghcr.io/woowtech/woow-ha-omnigent-{arch}
 description: >-
@@ -46,6 +46,9 @@ backup_exclude:
 schema:
   # --- Admin identity ------------------------------------------------------
   admin_username: str
+  # Required and deliberately without a default: the add-on stops with a clear
+  # message while it is empty. Releases up to 0.1.15 pre-filled a default that
+  # was readable in this repository.
   admin_password: password
   # --- Public URL runners dial in on ---------------------------------------
   # Only set this if you have a Cloudflared add-on route pointing at us —
@@ -63,7 +66,7 @@ schema:
       value: str
 options:
   admin_username: woow
-  admin_password: woowtech2026
+  admin_password: ""
   base_url: ""
   features: "usage_page,harness_install"
   env_vars: []

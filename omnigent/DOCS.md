@@ -9,7 +9,8 @@ dependency, no external database wiring.
 1. Supervisor → **Add-on Store** → three-dot menu → **Repositories**
 2. Add `https://github.com/WOOWTECH/Woow_ha_omnigent_addon`
 3. Install **Woow Omnigent**
-4. Adjust the **Configuration** tab if you don't want the defaults
+4. On the **Configuration** tab, set `admin_password` (required, no default);
+   adjust the other options if you don't want their defaults
 5. **Start**
 
 The first boot takes ~30–60 s while Postgres inits + omnigent claims the
@@ -20,10 +21,31 @@ admin. The Ingress panel appears in the HA sidebar once ready.
 | Option           | Default              | Purpose                                                                                        |
 |------------------|----------------------|------------------------------------------------------------------------------------------------|
 | `admin_username` | `woow`               | Local admin created via `POST /auth/setup` on first boot                                       |
-| `admin_password` | `woowtech2026`       | **Change me** — this is the login for the web UI                                               |
+| `admin_password` | *(required)*         | Password of the admin account, used for the web UI. The add-on does not start while it is empty |
 | `base_url`       | *(empty)*            | Public URL runners dial in on. Empty = `http://homeassistant.local:8000`                       |
 | `features`       | *(empty)*            | Comma-separated feature flags forwarded as `OMNIGENT_FEATURES=…`                               |
 | `env_vars`       | `[]`                 | Arbitrary passthrough — each item `{key, value}` becomes an env var (key must match `^[A-Z]…`) |
+
+## Security
+
+Port 8000 is open on your LAN, and a Cloudflared route makes the login page
+reachable from the internet. The admin password is the only thing protecting
+the server, so choose a long, unique one.
+
+Releases up to 0.1.15 pre-filled `admin_password` with a default that was
+readable in this repository. If you installed one of them and never changed the
+password, change it now. The add-on creates the admin account only on first
+boot, so editing the option afterwards does **not** change an existing account:
+
+1. Sign in to the Omnigent web UI with the current password.
+2. Change the password there. If your build offers no password page, call
+   `POST /auth/users/me/password` while signed in, with the JSON body
+   `{"old_password": "…", "new_password": "…"}` (answer: `204`).
+3. Put the new password in the `admin_password` option too, so the
+   Configuration tab matches what you use.
+
+While the retired default is still the configured value, the add-on logs a
+warning at every start.
 
 ### Suggested `features`
 

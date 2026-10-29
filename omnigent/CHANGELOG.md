@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.1.16 — 2026-10-29
+
+Security: no more publicly readable default admin password.
+
+- `admin_password` has no default any more. A new install must set it on the
+  Configuration tab; the add-on stops with a clear message while it is empty
+  (Postgres and the server are not started). Releases up to 0.1.15 pre-filled
+  a default that was readable in this repository.
+- An existing install keeps the password it already has. If that is still the
+  retired default, the add-on keeps running but logs a warning at every start.
+  The admin account is created only on first boot, so changing the option does
+  not change an existing account: change the password in the Omnigent web UI
+  (see DOCS.md, section "Security").
+- No other behaviour changes; the Omnigent version stays 0.12.0.
+
 ## 0.1.15 — 2026-09-06
 
 Fix black-screen crash on Settings > Members / Policies / Sharing (and

@@ -76,7 +76,11 @@ RUN apk add --no-cache \
 # version-pinning conflicts on base 20.2.0 (openssl-dev wants
 # libcrypto3-3.5.8 but world pins 3.5.6). Everything else in
 # omnigent's dep tree ships musllinux wheels.
-RUN apk add --no-cache --virtual .build-deps \
+# Base 20.2.0 pins musl=1.2.5-r23 in /etc/apk/world while Alpine now ships
+# musl-dev 1.2.5-r24 only, so build-base cannot be selected. Re-adding musl
+# without the pin upgrades it to the repository's release first.
+RUN apk add --no-cache --upgrade musl \
+ && apk add --no-cache --virtual .build-deps \
         build-base \
         abseil-cpp-dev \
         re2-dev \
