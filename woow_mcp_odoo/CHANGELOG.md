@@ -1,5 +1,15 @@
 # Odoo Changelog
 
+## 0.4.4 — 發佈候選（2026-10-29；映像待驗收）
+
+- 管理面板顯示目前 MCP token 遮罩與最近最多五筆輪替／撤銷紀錄（只有時間、動作及舊 token 遮罩）。token 與紀錄同次原子儲存；重複撤銷不新增紀錄。
+- schema 4 啟動時不重寫。首次 token 變更會保存 `token_history`，0.4.3 拒絕此欄位；升級前請建立 add-on 備份，降版時連同程式還原升級前備份，再檢查 token 與用戶端設定。
+- Odoo `success:false` 結果改為 MCP `isError:true`，保留 JSON 與 structuredContent 包裝；錯誤 traceback 收斂成最後例外行。
+- 新增四個子操作開關：總寫入、直接寫入、未知方法、直接 chatter。管理員儲存需通過 CSRF／版本檢查，並重新啟動子程序；外層工具授權仍有效。精確 `model.method` 白名單編輯尚未提供。
+- 儲存開關會保存 `odoo_write_switches`，0.4.3 同樣拒絕此新 key；降版需升級前備份，不能只換映像或刪除新欄位。
+- 版本升至 0.4.4；映像建置、精確映像驗收、匿名讀回及正式發布尚未完成。
+- 詳見 [upgrade-notes.yaml](../../upgrade-notes.yaml) 與 [0.4.4 發佈決策](../../docs/operations/release-decision-0.4.4.md)。
+
 ## 0.4.3 — 發佈候選（2026-10-28）
 
 - **舊版安裝升級後第一次啟動就一次性全開（與 PaaS 一致；負責人 2026-10-27 決定）**：state schema 1/2/3（0.1.x 寫的）在建立設定儲存、啟動 MCP 子程序之前，自動改成與 0.3.0–0.4.1 升級確認頁 `all_on` 完全相同的設定（schema 4、寫入全開、全部寫入授權、停用清單清空；token、後端連線與對外端點保留），同一次原子寫入加上標記 `owner_defaults_20261025`（`applied`、`at`、`from_schema`）；寫入前先把舊設定的限制存成 `/data/mcp/owner-defaults-20261025-recovery.json`（0600，只有政策，不含 token 與後端）。MCP 立刻可用，不再回 503 `upgrade_review_required` 等管理員確認；add-on log 會有一行說明。**升級後請打開這個 add-on 的管理面板（開啟網頁介面）查看通知與升級前後差異**：除了 add-on log 的那一行，沒有其他提示。
