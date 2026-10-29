@@ -17,9 +17,9 @@
           "Validate and build apporo_ha_core_2 (amd64)",
           "Validate and build apporo_ha_core_3 (amd64)",
           "Validate and build apporo_ha_core_4 (amd64)",
-          "Validate and build apporo_ha_core_5 (amd64)"
-        ],
-        "upgrade_comparison_pending": "#121: wire the caller (category 1 only, built on the device)"
+          "Validate and build apporo_ha_core_5 (amd64)",
+          "Upgrade comparison / compare"
+        ]
       },
       "components": [
         {
@@ -75,9 +75,9 @@
       "ref_policy": "release",
       "branch_rules": {
         "required_checks": [
-          "test"
-        ],
-        "upgrade_comparison_pending": "#121: wire the caller (category 1 only, built on the device)"
+          "test",
+          "Upgrade comparison / compare"
+        ]
       },
       "components": [
         {
@@ -105,9 +105,9 @@
           "Validate and build woow_ha_core_2 (amd64)",
           "Validate and build woow_ha_core_3 (amd64)",
           "Validate and build woow_ha_core_4 (amd64)",
-          "Validate and build woow_ha_core_5 (amd64)"
-        ],
-        "upgrade_comparison_pending": "#121: wire the caller (category 1 only, built on the device)"
+          "Validate and build woow_ha_core_5 (amd64)",
+          "Upgrade comparison / compare"
+        ]
       },
       "components": [
         {
@@ -163,9 +163,9 @@
       "ref_policy": "main",
       "branch_rules": {
         "required_checks": [
-          "package"
-        ],
-        "upgrade_comparison_pending": "#121: wire the caller (category 1 only, built on the device)"
+          "package",
+          "Upgrade comparison / compare"
+        ]
       },
       "components": [
         {
@@ -267,9 +267,9 @@
       "branch_rules": {
         "required_checks": [
           "Build aarch64 add-on",
-          "Build amd64 add-on"
-        ],
-        "upgrade_comparison_pending": "#123: change the PR build, then wire the caller and the SBOM step"
+          "Build amd64 add-on",
+          "Upgrade comparison / compare"
+        ]
       },
       "components": [
         {
@@ -296,9 +296,9 @@
           "Verify shared-file hashes",
           "Check whether this version is released",
           "Build (amd64)",
-          "Build (aarch64)"
-        ],
-        "upgrade_comparison_pending": "#123: change the PR build, then wire the caller and the SBOM step"
+          "Build (aarch64)",
+          "Upgrade comparison / compare"
+        ]
       },
       "components": [
         {
@@ -346,9 +346,9 @@
       "ref_policy": "release",
       "branch_rules": {
         "required_checks": [
-          "Validate and build emqx (amd64)"
-        ],
-        "upgrade_comparison_pending": "#121: wire the caller (category 1 only, built on the device)"
+          "Validate and build emqx (amd64)",
+          "Upgrade comparison / compare"
+        ]
       },
       "components": [
         {
@@ -397,9 +397,9 @@
       "branch_rules": {
         "required_checks": [
           "Unit tests",
-          "Candidate image smoke (no publish)"
-        ],
-        "upgrade_comparison_pending": "#122: wire the caller and the SBOM step (the PR build keeps the amd64 image)"
+          "Candidate image smoke (no publish)",
+          "Upgrade comparison / compare"
+        ]
       },
       "components": [
         {
@@ -423,9 +423,9 @@
       "ref_policy": "release",
       "branch_rules": {
         "required_checks": [
-          "Validate and build woow-immich (amd64)"
-        ],
-        "upgrade_comparison_pending": "#121: wire the caller (category 1 only, built on the device)"
+          "Validate and build woow-immich (amd64)",
+          "Upgrade comparison / compare"
+        ]
       },
       "components": [
         {
@@ -474,9 +474,9 @@
       "ref_policy": "release",
       "branch_rules": {
         "required_checks": [
-          "Validate and build knxd (amd64)"
-        ],
-        "upgrade_comparison_pending": "#122: wire the caller and the SBOM step (the PR build keeps the amd64 image)"
+          "Validate and build knxd (amd64)",
+          "Upgrade comparison / compare"
+        ]
       },
       "components": [
         {
@@ -546,9 +546,9 @@
       "branch_rules": {
         "required_checks": [
           "checks",
-          "readiness"
-        ],
-        "upgrade_comparison_pending": "#123: change the PR build, then wire the caller and the SBOM step"
+          "readiness",
+          "Upgrade comparison / compare"
+        ]
       },
       "components": [
         {
@@ -694,9 +694,9 @@
       "branch_rules": {
         "required_checks": [
           "Repository tests",
-          "Build and smoke-test the amd64 image"
-        ],
-        "upgrade_comparison_pending": "#122: wire the caller and the SBOM step (the PR build keeps the amd64 image)"
+          "Build and smoke-test the amd64 image",
+          "Upgrade comparison / compare"
+        ]
       },
       "components": [
         {
@@ -721,9 +721,9 @@
       "branch_rules": {
         "required_checks": [
           "Unit tests",
-          "Build and smoke test amd64 image"
-        ],
-        "upgrade_comparison_pending": "#122: wire the caller and the SBOM step (the PR build keeps the amd64 image)"
+          "Build and smoke test amd64 image",
+          "Upgrade comparison / compare"
+        ]
       },
       "components": [
         {
@@ -747,9 +747,9 @@
       "ref_policy": "main",
       "branch_rules": {
         "required_checks": [
-          "Validate and build nginxpm (amd64)"
-        ],
-        "upgrade_comparison_pending": "#121: wire the caller (category 1 only, built on the device)"
+          "Validate and build nginxpm (amd64)",
+          "Upgrade comparison / compare"
+        ]
       },
       "components": [
         {
@@ -781,9 +781,9 @@
           "lint",
           "static",
           "build (amd64)",
-          "build (aarch64)"
-        ],
-        "upgrade_comparison_pending": "#120: pilot; the ruleset requires it once Store PR #72 is merged and the caller uses @main"
+          "build (aarch64)",
+          "Upgrade comparison / compare"
+        ]
       },
       "components": [
         {
@@ -808,9 +808,9 @@
       "branch_rules": {
         "required_checks": [
           "build (amd64)",
-          "build (aarch64)"
-        ],
-        "upgrade_comparison_pending": "#120: pilot; the ruleset requires it once Store PR #72 is merged and the caller uses @main"
+          "build (aarch64)",
+          "Upgrade comparison / compare"
+        ]
       },
       "components": [
         {
@@ -838,9 +838,9 @@
         "required_checks": [
           "validate",
           "smoke",
-          "build-nonrelease (amd64, linux/amd64)"
-        ],
-        "upgrade_comparison_pending": "#122: wire the caller and the SBOM step (the PR build keeps the amd64 image)"
+          "build-nonrelease (amd64, linux/amd64)",
+          "Upgrade comparison / compare"
+        ]
       },
       "components": [
         {
@@ -866,9 +866,9 @@
         "required_checks": [
           "Ingress shim regression and patch syntax",
           "Build (amd64)",
-          "Build (aarch64)"
-        ],
-        "upgrade_comparison_pending": "#123: change the PR build, then wire the caller and the SBOM step"
+          "Build (aarch64)",
+          "Upgrade comparison / compare"
+        ]
       },
       "components": [
         {
@@ -892,9 +892,9 @@
       "ref_policy": "release",
       "branch_rules": {
         "required_checks": [
-          "Validate and build headscale (amd64)"
-        ],
-        "upgrade_comparison_pending": "#121: wire the caller (category 1 only, built on the device)"
+          "Validate and build headscale (amd64)",
+          "Upgrade comparison / compare"
+        ]
       },
       "components": [
         {
@@ -920,9 +920,9 @@
         "required_checks": [
           "Tests",
           "Build (amd64)",
-          "Build (aarch64)"
-        ],
-        "upgrade_comparison_pending": "#121: wire the caller (category 1 only, built on the device)"
+          "Build (aarch64)",
+          "Upgrade comparison / compare"
+        ]
       },
       "components": [
         {
