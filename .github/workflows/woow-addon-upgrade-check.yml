@@ -211,8 +211,8 @@ jobs:
               status=1; continue
             fi
             if [ -s "$old" ]; then
-              since=""; [ "${policy}" != "main" ] || since=", where version $(esc "${old_version}") first appeared on the PR base"
-              echo "${id}: comparing $(esc "${version}") with $(esc "${target}")${since}"
+              where=""; [ "${policy}" != "main" ] || where=", where version $(esc "${old_version}") first appeared on the PR base"
+              echo "${id}: comparing $(esc "${version}") with $(esc "${target}")${where}"
             elif [ "${policy}" = "main" ]; then echo "${id}: no config at the PR base, a new add-on"
             else
               # Users run this Release; an unreadable config there must not pass as "no comparison target".

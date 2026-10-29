@@ -644,7 +644,7 @@ class StepHarness(unittest.TestCase):
 
 # The fake GitHub API of StepHarness: Releases, raw files at a ref and the commits that changed a path (with --jq through jq).
 GH_STUB=r'''#!/usr/bin/env python3
-import json,os,re,subprocess,sys
+import json,os,re,subprocess,sys,urllib.parse
 args=sys.argv[1:];url=next(a for a in args if a.startswith('repos/'))
 def out(data):
     if '--jq' not in args:print(json.dumps(data));sys.exit(0)
@@ -664,7 +664,7 @@ elif '/contents/' in url:
     if text is None:print('gh: Not Found (HTTP 404)',file=sys.stderr);sys.exit(1)
     sys.stdout.write(text)
 elif '/commits?' in url:
-    q=dict(p.split('=',1) for p in url.split('?',1)[1].split('&'))
+    q={k:urllib.parse.unquote(v) for k,v in (p.split('=',1) for p in url.split('?',1)[1].split('&'))}
     commits=history if history is not None else [{'sha':'b','date':'2026-01-01T00:00:00Z','files':{q['path']:legacy(q['path'])}}]
     start=next(i for i,c in enumerate(commits) if c['sha']==q['sha'])
     def changed(i):return commits[i]['files'].get(q['path'])!=(commits[i+1]['files'].get(q['path']) if i+1<len(commits) else None)
@@ -882,7 +882,7 @@ class ComparisonTarget(StepHarness):
         import re
         for step in self.wf['jobs']['compare']['steps']:
             run=step.get('run','')
-            for helper,use in [('gh_raw.sh',r'\b(fetch|config_at) '),('log.sh',r'\b(esc|fail|fail_output|no_cntrl) "'),('fields.sh',r'\bfields "')]:
+            for helper,use in [('gh_raw.sh',r'\b(fetch|config_at|version_since) '),('log.sh',r'\b(esc|fail|fail_output|no_cntrl) "'),('fields.sh',r'\bfields "')]:
                 with self.subTest(step=step.get('name'),helper=helper):
                     self.assertEqual('source tooling/.addon-sync/'+helper in run,bool(re.search(use,run)))
 
@@ -952,7 +952,13 @@ class MainFirstVersion(StepHarness):
                 r,plan,_=self.run_step('plan',policy='main',history=history,version='2.1',gh_fail=gh_fail,**self.SKIP)
                 self.assertEqual(r.returncode,1,r.stdout+r.stderr);self.assertEqual(plan,{})
                 self.assertIn('::error title=Upgrade comparison failed::t: '+reason,r.stdout)
-                self.assertIn('the commit where version 2.0 first appeared is unknown; re-run this check',r.stdout)
+                self.assertIn('so the commit where the version first appeared is unknown; re-run this check',r.stdout)
+    @needs_shell
+    def test_no_config_at_the_pr_base_is_a_new_add_on(self):
+        # Nothing to look up: the PR base itself, with no config there (ComparisonTarget: no comparison target).
+        r,plan,_=self.run_step('plan',policy='main',history=[('b',{self.P:None})],version='2.1',**self.SKIP)
+        self.assertEqual(r.returncode,0,r.stdout+r.stderr);self.assertEqual(plan['target'],'b')
+        self.assertIn('t: no config at the PR base, a new add-on',r.stdout)
 
 class VersionReading(StepHarness):
     """One reader of a config's version (addon_sync.config_version) for the workflow's steps, compare() and release():

@@ -27,36 +27,43 @@ config_at() {
   done
 }
 # version_since <ref> <path> <previous> <name>: the commit in <ref>'s history where the add-on's version at <ref> first
-# appeared (ref_policy main, #129). Of the commits that changed <path> or <previous> (newest first, by committer date), the
-# oldest one reached before a commit with another version or no config; versions are read as Supervisor reads them
-# (upgrade_check.py version). Prints <ref> itself when <ref> has no config (a new add-on) or no version (check-target says so).
-# Never falls back to <ref> on an error: prints the check's ::error line and returns 1.
+# appeared (ref_policy main, #129): walking back the commits that changed <path> or <previous>, the last one before a
+# commit with another version (as Supervisor reads it, upgrade_check.py version) or with no config. Prints <ref> itself
+# when <ref> has no config (a new add-on) or no version (check-target says so). Never falls back to <ref> on an error:
+# prints the check's ::error line and returns 1.
 version_since() {
-  local ref="$1" path="$2" previous="$3" name="$4" tool cfg found current v p list sha since="" commits=""
-  tool="$(dirname "${BASH_SOURCE[0]}")/upgrade_check.py"; cfg="$(mktemp)"
-  found="$(config_at "${ref}" "${path}" "${previous}" "${cfg}")"     || { fail "${name}: cannot read ${path} at the PR base ${ref} (GitHub API); re-run this check"; return 1; }
-  current=""; [ -z "${found}" ] || current="$(python3 "${tool}" version --file "${cfg}" --path "${found}" --name "${name}")"     || { printf '%s
-' "${current}"; return 1; }
-  if [ -z "${current}" ]; then printf '%s
-' "${ref}"; return 0; fi
-  for p in "${path}" "${previous}"; do
-    [ -n "${p}" ] || continue
-    list="$(gh api --paginate "repos/${REPO}/commits?sha=${ref}&path=${p}&per_page=100" --jq '.[] | [.commit.committer.date, .sha] | @tsv')"       || { fail "${name}: cannot list the commits that changed ${p} on the PR base (GitHub API), so the commit where version ${current} first appeared is unknown; re-run this check"; return 1; }
-    commits+="${list}"$'
-'
+  local ref="$1" path="$2" previous="$3" name="$4" tool cfg found current version file listed sha first="" commits=""
+  local unknown="so the commit where the version first appeared is unknown; re-run this check"
+  tool="$(dirname "${BASH_SOURCE[0]}")/upgrade_check.py"
+  cfg="$(mktemp)" || { fail "${name}: mktemp failed; ${unknown}"; return 1; }
+  found="$(config_at "${ref}" "${path}" "${previous}" "${cfg}")" \
+    || { fail "${name}: cannot read ${path} at the PR base ${ref} (GitHub API); ${unknown}"; return 1; }
+  current=""; [ -z "${found}" ] || current="$(python3 "${tool}" version --file "${cfg}" --path "${found}" --name "${name}")" \
+    || { printf '%s\n' "${current}"; return 1; }
+  if [ -z "${current}" ]; then printf '%s\n' "${ref}"; return 0; fi
+  for file in "${path}" "${previous}"; do
+    [ -n "${file}" ] || continue
+    listed="$(gh api --paginate "repos/${REPO}/commits?sha=${ref}&path=$(jq -rn --arg p "${file}" '$p | @uri')&per_page=100" \
+      --jq '.[] | [.commit.committer.date, .sha] | @tsv')" \
+      || { fail "${name}: cannot list the commits that changed ${file} on the PR base (GitHub API); ${unknown}"; return 1; }
+    commits+="${listed}"$'\n'
   done
+  # Newest first by committer date, which follows the history while it is linear (squash or rebase merges; #129).
   # A config move lists its commit under both paths: once, in the API's order where dates tie.
-  while IFS=$'	' read -r _ sha; do
-    found="$(config_at "${sha}" "${path}" "${previous}" "${cfg}")"       || { fail "${name}: cannot read ${path}${previous:+ or ${previous}} at ${sha} (GitHub API), so the commit where version ${current} first appeared is unknown; re-run this check"; return 1; }
+  commits="$(sort -s -t$'\t' -k1,1r <<<"${commits}" | awk -F'\t' 'NF == 2 && !seen[$2]++')" \
+    || { fail "${name}: cannot order the commits that changed ${path}; ${unknown}"; return 1; }
+  while IFS=$'\t' read -r _ sha; do
+    [ -n "${sha}" ] || continue
+    found="$(config_at "${sha}" "${path}" "${previous}" "${cfg}")" \
+      || { fail "${name}: cannot read ${path}${previous:+ or ${previous}} at ${sha} (GitHub API); ${unknown}"; return 1; }
     [ -n "${found}" ] || break
-    v="$(python3 "${tool}" version --file "${cfg}" --path "${found}" --name "${name}")" || { printf '%s
-' "${v}"; return 1; }
-    [ "${v}" = "${current}" ] || break
-    since="${sha}"
-  done < <(sort -s -t$'	' -k1,1r <<<"${commits}" | awk -F'	' 'NF == 2 && !seen[$2]++')
-  if [ -z "${since}" ]; then
-    fail "${name}: none of the commits that changed ${path}${previous:+ or ${previous}} on the PR base has version ${current}, the version at ${ref}, so the commit where it first appeared is unknown; re-run this check"; return 1
+    version="$(python3 "${tool}" version --file "${cfg}" --path "${found}" --name "${name}")" || { printf '%s\n' "${version}"; return 1; }
+    [ "${version}" = "${current}" ] || break
+    first="${sha}"
+  done <<<"${commits}"
+  rm -f "${cfg}"
+  if [ -z "${first}" ]; then
+    fail "${name}: none of the commits that changed ${path}${previous:+ or ${previous}} on the PR base has version ${current}, the version at ${ref}; ${unknown}"; return 1
   fi
-  printf '%s
-' "${since}"
+  printf '%s\n' "${first}"
 }
