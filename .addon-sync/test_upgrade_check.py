@@ -54,13 +54,31 @@ class Tests(unittest.TestCase):
             with self.subTest(name):
                 r=run(cfg);self.assertTrue(r['blocked']);self.assertEqual(pairs(r['breaking']),[('required-added','db_password')])
     def test_new_list_key_follows_supervisor_missing_option_rule(self):
-        # Supervisor (addons/options.py _check_missing_options): a missing list option is optional when its element
+        # Supervisor (apps/options.py _check_missing_options): a missing list option is optional when its element
         # schema is an optional scalar such as ["str?"]; any other list (required scalar, mapping items) is required.
         for schema,blocked in [(['str?'],False),(['int(1,5)?'],False),(['str'],True),([{'name':'str?'}],True)]:
             with self.subTest(schema=schema):
                 r=run(new(schema=put('tags',schema)))
                 self.assertEqual(pairs(r['breaking']),[('required-added','tags')] if blocked else [])
         self.assertEqual(run(new(schema=put('tags',['str']),options=put('tags',[])))['breaking'],[])
+    def test_new_map_key_follows_supervisor_missing_option_rule(self):
+        # Supervisor (apps/options.py _check_missing_options): a missing dict option is always "Missing option", even when
+        # every sub-key is optional; an options default for the map ({} included) fills it in before validation.
+        optional,mixed={'host':'str?','port':'port?'},{'host':'str','port':'port?'}
+        for name,options,expected in [('no options entry',lambda d:d,[('required-added','database')]),
+                ('options default is null',put('database',None),[('required-added','database')]),
+                ('options default is {}',put('database',{}),[]),
+                ('options default fills the map',put('database',{'host':'db'}),[])]:
+            with self.subTest(name):
+                self.assertEqual(pairs(run(new(schema=put('database',optional),options=options))['breaking']),expected)
+        r=run(new(schema=put('database',mixed)))
+        self.assertEqual(pairs(r['breaking']),[('required-added','database'),('required-added','database.host')])
+        r=run(new(schema=put('database',mixed),options=put('database',{})))
+        self.assertEqual(pairs(r['breaking']),[('required-added','database.host')])
+        # List items have no per-item defaults, so a map added to an existing list item is always missing in old items.
+        old=new(schema=put('servers',[{'name':'str'}]),options=put('servers',[]));old['version']='1.0.0'
+        cfg=copy.deepcopy(old);cfg['version']='1.1.0';cfg['schema']['servers']=[{'name':'str','tls':{'ca':'str?'}}]
+        self.assertEqual(pairs(run(cfg,old=old)['breaking']),[('required-added','servers.tls')])
     def test_nested_keys_use_the_schema_path(self):
         old=new(schema=put('database',{'host':'str','port':'port?'}),options=put('database',{'host':'db','port':5432}))
         old['version']='1.0.0'

@@ -156,12 +156,12 @@ Hermes Paseo 的最新[安裝與首次 project 建立教學](https://github.com/
   | `made-required` | 選填（`type?`）改成必填 | schema 路徑 |
   | `range-narrowed` | `int`／`float`／`str` 的範圍變窄或新加上限制 | schema 路徑 |
   | `enum-value-removed` | `list(a\|b)` 少了某個值 | schema 路徑 |
-  | `required-added` | 新增必填 key，而 `options` 沒有預設值（`null` 不算預設值） | schema 路徑 |
+  | `required-added` | 新增必填 key，而 `options` 沒有預設值（`null` 不算預設值）。新增的 map 一律算必填，子項全選填也一樣；`options` 給這個 map 預設值（`{}` 也算）就不算。子項照樣逐一比對 | schema 路徑 |
   | `arch-removed` | 拿掉一個 arch | arch，例如 `aarch64` |
   | `port-removed` | 拿掉一個 port，或改了容器端 port、通訊協定 | port，例如 `8069/tcp` |
   | `image-changed` | `image` 改變、新增或拿掉 | `image` |
 
-  只寫進報告、不擋：預設值改變（`default-changed`）、只改主機端預設 port（`host-port-changed`）。不擋也不報告：範圍變寬、列舉加值、必填改選填、新增選填 key、新增有預設值的 key。
+  只寫進報告、不擋：預設值改變（`default-changed`）、只改主機端預設 port（`host-port-changed`）。不擋也不報告：範圍變寬、列舉加值、必填改選填、新增選填 key（map 不算，見 `required-added`）、新增有預設值的 key。
 - **第 4 類 漏洞比對**（只限有預先建置映像的 addon）：新映像由 repo 自己的 amd64 PR 建置，用 Store 的 [`addon-sbom`](.github/actions/addon-sbom/action.yml) 步驟交出 SBOM；舊映像從 GHCR 拉比對對象的 amd64 映像。兩邊用同一份 Grype DB 掃描（Grype、Syft 依 checksum 釘選）；任一邊的掃描結果沒寫出 DB（`descriptor.db.status` 的 `built` 與 `from`）或兩邊 DB 不同，檢查直接失敗。以（漏洞 ID, 套件）比對，**新映像才有、嚴重度 Critical 或 High、Grype `fix.state` 是 `fixed`** 的是「新增可修補漏洞」，沒宣告接受就擋下；同一組（漏洞 ID, 套件）Grype 列出多筆時，任一筆符合就算，報告的嚴重度與修補版本取自符合的那筆。舊映像就有的、沒有修補版本的、嚴重度不到 High 的只算進報告的數量。在裝置上建置的 addon 不做第 4 類，報告註明交由 #90。呼叫端傳 `skip_vulnerability_scan: "<原因>"`（任何非空的文字都算，加引號，否則 ` #` 之後會被 YAML 當成註解）時，這次呼叫的所有 addon 都不做第 4 類（例如 knxd 出貨的是第三方映像）；第 1 類照常比對。只有 Store registry 裡該 provider 有 `upgrade_comparison.skip_vulnerability_scan`（核准的原因與票號，目前只有 knxd #122、mcp_addons #123，第 4 類移到 #90）才能這樣傳，報告寫出的是 registry 裡核准的原因，不是呼叫端傳的文字；其他呼叫端傳了，檢查直接失敗。呼叫端不對建置 job 設 `needs:`：有版本變更時才等這次 run attempt 的 SBOM artifact，重跑請用 Re-run all jobs。
 - **`upgrade-notes.yaml`** 放在每個 addon 的 `config.yaml` 旁邊，只有需要宣告時才建立：
 

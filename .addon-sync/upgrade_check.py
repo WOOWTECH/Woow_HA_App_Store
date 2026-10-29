@@ -21,11 +21,12 @@ Breaking changes (`change`, and the `key` it is reported under):
   range-narrowed      int/float/str bound added, raised (min) or lowered (max)
   enum-value-removed  a list(a|b) value removed
   required-added      new required key with no options default (null is no default; list items have none; ["str?"] is optional)
+                      a new map is required even when every sub-key is optional ({} is a default); its sub-keys are still compared
   arch-removed        an arch value removed                              the arch, e.g. aarch64
   port-removed        a container port/protocol removed or changed       the port, e.g. 8069/tcp
   image-changed       `image` changed, added or removed                  image
 Report only: default-changed, host-port-changed. Silent: widened ranges, added enum
-values, required made optional, added optional keys, added keys with a default.
+values, required made optional, added optional keys (not maps), added keys with a default.
 
 upgrade-notes.yaml format, version order and Release notes (#119): addon_sync, the comment above REBUILD.
 """
@@ -68,6 +69,8 @@ def _added(node, opts, key, path, out):
     """A key only the new schema has breaks old settings when it is required and options gives no usable default (null is none)."""
     kind=_kind(node);has_default=isinstance(opts,dict) and opts.get(key) is not None
     if kind=='map':
+        # Supervisor _check_missing_options: a missing map is "Missing option" even when every sub-key is optional.
+        if not has_default:out.append(('required-added',path))
         for k,v in node.items():_added(v,_sub(opts,key),k,path+'.'+k,out)
     elif kind=='list':
         # Supervisor _check_missing_options: a list is optional when its element is an optional scalar, e.g. ["str?"].
