@@ -1,3 +1,8 @@
+## 0.4.5
+
+- Shared audited n8n operation policy; existing grants and schema 4 state preserved.
+- Back up before upgrading; review operation restrictions before downgrade. See root upgrade-notes.yaml.
+
 # EMQX Changelog
 
 ## 0.4.4 — 發佈候選（2026-10-29；映像待驗收）
