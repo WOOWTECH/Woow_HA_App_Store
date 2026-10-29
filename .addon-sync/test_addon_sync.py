@@ -18,6 +18,37 @@ def entry(raw):
     return {'id':'test','name':'Test','repository':'WOOWTECH/test','source_sha':'a'*40,'source_path':'pkg','config_file':'config.yaml','config_sha256':s.digest(files['config.yaml'][0]),'config':cfg,'archive_sha256':s.digest(raw),'architectures':['amd64'],'images':{'amd64':{'reference':'ghcr.io/example/test:1.0.0','digest':'sha256:'+'a'*64}},'version':'1.0.0','channel':'stable','context_fingerprint':'fp','publisher_run_id':'123'}
 
 class Tests(unittest.TestCase):
+    def test_readme_versions_follow_catalog_preserving_editorial_content(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=pathlib.Path(tmp);readme=root/'README.md'
+            readme.write_text('# Store\n\n| `woow_ha_pi_agent` | Pi Agent | 0.14.5 | 預建映像 | 說明 |\n| `unregistered` | Keep | 1.0 | build | note |\n\nOther text\n')
+            catalog={'components':{'woow_ha_pi_agent':{'version':'0.15.0'}}}
+            self.assertTrue(s.sync_readme_versions(root,catalog))
+            self.assertIn('| Pi Agent | 0.15.0 | 預建映像 | 說明 |',readme.read_text())
+            self.assertIn('| `unregistered` | Keep | 1.0 | build | note |',readme.read_text())
+            self.assertTrue(readme.read_text().endswith('Other text\n'))
+            self.assertFalse(s.sync_readme_versions(root,catalog))
+    def test_readme_versions_reject_symlink(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=pathlib.Path(tmp);other=root/'other';other.write_text('keep')
+            (root/'README.md').symlink_to(other)
+            with self.assertRaises(s.Blocked):s.sync_readme_versions(root,{'components':{}})
+            self.assertEqual(other.read_text(),'keep')
+    def test_consume_unchanged_catalog_repairs_stale_readme(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=pathlib.Path(tmp);(root/'.addon-sync').mkdir()
+            (root/'.addon-sync/catalog.json').write_text(json.dumps({'schema':1,'components':{'test':{'version':'1.2.0'}}}))
+            (root/'README.md').write_text('| `test` | Test | 1.0.0 | build | note |\n')
+            report,catalog=s.consume(None,{'providers':{}},root)
+            self.assertEqual(report,[]);self.assertIn('| 1.2.0 |',(root/'README.md').read_text())
+    def test_consume_reports_blocked_readme_without_failing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=pathlib.Path(tmp);(root/'.addon-sync').mkdir();other=root/'other';other.write_text('keep')
+            (root/'.addon-sync/catalog.json').write_text(json.dumps({'schema':1,'components':{'test':{'version':'1.2.0'}}}))
+            (root/'README.md').symlink_to(other)
+            report,catalog=s.consume(None,{'providers':{}},root)
+            self.assertEqual(report,[{'id':'README.md','state':'blocked','reason':'README is a symlink'}])
+            self.assertIn('catalog_id',json.loads((root/'.addon-sync/catalog.json').read_text()));self.assertEqual(other.read_text(),'keep')
     def test_rebrand_only_download_resources(self):
         with tempfile.TemporaryDirectory() as tmp:
             root=pathlib.Path(tmp);store=root/'store';target=root/'private';(store/'.addon-sync').mkdir(parents=True);target.mkdir()

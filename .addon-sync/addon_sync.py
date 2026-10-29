@@ -451,7 +451,27 @@ def consume(gh, registry, workspace, only=None):
             except Exception as e:report.append({'id':cid,'state':'waiting' if isinstance(e,Deferred) else 'blocked','reason':str(e) if isinstance(e,Blocked) else type(e).__name__})
     catalog['catalog_id']=digest(canonical(catalog['components']))
     catpath.parent.mkdir(exist_ok=True);catpath.write_text(json.dumps(catalog,ensure_ascii=False,indent=2)+'\n')
+    # README is presentation only; a README problem must not stop the commit of synced components.
+    try:sync_readme_versions(workspace,catalog)
+    except Exception as e:report.append({'id':'README.md','state':'blocked','reason':str(e) if isinstance(e,Blocked) else type(e).__name__})
     return report,catalog
+
+def sync_readme_versions(workspace,catalog):
+    """Refresh existing catalog table versions without replacing editorial text."""
+    path=pathlib.Path(workspace)/'README.md'
+    if not path.exists():return False
+    if path.is_symlink():raise Blocked('README is a symlink')
+    before=path.read_text(encoding='utf-8')
+    def update(match):
+        entry=catalog['components'].get(match['slug'])
+        if entry is None:return match[0]
+        version=str(entry['version'])
+        if any(c in version for c in '|\r\n'):raise Blocked('Unsafe README version')
+        return match['prefix']+version+match['suffix']
+    after=re.sub(r'(?m)^(?P<prefix>\| `(?P<slug>[a-z0-9_-]+)` \| [^\n|]* \| )[^\n|]*(?P<suffix> \|[^\n]*)$',update,before)
+    if after==before:return False
+    path.write_text(after,encoding='utf-8')
+    return True
 
 ATTENTION = ['blocked','waiting','waiting-for-source-notification']
 

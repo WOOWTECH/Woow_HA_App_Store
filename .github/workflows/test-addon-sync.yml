@@ -1,0 +1,23 @@
+name: Test addon distribution
+on:
+  pull_request:
+    paths:
+      - '.addon-sync/**'
+      - '.github/workflows/*addon*.yml'
+      - '.github/workflows/sync-upstreams.yml'
+      - 'README.md'
+  push:
+    branches: [main]
+    paths:
+      - '.addon-sync/**'
+      - '.github/workflows/*addon*.yml'
+      - '.github/workflows/sync-upstreams.yml'
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - run: python3 -m pip install -r .addon-sync/requirements.txt
+      - run: python3 .addon-sync/test_addon_sync.py -v

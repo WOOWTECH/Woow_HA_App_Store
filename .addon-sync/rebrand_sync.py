@@ -78,6 +78,7 @@ def main():
         registry=json.loads((pathlib.Path(a.store)/'.addon-sync/registry.json').read_text())
         allowed={c['store_path'] for p in registry['providers'].values() for c in p['components']}
         allowed.add('.addon-sync/catalog.json')
+        allowed.add('README.md')
         print('Store changed:',commit_scope(a.store,allowed,'chore(addons): consume validated source notifications',a.push))
     else:
         revision=subprocess.check_output(['git','-C',a.store,'rev-parse','HEAD'],text=True).strip()
