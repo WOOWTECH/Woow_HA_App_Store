@@ -30,6 +30,7 @@ import asyncio
 import logging
 from typing import Any
 
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import Event, HomeAssistant, callback
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers import device_registry as dr
@@ -176,8 +177,8 @@ async def _retry_loop(hass: HomeAssistant) -> None:
         hass.data[DATA_RETRY_ACTIVE] = False
 
 
-async def async_setup_presence_defaults(hass: HomeAssistant) -> None:
-    """Register the apply service + auto-triggers (called from async_setup)."""
+async def async_setup_presence_defaults(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Register the apply service + auto-triggers (called from async_setup_entry)."""
     _get_store(hass)  # create the Store early
 
     async def _service(_call: Any) -> None:
@@ -187,6 +188,9 @@ async def async_setup_presence_defaults(hass: HomeAssistant) -> None:
         )
 
     hass.services.async_register(DOMAIN, SERVICE_APPLY, _service)
+    entry.async_on_unload(
+        lambda: hass.services.async_remove(DOMAIN, SERVICE_APPLY)
+    )
 
     @callback
     def _kick(*_: Any) -> None:
@@ -205,6 +209,6 @@ async def async_setup_presence_defaults(hass: HomeAssistant) -> None:
         if event.data.get("action") == "create":
             _kick()
 
-    async_at_start(hass, _kick)
-    hass.bus.async_listen(dr.EVENT_DEVICE_REGISTRY_UPDATED, _kick)
-    hass.bus.async_listen(er.EVENT_ENTITY_REGISTRY_UPDATED, _on_entity)
+    entry.async_on_unload(async_at_start(hass, _kick))
+    entry.async_on_unload(hass.bus.async_listen(dr.EVENT_DEVICE_REGISTRY_UPDATED, _kick))
+    entry.async_on_unload(hass.bus.async_listen(er.EVENT_ENTITY_REGISTRY_UPDATED, _on_entity))

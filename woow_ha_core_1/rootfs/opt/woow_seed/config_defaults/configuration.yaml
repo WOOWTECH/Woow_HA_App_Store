@@ -6,8 +6,9 @@ default_config:
 
 # NOTE: woow_zha_quirks is seeded into custom_components/ but deliberately NOT
 # auto-enabled here — on a ZHA-less instance its _async_heal() task blocks HA
-# startup wrap-up for no benefit (ADR 0005 correction). Add `woow_zha_quirks:`
-# yourself once this instance actually has ZHA set up.
+# startup wrap-up for no benefit (ADR 0005 correction). Once this instance
+# actually has ZHA set up, add WOOW ZHA Quirks from Settings → Devices & services;
+# 1.4 and later have no `woow_zha_quirks:` key (ADR 0008).
 
 automation: !include automations.yaml
 script: !include scripts.yaml

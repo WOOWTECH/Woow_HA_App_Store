@@ -34,6 +34,7 @@ import logging
 from typing import Any
 
 from homeassistant.components.light import LightEntityFeature
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
 from .quirks.ts0601_light_TZE284_gt5al3bl import SCENE_NAMES, ScenePreset
@@ -135,8 +136,8 @@ def _apply_patch() -> bool:
     return True
 
 
-async def async_setup_light_effects(hass: HomeAssistant) -> None:
-    """Apply the light-effect monkey-patch once (called from async_setup)."""
+async def async_setup_light_effects(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Apply the light-effect monkey-patch once (called from async_setup_entry)."""
     if hass.data.get(DATA_PATCHED):
         return
     try:

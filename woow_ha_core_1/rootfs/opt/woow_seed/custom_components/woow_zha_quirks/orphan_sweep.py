@@ -60,6 +60,7 @@ import logging
 from datetime import timedelta
 from typing import Any
 
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
@@ -201,8 +202,8 @@ async def _async_sweep(hass: HomeAssistant) -> None:
         hass.data[DATA_SWEEP_RUNNING] = False
 
 
-async def async_setup_orphan_sweep(hass: HomeAssistant) -> None:
-    """Register the standalone orphan-sweep triggers (called from async_setup)."""
+async def async_setup_orphan_sweep(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Register the standalone orphan-sweep triggers (called from async_setup_entry)."""
     hass.data.setdefault(DATA_SWEEP_SEEN, set())
 
     @callback
@@ -211,6 +212,6 @@ async def async_setup_orphan_sweep(hass: HomeAssistant) -> None:
 
     # Startup, device (re)join / online / re-pair, and a periodic backstop for devices
     # that power on later. All three are idempotent and eventually-consistent.
-    async_at_start(hass, _kick)
-    hass.bus.async_listen(dr.EVENT_DEVICE_REGISTRY_UPDATED, _kick)
-    async_track_time_interval(hass, _kick, BACKSTOP_INTERVAL)
+    entry.async_on_unload(async_at_start(hass, _kick))
+    entry.async_on_unload(hass.bus.async_listen(dr.EVENT_DEVICE_REGISTRY_UPDATED, _kick))
+    entry.async_on_unload(async_track_time_interval(hass, _kick, BACKSTOP_INTERVAL))

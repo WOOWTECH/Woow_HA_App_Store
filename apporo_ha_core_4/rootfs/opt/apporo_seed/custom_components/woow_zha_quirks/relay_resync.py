@@ -30,6 +30,7 @@ import logging
 from datetime import timedelta
 from typing import Any
 
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.event import async_track_time_interval
@@ -83,8 +84,8 @@ async def _async_resync(hass: HomeAssistant) -> int:
     return matched
 
 
-async def async_setup_relay_resync(hass: HomeAssistant) -> None:
-    """Register the relay-resync triggers + a manual service (called from async_setup)."""
+async def async_setup_relay_resync(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Register the relay-resync triggers + a manual service (called from async_setup_entry)."""
 
     @callback
     def _kick(*_: Any) -> None:
@@ -101,8 +102,11 @@ async def async_setup_relay_resync(hass: HomeAssistant) -> None:
         _LOGGER.info("%s: %s ran (%d device(s) matched)", DOMAIN, SERVICE_RESYNC, max(n, 0))
 
     hass.services.async_register(DOMAIN, SERVICE_RESYNC, _service)
+    entry.async_on_unload(
+        lambda: hass.services.async_remove(DOMAIN, SERVICE_RESYNC)
+    )
 
     # Startup (existing device), device (re)join/re-pair, and a periodic backstop.
-    async_at_start(hass, _kick)
-    hass.bus.async_listen(dr.EVENT_DEVICE_REGISTRY_UPDATED, _kick)
-    async_track_time_interval(hass, _kick, BACKSTOP_INTERVAL)
+    entry.async_on_unload(async_at_start(hass, _kick))
+    entry.async_on_unload(hass.bus.async_listen(dr.EVENT_DEVICE_REGISTRY_UPDATED, _kick))
+    entry.async_on_unload(async_track_time_interval(hass, _kick, BACKSTOP_INTERVAL))

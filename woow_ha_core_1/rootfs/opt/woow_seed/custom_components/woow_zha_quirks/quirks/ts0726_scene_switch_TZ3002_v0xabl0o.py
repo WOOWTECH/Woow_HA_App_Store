@@ -7,11 +7,17 @@ Device:
   - IEEE:         7c:c6:b6:ff:fe:82:46:64
   - Tuya product: v0xabl0o (category cjkg — scene / wall panel)
 
-This is a 4-gang *hybrid* panel: each gang can act as a relay (switch mode) or
-as a scene trigger (scene mode), selectable per-gang. It is a standard ZCL
-device (genOnOff 0x0006 on EP1-4; on/off works natively), NOT a Tuya MCU
-(TS0601) device. device_type is already 0x0004 (On/Off Switch), so ZHA renders
-four switch entities natively — no device_type override needed.
+This is a 4-gang *hybrid* panel: each gang can act as a switch or as a scene
+trigger (scene mode), selectable per-gang. It is a standard ZCL device (genOnOff
+0x0006 on EP1-4; on/off works natively), NOT a Tuya MCU (TS0601) device.
+device_type is already 0x0004 (On/Off Switch), so ZHA renders four switch
+entities natively — no device_type override needed.
+
+NOTE on "switch mode": the panel has **no load output terminals** (L/N supply
+only), so a gang in Switch mode drives an internal firmware latch, not a wired
+contact — nothing physical is ever switched, whatever the gangs are set to. This
+matters because it is the *reason* Switch mode is the right mode here: it costs
+nothing and buys a reliable press signal (see below).
 
 Real signature (EP1-4, profile 0x0104, device_type 0x0004):
   IN : 0x0000 Basic, 0x0003 Identify, 0x0004 Groups, 0x0005 Scenes,
@@ -30,10 +36,19 @@ How a press surfaces on Zigbee (captured live, debug log):
   on_off (0x0000) on that gang's endpoint — there is NO 0xEF00 DP report, NO
   Scenes command and NO client-side 0xFC/0xFD command (so the TS004x rotary-knob
   pattern does NOT apply here). For a switch-mode gang the value toggles
-  true/false (real relay); for a scene-mode gang it reports false on every press
-  (no state change, so nothing fires natively). The device sends each press
-  TWICE (~0.3 s apart). These reports already reach the coordinator with no
-  binding change, so NO delete/re-pair is required for this quirk.
+  true/false — the internal latch really changes, which is what forces the
+  firmware to report immediately, every press. For a scene-mode gang the latch is
+  not driven at all: it reports the same unchanged value on a ~5 min periodic
+  timer regardless of presses, so nothing usable arrives (measured: 5 presses
+  produced ~1 report). That asymmetry is why every gang is held in Switch mode.
+  The device sends each press TWICE (~0.3 s apart). These reports already reach
+  the coordinator with no binding change, so NO delete/re-pair is required.
+
+  Switch mode is therefore the whole press-to-HA mechanism for this panel: press
+  -> immediate on_off report -> the gang's switch entity changes state -> an HA
+  automation triggered on that state change drives whatever you like. No group,
+  no stored scene, no binding, no cloud. See
+  docs/adr/0001-press-to-ha-via-coordinator.md.
 
 This quirk:
   1. Replaces OnOff on EP1-4 with WoowSwitchModeOnOffCluster — a

@@ -46,6 +46,7 @@ import asyncio
 import logging
 from typing import Any
 
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import Event, HomeAssistant, callback
 from homeassistant.helpers import device_registry as dr, entity_registry as er
 from homeassistant.helpers.start import async_at_start
@@ -214,8 +215,8 @@ async def _retry_loop(hass: HomeAssistant) -> None:
         hass.data[DATA_RETRY_ACTIVE] = False
 
 
-async def async_setup_knob_rebind(hass: HomeAssistant) -> None:
-    """Register the rebind service + auto-triggers (called from async_setup)."""
+async def async_setup_knob_rebind(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Register the rebind service + auto-triggers (called from async_setup_entry)."""
 
     async def _service(_call: Any) -> None:
         pending = await _async_rebind(hass, force=True)
@@ -225,6 +226,9 @@ async def async_setup_knob_rebind(hass: HomeAssistant) -> None:
         )
 
     hass.services.async_register(DOMAIN, SERVICE_REBIND, _service)
+    entry.async_on_unload(
+        lambda: hass.services.async_remove(DOMAIN, SERVICE_REBIND)
+    )
 
     @callback
     def _kick(*_: Any) -> None:
@@ -244,6 +248,6 @@ async def async_setup_knob_rebind(hass: HomeAssistant) -> None:
             _kick()
 
     # Run at startup (existing knobs, with retry), and on later device/entity changes.
-    async_at_start(hass, _kick)
-    hass.bus.async_listen(dr.EVENT_DEVICE_REGISTRY_UPDATED, _kick)
-    hass.bus.async_listen(er.EVENT_ENTITY_REGISTRY_UPDATED, _on_entity)
+    entry.async_on_unload(async_at_start(hass, _kick))
+    entry.async_on_unload(hass.bus.async_listen(dr.EVENT_DEVICE_REGISTRY_UPDATED, _kick))
+    entry.async_on_unload(hass.bus.async_listen(er.EVENT_ENTITY_REGISTRY_UPDATED, _on_entity))

@@ -7,6 +7,8 @@ time* so they are available before ZHA restores/creates its device objects.  The
 ``manifest.json`` deliberately declares **no** ``dependencies``/``after_dependencies``
 on ``zha`` (adding ``dependencies: ["zha"]`` would force ZHA to set up *first*, which is
 the exact ordering that leaves devices unquirked — see commit ``81cd348``).
+That omission is deliberate and load-bearing; do not "fix" it. See
+docs/adr/0005-config-entry-setup.md.
 
 Even so, HA's boot ordering is not guaranteed: on some restarts ZHA restores its devices
 *before* our import-time registration lands, so those devices come up with
@@ -35,7 +37,7 @@ import asyncio
 import logging
 from typing import Any
 
-from homeassistant.config_entries import ConfigEntryState
+from homeassistant.config_entries import ConfigEntry, ConfigEntryState
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.start import async_at_start
 
@@ -229,12 +231,12 @@ async def _async_heal(hass: HomeAssistant) -> None:
     # the EVENT_DEVICE_REGISTRY_UPDATED that this reload fired.
 
 
-async def async_setup_quirk_heal(hass: HomeAssistant) -> None:
-    """Register the one-shot self-heal trigger (called from async_setup)."""
+async def async_setup_quirk_heal(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Register the one-shot self-heal trigger (called from async_setup_entry)."""
 
     @callback
     def _kick_heal(*_: Any) -> None:
         hass.async_create_task(_async_heal(hass))
 
     # One-shot heal after HA has fully started (all config entries set up).
-    async_at_start(hass, _kick_heal)
+    entry.async_on_unload(async_at_start(hass, _kick_heal))

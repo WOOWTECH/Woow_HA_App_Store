@@ -1,0 +1,26 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "WOOW ZHA Quirks",
+        "description": "此整合沒有任何設定項目。確認後將註冊 WOOW / Simon 的 ZHA quirks、啟動執行期掛鉤（旋鈕重新綁定、繼電器狀態同步、情境面板按鍵啟用、quirk 自我修復），並為支援的空調面板建立整合後的 climate 實體。\n\n其中三項會變更不屬於此整合的資料：\n\n- **孤兒實體清理**會刪除 ZHA 殘留的實體註冊資料。\n- **感測器預設值**會在 WO_40117 存在感測器初次配對時寫入一組最佳化設定。\n- **燈光效果**會修補 ZHA 的燈光平台，讓 Gledopto 幻彩效果得以顯示。\n\n日後移除此整合並不會還原 quirk 註冊與燈光修補，必須重新啟動 Home Assistant。"
+      }
+    },
+    "abort": {
+      "single_instance_allowed": "已經設定過了，WOOW ZHA Quirks 只能有一個項目。"
+    }
+  },
+  "issues": {
+    "yaml_setup_removed": {
+      "title": "WOOW ZHA Quirks 需要重新設定",
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "WOOW ZHA Quirks 需要重新設定",
+            "description": "1.4.0 版起不再支援透過 `configuration.yaml` 設定。`woow_zha_quirks:` 這一行已經沒有作用，因此執行期掛鉤與空調面板的 climate 實體目前並未運作。\n\n按下送出即可立即建立整合項目。完成後請將 `configuration.yaml` 中的 `woow_zha_quirks:` 一行刪除。\n\n無論如何，quirks 本身都不受影響，仍持續運作。"
+          }
+        }
+      }
+    }
+  }
+}

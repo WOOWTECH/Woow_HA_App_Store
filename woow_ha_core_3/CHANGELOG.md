@@ -1,5 +1,61 @@
 # Changelog
 
+## 2.4.3
+
+Three bundled components move to their latest upstream releases:
+
+| Component | 2.4.2 | 2.4.3 |
+|---|---|---|
+| `woow_zha_quirks` | 1.2.0 | 1.4.1 |
+| `nodered` | 4.2.3 (plus 11 later commits) | 4.3.2 |
+| `pyscript` | 2.0.1 (plus 25 later commits) | 2.1.0 |
+
+The other 18 components are unchanged.
+
+`woow_zha_quirks` 1.4 and later is set up from Settings → Devices & services
+instead of a `woow_zha_quirks:` key in `configuration.yaml`. As before, none of
+the three is set up by the add-on: add them from the UI when you need them.
+
+### What happens on upgrade
+
+On every start, before Home Assistant, the add-on checks
+`custom_components/woow_zha_quirks`:
+
+- **1.x before 1.4, not in use**: the folder is deleted and 1.4.1 is copied in.
+  The add-on log shows a line starting with
+  `[woow_seed] replaced custom_components/woow_zha_quirks`. The add-on never adds
+  the `configuration.yaml` key, so on a factory instance the old version never
+  loaded and nothing that was set up is lost.
+- **1.x before 1.4, in use**: left exactly as it is, and Home Assistant keeps
+  loading it as before. The log shows a line starting with
+  `[woow_seed] kept custom_components/woow_zha_quirks` that names the reason.
+  It counts as in use when `configuration.yaml` has a top-level
+  `woow_zha_quirks:` key, or a `woow_zha_quirks` config entry exists.
+- **1.4 or later, or not 1.x**: left exactly as it is.
+- **Version cannot be read, or the check fails** (for example an unreadable
+  `.storage/core.config_entries`): counts as in use and is left as it is; the
+  log says so.
+- **No `woow_zha_quirks` folder**: 1.4.1 is copied in, as before.
+
+Only the `custom_components/woow_zha_quirks` code folder is ever deleted;
+`.storage`, config entries and YAML are never touched. If the folder cannot be
+removed, it is left as it is, the log says so, and Home Assistant starts as
+usual.
+
+To upgrade a `woow_zha_quirks` that is in use:
+
+1. Make a backup.
+2. Delete `custom_components/woow_zha_quirks`.
+3. Restart the add-on. It copies in 1.4.1.
+4. Home Assistant shows a repair notification about the `woow_zha_quirks:` YAML
+   key. Confirm it; that creates the config entry. You can then remove the
+   key from `configuration.yaml`.
+
+`nodered` and `pyscript` are only new on new instances. An existing folder is
+never replaced, so an existing instance keeps the version it has. To update
+one, delete its folder in `custom_components` and restart the add-on, which
+copies in the new version, or update it yourself with HACS.
+
 ## 2.4.2
 
 HACS can now be set up. Up to 2.4.1 the bundled `hacs` was HACS's source code,

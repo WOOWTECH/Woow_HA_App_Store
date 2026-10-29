@@ -2,10 +2,10 @@
 # Woowtech HA Core — seed curated custom components + defaults into /config, then start HA.
 # Runs as the container entrypoint, before Home Assistant.
 # Policy: seed-if-missing, per component folder. Never overwrites an existing folder or user edits;
-# the two exceptions, unused old component groups and a hacs without hacs_frontend/,
-# are handled by seed_groups.py.
-# See docs/adr/0005-seed-custom-components-on-boot.md, 0006-replace-unused-old-component-groups.md
-# and 0007-replace-hacs-without-frontend.md
+# the three exceptions, unused old component groups, a hacs without hacs_frontend/ and
+# an unused woow_zha_quirks before 1.4, are handled by seed_groups.py.
+# See docs/adr/0005-seed-custom-components-on-boot.md, 0006-replace-unused-old-component-groups.md,
+# 0007-replace-hacs-without-frontend.md and 0008-replace-unused-old-zha-quirks.md
 set -eu
 
 # The WOOW_SEED_* overrides exist for tests/test_seed.py; the image never sets them.
@@ -25,7 +25,8 @@ mkdir -p "${CONFIG_DIR}/custom_components"
 # A folder named after the successor (only ha_permission_manager) counts as old unless
 # its manifest.json version is 2 or higher, as is_successor() decides; a manifest that
 # cannot be read counts as old, so the group is kept and logged.
-# The fallback does not repeat the hacs check: an existing hacs is then left as it is.
+# The fallback does not repeat the hacs or woow_zha_quirks checks: an existing hacs or
+# woow_zha_quirks is then left as it is.
 # COMPONENT_GROUPS repeats seed_groups.py GROUPS (name, successor, old_domains) because
 # this fallback runs exactly when that script cannot; tests/test_seed.py checks they match.
 COMPONENT_GROUPS="

@@ -1,3 +1,14 @@
+activate_scene_switches:
+  name: Activate 7-58E8021 / 12-70E8306 scene-switch buttons
+  description: >-
+    Re-run the enablement handshake the Tuya gateway performs on these scene panels
+    (TS0034 / _TZ3000_hebcnahz and TS0022 / _TZ3000_klkkwshz): join Zigbee group
+    0x270f, store scene 0xff in it, and bind each gang's output OnOff cluster to the
+    coordinator. Without it the firmware stays silent on a physical press, so the
+    switch entities never follow the wall buttons. Runs automatically at startup and
+    on (re-)pairing; use this service if a warning in the log says activation failed.
+    Takes no parameters.
+
 rebind_knob:
   name: Rebind 4-58E8017 knob
   description: >-
@@ -17,3 +28,12 @@ apply_presence_defaults:
     are applied automatically ONCE on first pairing (persisted, so later manual
     changes survive restarts); use this service to force a re-apply on demand.
     Targets all paired sensors matching the manufacturer/model. Takes no parameters.
+
+resync_relay:
+  name: Re-sync 21-TYZGTH1CH-D1RF relay state
+  description: >-
+    Re-read the on/off state of the 21-TYZGTH1CH-D1RF relay module. The device does not
+    report its state after a power-cycle and ZHA does not re-read it on rejoin, so the
+    Home Assistant switch can sit on a stale value until something writes to it. Runs
+    automatically at startup, on (re-)join, and on a periodic backstop; use this service
+    to force it on demand. Takes no parameters.

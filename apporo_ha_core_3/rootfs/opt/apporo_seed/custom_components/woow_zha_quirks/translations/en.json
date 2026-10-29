@@ -1,0 +1,26 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "WOOW ZHA Quirks",
+        "description": "This integration has no settings. Confirming will register the WOOW / Simon ZHA quirks, start the runtime hooks (knob rebind, relay resync, scene-switch activation, quirk self-heal) and create the combined climate entities for the supported AC panels.\n\nThree of these change data that does not belong to this integration:\n\n- **Orphan sweep** deletes stale ZHA entity registry entries.\n- **Presence defaults** writes a curated configuration into WO_40117 presence sensors once per pairing.\n- **Light effects** patches the ZHA light platform so the Gledopto dreamlight effects appear.\n\nRemoving the integration later does not undo the quirk registration or the light patch — that needs a Home Assistant restart."
+      }
+    },
+    "abort": {
+      "single_instance_allowed": "Already configured. Only one WOOW ZHA Quirks entry is possible."
+    }
+  },
+  "issues": {
+    "yaml_setup_removed": {
+      "title": "WOOW ZHA Quirks must be set up again",
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "WOOW ZHA Quirks must be set up again",
+            "description": "Version 1.4.0 removed setup through `configuration.yaml`. The `woow_zha_quirks:` key no longer does anything, so the runtime hooks and the climate entities for your AC panels are not running.\n\nSubmit to create the integration entry now. Afterwards, delete the `woow_zha_quirks:` line from `configuration.yaml`.\n\nYour quirks themselves are unaffected and keep working either way."
+          }
+        }
+      }
+    }
+  }
+}

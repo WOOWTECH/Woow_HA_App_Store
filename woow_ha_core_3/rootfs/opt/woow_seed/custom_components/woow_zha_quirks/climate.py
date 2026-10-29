@@ -16,6 +16,19 @@ It is auto-discovered: on HA start it scans the device registry for any known de
 (see DEVICE_SPECS) and resolves the backing entities by their stable ZHA unique-id
 suffixes, then hides them so only the single climate entity remains on the device card.
 
+Staying in sync with the device is the hard part, because everything this entity shows is
+second-hand. Three rules, all learned the hard way on real hardware (see
+docs/adr/0001-backing-state-semantics.md):
+
+  * The power switch is the only authority on off-vs-running. If it cannot be read, the
+    hvac_mode is left alone -- never inferred from the mode select.
+  * A backing entity that is *absent* from the state machine is ZHA rebuilding it and means
+    nothing; a backing entity that is explicitly *unavailable* means the device is
+    unreachable and makes this entity unavailable too.
+  * The state-change subscription is a fast path, not a guarantee. A 60 s reconcile
+    (SCAN_INTERVAL) bounds how long a missed delivery can keep this entity stale, and a
+    5 min platform watchdog (WATCHDOG_INTERVAL) rebuilds a climate that has vanished.
+
 Supported devices:
   - 14-66E7109TY  (_TZC200_qbuzgrdocufrqgdu / SM0308F) — Tuya 0xEF00 panel
   - 8-58E7101     (_TZ2000_cykrrj2x / SM0308C)        — standard-ZCL fan-coil thermostat
@@ -28,6 +41,7 @@ from __future__ import annotations
 import logging
 import re
 from dataclasses import dataclass
+from datetime import timedelta
 from typing import Any
 
 from homeassistant.components.climate import (
@@ -49,18 +63,39 @@ from homeassistant.const import (
     STATE_UNKNOWN,
     UnitOfTemperature,
 )
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import Event, HomeAssistant, callback
 from homeassistant.helpers import device_registry as dr, entity_registry as er
-from homeassistant.helpers.event import async_track_state_change_event
+from homeassistant.helpers.event import (
+    async_track_state_change_event,
+    async_track_time_interval,
+)
 from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.helpers.start import async_at_start
-from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
+from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.util import slugify
 
 _LOGGER = logging.getLogger(__name__)
 
 DOMAIN = "woow_zha_quirks"
 DATA_CREATED = "woow_zha_quirks_climate_created"
+
+# How often each climate reconciles itself against its backing entities. The
+# state-change subscription is the fast path; this is the safety net that bounds how long
+# a missed delivery can keep the entity stale. Reads the HA state machine only -- it
+# produces no Zigbee traffic, so the integration stays local_push in substance.
+SCAN_INTERVAL = timedelta(seconds=60)
+
+# How often the platform re-runs discovery. Registry events already drive it; this only
+# catches the case where the entity behind the `created` guard has vanished, which no
+# event would report.
+WATCHDOG_INTERVAL = timedelta(minutes=5)
+
+# Roles that decide hvac_mode. If one of these is explicitly `unavailable` the device is
+# unreachable and the climate must say so rather than serve a stale reading. The rest
+# (fan, preset, temperature, current_temp) only fill in attributes, so losing them keeps
+# the last known value and never affects availability.
+ESSENTIAL_ROLES = ("power", "mode")
 
 HVAC_TO_ACTION = {
     HVACMode.COOL: HVACAction.COOLING,
@@ -159,13 +194,18 @@ SM0308C_SPEC = DeviceSpec(
 DEVICE_SPECS: list[DeviceSpec] = [SM0308F_SPEC, SM0308C_SPEC]
 
 
-async def async_setup_platform(
+async def async_setup_entry(
     hass: HomeAssistant,
-    config: ConfigType,
-    async_add_entities,
-    discovery_info: DiscoveryInfoType | None = None,
+    entry: ConfigEntry,
+    async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
-    """Set up the WOOW climate platform (auto-discovery for all DEVICE_SPECS)."""
+    """Set up the WOOW climate platform (auto-discovery for all DEVICE_SPECS).
+
+    Forwarded from the config entry since 1.4.0 (it used to be a discovery platform set up
+    by async_load_platform). Unique ids are unchanged, so the existing entity registry rows
+    are re-pointed at the entry rather than replaced -- see
+    docs/adr/0005-config-entry-setup.md.
+    """
     # ieee -> device-registry id of the device we built a climate for. Keyed by IEEE
     # (stable across a re-pair) but tied to the *device entry* so a remove+re-add (which
     # produces a fresh device id) rebuilds the climate without an HA restart. Cleared by
@@ -178,6 +218,7 @@ async def async_setup_platform(
         ent_reg = er.async_get(hass)
         dev_reg = dr.async_get(hass)
         new_entities: list[WoowClimate] = []
+        _LOGGER.debug("discover: running, live climates=%s", created)
 
         for device in list(dev_reg.devices.values()):
             spec = by_key.get((device.manufacturer, device.model))
@@ -187,12 +228,21 @@ async def async_setup_platform(
                 (val for typ, val in device.connections if typ == dr.CONNECTION_ZIGBEE),
                 None,
             )
-            # Skip only if THIS exact device entry already has its climate. A re-paired
-            # device usually gets a new device.id, so a stale (ieee -> old id) entry no
-            # longer matches and we rebuild below.
-            if not ieee or created.get(ieee) == device.id:
+            if not ieee:
                 continue
-
+            # A disabled device has no live ZHA entities, and HA stamps disabled_by=DEVICE on
+            # every entity attached to it. Building the climate now would occupy the `created`
+            # guard below (so the later "Enable device" would never rebuild it) and leave our
+            # own registry row disabled. Wait instead — enabling the device fires a
+            # device-registry update, which calls us straight back. Drop any stale guard so
+            # that rebuild is not skipped.
+            if device.disabled_by is not None:
+                _LOGGER.debug(
+                    "discover: %s %s device disabled_by=%s; dropping guard and waiting",
+                    spec.model, ieee, device.disabled_by,
+                )
+                created.pop(ieee, None)
+                continue
             entries = er.async_entries_for_device(
                 ent_reg, device.id, include_disabled_entities=True
             )
@@ -207,21 +257,52 @@ async def async_setup_platform(
             missing = spec.required_roles - set(roles)
             if missing:
                 _LOGGER.debug(
-                    "%s %s not ready (missing %s); will retry", spec.model, ieee, missing
+                    "%s %s not ready (missing %s, resolved %s); will retry",
+                    spec.model, ieee, missing, roles,
                 )
                 continue
 
-            # Drop a stale climate registry entry left by a previous device entry for
-            # this IEEE (re-pair), so re-adding with the same unique_id can't collide.
-            stale_eid = ent_reg.async_get_entity_id("climate", DOMAIN, f"{ieee}-climate")
-            if stale_eid is not None:
-                stale_entry = ent_reg.async_get(stale_eid)
-                if stale_entry is not None and stale_entry.device_id != device.id:
-                    ent_reg.async_remove(stale_eid)
+            # An entity for this IEEE is already live (whatever device entry it was built for),
+            # so never build a second one for the same unique_id -- just re-attach it to the
+            # current device entry. Deleting a ZHA device does NOT tear our climate down: our
+            # row has no config entry, so HA only nulls its device_id, which leaves the entity
+            # running but detached from the device card (and leaves `created` populated, since
+            # async_will_remove_from_hass never fires). A re-pair usually restores the very same
+            # device.id, so the guard alone would skip the device forever.
+            if ieee in created:
+                row = _existing_row(ent_reg, ieee)
+                live = row is not None and hass.states.get(row.entity_id) is not None
+                _LOGGER.debug(
+                    "discover: %s %s guard hit (created=%s, device=%s, row=%s, live_state=%s)",
+                    spec.model, ieee, created.get(ieee), device.id,
+                    row.entity_id if row is not None else None, live,
+                )
+                if live:
+                    _repair_row(ent_reg, row, device.id)
+                    created[ieee] = device.id
+                    _hide_backing(ent_reg, entries)
+                    continue
+                # The guard is held for an entity that is no longer in the state machine, so
+                # nothing is driving this climate and no event will ever say so -- async_will_
+                # remove_from_hass is what normally clears the guard, and it did not run. Drop
+                # the guard and fall through to rebuild. This is the branch the 5-minute
+                # watchdog exists to reach.
+                _LOGGER.warning(
+                    "WOOW ZHA Quirks: %s %s was guarded but its entity is gone; rebuilding",
+                    spec.model, ieee,
+                )
+                created.pop(ieee, None)
 
-            created[ieee] = device.id
-            _hide_backing(ent_reg, entries)
             dev_name = device.name_by_user or device.name or f"{spec.model} {ieee}"
+            # Claim the guard FIRST: _prepare_registry_row() below can create the registry row,
+            # and the registry fires its "create" event synchronously -- straight into our own
+            # _on_entity_added listener. Without the guard already set, that re-entrant
+            # _discover() would build a second WoowClimate for the same unique_id.
+            created[ieee] = device.id
+            # Create/restore and repair our registry row BEFORE the entity is added -- see
+            # _prepare_registry_row for why this can't be left to async_added_to_hass.
+            _prepare_registry_row(ent_reg, ieee, device.id, _object_id(dev_name))
+            _hide_backing(ent_reg, entries)
             new_entities.append(WoowClimate(hass, spec, ieee, roles, device.id, dev_name))
             _LOGGER.info(
                 "WOOW ZHA Quirks: created climate for %s %s", spec.model, ieee
@@ -236,12 +317,87 @@ async def async_setup_platform(
         # what we were waiting for on a fresh pair — the device-registry events alone
         # can fire before the entities are registered. Only react to new entities.
         if event.data.get("action") == "create":
+            _LOGGER.debug(
+                "entity registry create: %s; re-running discover", event.data.get("entity_id")
+            )
             _discover()
 
-    # discover at startup (ZHA entities exist by then) and on later device/entity changes
-    async_at_start(hass, _discover)
-    hass.bus.async_listen(dr.EVENT_DEVICE_REGISTRY_UPDATED, _discover)
-    hass.bus.async_listen(er.EVENT_ENTITY_REGISTRY_UPDATED, _on_entity_added)
+    # discover at startup (ZHA entities exist by then) and on later device/entity changes.
+    # All four hang off the config entry so a reload does not leave a second discover loop
+    # and a second watchdog running against the same devices.
+    entry.async_on_unload(async_at_start(hass, _discover))
+    entry.async_on_unload(hass.bus.async_listen(dr.EVENT_DEVICE_REGISTRY_UPDATED, _discover))
+    entry.async_on_unload(
+        hass.bus.async_listen(er.EVENT_ENTITY_REGISTRY_UPDATED, _on_entity_added)
+    )
+    # Platform-level watchdog. It deliberately does NOT hang off an entity: the failure it
+    # covers is "the climate is gone and nothing rebuilt it", and an entity that no longer
+    # exists cannot poll itself.
+    entry.async_on_unload(async_track_time_interval(hass, _discover, WATCHDOG_INTERVAL))
+
+
+def _object_id(device_name: str) -> str:
+    """Object id for the climate: device name minus the internal "N-" index prefix.
+
+    e.g. "14-66E7109TY" -> "66e7109ty", "8-58E7101" -> "58e7101". Only takes effect on first
+    creation; an existing registry row keeps whatever entity_id it already has.
+    """
+    return slugify(re.sub(r"^\d+[-_\s]+", "", device_name)) or slugify(device_name)
+
+
+@callback
+def _existing_row(ent_reg: er.EntityRegistry, ieee: str) -> er.RegistryEntry | None:
+    """This climate's registry row, or None if it has never been registered."""
+    eid = ent_reg.async_get_entity_id("climate", DOMAIN, f"{ieee}-climate")
+    return ent_reg.async_get(eid) if eid is not None else None
+
+
+@callback
+def _repair_row(
+    ent_reg: er.EntityRegistry, entry: er.RegistryEntry, device_id: str
+) -> None:
+    """Re-attach our row to its device and shed a stale automatic disable flag.
+
+    Only the automatic DEVICE flag is cleared; a user's own disable is left untouched.
+    """
+    updates: dict[str, Any] = {}
+    if entry.device_id != device_id:
+        updates["device_id"] = device_id
+    if entry.disabled_by is er.RegistryEntryDisabler.DEVICE:
+        updates["disabled_by"] = None
+    if updates:
+        _LOGGER.info(
+            "WOOW ZHA Quirks: repairing climate registry row %s: %s", entry.entity_id, updates
+        )
+        ent_reg.async_update_entity(entry.entity_id, **updates)
+
+
+@callback
+def _prepare_registry_row(
+    ent_reg: er.EntityRegistry, ieee: str, device_id: str, object_id: str
+) -> None:
+    """Create/restore this climate's registry row and repair its device link + disabled flag.
+
+    This must happen *before* async_add_entities(): a row that comes back disabled is skipped
+    there, so the entity is never added and async_added_to_hass() -- the only other place that
+    restores the device link -- never runs. That state then survives every restart.
+
+    Two shapes need repairing:
+
+    * A row left by a *previous* device entry for this IEEE (a re-pair usually yields a new
+      device.id). It is re-pointed, not removed: async_remove() would merely move the row into
+      deleted_entities, and the immediate re-add restores it verbatim -- including the very flags
+      we are trying to shed -- while dropping device_id. (Removing also produced the "_2"
+      entity-id suffix, because the old entity_id was still in use at that moment.)
+    * A row restored from deleted_entities. async_get_or_create() brings back disabled_by and
+      hidden_by but NOT device_id, so "disable -> delete while disabled -> re-pair" yields
+      disabled_by=DEVICE with device_id=None. "Enable device" only clears the DEVICE flag on
+      entities whose device_id matches that device, so nothing would ever clear it again.
+    """
+    entry = ent_reg.async_get_or_create(
+        "climate", DOMAIN, f"{ieee}-climate", suggested_object_id=object_id
+    )
+    _repair_row(ent_reg, entry, device_id)
 
 
 @callback
@@ -262,7 +418,9 @@ def _hide_backing(ent_reg: er.EntityRegistry, entries) -> None:
 class WoowClimate(ClimateEntity, RestoreEntity):
     """One climate entity proxying a device's discrete ZHA entities (per DeviceSpec)."""
 
-    _attr_should_poll = False
+    # Polled on SCAN_INTERVAL purely to reconcile with the backing entities -- see
+    # async_update(). No I/O, no Zigbee traffic.
+    _attr_should_poll = True
     _attr_has_entity_name = False
     _enable_turn_on_off_backwards_compatibility = False
 
@@ -299,11 +457,7 @@ class WoowClimate(ClimateEntity, RestoreEntity):
         self._attr_max_temp = spec.max_temp
         self._attr_target_temperature_step = spec.temp_step
 
-        # Clean entity_id: drop the internal "N-" index prefix from the device name
-        # (e.g. "14-66E7109TY" -> "66e7109ty", "8-58E7101" -> "58e7101"). Only takes
-        # effect on first creation; an existing registry entry keeps its entity_id.
-        object_id = slugify(re.sub(r"^\d+[-_\s]+", "", device_name)) or slugify(device_name)
-        self.entity_id = f"climate.{object_id}"
+        self.entity_id = f"climate.{_object_id(device_name)}"
         self._attr_unique_id = f"{ieee}-climate"
         self._attr_hvac_mode = HVACMode.OFF
         self._attr_fan_mode: str | None = None
@@ -333,6 +487,9 @@ class WoowClimate(ClimateEntity, RestoreEntity):
             except ValueError:
                 pass
 
+        _LOGGER.debug(
+            "%s added_to_hass: subscribing to %s", self.entity_id, self._ent
+        )
         self.async_on_remove(
             async_track_state_change_event(
                 self.hass, list(self._ent.values()), self._async_backing_changed
@@ -347,35 +504,82 @@ class WoowClimate(ClimateEntity, RestoreEntity):
         from the shared map lets _discover() recreate the climate on the next pair
         without needing an HA restart.
         """
+        _LOGGER.debug(
+            "%s will_remove_from_hass: dropping guard for %s", self.entity_id, self._ieee
+        )
         created: dict[str, str] = self.hass.data.get(DATA_CREATED, {})
         created.pop(self._ieee, None)
         await super().async_will_remove_from_hass()
 
     @callback
-    def _async_backing_changed(self, _event: Event) -> None:
+    def _async_backing_changed(self, event: Event) -> None:
+        new = event.data.get("new_state")
+        _LOGGER.debug(
+            "%s backing changed: %s -> %s",
+            self.entity_id,
+            event.data.get("entity_id"),
+            "<removed>" if new is None else new.state,
+        )
         self._recompute()
         self.async_write_ha_state()
 
-    def _state(self, role: str) -> str | None:
-        """Return a backing entity's state, or None if unavailable/absent."""
+    async def async_update(self) -> None:
+        """Reconcile against the backing entities.
+
+        The state-change subscription is the fast path; this is the safety net. On
+        2026-08-13 an entire ZHA restore batch never reached the listener and the entity
+        sat on a stale reading for three minutes, recovering only when an unrelated later
+        report happened to arrive -- with nothing in the design guaranteeing that it ever
+        would. Re-reading here bounds that staleness to SCAN_INTERVAL.
+        """
+        self._recompute()
+
+    def _raw(self, role: str) -> str | None:
+        """The literal backing state, or None when the entity is not in the state machine.
+
+        Absence and the literal "unavailable" mean different things and must not be
+        conflated: absence is ZHA rebuilding the entity (transient, say nothing), while
+        "unavailable" is ZHA reporting the device unreachable (surface it).
+        """
         eid = self._ent.get(role)
         if eid is None:
             return None
         st = self.hass.states.get(eid)
-        if st is None or st.state in (STATE_UNAVAILABLE, STATE_UNKNOWN):
+        return None if st is None else st.state
+
+    def _state(self, role: str) -> str | None:
+        """Return a backing entity's usable state, or None if there isn't one."""
+        raw = self._raw(role)
+        if raw is None or raw in (STATE_UNAVAILABLE, STATE_UNKNOWN):
             return None
-        return st.state
+        return raw
+
+    @property
+    def available(self) -> bool:
+        """False once ZHA reports the device unreachable.
+
+        Only an explicit "unavailable" on a role that decides hvac_mode counts. A backing
+        entity that is merely absent is ZHA rebuilding it, which lasts milliseconds and
+        must not flap this entity.
+        """
+        return not any(self._raw(role) == STATE_UNAVAILABLE for role in ESSENTIAL_ROLES)
 
     @callback
     def _recompute(self) -> None:
         """Recompute climate facets from the backing entity states."""
         power = self._state("power")
         mode_opt = self._state("mode")
-        if power is not None and power != STATE_ON:
-            self._attr_hvac_mode = HVACMode.OFF
-        elif mode_opt is not None and mode_opt in self._spec.mode_option_to_hvac:
-            self._attr_hvac_mode = self._spec.mode_option_to_hvac[mode_opt]
-            self._last_on_mode = self._attr_hvac_mode
+        # The power switch is the only authority on off-vs-running. When it cannot be read,
+        # the honest answer is "unchanged": inferring from the mode select instead reports a
+        # running mode for a unit that is off. That is what happened on 2026-08-13
+        # 18:31:38.886 -- power='unavailable' produced hvac_mode=cool, corrected 106 ms later
+        # only because the switch happened to be restored last.
+        if power is not None:
+            if power != STATE_ON:
+                self._attr_hvac_mode = HVACMode.OFF
+            elif mode_opt is not None and mode_opt in self._spec.mode_option_to_hvac:
+                self._attr_hvac_mode = self._spec.mode_option_to_hvac[mode_opt]
+                self._last_on_mode = self._attr_hvac_mode
 
         fan = self._state("fan")
         if fan in self._spec.fan_modes:
@@ -397,6 +601,22 @@ class WoowClimate(ClimateEntity, RestoreEntity):
                 self._attr_current_temperature = float(cur) / self._spec.current_temp_divisor
             except ValueError:
                 pass
+
+        if _LOGGER.isEnabledFor(logging.DEBUG):
+            # "<missing>" is an entity absent from the state machine (ZHA rebuilding it);
+            # the literal "unavailable" is ZHA reporting the device unreachable. The two
+            # drive different behaviour now, so the log has to keep them apart.
+            snap = {
+                role: "<missing>" if (raw := self._raw(role)) is None else raw
+                for role in self._ent
+            }
+            _LOGGER.debug(
+                "%s recompute: backing=%s -> available=%s hvac_mode=%s fan=%s preset=%s "
+                "target=%s current=%s",
+                self.entity_id, snap, self.available, self._attr_hvac_mode,
+                self._attr_fan_mode, self._attr_preset_mode, self._attr_target_temperature,
+                self._attr_current_temperature,
+            )
 
     @property
     def hvac_action(self) -> HVACAction:
