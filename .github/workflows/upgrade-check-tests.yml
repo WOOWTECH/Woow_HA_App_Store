@@ -1,0 +1,51 @@
+# Tests for the upgrade comparison (pipeline #89) before a change reaches the
+# reusable woow-addon-upgrade-check.yml that every managed source repo calls.
+# upgrade_check imports addon_sync's Release rules (#119), and every source
+# repo's release runs addon_sync, so test_addon_sync.py runs here too.
+name: Upgrade comparison tests
+'on':
+  pull_request:
+    paths:
+    - .addon-sync/upgrade_check.py
+    - .addon-sync/test_upgrade_check.py
+    - .addon-sync/addon_sync.py
+    - .addon-sync/test_addon_sync.py
+    - .addon-sync/requirements.txt
+    - .addon-sync/gh_raw.sh
+    - .addon-sync/log.sh
+    - .addon-sync/fields.sh
+    - .addon-sync/registry.json
+    - .github/workflows/woow-addon-upgrade-check.yml
+    - .github/workflows/upgrade-check-tests.yml
+    - .github/actions/addon-sbom/**
+  push:
+    branches: [main]
+    paths:
+    - .addon-sync/upgrade_check.py
+    - .addon-sync/test_upgrade_check.py
+    - .addon-sync/addon_sync.py
+    - .addon-sync/test_addon_sync.py
+    - .addon-sync/requirements.txt
+    - .addon-sync/gh_raw.sh
+    - .addon-sync/log.sh
+    - .addon-sync/fields.sh
+    - .addon-sync/registry.json
+    - .github/workflows/woow-addon-upgrade-check.yml
+    - .github/workflows/upgrade-check-tests.yml
+    - .github/actions/addon-sbom/**
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+    - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      with:
+        persist-credentials: false
+    - name: Install dependencies
+      run: python3 -m pip install -r .addon-sync/requirements.txt
+    - name: Test the upgrade comparison
+      run: python3 .addon-sync/test_upgrade_check.py -v
+    - name: Test the publisher and Release notes
+      run: python3 .addon-sync/test_addon_sync.py -v

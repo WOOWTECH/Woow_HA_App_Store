@@ -1,0 +1,4 @@
+# Same Syft settings for the new image (this action) and the old image (the
+# reusable upgrade check), so both SBOMs describe their images the same way.
+check-for-app-update: false
+scope: squashed

@@ -8,8 +8,9 @@ public outboxes. It runs on the woow-addon-ready dispatch a source sends after a
 new notification, with its schedule as the fallback.
 """
 from __future__ import annotations
-import argparse, base64, hashlib, io, json, os, pathlib, re, shutil, subprocess, tarfile, tempfile, urllib.error, urllib.parse, urllib.request
+import argparse, base64, functools, hashlib, io, json, os, pathlib, re, shutil, subprocess, tarfile, tempfile, urllib.error, urllib.parse, urllib.request
 import yaml
+from enum import IntEnum
 from packaging.version import Version, InvalidVersion
 
 BRANCH = 'woow-addon-sync'
@@ -278,6 +279,7 @@ def publish(gh, registry, repo, apply=False, only=None):
         if only and cid not in only: continue
         if not comp.get('enabled',True): report.append({'id':cid,'state':'excluded','reason':comp['reason']});continue
         try:
+            comp,_=locate(gh,repo,comp,sha)
             fp=gh.fingerprint(repo,sha,comp['source_path'])
             previous=old['components'].get(cid)
             # Under release, the outbox must name the Release commit even when its files match an earlier main snapshot.
@@ -313,6 +315,173 @@ def release_tag(provider, component, version):
     """v<version> for a single-addon repository; <slug>-v<version> when addons version independently."""
     return ('v' if len(provider['components'])==1 else component['id']+'-v')+version
 
+def publishes_releases(comp):
+    """True for an add-on release() publishes stable Releases for, and consume() syncs: enabled, on the stable channel."""
+    return comp.get('enabled',True) and comp.get('channel','stable')=='stable'
+
+def source_file(comp, name):
+    """Repository path of file `name` in the add-on's directory (source_path; '.' is the repository root)."""
+    return str(safe_path(name) if comp['source_path']=='.' else safe_path(comp['source_path'])/safe_path(name))
+
+def locations(comp):
+    """Where the add-on's files can be: its registry entry and, while a config move is in progress, the same entry with the
+    source_path and config_file of its previous_config (a config at the root of its add-on directory; moving a config,
+    Store README). Readers of the add-on at a commit use the first whose config is there (locate)."""
+    out=[comp]
+    if comp.get('previous_config'):
+        p=safe_path(comp['previous_config']);out.append(dict(comp,source_path=str(p.parent),config_file=p.name))
+    return out
+
+def locate(gh, repo, comp, sha):
+    """(the first location among locations(comp) whose config at sha is there and not empty, that config); Blocked naming
+    every path when none has it. gh_raw.sh config_at is the same rule."""
+    paths=[]
+    for c in locations(comp):
+        paths.append(source_file(c,c['config_file']))
+        try:raw=gh.content(repo,paths[-1],sha)
+        except Blocked as e:
+            if 'HTTP 404' not in str(e):raise
+            continue
+        if raw:return c,raw
+    raise Blocked(f'{repo} has no {" or ".join(paths)} at {sha} (missing or empty)')
+
+def find_provider(registry, repo):
+    """repo's registry entry; a ValueError naming repo when the Store registry does not list it."""
+    if repo not in registry['providers']:raise ValueError(f'{repo} is not in the Store registry')
+    return registry['providers'][repo]
+
+def find_component(registry, repo, cid):
+    """(provider, component) of add-on cid in repo's registry entry; a ValueError names an unknown repository or add-on."""
+    provider=find_provider(registry,repo)
+    comp=next((c for c in provider['components'] if c['id']==cid),None)
+    if comp is None:raise ValueError(f'{repo} has no add-on {cid} in the Store registry')
+    return provider,comp
+
+def stable_versions(provider, comp, releases):
+    """Versions of the add-on's stable Releases (not draft, not prerelease) among GitHub's `releases`, by its tag rule."""
+    prefix=release_tag(provider,comp,'')
+    return [r['tag_name'][len(prefix):] for r in releases if not r.get('draft') and not r.get('prerelease') and r.get('tag_name','').startswith(prefix)]
+
+# Release rules shared with upgrade_check (pipeline #89, #119): version order, the upgrade-notes.yaml format and the
+# Release notes built from it. upgrade-notes.yaml, next to config.yaml, created only when needed:
+#   "1.3.0":                       # quoted version; only (comparison target, new version] counts
+#     breaking:
+#       - change: option-removed   # same change and key as upgrade_check's report (change names: its docstring)
+#         key: ssl_port
+#         migration: Use the 443/tcp port mapping instead.   # must not be empty
+#     accepted_vulnerabilities:
+#       - id: CVE-2026-1234        # same id and package as the report
+#         package: openssl
+#         reason: Upstream base image not updated yet; replaced in 1.3.1.   # must not be empty
+# The Release notes (`upgrade_check.py release-notes`, release() through release_body, Woow_ha_odoo's release.yml) print
+# the declarations after the comparison target as two sections, 破壞性變更與遷移方式 and 已接受的漏洞; nothing when none.
+REBUILD=re.compile(r'^(\d+(?:\.\d+)*)(?:-v?(\d+))?$');LEADING=re.compile(r'^\d+(?:\.\d+)*')
+
+class Form(IntEnum):
+    """How version_cmp reads a version (_read): not at all, by its leading dotted number alone, or whole."""
+    NONE=0;LEADING=1;WHOLE=2
+
+def _read(v):
+    """(Form, whole, leading) of `v` for version_cmp; whole and leading are PEP 440 Versions, None where `v` does not read so.
+    Whole: PEP 440 (Woow_haos_ha_core `2026.9.1-1` is a post-release), or a dotted number with a rebuild suffix `-v<N>`,
+    read as post-release N like `-<N>` (nginxpm `2.12.4` < `2.12.4-v2` < `2.12.4-v3`). Leading: the leading dotted number."""
+    try:whole=Version(v)
+    except InvalidVersion:m=REBUILD.match(v);whole=Version(m[1]+(f'.post{m[2]}' if m[2] else '')) if m else None
+    n=LEADING.match(v);leading=Version(n[0]) if n else None
+    return (Form.WHOLE if whole is not None else Form.LEADING if leading is not None else Form.NONE),whole,leading
+
+def version_cmp(a, b):
+    """-1, 0 or 1. Two whole versions (_read) compare as PEP 440, so equal ones (1.3 and 1.3.0, 1.2.4-v2 and 1.2.4-2) are 0;
+    any other pair by its leading dotted numbers, which leave the rest unread, so equal ones cannot be ordered.
+    A pair that cannot be ordered is an error."""
+    if a==b:return 0
+    (_,wa,la),(_,wb,lb)=_read(a),_read(b)
+    if wa is not None and wb is not None:x,y=wa,wb
+    elif la is not None and lb is not None and la!=lb:x,y=la,lb
+    else:raise ValueError(f'cannot order versions {a!r} and {b!r}')
+    return -1 if x<y else 1 if x>y else 0
+
+def require_newer(version, target):
+    """ValueError unless `version` is newer than `target`, the version users run now."""
+    try:order=version_cmp(version,target)
+    except ValueError:order=None
+    if order is None or order<=0:
+        why,fix=('cannot be ordered against','use a newer version that reads whole: PEP 440, or a dotted number with a rebuild suffix -v<N>') if order is None else ('is not newer than','raise the version')
+        raise ValueError(f'version {version} {why} {target}'+(' (the same version, written differently)' if order==0 and version!=target else '')+
+            f', the version users run now (the latest stable Release; the PR base under ref_policy: main); {fix}')
+
+def config_version(raw, as_written=False):
+    """The version in config.yaml text `raw` as Home Assistant Supervisor reads it, or None when it has none: YAML (Supervisor
+    utils/yaml.py, SafeLoader), then text (validate.version_tag, AwesomeVersion of str()), so an unquoted 1.10 is the float 1.1.
+    The one reader of a config's version for the PR check and release(). `as_written`: a version being released must also
+    read as its text does, or the author meant another version (ValueError: quote it)."""
+    cfg=yaml.safe_load(raw);value=cfg.get('version') if isinstance(cfg,dict) else None
+    if value is None:return None
+    if isinstance(value,(dict,list)):raise ValueError('version must be a quoted string, e.g. version: "1.0.0"')
+    text=str(value)
+    if as_written and not isinstance(value,str):
+        written=[v.value for k,v in yaml.compose(raw).value if isinstance(k,yaml.ScalarNode) and k.value=='version'][-1]
+        if written!=text:raise ValueError(f'version {written} is read by YAML, and by Home Assistant Supervisor, as {text}; quote it: version: "{written}"')
+    return text
+
+def comparison_target(released, version):
+    """The latest of `released` (an add-on's stable Release versions), or None; `version` must be newer (require_newer).
+    Releases are cut only from the default branch and each becomes the latest (release(), make_latest), which publish()
+    ships, so a lower version would be a downgrade. The PR check and the Release notes both read upgrade-notes.yaml in
+    (comparison target, version], so both take the target from here. Only a version that reads whole (_read) can be the
+    target: a stray tag (`nightly`, `9.0-test`) cannot be ordered against the Releases, so it is ignored and must not
+    block a Release. Whole versions are always ordered."""
+    target=max((v for v in released if _read(v)[0]==Form.WHOLE),key=functools.cmp_to_key(version_cmp),default=None)
+    if target is not None:require_newer(version,target)
+    return target
+
+def declaration_text(entry, field):
+    """A declaration's migration or reason, stripped; '' when it is missing or blank (the declaration then does not count)."""
+    return str(entry.get(field) or '').strip()
+
+SECTIONS={'breaking':('change','key','migration'),'accepted_vulnerabilities':('id','package','reason')}
+
+def declarations(notes, after, upto):
+    """Entries of upgrade-notes.yaml whose version is in (after, upto]; `after` None means every version up to `upto`.
+
+    Returns {section: [entry + {'version'}]}. A malformed file raises ValueError (the check fails, it does not pass).
+    Shared with the Release-notes mode (#119)."""
+    out={k:[] for k in SECTIONS}
+    if notes is None:return out
+    if not isinstance(notes,dict):raise ValueError('upgrade-notes.yaml must map versions to sections')
+    for version,body in notes.items():
+        if not isinstance(version,str):raise ValueError(f'version key {version!r} must be a quoted string, e.g. "{version}"')
+        if not isinstance(body,dict):raise ValueError(f'{version}: must be a mapping of sections')
+        for section,entries in body.items():
+            if section not in SECTIONS:raise ValueError(f'{version}: unknown section {section!r} (expected {", ".join(SECTIONS)})')
+            if not isinstance(entries,list):raise ValueError(f'{version}.{section}: must be a list')
+            for e in entries:
+                if not isinstance(e,dict) or any(k not in e for k in SECTIONS[section][:2]):raise ValueError(f'{version}.{section}: every entry needs {" and ".join(SECTIONS[section][:2])}')
+        if version_cmp(version,upto)>0 or (after is not None and version_cmp(version,after)<=0):continue
+        for section,entries in body.items():out[section]+=[dict(e,version=version) for e in entries]
+    return out
+
+RELEASE_SECTIONS=(('breaking','破壞性變更與遷移方式',lambda e:f'`{e["change"]}` `{e["key"]}`（{e["version"]}）','migration'),
+    ('accepted_vulnerabilities','已接受的漏洞',lambda e:f'{e["id"]}（{e["package"]}，{e["version"]}）','reason'))
+
+def release_notes(notes, version, released=()):
+    """Markdown the Release of `version` adds to its notes; '' when nothing is declared.
+
+    `released`: versions that already have a stable Release. Only sections after their comparison_target (the latest;
+    ValueError unless `version` is newer) count, the same (comparison target, new] range the PR check used, so a
+    declaration appears on one Release only."""
+    after=comparison_target([v for v in released if v!=version],version)  # a listed Release of `version` is this one
+    found=declarations(notes,after,version);out=[]
+    for section,title,label,text_key in RELEASE_SECTIONS:
+        if not found[section]:continue
+        lines=[]
+        for e in found[section]:
+            text=declaration_text(e,text_key)
+            if not text:raise ValueError(f'{e["version"]}.{section}: {label(e)} has no {text_key}')
+            lines.append(f'- {label(e)}：'+text.replace('\n','\n  '))
+        out.append(f'## {title}\n\n'+'\n'.join(lines)+'\n')
+    return '\n'.join(out)
+
 def get_or_none(gh, repo, path):
     try:return gh.api(repo,path)
     except Blocked as e:
@@ -327,6 +496,27 @@ def tagged_commit(gh, repo, tag):
     if target['type']=='tag':target=gh.api(repo,'git/tags/'+target['sha'])['object']
     return target['sha']
 
+def all_releases(gh, repo):
+    """Every Release of repo: GitHub returns at most 100 per page, so read pages until a short one."""
+    out=[];page=1
+    while True:
+        batch=gh.api(repo,'releases?per_page=100'+('' if page==1 else f'&page={page}'))
+        out+=batch
+        if len(batch)<100:return out
+        page+=1
+
+def release_body(gh, repo, comp, sha, version, released):
+    """Release-notes sections for the add-on's upgrade-notes.yaml at sha (pipeline #119); '' when it declares nothing new.
+    GitHub puts a body before its generated notes, so both appear. Only declarations after the comparison target (the
+    latest of `released`, its stable Release versions) count; a malformed file blocks the Release rather than publishing it without the notes."""
+    path=source_file(comp,'upgrade-notes.yaml')
+    try:raw=gh.content(repo,path,sha)
+    except Blocked as e:
+        if 'HTTP 404' in str(e):return ''
+        raise
+    try:return release_notes(yaml.safe_load(raw),version,released)
+    except (ValueError,TypeError,yaml.YAMLError) as e:raise Blocked(path+': '+str(e))
+
 def release(gh, registry, repo, sha, apply=False):
     """Publish a stable Release for each stable addon whose manifest version at sha has none yet.
     Runs in the source repository after its CI, on a default-branch commit; reads the manifest at
@@ -334,18 +524,28 @@ def release(gh, registry, repo, sha, apply=False):
     provider=registry['providers'][repo];branch,_=gh.head(repo)
     if not SHA.fullmatch(sha or ''):raise Blocked('Release must target an immutable commit SHA')
     if gh.api(repo,'compare/'+sha+'...'+urllib.parse.quote(branch,safe=''))['status'] not in ['ahead','identical']:raise Blocked('Commit is not on the default branch')
-    report=[]
+    report=[];releases=None
     for comp in provider['components']:
         cid=comp['id']
-        if not comp.get('enabled',True) or comp.get('channel','stable')!='stable':report.append({'id':cid,'state':'excluded'});continue
+        if not publishes_releases(comp):report.append({'id':cid,'state':'excluded'});continue
         try:
-            manifest=comp['config_file'] if comp['source_path']=='.' else str(safe_path(comp['source_path'])/safe_path(comp['config_file']))
-            cfg=yaml.safe_load(gh.content(repo,manifest,sha))
+            comp,raw=locate(gh,repo,comp,sha)
+            cfg=yaml.safe_load(raw)
             if not isinstance(cfg,dict) or cfg.get('slug')!=cid:raise Blocked('Unexpected addon slug')
-            version=str(cfg['version']);tag=release_tag(provider,comp,version)
+            try:version=config_version(raw,as_written=True)
+            except ValueError as e:raise Blocked(f'{source_file(comp,comp["config_file"])}: {e}') from None
+            if version is None:raise Blocked(source_file(comp,comp['config_file'])+' has no version')
+            tag=release_tag(provider,comp,version)
             if get_or_none(gh,repo,'releases/tags/'+urllib.parse.quote(tag,safe='')) is not None:report.append({'id':cid,'state':'already-released','tag':tag,'version':version});continue
             if tagged_commit(gh,repo,tag) not in [None,sha]:raise Blocked('Tag '+tag+' points at another commit; release or delete it by hand')
-            if apply:gh.api(repo,'releases',{'tag_name':tag,'target_commitish':sha,'name':f"{cfg.get('name',cid)} {version}",'generate_release_notes':True,'make_latest':'true'})
+            if releases is None:releases=all_releases(gh,repo)
+            released=stable_versions(provider,comp,releases)
+            # The new Release becomes the latest: a version not newer than the latest stable Release is blocked whether or
+            # not upgrade-notes.yaml exists.
+            try:comparison_target(released,version)
+            except ValueError as e:raise Blocked(str(e)) from None
+            body=release_body(gh,repo,comp,sha,version,released)
+            if apply:gh.api(repo,'releases',{'tag_name':tag,'target_commitish':sha,'name':f"{cfg.get('name',cid)} {version}",'generate_release_notes':True,'make_latest':'true',**({'body':body} if body else {})})
             report.append({'id':cid,'state':'released' if apply else 'would-release','tag':tag,'version':version})
         except Exception as e:
             report.append({'id':cid,'state':'blocked','reason':str(e) if isinstance(e,Blocked) else type(e).__name__})
@@ -397,7 +597,7 @@ def consume(gh, registry, workspace, only=None):
     catalog=json.loads(catpath.read_text()) if catpath.exists() else {'schema':1,'components':{}}
     report=[];outboxes={}
     for repo,provider in registry['providers'].items():
-        active=[c for c in provider['components'] if c.get('enabled',True) and c.get('channel','stable')=='stable' and (not only or c['id'] in only)]
+        active=[c for c in provider['components'] if publishes_releases(c) and (not only or c['id'] in only)]
         if not active:continue
         try:outboxes[repo]=gh.outbox(repo)
         except Blocked as e:
@@ -409,12 +609,16 @@ def consume(gh, registry, workspace, only=None):
                 report.append({'id':cid,'state':'unchanged'});continue
             try:
                 if not SLUG.fullmatch(comp['store_path']):raise Blocked('Unsafe registered destination')
+                # A notification from before a config move names previous_config's directory (locations); the Store keeps the
+                # registry's config_file name, so a renamed config leaves no stale file behind.
+                name=comp['config_file']
+                comp=next((c for c in locations(comp) if (c['source_path'],c['config_file'])==(entry.get('source_path'),entry.get('config_file'))),comp)
                 validate_entry(gh,repo,comp,entry,provider.get('default_branch'))
                 enforce_source_policy(gh,repo,provider,comp,entry)
                 if previous and previous['source_sha']!=entry['source_sha']:
                     comparison=gh.api(repo,'compare/'+previous['source_sha']+'...'+entry['source_sha'])
                     if comparison['status'] not in ['ahead','identical']:raise Blocked('Out-of-order or divergent source notification')
-                dest=workspace/comp['store_path'];existing=dest/comp['config_file']
+                dest=workspace/comp['store_path'];existing=next((dest/n for n in (name,comp['config_file']) if (dest/n).exists()),dest/name)
                 current=json.loads(existing.read_text()) if existing.exists() and existing.suffix=='.json' else yaml.safe_load(existing.read_text()) if existing.exists() else None
                 if current and current.get('slug')!=cid:raise Blocked('Destination belongs to another addon')
                 baseline=str(current['version']) if current else previous['version'] if previous else None
@@ -431,7 +635,7 @@ def consume(gh, registry, workspace, only=None):
                         if image_ready(ref,arch)!=entry['images'][arch]:raise Blocked('Published image changed after producer validation')
                 elif entry.get('images'):raise Blocked('Unexpected image receipts on a source-only addon')
                 with tempfile.TemporaryDirectory(prefix='.addon-sync-stage-',dir=workspace) as tmp:
-                    staged=pathlib.Path(tmp)/'new';write_context(staged,files)
+                    staged=pathlib.Path(tmp)/'new';write_context(staged,files);(staged/entry['config_file']).replace(staged/name)
                     # Apply trusted Store metadata policy before replacing the old context.
                     policy=workspace/'.github/scripts/sidebar_titles.py'
                     if policy.exists():
@@ -479,13 +683,21 @@ def annotation(value):
     # GitHub workflow-command escaping, so a reason can never inject a command.
     return str(value).replace('%','%25').replace('\r','%0D').replace('\n','%0A')
 
+def workflow_command(kind, title, message):
+    """A ::error or ::warning line; the title is a property value, so : and , are escaped there too."""
+    return f'::{kind} title='+annotation(title).replace(':','%3A').replace(',','%2C')+'::'+annotation(message)
+
+def markdown_cell(value):
+    """Text for a Markdown table cell: a | or a line break would end the cell or the row."""
+    return re.sub(r'\r\n|\r|\n','<br>',str(value).replace('|','\\|'))
+
 def summary(report):
     text='## WOOW addon synchronization\n\n'+ '\n'.join('- '+json.dumps(r,ensure_ascii=False) for r in report)+'\n'
     print(text)
     # A green run can still leave components behind; surface each one on the run page.
     for r in report:
         if r['state'] in ATTENTION:
-            print('::warning title='+annotation('WOOW addon '+r['state']).replace(':','%3A').replace(',','%2C')+'::'+annotation(str(r.get('id',r.get('repository')))+': '+r.get('reason',r['state'])))
+            print(workflow_command('warning','WOOW addon '+r['state'],str(r.get('id',r.get('repository')))+': '+r.get('reason',r['state'])))
     if os.environ.get('GITHUB_STEP_SUMMARY'):
         with open(os.environ['GITHUB_STEP_SUMMARY'],'a') as f:f.write(text)
 

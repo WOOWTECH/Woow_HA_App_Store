@@ -2,7 +2,8 @@ import copy,unittest
 import addon_sync as s
 import branch_rules as b
 
-PROVIDER={'default_branch':'main','required_workflows':['.github/workflows/ci.yml'],'branch_rules':{'required_checks':['lint','build (amd64)']}}
+PROVIDER={'default_branch':'main','required_workflows':['.github/workflows/ci.yml'],'branch_rules':{'required_checks':['lint','build (amd64)'],'upgrade_comparison_pending':'#121'}}
+WIRED=dict(PROVIDER,branch_rules={'required_checks':['lint','build (amd64)','Upgrade comparison / compare']})
 def compliant():
     src={'ruleset_source_type':'Repository','ruleset_source':'WOOWTECH/test','ruleset_id':7}
     return [dict(src,type='deletion'),dict(src,type='non_fast_forward'),
@@ -33,6 +34,19 @@ class Tests(unittest.TestCase):
     def test_dropped_required_check_is_named(self):
         rules=compliant();rules[3]['parameters']['required_status_checks']=[{'context':'lint'}]
         self.assertEqual(b.check(GH(rules),None,'WOOWTECH/test',PROVIDER),['main: required check "build (amd64)" is not required'])
+    def test_ruleset_without_the_upgrade_comparison_fails_the_wired_repository(self):
+        # #89/#120: once a repository is wired, dropping the check from its ruleset is a problem even if the registry list loses it too.
+        rules=compliant();rules[3]['parameters']['required_status_checks']=[{'context':'lint'},{'context':'build (amd64)'}]
+        for name,provider in [('listed',WIRED),('not listed',dict(WIRED,branch_rules={'required_checks':['lint','build (amd64)']}))]:
+            with self.subTest(name):
+                self.assertEqual(b.check(GH(rules),None,'WOOWTECH/test',provider),['main: required check "Upgrade comparison / compare" is not required'])
+    def test_repository_not_yet_wired_is_not_flagged(self):
+        self.assertEqual(b.check(GH(),None,'WOOWTECH/test',PROVIDER),[])
+    def test_run_names_the_wired_repository_that_lost_the_upgrade_comparison(self):
+        registry={'providers':{'WOOWTECH/pending':PROVIDER,'WOOWTECH/wired':WIRED}}
+        self.assertEqual(b.run(GH(),None,registry),{'WOOWTECH/pending':[],'WOOWTECH/wired':['main: required check "Upgrade comparison / compare" is not required']})
+        rules=compliant();rules[3]['parameters']['required_status_checks'].append({'context':'Upgrade comparison / compare'})
+        self.assertEqual(b.run(GH(rules),None,registry),{'WOOWTECH/pending':[],'WOOWTECH/wired':[]})
     def test_approval_or_code_owner_layer_is_not_the_standard(self):
         for key,value in [('required_approving_review_count',1),('require_code_owner_review',True)]:
             with self.subTest(key):

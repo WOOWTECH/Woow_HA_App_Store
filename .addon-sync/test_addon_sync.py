@@ -97,6 +97,15 @@ class Tests(unittest.TestCase):
     def test_suffix_rejected(self):
         with self.assertRaises(s.Blocked):s.version_not_older('2.12.4-v2','2.12.4-v3')
     def test_pep_prerelease(self):self.assertFalse(s.version_not_older('1.2.0b1','1.2.0'))
+    def test_equal_whole_versions_compare_equal_in_every_form(self):
+        # PEP 440 says 1.3 == 1.3.0; a rebuild suffix -v<N> or -<N> is post-release N, so the same rule holds for it.
+        for a,b in [('1.3','1.3.0'),('1.2.4-v2','1.2.4-2'),('1.2-v2','1.2.0-v2'),('1.2.4-v2','1.2.4.post2')]:
+            with self.subTest(a=a,b=b):self.assertEqual((s.version_cmp(a,b),s.version_cmp(b,a)),(0,0))
+        # Any two whole versions are ordered, rebuild and PEP 440 forms mixed; an equal one is "not newer", not a tool error.
+        self.assertEqual(s.version_cmp('1.2.4rc1','1.2.4-v2'),-1);self.assertEqual(s.version_cmp('1.2.4','1.2.4-v0'),-1)
+        with self.assertRaisesRegex(ValueError,'1.2.4-2 is not newer than 1.2.4-v2'):s.require_newer('1.2.4-2','1.2.4-v2')
+        # Read by the leading number alone, the rest is unknown: equal leading numbers cannot be ordered.
+        with self.assertRaisesRegex(ValueError,'cannot order'):s.version_cmp('1.2.0','1.2.0-foo')
     def test_path_traversal(self):
         for p in ['../x','/etc/passwd','x/../../y','x\\y']:
             with self.subTest(p=p),self.assertRaises(s.Blocked):s.safe_path(p)
@@ -240,9 +249,12 @@ class Tests(unittest.TestCase):
             root=pathlib.Path(tmp);target=root/'test';target.mkdir();(target/'config.yaml').write_text('slug: test\nversion: 0.9.0\n')
             policy=root/'.github/scripts/sidebar_titles.py';policy.parent.mkdir(parents=True);policy.write_text('TITLES={"test":"Test"}\ndef normalize(*args):raise ValueError("broken policy")\n')
             report,catalog=s.consume(GH(),registry,tmp);self.assertEqual(report[0]['state'],'blocked');self.assertIn('0.9.0',(target/'config.yaml').read_text());self.assertEqual(catalog['components'],{})
-    def publish_gh(self,runs=()):
+    def publish_gh(self,runs=(),configs=('pkg/config.yaml',)):
         class GH:
             def head(self,repo):return 'main','b'*40
+            def content(self,repo,path,ref):
+                if path not in configs:raise s.Blocked('GitHub '+repo+'/contents HTTP 404')
+                return b'slug: test\n'
             def api(self,repo,path):
                 if path=='releases/latest':return {'tag_name':'v1.0.0'}
                 if path=='commits/v1.0.0':return {'sha':'a'*40}
@@ -273,6 +285,45 @@ class Tests(unittest.TestCase):
             self.assertEqual(report[0]['state'],'ready');self.assertEqual(outbox['components']['test']['source_sha'],'a'*40)
             report,outbox=s.publish(gh,{'providers':{'WOOWTECH/test':{'ref_policy':'main','components':[component]}}},'WOOWTECH/test')
             self.assertEqual(report[0]['state'],'unchanged')
+    def test_publish_reads_a_release_from_before_a_move_at_the_previous_path(self):
+        # releases/latest predates the move until the next Release: its context is previous_config's directory.
+        raw=archive();component={'id':'test','source_path':'addon','config_file':'config.yaml','previous_config':'pkg/config.yaml'}
+        with patch.object(s,'source_archive',return_value=raw),patch.object(s,'image_ready',return_value={'digest':'sha256:'+'a'*64}):
+            report,outbox=s.publish(self.publish_gh(),{'providers':{'WOOWTECH/test':{'ref_policy':'release','components':[component]}}},'WOOWTECH/test')
+        self.assertEqual(report[0]['state'],'ready',report)
+        self.assertEqual((outbox['components']['test']['source_path'],outbox['components']['test']['config_file']),('pkg','config.yaml'))
+    def test_consumer_accepts_a_notification_from_before_a_move(self):
+        # The outbox entry publish wrote from a Release before the move names previous_config's directory.
+        raw=archive();e=entry(raw)
+        class GH:
+            def outbox(self,repo):return {'components':{'test':e}}
+            def api(self,repo,path):return {'conclusion':'success','status':'completed','path':'.github/workflows/woow-addon-sync.yml','event':'push','head_repository':{'full_name':repo}}
+            def fingerprint(self,repo,sha,subdir,material=False):return 'fp' if subdir=='pkg' else 'other'
+        component={'id':'test','source_path':'addon','config_file':'config.yaml','store_path':'test','previous_config':'pkg/config.yaml'}
+        with tempfile.TemporaryDirectory() as tmp,patch.object(s,'enforce_source_policy') as policy,patch.object(s,'source_archive',return_value=raw),patch.object(s,'image_ready',return_value=e['images']['amd64']):
+            report,catalog=s.consume(GH(),{'providers':{'WOOWTECH/test':{'components':[component]}}},tmp)
+        self.assertEqual(report[0]['state'],'synced',report);self.assertEqual(policy.call_args.args[3]['source_path'],'pkg')
+    def test_consumer_writes_a_renamed_config_under_the_registry_name(self):
+        # A notification from before a move from pkg/config.yml to addon/config.yaml: the Store gets config.yaml, and the
+        # config.yml an earlier sync left there is gone, so no stale file waits for the next publish.
+        body=b'name: Test\nslug: test\nversion: 1.0.0\narch: [amd64]\nimage: ghcr.io/example/test\nboot: auto\n'
+        raw=archive({'repo/pkg/config.yml':body});files=s.context_files(raw,'pkg')
+        e=dict(entry(archive()),config_file='config.yml',config_sha256=s.digest(files['config.yml'][0]),archive_sha256=s.digest(raw))
+        class GH:
+            def outbox(self,repo):return {'components':{'test':e}}
+            def api(self,repo,path):return {'conclusion':'success','status':'completed','path':'.github/workflows/woow-addon-sync.yml','event':'push','head_repository':{'full_name':repo}}
+            def fingerprint(self,repo,sha,subdir,material=False):return 'fp'
+        component={'id':'test','source_path':'addon','config_file':'config.yaml','store_path':'test','previous_config':'pkg/config.yml'}
+        registry={'providers':{'WOOWTECH/test':{'components':[component]}}}
+        with tempfile.TemporaryDirectory() as tmp,patch.object(s,'enforce_source_policy'),patch.object(s,'source_archive',return_value=raw),patch.object(s,'image_ready',return_value=e['images']['amd64']):
+            store=pathlib.Path(tmp)/'test';store.mkdir();(store/'config.yml').write_text('slug: test\nversion: 0.9.0\n')
+            report,_=s.consume(GH(),registry,tmp)
+            self.assertEqual(report[0]['state'],'synced',report)
+            self.assertEqual(sorted(p.name for p in store.iterdir()),['config.yaml']);self.assertEqual((store/'config.yaml').read_bytes(),body)
+            # The Store's version is still read before a sync (the downgrade guard) under the registry's name.
+            (pathlib.Path(tmp)/'.addon-sync/catalog.json').unlink();(store/'config.yaml').write_text('slug: test\nversion: 2.0.0\n')
+            report,_=s.consume(GH(),registry,tmp)
+            self.assertEqual(report[0].get('reason'),'Store ahead of source; downgrade refused',report)
     def test_publisher_workflow_reads_current_store_registry(self):
         # Source repos call this workflow at @main, so a registry change reaches every publisher without touching a source repo.
         path=pathlib.Path(__file__).resolve().parent.parent/'.github/workflows/woow-addon-publish.yml'
@@ -307,7 +358,8 @@ class Tests(unittest.TestCase):
         self.assertEqual(job['environment'],'store-sync');self.assertNotIn('permissions',job)
         checkout=next(x for x in job['steps'] if x.get('uses','').startswith('actions/checkout@'))
         self.assertEqual(checkout['with']['ssh-key'],'${{ secrets.STORE_SYNC_DEPLOY_KEY }}')
-    def release_gh(self,configs,released=(),tags=None,compare='ahead'):
+    def release_gh(self,configs,released=(),tags=None,compare='ahead',listing=()):
+        # listing: the Releases page, [{'tag_name', 'prerelease'}].
         # tags: name -> (object type, commit); an annotated tag object points at the commit.
         tags=tags or {}
         class GH:
@@ -330,6 +382,10 @@ class Tests(unittest.TestCase):
                     kind,commit=tags[name]
                     return {'object':{'type':kind,'sha':commit if kind=='commit' else 't'*40}}
                 if path=='git/tags/'+'t'*40:return {'object':{'type':'commit','sha':next(c for k,c in tags.values() if k=='tag')}}
+                if path.startswith('releases?per_page=100'):
+                    # GitHub pages the Releases list: 100 per page, page=1 when not given, newest first.
+                    page=int(path.partition('&page=')[2] or 1)
+                    return [dict({'draft':False,'prerelease':False},**r) for r in listing[(page-1)*100:page*100]]
                 raise AssertionError(path)
         return GH()
     def release_component(self,cid,path,**extra):
@@ -355,6 +411,90 @@ class Tests(unittest.TestCase):
         self.assertEqual([(r['id'],r['state'],r.get('tag')) for r in report],
             [('one','already-released','one-v1.0.0'),('two','released','two-v2.1.0'),('beta','excluded',None),('off','excluded',None)])
         self.assertEqual([c['tag_name'] for c in gh.created],['two-v2.1.0'])
+    NOTES=('"1.1.0":\n  breaking:\n    - {change: port-removed, key: 8080/tcp, migration: Old news.}\n'
+        '"1.2.0":\n  breaking:\n    - {change: option-removed, key: ssl_port, migration: Use the 443/tcp port mapping instead.}\n'
+        '  accepted_vulnerabilities:\n    - {id: CVE-2026-1234, package: openssl, reason: Fixed upstream in 1.2.1.}\n')
+    def test_release_notes_carry_the_declarations_since_the_last_release(self):
+        gh=self.release_gh({'config.yaml':'name: Test\nslug: test\nversion: 1.2.0\n','upgrade-notes.yaml':self.NOTES},
+            listing=[{'tag_name':'v1.1.0'},{'tag_name':'v1.2.0-rc1','prerelease':True}])
+        s.release(gh,self.single(),'WOOWTECH/test','a'*40,apply=True)
+        (created,)=gh.created
+        self.assertEqual(created['body'],'## 破壞性變更與遷移方式\n\n- `option-removed` `ssl_port`（1.2.0）：Use the 443/tcp port mapping instead.\n\n'
+            '## 已接受的漏洞\n\n- CVE-2026-1234（openssl，1.2.0）：Fixed upstream in 1.2.1.\n')
+        self.assertTrue(created['generate_release_notes'])
+    def test_release_notes_of_a_multi_addon_repository_follow_each_addons_tags(self):
+        gh=self.release_gh({'two/config.yaml':'name: Two\nslug: two\nversion: 1.2.0\n','two/upgrade-notes.yaml':self.NOTES},
+            listing=[{'tag_name':'one-v1.1.5'},{'tag_name':'two-v1.0.0'}])
+        components=[self.release_component('one','one'),self.release_component('two','two')]
+        s.release(gh,{'providers':{'WOOWTECH/test':{'components':components}}},'WOOWTECH/test','a'*40,apply=True)
+        self.assertEqual([c['tag_name'] for c in gh.created],['two-v1.2.0'])
+        self.assertIn('Old news.',gh.created[0]['body']);self.assertIn('ssl_port',gh.created[0]['body'])
+    def test_release_notes_read_every_page_of_releases(self):
+        # Past 100 Releases the add-on's last stable Release can be on page 2; missing it would repeat old declarations.
+        noise=[{'tag_name':f'other-v0.{i}'} for i in range(130)]
+        gh=self.release_gh({'config.yaml':'name: Test\nslug: test\nversion: 1.2.0\n','upgrade-notes.yaml':self.NOTES},
+            listing=noise+[{'tag_name':'v1.1.0'}])
+        s.release(gh,self.single(),'WOOWTECH/test','a'*40,apply=True)
+        self.assertIn('ssl_port',gh.created[0]['body']);self.assertNotIn('Old news.',gh.created[0]['body'])
+    def test_release_without_declarations_has_only_generated_notes(self):
+        for name,files in [('no upgrade-notes.yaml',{}),('nothing for this version',{'upgrade-notes.yaml':'"1.1.0":\n  breaking: []\n'})]:
+            with self.subTest(name):
+                gh=self.release_gh({'config.yaml':'name: Test\nslug: test\nversion: 1.2.0\n',**files},listing=[{'tag_name':'v1.0.0'}])
+                s.release(gh,self.single(),'WOOWTECH/test','a'*40,apply=True)
+                self.assertNotIn('body',gh.created[0]);self.assertTrue(gh.created[0]['generate_release_notes'])
+    def test_a_version_not_newer_than_the_latest_release_is_blocked_with_or_without_notes(self):
+        # Every Release becomes the latest (make_latest) and publish ships releases/latest: 1.2.0 after 1.3.0 is a downgrade.
+        for name,files in [('no upgrade-notes.yaml',{}),('upgrade-notes.yaml',{'upgrade-notes.yaml':self.NOTES})]:
+            with self.subTest(name):
+                gh=self.release_gh({'config.yaml':'name: Test\nslug: test\nversion: 1.2.0\n',**files},listing=[{'tag_name':'v1.3.0'},{'tag_name':'v1.1.0'}])
+                report=s.release(gh,self.single(),'WOOWTECH/test','a'*40,apply=True)
+                self.assertEqual(report[0]['state'],'blocked',report);self.assertIn('not newer than 1.3.0',report[0]['reason']);self.assertEqual(gh.created,[])
+    def test_release_reads_the_version_as_supervisor_does(self):
+        # The one reader (config_version): Supervisor reads an unquoted 1.10 as 1.1, so tagging either v1.1 or v1.10 is a guess.
+        gh=self.release_gh({'config.yaml':'name: Test\nslug: test\nversion: 1.10\n'},listing=[{'tag_name':'v1.2'}])
+        report=s.release(gh,self.single(),'WOOWTECH/test','a'*40,apply=True)
+        self.assertEqual(report[0]['state'],'blocked',report);self.assertIn('quote it: version: "1.10"',report[0]['reason']);self.assertEqual(gh.created,[])
+        gh=self.release_gh({'config.yaml':'name: Test\nslug: test\nversion: "1.10"\n'},listing=[{'tag_name':'v1.2'}])
+        self.assertEqual(s.release(gh,self.single(),'WOOWTECH/test','a'*40,apply=True)[0]['tag'],'v1.10')
+        gh=self.release_gh({'config.yaml':'name: Test\nslug: test\n'})
+        self.assertEqual(s.release(gh,self.single(),'WOOWTECH/test','a'*40,apply=True)[0]['reason'],'config.yaml has no version')
+    def test_a_tag_that_cannot_be_ordered_does_not_block_the_release(self):
+        gh=self.release_gh({'config.yaml':'name: Test\nslug: test\nversion: 1.2.0\n','upgrade-notes.yaml':self.NOTES},
+            listing=[{'tag_name':'v1.2.0-foo'},{'tag_name':'nightly'},{'tag_name':'v9.0-test'},{'tag_name':'v1.1.0'}])
+        report=s.release(gh,self.single(),'WOOWTECH/test','a'*40,apply=True)
+        self.assertEqual(report[0]['state'],'released',report)
+        self.assertIn('ssl_port',gh.created[0]['body']);self.assertNotIn('Old news.',gh.created[0]['body'])
+    def test_release_reads_a_config_at_its_previous_path(self):
+        # The Store PR comes first: until the move merges, default-branch commits have the config at previous_config,
+        # with upgrade-notes.yaml beside it; after the move the registry path wins.
+        registry={'providers':{'WOOWTECH/test':{'components':[self.release_component('test','addon',previous_config='old/config.yaml')]}}}
+        for name,files,notes in [('before the move',{'old/config.yaml':'name: Test\nslug: test\nversion: 1.2.0\n','old/upgrade-notes.yaml':self.NOTES},True),
+                ('after the move',{'addon/config.yaml':'name: Test\nslug: test\nversion: 1.2.0\n','old/config.yaml':'name: Test\nslug: test\nversion: 0.1.0\n'},False)]:
+            with self.subTest(name):
+                gh=self.release_gh(files,listing=[{'tag_name':'v1.1.0'}])
+                report=s.release(gh,registry,'WOOWTECH/test','a'*40,apply=True)
+                self.assertEqual(report[0],{'id':'test','state':'released','tag':'v1.2.0','version':'1.2.0'})
+                self.assertEqual('ssl_port' in gh.created[0].get('body',''),notes)
+    def test_locate_skips_a_missing_or_empty_config_like_config_at(self):
+        # gh_raw.sh config_at falls back when the fetched file is empty ([ -s ]) as well as on 404; locate does the same,
+        # and when no location has the config its error names every path.
+        comp={'id':'t','source_path':'addon','config_file':'config.yaml','previous_config':'old/config.yaml'}
+        class GH:
+            def __init__(self,files):self.files=files
+            def content(self,repo,path,ref):
+                if path not in self.files:raise s.Blocked('GitHub '+repo+'/contents HTTP 404')
+                return self.files[path]
+        for files in ({'addon/config.yaml':b'','old/config.yaml':b'v: 1'},{'old/config.yaml':b'v: 1'}):
+            with self.subTest(files):
+                c,raw=s.locate(GH(files),'WOOWTECH/t',comp,'a'*40);self.assertEqual((c['source_path'],raw),('old',b'v: 1'))
+        for files in ({},{'addon/config.yaml':b'','old/config.yaml':b''},{'addon/config.yaml':b''}):
+            with self.subTest(files),self.assertRaisesRegex(s.Blocked,'^WOOWTECH/t has no addon/config.yaml or old/config.yaml at '+'a'*40):
+                s.locate(GH(files),'WOOWTECH/t',comp,'a'*40)
+        with self.assertRaisesRegex(s.Blocked,'^WOOWTECH/t has no addon/config.yaml at '):s.locate(GH({}),'WOOWTECH/t',dict(comp,previous_config=None),'a'*40)
+    def test_malformed_upgrade_notes_block_the_release(self):
+        gh=self.release_gh({'config.yaml':'name: Test\nslug: test\nversion: 1.2.0\n','upgrade-notes.yaml':'1.2: {}\n'})
+        report=s.release(gh,self.single(),'WOOWTECH/test','a'*40,apply=True)
+        self.assertEqual(report[0]['state'],'blocked');self.assertIn('upgrade-notes.yaml',report[0]['reason']);self.assertEqual(gh.created,[])
     def test_release_dry_run_creates_nothing(self):
         gh=self.release_gh({'config.yaml':'name: Test\nslug: test\nversion: 1.2.0\n'})
         report=s.release(gh,self.single(),'WOOWTECH/test','a'*40)
@@ -400,8 +540,22 @@ class Tests(unittest.TestCase):
                 if 'exempt' in rules:
                     self.assertEqual(set(rules),{'exempt'});self.assertTrue(rules['exempt'].strip())
                 else:
-                    self.assertEqual(set(rules),{'required_checks'})
+                    self.assertLessEqual({'required_checks'},set(rules));self.assertLessEqual(set(rules),{'required_checks','upgrade_comparison_pending'})
                     self.assertTrue(rules['required_checks']);self.assertTrue(all(isinstance(c,str) and c for c in rules['required_checks']))
                     self.assertTrue(provider['required_workflows'])
+
+    def test_every_gated_provider_requires_the_upgrade_comparison_or_names_the_ticket_wiring_it(self):
+        # Pipeline #89: each gated repository's ruleset requires the upgrade comparison; branch_rules.py fails when one drops it.
+        # Its caller job lives in a workflow already in required_workflows (it passes at once on push), so addon_sync.ci_gate
+        # keeps seeing that file's non-PR run and required_workflows needs no new entry.
+        import branch_rules
+        registry=json.loads((pathlib.Path(__file__).resolve().parent/'registry.json').read_text(encoding='utf-8'))
+        for repo,provider in registry['providers'].items():
+            rules=provider['branch_rules']
+            if 'exempt' in rules:continue
+            with self.subTest(repo):
+                listed=branch_rules.UPGRADE_CHECK in rules['required_checks'];pending=rules.get('upgrade_comparison_pending')
+                if pending is None:self.assertTrue(listed,'lists neither the check nor upgrade_comparison_pending')
+                else:self.assertFalse(listed,'lists the check and upgrade_comparison_pending');self.assertRegex(pending,r'#\d+')
 
 if __name__=='__main__':unittest.main()

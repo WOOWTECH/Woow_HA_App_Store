@@ -116,18 +116,73 @@ Hermes Paseo 的最新[安裝與首次 project 建立教學](https://github.com/
   - 一律走 PR；禁止刪除分支與強制推送（non-fast-forward）。
   - 必要檢查是該 repo 在 PR 上會跑、而且會通過的 CI job；PR 的 CI 不設 path filter，否則必要檢查會一直等不到結果。
   - 核准數 0、不用 CODEOWNERS、`bypass_actors` 為空，誰都不能繞過。
-  - 每個 repo 的 `AGENTS.md` 寫了給 agent 與人的三條規則：只能走 PR、升版 PR 必須通過必要檢查、破壞性變更要寫進 `upgrade-notes.yaml`。
+  - 每個 repo 的 `AGENTS.md` 寫了給 agent 與人的三條規則：只能走 PR、升版 PR 必須通過必要檢查（包括 `Upgrade comparison / compare`）、破壞性變更要照下面的格式寫進 `upgrade-notes.yaml`。
 - **發 Release 的方式可以不同，但都保證**：tag 不重複、每個架構的映像都已推送、Release 只發在合併後的 commit 上。`Woow_ha_odoo` 用自己的 `release.yml`，其他 repo 都用共用的 [`woow-addon-release.yml`](.github/workflows/woow-addon-release.yml)。推 tag 不會發 Release（推 tag 不經過 PR）。（OpenDesign 從推 tag 改成合併後發、Hermes 與 Nextcloud 改用共用 workflow 的 PR 在 2026-10-21 等負責人審查，合併前它們仍用舊方式。）
-- **每個來源在 registry 的 `branch_rules`**：受管的 repo 列出 `required_checks`（ruleset 裡必須有的檢查名稱），而且 `required_workflows` 不能是空的；不受管的寫 `exempt` 與原因：
+- **每個來源在 registry 的 `branch_rules`**：受管的 repo 列出 `required_checks`（ruleset 裡必須有的檢查名稱），而且 `required_workflows` 不能是空的。`required_checks` 要包含 `Upgrade comparison / compare`；還沒接上升版比對的 repo 改寫 `upgrade_comparison_pending`，內容是負責接上的 ticket（兩者只能有一個）。不受管的寫 `exempt` 與原因：
   - mirror（Dnsmasq、Frigate、Jellyfin、Matter Hub、Music Assistant）：由 `mirror-sync` 推送預設分支，不需要放行；發 Release 前的檢查見 pipeline #91。
   - `Woow_ha_ai_mcp`：上游 fork，上游帶來的 workflow 會直接推 `master`。
   - `Woow_ha_vscode_add_on`：已退役。
   
-  `test_addon_sync.py` 檢查每個來源都屬於其中一種。
-- **每日監測**：[`branch-rules.yml`](.github/workflows/branch-rules.yml)（`.addon-sync/branch_rules.py`）每天讀 registry，逐一檢查受管 repo 的預設分支規則：四條規則都在、`required_checks` 都還是必要檢查、核准數 0、不要求 CODEOWNERS 審查、預設分支沒換。不符合就讓 run 失敗，訊息列出哪個 repo、哪一條，GitHub 會寄信。`WOOWTECH` 是共用帳號，拿到它的人（包括 agent）都能改規則；這個風險已經接受，靠監測讓改動一定會被發現。
+  `test_addon_sync.py` 檢查每個來源都屬於其中一種，也檢查每個受管 repo 不是列了 `Upgrade comparison / compare`，就是寫了 `upgrade_comparison_pending`。
+
+  `required_workflows` 的意思和必要檢查不同：發布與同步前，這些 workflow 檔要在發布的 commit 上有一次成功、而且不是 PR 觸發的 run（`addon_sync.ci_gate`）。所以 `Upgrade comparison` 的呼叫端 job 要放在已經列在 `required_workflows`、push 到預設分支也會跑的 workflow 裡（odoo 的 `ci.yml`、omnigent 的 `publish-omnigent-addon-images.yml`），push 時它直接通過；不要另開只在 PR 觸發的 workflow 檔再列進 `required_workflows`，否則每次發布都會被擋。
+- **每日監測**：[`branch-rules.yml`](.github/workflows/branch-rules.yml)（`.addon-sync/branch_rules.py`）每天讀 registry，逐一檢查受管 repo 的預設分支規則：四條規則都在、`required_checks` 都還是必要檢查（沒寫 `upgrade_comparison_pending` 的 repo 一定要有 `Upgrade comparison / compare`，即使 registry 漏列）、核准數 0、不要求 CODEOWNERS 審查、預設分支沒換。不符合就讓 run 失敗，訊息列出哪個 repo、哪一條，GitHub 會寄信。`WOOWTECH` 是共用帳號，拿到它的人（包括 agent）都能改規則；這個風險已經接受，靠監測讓改動一定會被發現。
   - `bypass_actors` 只有具 Administration 讀取權的 token 看得到。它放在 `branch-rules` environment 的 secret `BRANCH_RULES_TOKEN`（fine-grained PAT，resource owner `WOOWTECH`，選所有受管的來源 repo，權限 Administration: read-only），environment 只允許 `main`。沒設時 run 不會失敗，但會警告「沒檢查 bypass」。
   - 管線工作區的 issue monitor 也顯示最近一次的結果。
-- 新增受管來源時：先在來源 repo 開 PR 讓 CI 跑一次、記下 check 名稱，套用 ruleset（照 `Woow_ha_odoo` 的形式），再在 registry 填 `required_checks`。
+- 新增受管來源時：先在來源 repo 開 PR 讓 CI 跑一次、記下 check 名稱，套用 ruleset（照 `Woow_ha_odoo` 的形式），再在 registry 填 `required_checks`。接上升版比對也一樣：呼叫端合併後，先在 ruleset 加上 `Upgrade comparison / compare`，再改 registry（拿掉 `upgrade_comparison_pending`、在 `required_checks` 加上這個名稱）；順序反過來，Store PR 的規則監測會失敗。
+
+### 升版比對與 `upgrade-notes.yaml`
+
+（管線工作區 #89，ADR-0005。）
+
+- **每個受管來源 repo 的每個 PR 都跑必要檢查 `Upgrade comparison / compare`**，由共用的 [`woow-addon-upgrade-check.yml`](.github/workflows/woow-addon-upgrade-check.yml) 提供（呼叫端 job 名稱 `Upgrade comparison`，GitHub 把檢查名稱寫成「呼叫端 job / 內部 job」）。呼叫方式寫在那個檔案開頭；不設 path filter。
+  - PR 沒有修改任何 addon 的版本：十幾秒內通過（仍要取出兩個 repo、安裝兩個釘選的小套件 PyYAML 與 packaging（約 5 秒），並讀 PR base 上的 `config.yaml`）。PR 刪除或搬移了 registry 列出的 `config.yaml`（PR base 上有、PR 裡沒有）時檢查失敗：放回原處，或照下面「搬移 `config.yaml`」的步驟做。PR 和 PR base 都沒有 registry 列出的路徑時也失敗（registry 路徑寫錯是工具錯誤，不放行）。只比對會發 Release 的 addon（和 `addon_sync.release` 同一個條件：沒停用、`channel` 是 stable），刪除已停用 addon 的 `config.yaml` 不會讓檢查失敗。
+  - **搬移 `config.yaml`**（換目錄或檔名；`config.yaml` 放在 addon 目錄的最上層）：
+    1. 先合併 Store PR：把該 addon 的 registry 設定改成新位置（`source_path`、`config_file`），並加上 `previous_config: <舊的 config.yaml 在 repo 裡的路徑>`。
+    2. 之後來源 repo 的 PR 不論先後都能合併：任何一邊（PR、PR base、比對對象的 Release、`addon_sync.release` 發 Release 的 commit、發布用的 `releases/latest`、已送到 Store 的通知）在新路徑找不到 `config.yaml` 時，都改讀 `previous_config` 和它旁邊的 `upgrade-notes.yaml`（`config.yaml` 是空檔也一樣）。Store 裡的 config 一律用 registry 的新檔名，不會留下舊檔名的檔案。只搬移沒升版的 PR 算「版本沒變」。
+    3. 最新的正式 Release 已經是新路徑、而且已發布到 Store 後（`ref_policy: main` 是搬移 PR 合併、發布之後），再開 Store PR 拿掉 `previous_config`。在那之前開的、還是舊路徑的 PR，要先 rebase 到搬移之後。
+    - 搬移 PR 比 Store PR 先開時，它的檢查會失敗並指向這裡；Store PR 合併後重跑即可。
+  - **新增 addon**：先在來源 repo 合併加入新 addon `config.yaml` 的 PR（registry 還沒有這個 addon，檢查不會比對它），再開 Store PR 在 registry 加上這個 component。順序反過來時，registry 列出的路徑在 PR 和 PR base 都找不到，該 repo 每個 PR 的檢查都會失敗，`addon_sync.release` 和發布也會擋下這個 addon。
+  - 有修改：把每個改了版本的 addon 和**比對對象**相比。比對對象是該 addon 目前最新的正式 Release（tag 規則同上：`v<版本>` 或 `<slug>-v<版本>`；哪些算正式 Release、tag 怎麼對應、怎麼排序，和 Release 說明共用 `addon_sync.py` 的同一套規則，由 `upgrade_check.py comparison-target` 判斷），`ref_policy: main` 是 PR base 上的版本；只有整個版本號都讀得懂的 tag（PEP 440，或 `-v<N>`、`-<N>` 重建後綴）才能當比對對象，`nightly`、`v9.0-test` 這類零散 tag 直接略過。**PR 的版本必須比比對對象新**，否則檢查失敗，訊息是「version … is not newer than …; raise the version」；同一個版本換個寫法（例如比對對象 `1.3`、PR 寫 `1.3.0`）也算沒有比較新，訊息會加上「(the same version, written differently)」。PR 的版本無法和比對對象排序時（例如 `1.0-test` 對 `1.0`）也失敗，訊息要你改用整個都讀得懂的版本號（PEP 440，或 `-v<N>` 重建後綴）。比對對象是 Release 時，它的 tag 和它的 `config.yaml` 都寫了版本，兩者用同一套排序比較（`v1.3` 和 `1.3.0` 算一致）；不一致或無法排序時檢查失敗，訊息是「the comparison target … is version X by its tag but Y by <config 路徑>; correct that Release…」，請修正那個 Release 讓 tag 和 config 一致，再重跑檢查。比對對象的 `config.yaml` 沒有 `version` 時，訊息是「the comparison target … has no version in <config 路徑>; correct that Release…」（`ref_policy: main` 則要你在預設分支的 config 補上版本），問題在比對對象，不是 PR 的版本。`config.yaml` 的版本一律照 Home Assistant Supervisor 的讀法（先讀 YAML 再轉成文字，`upgrade_check.py version`／`addon_sync.config_version`，PR 檢查各步驟和 `addon_sync.release` 共用）：沒加引號的 `version: 1.10` 是數字，讀成 `1.1`，使用者跑的就是 1.1。PR 的版本（以及要發 Release 的版本）讀出來必須和寫的字一樣，否則檢查失敗，訊息是「version 1.10 is read by YAML, and by Home Assistant Supervisor, as 1.1; quote it: version: "1.10"」，請把版本加上引號；`config.yaml` 沒有 `version` 也會失敗。Release 只從預設分支發，每個都標成 latest、發布也只送 `releases/latest`，所以在 1.3.0 之後發 1.2.5 是讓 1.3.0 的使用者降版，不是修舊線。`addon_sync.release` 也照同一條規則，不論有沒有 `upgrade-notes.yaml`，版本不比最新正式 Release 新就不發 Release。所以預設分支上的版本如果已經不比最新正式 Release 新、又沒有同版本的 Release（例如有人手動發了更高版本的 Release，或版本被改回較低的值），之後每次 push 到預設分支的 release run（`woow-addon-release.yml`；`Woow_ha_odoo` 是它自己的 `release.yml`）都會失敗，訊息是「version … is not newer than …」。修法：開一個升版 PR，把版本調到比最新正式 Release 新，合併後就會發 Release、恢復正常；不要刪掉較高版本的 Release 來繞過，那是使用者正在用的版本。PR 檢查和 Release 說明都只看（比對對象, 新版本] 的宣告。第一次發布的 addon 沒有比對對象，不做比對並在報告註明；`upgrade-notes.yaml` 有空的 `migration` 或 `reason` 時仍會擋下。
+  - PR 的版本號、比對對象的 tag、比對對象 `config.yaml` 的版本號與映像含換行、tab 等控制字元時檢查直接失敗；其他來自 PR 或 Release 的文字印到 log 前都先跳脫，GitHub 不會把它當成工作流程指令。
+  - 結果只寫在 job summary，不在 PR 上留言。檢查工具出錯（拉不到舊映像、漏洞資料庫下載失敗或超過 120 小時）時檢查失敗，不放行，重跑即可。
+- **第 1 類 設定相容性**：比較新舊 `config.yaml`。下表的破壞性變更都要在 `upgrade-notes.yaml` 宣告，否則擋下。`key` 用 schema 的路徑，例如 `database.port`。
+
+  | `change` | 意思 | `key` |
+  |---|---|---|
+  | `option-removed` | 拿掉一個舊版 `options` 有預設值的 schema key | schema 路徑 |
+  | `schema-removed` | 拿掉一個舊版 `options` 沒有預設值的 schema key | schema 路徑 |
+  | `schema-retyped` | 型別或結構改變（`match()` 的 pattern 改變也算） | schema 路徑 |
+  | `made-required` | 選填（`type?`）改成必填 | schema 路徑 |
+  | `range-narrowed` | `int`／`float`／`str` 的範圍變窄或新加上限制 | schema 路徑 |
+  | `enum-value-removed` | `list(a\|b)` 少了某個值 | schema 路徑 |
+  | `required-added` | 新增必填 key，而 `options` 沒有預設值（`null` 不算預設值） | schema 路徑 |
+  | `arch-removed` | 拿掉一個 arch | arch，例如 `aarch64` |
+  | `port-removed` | 拿掉一個 port，或改了容器端 port、通訊協定 | port，例如 `8069/tcp` |
+  | `image-changed` | `image` 改變、新增或拿掉 | `image` |
+
+  只寫進報告、不擋：預設值改變（`default-changed`）、只改主機端預設 port（`host-port-changed`）。不擋也不報告：範圍變寬、列舉加值、必填改選填、新增選填 key、新增有預設值的 key。
+- **第 4 類 漏洞比對**（只限有預先建置映像的 addon）：新映像由 repo 自己的 amd64 PR 建置，用 Store 的 [`addon-sbom`](.github/actions/addon-sbom/action.yml) 步驟交出 SBOM；舊映像從 GHCR 拉比對對象的 amd64 映像。兩邊用同一份 Grype DB 掃描（Grype、Syft 依 checksum 釘選）；任一邊的掃描結果沒寫出 DB（`descriptor.db.status` 的 `built` 與 `from`）或兩邊 DB 不同，檢查直接失敗。以（漏洞 ID, 套件）比對，**新映像才有、嚴重度 Critical 或 High、Grype `fix.state` 是 `fixed`** 的是「新增可修補漏洞」，沒宣告接受就擋下；同一組（漏洞 ID, 套件）Grype 列出多筆時，任一筆符合就算，報告的嚴重度與修補版本取自符合的那筆。舊映像就有的、沒有修補版本的、嚴重度不到 High 的只算進報告的數量。在裝置上建置的 addon 不做第 4 類，報告註明交由 #90。呼叫端傳 `skip_vulnerability_scan: "<原因>"`（任何非空的文字都算，加引號，否則 ` #` 之後會被 YAML 當成註解）時，這次呼叫的所有 addon 都不做第 4 類（例如 knxd 出貨的是第三方映像）；第 1 類照常比對。只有 Store registry 裡該 provider 有 `upgrade_comparison.skip_vulnerability_scan`（核准的原因與票號，目前只有 knxd #122、mcp_addons #123，第 4 類移到 #90）才能這樣傳，報告寫出的是 registry 裡核准的原因，不是呼叫端傳的文字；其他呼叫端傳了，檢查直接失敗。呼叫端不對建置 job 設 `needs:`：有版本變更時才等這次 run attempt 的 SBOM artifact，重跑請用 Re-run all jobs。
+- **`upgrade-notes.yaml`** 放在每個 addon 的 `config.yaml` 旁邊，只有需要宣告時才建立：
+
+  ```yaml
+  "1.3.0":                     # 新版本號，加引號
+    breaking:
+      - change: option-removed # 和報告完全相同的 change 與 key
+        key: ssl_port
+        migration: 改用 ports 設定的 443/tcp。
+    accepted_vulnerabilities:
+      - id: CVE-2026-1234      # 和報告完全相同的 ID 與套件
+        package: openssl
+        reason: 上游 base image 還沒更新，預計 1.3.1 換掉。
+  ```
+
+  - 只讀版本號在（比對對象, 新版本] 之間的段落；更早的段落不算數，不會蓋掉這次新出現的變更。
+  - 版本先照 PEP 440 排序（`2026.9.1-1` 是 2026.9.1 之後的修訂）；不符合時用點分數字加上 `-v<N>`／`-<N>` 重建序號（`2.12.4-v2` < `2.12.4-v3`，沒有序號的排最前）。無法排序的版本號會讓檢查失敗。
+  - 每項破壞性變更要有 `change`、`key` 完全相同的一筆；接受的漏洞要有 `id`、`package` 完全相同的一筆。`migration`、`reason` 不能是空的；Release 說明會刊出它們，所以不論有沒有比對對象、有沒有做第 4 類都會檢查。報告會列出可以直接貼上的 `change`／`key`。
+  - 寫了宣告、但檢查沒找到對應的變更：只寫進報告，不擋。
+- **Release 說明**：發 Release 時，比對對象（一律是最新的正式 Release，新版本必須比它新；PR base 只用在 `ref_policy: main` 的 PR 檢查）之後各版的宣告自動整理成「破壞性變更與遷移方式」「已接受的漏洞」兩段，放在 GitHub 自動產生的說明前面；共用的 `woow-addon-release.yml` 和 `Woow_ha_odoo` 的 `release.yml` 都這樣做。沒有宣告就不加；檔案格式錯誤時不發 Release。
+- 判定規則與 `change` 名稱的權威說明在 [`.addon-sync/upgrade_check.py`](.addon-sync/upgrade_check.py) 開頭，`upgrade-notes.yaml` 的格式、版本排序與 Release 說明在 [`.addon-sync/addon_sync.py`](.addon-sync/addon_sync.py)（`REBUILD` 上方的說明）；兩者不一致時以程式為準，並修正本段。
 
 ### 同步流程
 

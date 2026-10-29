@@ -1,0 +1,60 @@
+# SBOM of a PR's amd64 add-on image for the upgrade comparison (pipeline #89).
+#
+# Add one step after the repository's own amd64 build, which must leave the
+# image in the local docker daemon (load) or write a docker archive:
+#
+#   - uses: WOOWTECH/Woow_HA_App_Store/.github/actions/addon-sbom@main
+#     if: github.event_name == 'pull_request'
+#     with:
+#       component: odoo18ce          # the Store registry component id
+#       image: woow-ha-odoo-amd64:ci # or archive: path/to/image.tar
+#
+# It runs the pinned Syft (scanner-pins.json, checksum verified) and uploads
+# artifact upgrade-comparison-sbom-<component>-attempt-<run attempt> holding
+# <component>.syft.json. The caller job of woow-addon-upgrade-check.yml passes
+# sbom_artifact: upgrade-comparison-sbom-* and does NOT `needs:` this job: the
+# comparison waits for this attempt's artifact only after it finds a version
+# change, so a PR that changes no version passes without waiting on the build.
+name: Add-on SBOM for the upgrade comparison
+description: Generate the SBOM of a locally built amd64 add-on image with pinned Syft and upload it as an artifact.
+inputs:
+  component:
+    description: Store registry component id of the add-on (names the file and the artifact).
+    required: true
+  image:
+    description: Image reference in the local docker daemon.
+    default: ''
+  archive:
+    description: Path of a docker archive (docker save output); use instead of image.
+    default: ''
+runs:
+  using: composite
+  steps:
+  - name: Generate the SBOM with pinned Syft
+    shell: bash
+    env:
+      COMPONENT: ${{ inputs.component }}
+      IMAGE: ${{ inputs.image }}
+      ARCHIVE: ${{ inputs.archive }}
+      ACTION_DIR: ${{ github.action_path }}
+      SYFT_CHECK_FOR_APP_UPDATE: 'false'
+    run: |
+      set -euo pipefail
+      if [ -n "${IMAGE}" ] && [ -z "${ARCHIVE}" ]; then source="docker:${IMAGE}"
+      elif [ -n "${ARCHIVE}" ] && [ -z "${IMAGE}" ]; then source="docker-archive:${ARCHIVE}"
+      else echo "::error title=Add-on SBOM::give exactly one of image or archive"; exit 1; fi
+      case "${COMPONENT}" in ''|*/*|*..*) echo "::error title=Add-on SBOM::invalid component '${COMPONENT}'"; exit 1;; esac
+      bash "${ACTION_DIR}/install-scanners.sh" "${RUNNER_TEMP}/addon-sbom-tools" syft
+      mkdir -p "${RUNNER_TEMP}/addon-sbom"
+      if ! "${RUNNER_TEMP}/addon-sbom-tools/syft" scan "${source}" --config "${ACTION_DIR}/syft.yaml" \
+          -o "syft-json=${RUNNER_TEMP}/addon-sbom/${COMPONENT}.syft.json"; then
+        echo "::error title=Add-on SBOM::Syft could not read ${source}"; exit 1
+      fi
+  - name: Upload the SBOM
+    uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+    with:
+      # The run attempt in the name: a re-run's comparison must not pick up an earlier attempt's SBOM.
+      name: upgrade-comparison-sbom-${{ inputs.component }}-attempt-${{ github.run_attempt }}
+      path: ${{ runner.temp }}/addon-sbom/${{ inputs.component }}.syft.json
+      if-no-files-found: error
+      retention-days: 7

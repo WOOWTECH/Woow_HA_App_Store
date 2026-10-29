@@ -1,0 +1,367 @@
+# Upgrade comparison for a WOOW source repository (pipeline #89, ADR-0005).
+#
+# A merged version-bump PR is a release, so every PR compares each add-on whose
+# version it changes with the version users run now: the latest stable Release
+# (tag v<ver>, or <slug>-v<ver> when a repository versions add-ons
+# independently), or the PR base for ref_policy: main repositories. The PR's
+# version must be newer: every Release becomes the latest, so a lower one
+# would be a downgrade. Breaking
+# configuration changes must be declared in <addon>/upgrade-notes.yaml
+# (change names: the docstring of .addon-sync/upgrade_check.py; file format: .addon-sync/addon_sync.py).
+# A PR that changes no version passes in seconds; any tool error fails.
+#
+# Category 4 (add-ons with a prebuilt image): the caller's amd64 build hands
+# over its SBOM through the Store action .github/actions/addon-sbom; this
+# workflow pulls the comparison target's amd64 image from GHCR, makes its
+# SBOM with the same pinned Syft, updates the Grype DB once (it fails when the
+# DB is more than DB_MAX_AGE_HOURS old) and scans both SBOMs with that DB.
+# The caller does not make this job wait on the build: only after it finds a
+# version change does it wait (at most sbom_wait_minutes) for the SBOM artifact
+# of the same run attempt, through the Actions API (a re-run judges its own
+# build, so re-run all jobs). An add-on with a prebuilt image whose SBOM
+# never arrives fails the check; it is never skipped.
+# Add-ons built on the device are reported as compared in #90. A caller whose
+# prebuilt image is not what its CI builds (knxd ships a third-party image),
+# or whose category 4 runs elsewhere, passes skip_vulnerability_scan (any
+# non-empty text, e.g. the reason): category 4 is then skipped for every add-on
+# in the call; the configuration comparison still runs. Only a provider whose
+# Store registry entry has upgrade_comparison.skip_vulnerability_scan (the
+# approved reason and ticket) may pass it, and the report gives that approved
+# reason, not the caller's text; any other caller that passes it fails.
+#
+# Caller (in a workflow that also runs on push to the default branch, so
+# addon_sync's ci_gate keeps seeing a successful non-PR run; no path filter,
+# no needs: on the build):
+#
+#   upgrade-comparison:
+#     name: Upgrade comparison
+#     permissions:
+#       contents: read
+#       actions: read                             # find and download this run's SBOM artifact
+#     uses: WOOWTECH/Woow_HA_App_Store/.github/workflows/woow-addon-upgrade-check.yml@main
+#     with:
+#       sbom_artifact: upgrade-comparison-sbom-*  # omit only when no add-on has a prebuilt image
+#       # skip_vulnerability_scan: "<reason>"      # instead of sbom_artifact, only when category 4 does not apply (quote it)
+#
+# GitHub names the check "<caller job> / <job>": "Upgrade comparison / compare".
+# On other events the job passes at once: the PR was already compared.
+name: Upgrade comparison
+'on':
+  workflow_call:
+    inputs:
+      tooling_ref:
+        description: Store ref whose .addon-sync tooling runs; keep it equal to the ref in the uses line.
+        type: string
+        default: main
+      sbom_artifact:
+        description: Name or glob of the artifacts the addon-sbom action uploads in the same run (upgrade-comparison-sbom-<component>-attempt-<run attempt>; pass upgrade-comparison-sbom-*); required when an add-on has a prebuilt image.
+        type: string
+        default: ''
+      skip_vulnerability_scan:
+        description: Non-empty (e.g. the reason) skips the vulnerability comparison (category 4) for every add-on in this call; only for providers the Store registry approves, and the report gives the registry's approved reason. Empty scans as usual.
+        type: string
+        default: ''
+      sbom_wait_minutes:
+        description: How long a version-change PR waits for the SBOM artifacts of the same run before it fails.
+        type: number
+        default: 40
+permissions:
+  contents: read
+  actions: read
+jobs:
+  compare:
+    name: compare
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      # Grype refuses an older DB; the step after `grype db update` checks it too, with a clear reason.
+      DB_MAX_AGE_HOURS: '120'
+    steps:
+    - name: Not a pull request
+      if: github.event_name != 'pull_request'
+      env:
+        EVENT: ${{ github.event_name }}
+      run: echo "Upgrade comparison runs on pull requests; nothing to compare on ${EVENT} (the PR was already compared)." >> "$GITHUB_STEP_SUMMARY"
+    - name: Check out the pull request
+      if: github.event_name == 'pull_request'
+      uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      with:
+        path: source
+        persist-credentials: false
+    - name: Check out Store tooling
+      if: github.event_name == 'pull_request'
+      uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      with:
+        repository: WOOWTECH/Woow_HA_App_Store
+        ref: ${{ inputs.tooling_ref }}
+        path: tooling
+        sparse-checkout: |
+          .addon-sync
+          .github/workflows
+          .github/actions/addon-sbom
+        persist-credentials: false
+    - name: Install dependencies
+      if: github.event_name == 'pull_request'
+      run: python3 -m pip install -r tooling/.addon-sync/requirements.txt
+    - name: Find add-ons whose version changed
+      id: detect
+      if: github.event_name == 'pull_request'
+      env:
+        GH_TOKEN: ${{ github.token }}
+        REPO: ${{ github.repository }}
+        BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        SKIP_VULNERABILITY_SCAN: ${{ inputs.skip_vulnerability_scan }}
+      run: |
+        set -euo pipefail
+        source tooling/.addon-sync/gh_raw.sh
+        source tooling/.addon-sync/log.sh
+        source tooling/.addon-sync/fields.sh
+        # The registry entry and each add-on's file paths, by addon_sync's rules; the later steps read provider.json too.
+        provider="$(python3 tooling/.addon-sync/upgrade_check.py components --registry tooling/.addon-sync/registry.json --repo "${REPO}")" \
+          || fail_output "${provider}"
+        printf '%s\n' "${provider}" > provider.json
+        # Skipping category 4 is approved per provider in the Store registry, with the reason; checked on every PR.
+        if [ -n "${SKIP_VULNERABILITY_SCAN}" ] && [ -z "$(jq -r '.skip_vulnerability_scan' provider.json)" ]; then
+          fail "${REPO} passes skip_vulnerability_scan, but skipping the vulnerability comparison is not approved for it: the Store registry entry needs upgrade_comparison.skip_vulnerability_scan with the reason. Remove the input or get the skip approved in the registry."
+          exit 1
+        fi
+        : > changed.jsonl; status=0
+        echo "## Upgrade comparison" >> "$GITHUB_STEP_SUMMARY"
+        # Same detection as Woow_ha_odoo's CI: the version in the PR against the version on the PR base.
+        while IFS= read -r component; do
+          fields "${component}" id=id path=config notes=notes previous=previous_config previous_notes=previous_notes
+          # During a config move (previous_config in the registry) either side may still have the config at the old path.
+          base="$RUNNER_TEMP/${id}.base.yaml"; new="$RUNNER_TEMP/${id}.new.yaml"
+          config_at "${BASE_SHA}" "${path}" "${previous}" "${base}" > /dev/null
+          found="$(config_at "" "${path}" "${previous}" "${new}")"
+          if [ -z "${found}" ]; then
+            # A config the PR deletes or moves, or a registry path that is wrong, must not pass as "nothing to compare".
+            if [ -s "${base}" ]; then
+              fail "${id}: this PR deletes or moves ${path}, the config the Store registry lists for this add-on; restore it, or to move it, first merge a Store PR that lists the new path with previous_config: ${path}, then re-run this check (moving a config, Store README)"
+            else
+              fail "${id}: the Store registry lists ${path}${previous:+ (or previous_config ${previous})} for this add-on, but neither this PR nor its base has it; correct the registry entry, or for a new add-on, add it to the registry only after its config is merged here (Store README)"
+            fi
+            status=1; continue
+          fi
+          # Its upgrade-notes.yaml is next to the config it has.
+          [ "${found}" = "${path}" ] || notes="${previous_notes}"
+          # A version is read as Home Assistant Supervisor reads it (addon_sync.config_version); the PR's also as written.
+          current="$(python3 tooling/.addon-sync/upgrade_check.py version --file "${new}" --path "${found}" --name "${id}" --as-written)" \
+            || fail_output "${current}"
+          if [ -z "${current}" ]; then fail "${id}: ${found} has no version"; status=1; continue; fi
+          # Besides esc on every echo: a value from the PR or its Releases with a control character is refused before use.
+          no_cntrl "${current}" "${id}: the version in ${found} contains a control character (newline, tab...): ${current}" || exit 1
+          before=""; [ ! -s "${base}" ] || before="$(python3 tooling/.addon-sync/upgrade_check.py version --file "${base}" --name "${id}")" \
+            || fail_output "${before}"
+          if [ "${current}" != "${before}" ]; then
+            jq -c --arg version "${current}" --arg notes "${notes}" --arg new "${new}" '. + {version: $version, notes: $notes, new: $new}' <<<"${component}" >> changed.jsonl
+          else
+            echo "- ${id}: version ${current} unchanged" >> "$GITHUB_STEP_SUMMARY"
+          fi
+        done < <(jq -c '.components[]' provider.json)
+        if [ -s changed.jsonl ]; then echo "changed=true" >> "$GITHUB_OUTPUT"; else
+          echo "No add-on version changed; nothing to compare." >> "$GITHUB_STEP_SUMMARY"; echo "changed=false" >> "$GITHUB_OUTPUT"; fi
+        exit "${status}"
+    - name: Find the comparison targets
+      id: plan
+      if: steps.detect.outputs.changed == 'true'
+      env:
+        SBOM_ARTIFACT: ${{ inputs.sbom_artifact }}
+        SKIP_VULNERABILITY_SCAN: ${{ inputs.skip_vulnerability_scan }}
+        GH_TOKEN: ${{ github.token }}
+        REPO: ${{ github.repository }}
+        BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        RUN_ATTEMPT: ${{ github.run_attempt }}
+      run: |
+        set -euo pipefail
+        source tooling/.addon-sync/gh_raw.sh
+        source tooling/.addon-sync/log.sh
+        source tooling/.addon-sync/fields.sh
+        policy="$(jq -r '.ref_policy' provider.json)"; approved="$(jq -r '.skip_vulnerability_scan' provider.json)"
+        releases="$(gh api --paginate "repos/${REPO}/releases?per_page=100" --jq '.[]' | jq -sc .)"
+        # plan.jsonl, one object per add-on: id, notes (path in the PR), new (where the detect step left the PR's config),
+        # target, ref (old image; "" = no scan), artifact (the addon-sbom artifact of its new image), note (why there is no scan).
+        : > plan.jsonl; status=0
+        while IFS= read -r component; do
+          fields "${component}" id=id path=config previous=previous_config notes=notes version=version new=new
+          old="$RUNNER_TEMP/${id}.old.yaml"; rm -f "$old"; touch "$old"; target=""; target_version=""; ref=""; note=""
+          if [ "${policy}" = "main" ]; then
+            # ref_policy main: the Store follows the default branch, so users run what the PR base has.
+            target="${BASE_SHA}"
+          else
+            # Stable-Release filter, tag rule, ordering and "the version must be newer" are the Release notes' (addon_sync).
+            latest="$(python3 tooling/.addon-sync/upgrade_check.py comparison-target --registry tooling/.addon-sync/registry.json --repo "${REPO}" --component "${id}" --version "${version}" <<<"${releases}")" \
+              || fail_output "${latest}"
+            IFS=$'\t' read -r target target_version <<<"${latest}"
+          fi
+          # Like the PR's version (detect step): refused with a control character before use.
+          no_cntrl "${target}${target_version}" "${id}: the comparison target's tag has a control character (newline, tab...): ${target}" || exit 1
+          if [ -n "${target}" ]; then
+            found="$(config_at "${target}" "${path}" "${previous}" "${old}")"
+            old_version=""; [ ! -s "$old" ] || old_version="$(python3 tooling/.addon-sync/upgrade_check.py version --file "${old}" --path "${found}" --name "${id}")" \
+              || fail_output "${old_version}"
+            no_cntrl "${old_version}" "${id}: the comparison target ${target} has a control character (newline, tab...) in its version: ${old_version}" || exit 1
+            # Its tag and its config both give the target's version (compare reads the config's); neither may silently win.
+            # The PR's version must be newer than it: under ref_policy main too, so it fails here, before any scan.
+            if [ -s "$old" ] && ! python3 tooling/.addon-sync/upgrade_check.py check-target --name="${id}" --version="${version}" \
+              --target="${target}" --tag-version="${target_version}" --config="${found}" --config-version="${old_version}"; then
+              status=1; continue
+            fi
+            if [ -s "$old" ]; then echo "${id}: comparing $(esc "${version}") with $(esc "${target}")"
+            elif [ "${policy}" = "main" ]; then echo "${id}: no config at the PR base, a new add-on"
+            else
+              # Users run this Release; an unreadable config there must not pass as "no comparison target".
+              fail "${id}: the comparison target ${target} has no ${path}${previous:+ or ${previous}}, so there is nothing to compare with; if the config moved, see moving a config in the Store README"
+              status=1; continue
+            fi
+          else
+            echo "${id}: no stable Release yet"
+          fi
+          # Category 4: needs a prebuilt image and a comparison target; then the new image's SBOM is mandatory.
+          image="$(yq -r '.image // ""' "${new}")"
+          artifact="upgrade-comparison-sbom-${id}-attempt-${RUN_ATTEMPT}"
+          if [ -n "${SKIP_VULNERABILITY_SCAN}" ]; then
+            # The detect step checked the approval; the report gives the registry's reason, never the caller's text.
+            note="skipped as approved in the Store registry: ${approved}"
+          elif [ -z "${image}" ]; then
+            note="built on the device; the vulnerability comparison for these add-ons is #90"
+          elif [ ! -s "${old}" ]; then
+            note="no comparison target"
+          elif [ -z "$(yq -r '.image // ""' "${old}")" ]; then
+            note="the comparison target ${target} has no prebuilt image"
+          elif [ -z "${SBOM_ARTIFACT}" ]; then
+            fail "${id} has a prebuilt image but the caller passes no sbom_artifact; run the addon-sbom action after the amd64 build and pass sbom_artifact: upgrade-comparison-sbom-*"
+            status=1
+          # shellcheck disable=SC2053 # SBOM_ARTIFACT is a glob on purpose
+          elif [[ "${artifact}" != ${SBOM_ARTIFACT} ]]; then
+            fail "${id}: sbom_artifact '${SBOM_ARTIFACT}' does not match ${artifact}, the artifact the addon-sbom action uploads for component ${id}"
+            status=1
+          else
+            old_image="$(yq -r '.image' "${old}")"
+            no_cntrl "${old_image}" "${id}: the comparison target ${target} has a control character (newline, tab...) in its image: ${old_image}" || exit 1
+            ref="${old_image//\{arch\}/amd64}:${old_version}"
+          fi
+          jq -nc --arg id "${id}" --arg notes "${notes}" --arg new "${new}" --arg target "${target}" --arg ref "${ref}" \
+            --arg artifact "${artifact}" --arg note "${note}" '$ARGS.named' >> plan.jsonl
+        done < changed.jsonl
+        if [ -n "$(jq -r 'select(.ref != "") | .id' plan.jsonl)" ]; then echo "scan=true" >> "$GITHUB_OUTPUT"; else echo "scan=false" >> "$GITHUB_OUTPUT"; fi
+        exit "${status}"
+    # While the caller's amd64 build is still running: scanners, DB and the old images' SBOMs.
+    - name: Install pinned Syft and Grype
+      if: steps.plan.outputs.scan == 'true'
+      run: bash tooling/.github/actions/addon-sbom/install-scanners.sh "$RUNNER_TEMP/scanners" syft grype
+    - name: Update the vulnerability database
+      if: steps.plan.outputs.scan == 'true'
+      run: |
+        set -euo pipefail
+        export GRYPE_DB_CACHE_DIR="$RUNNER_TEMP/grype-db" GRYPE_CHECK_FOR_APP_UPDATE=false
+        # Fetched once, alone, before any scan; both images are then scanned with this DB.
+        if ! "$RUNNER_TEMP/scanners/grype" db update; then
+          echo "::error title=Vulnerability database::grype db update failed (download or validation); re-run the check"; exit 1
+        fi
+        "$RUNNER_TEMP/scanners/grype" db status -o json > "$RUNNER_TEMP/db-status.json"
+        built="$(jq -er '.built' "$RUNNER_TEMP/db-status.json")"
+        age=$(( $(date -u +%s) - $(date -u -d "${built}" +%s) ))
+        echo "Vulnerability database built ${built} ($(( age / 3600 ))h ago, limit ${DB_MAX_AGE_HOURS}h)"
+        if [ "${age}" -gt $(( DB_MAX_AGE_HOURS * 3600 )) ]; then
+          echo "::error title=Vulnerability database::the Grype DB was built ${built}, more than ${DB_MAX_AGE_HOURS}h ago; refusing to judge with stale data"; exit 1
+        fi
+    - name: SBOMs of the comparison targets' images
+      if: steps.plan.outputs.scan == 'true'
+      run: |
+        set -euo pipefail
+        source tooling/.addon-sync/log.sh
+        source tooling/.addon-sync/fields.sh
+        export SYFT_CHECK_FOR_APP_UPDATE=false
+        while IFS= read -r row; do
+          fields "${row}" id=id target=target ref=ref
+          if ! docker pull --quiet --platform linux/amd64 "${ref}"; then
+            fail "${id}: cannot pull the comparison target's image ${ref} from the registry; re-run, or check that the image of ${target} exists"; exit 1
+          fi
+          if ! "$RUNNER_TEMP/scanners/syft" scan "docker:${ref}" --config tooling/.github/actions/addon-sbom/syft.yaml -o "syft-json=$RUNNER_TEMP/${id}.old.syft.json"; then
+            fail "${id}: Syft could not read ${ref}"; exit 1
+          fi
+          docker image rm --force "${ref}" > /dev/null
+        done < <(jq -c 'select(.ref != "")' plan.jsonl)
+    # The caller does not make this job wait on its build (`needs:`), so a PR that changes no
+    # version passes in seconds; only here, after a version change, does the job wait for the
+    # addon-sbom artifact of this same run.
+    - name: Wait for the new images' SBOMs
+      if: steps.detect.outputs.changed == 'true' && steps.plan.outputs.scan == 'true'
+      env:
+        GH_TOKEN: ${{ github.token }}
+        REPO: ${{ github.repository }}
+        RUN_ID: ${{ github.run_id }}
+        RUN_ATTEMPT: ${{ github.run_attempt }}
+        WAIT_MINUTES: ${{ inputs.sbom_wait_minutes }}
+      run: |
+        set -euo pipefail
+        source tooling/.addon-sync/log.sh
+        deadline=$(( $(date -u +%s) + WAIT_MINUTES * 60 )); idle=0; : > artifacts.tsv
+        while :; do
+          # Only this attempt's artifact (plan.jsonl names it -attempt-<N>): a re-run judges its own build.
+          arts="$(gh api --paginate "repos/${REPO}/actions/runs/${RUN_ID}/artifacts?per_page=100" \
+            --jq '.artifacts[] | select(.expired | not) | [.name, .created_at, (.id | tostring)] | @tsv' | sort -t$'\t' -k2,2)"
+          missing=""; : > artifacts.tsv
+          while IFS=$'\t' read -r id n; do
+            row="$(awk -F'\t' -v n="${n}" '$1 == n' <<<"${arts}" | tail -n1)"
+            if [ -n "${row}" ]; then printf '%s\t%s\n' "${id}" "$(cut -f3 <<<"${row}")" >> artifacts.tsv; else missing="${missing} ${id}"; fi
+          done < <(jq -r 'select(.ref != "") | [.id, .artifact] | @tsv' plan.jsonl)
+          if [ -z "${missing}" ]; then echo "All SBOMs are uploaded."; break; fi
+          # Every other job of this attempt finished (only this one still open), twice in a row:
+          # the build ended without uploading the SBOM, so waiting longer cannot help.
+          open="$(gh api --paginate "repos/${REPO}/actions/runs/${RUN_ID}/attempts/${RUN_ATTEMPT}/jobs?per_page=100" \
+            --jq '.jobs[] | select(.status != "completed") | .name' | wc -l)"
+          if [ "${open}" -le 1 ]; then idle=$(( idle + 1 )); else idle=0; fi
+          if [ "${idle}" -ge 2 ]; then
+            fail "no SBOM of the new image for${missing}: every other job of attempt ${RUN_ATTEMPT} finished without uploading upgrade-comparison-sbom-<component>-attempt-${RUN_ATTEMPT}; check that the amd64 build passed and ran the addon-sbom action. On a re-run, use Re-run all jobs: an earlier attempt's SBOM is not used"; exit 1
+          fi
+          if [ "$(date -u +%s)" -ge "${deadline}" ]; then
+            fail "no SBOM of the new image for${missing} after ${WAIT_MINUTES} minutes; the amd64 build with the addon-sbom action did not finish in time, re-run the check"; exit 1
+          fi
+          echo "Waiting for the SBOM of${missing} (${open} jobs still open)..."; sleep 20
+        done
+    - name: Download the new images' SBOMs
+      if: steps.plan.outputs.scan == 'true'
+      env:
+        GH_TOKEN: ${{ github.token }}
+        REPO: ${{ github.repository }}
+      run: |
+        set -euo pipefail
+        mkdir -p sboms
+        while IFS=$'\t' read -r id artifact_id; do
+          gh api "repos/${REPO}/actions/artifacts/${artifact_id}/zip" > "$RUNNER_TEMP/${id}.sbom.zip"
+          unzip -o -q "$RUNNER_TEMP/${id}.sbom.zip" "${id}.syft.json" -d sboms
+        done < artifacts.tsv
+    - name: Compare with the comparison target
+      if: steps.detect.outputs.changed == 'true'
+      run: |
+        set -euo pipefail
+        source tooling/.addon-sync/log.sh
+        source tooling/.addon-sync/fields.sh
+        export GRYPE_DB_CACHE_DIR="$RUNNER_TEMP/grype-db" GRYPE_DB_AUTO_UPDATE=false GRYPE_DB_VALIDATE_AGE=true \
+          GRYPE_DB_MAX_ALLOWED_BUILT_AGE="${DB_MAX_AGE_HOURS}h" GRYPE_CHECK_FOR_APP_UPDATE=false
+        status=0
+        while IFS= read -r row; do
+          fields "${row}" id=id notes=notes new=new target=target ref=ref note=note
+          old="$RUNNER_TEMP/${id}.old.yaml"
+          args=(--name "${id}" --new "${new}" --notes "source/${notes}" --notes-path "${notes}")
+          [ ! -s "${old}" ] || args+=(--old "${old}")
+          if [ -z "${ref}" ]; then
+            args+=(--scan-note "${note}")
+          elif [ ! -s "sboms/${id}.syft.json" ]; then
+            fail "${id}: the SBOM artifact of this attempt holds no ${id}.syft.json"; status=1; continue
+          else
+            for side in old new; do
+              sbom="$RUNNER_TEMP/${id}.old.syft.json"; [ "${side}" = old ] || sbom="sboms/${id}.syft.json"
+              if ! "$RUNNER_TEMP/scanners/grype" "sbom:${sbom}" -o json --file "$RUNNER_TEMP/${id}.${side}.grype.json"; then
+                fail "${id}: Grype could not scan the ${side} image's SBOM"; status=1; continue 2
+              fi
+            done
+            echo "${id}: scanned $(esc "${ref}") ($(esc "${target}")) and the PR image with the same DB"
+            args+=(--old-scan "$RUNNER_TEMP/${id}.old.grype.json" --new-scan "$RUNNER_TEMP/${id}.new.grype.json")
+          fi
+          rc=0; python3 tooling/.addon-sync/upgrade_check.py compare "${args[@]}" || rc=$?
+          [ "${rc}" = 0 ] || status=1
+        done < plan.jsonl
+        exit "${status}"
