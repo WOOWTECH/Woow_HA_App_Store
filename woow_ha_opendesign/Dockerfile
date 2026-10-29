@@ -127,7 +127,12 @@ RUN set -eu; \
       /opt/ha-opendesign/shared-agents.mjs \
       /opt/ha-opendesign/headless-entry.mjs \
       /opt/ha-opendesign/headless-renderer.mjs; \
-    chown -R open-design:open-design /opt/ha-opendesign
+    # Root-owned and not writable by UID 1001: the agents (and any Omnigent
+    # session) run as that UID, and nginx serves ha-ingress.js and
+    # ha-export-bridge.js from here into the browser of the Home Assistant user.
+    # Nothing under this directory is written at runtime.
+    chown -R root:root /opt/ha-opendesign; \
+    chmod -R go-w /opt/ha-opendesign
 
 # --- Built-in Woow OpenDesign MCP server (mcp-runtime/, see mcp-runtime/README.md) ---
 # Pinned Woow MCP gateway + OpenDesign tools (mcp-runtime/VENDOR.json), hash-pinned wheels, users mcp (10001)
@@ -138,7 +143,7 @@ RUN sh /tmp/mcp-runtime/install.sh && rm -rf /tmp/mcp-runtime
 
 # amd64 only: the core image is built for linux/amd64.
 ARG BUILD_ARCH=amd64
-ARG BUILD_VERSION=0.2.11
+ARG BUILD_VERSION=0.2.12
 ENV WOOW_ADDON_VERSION=${BUILD_VERSION}
 ARG BUILD_DATE
 ARG BUILD_DESCRIPTION="OpenDesign for Home Assistant"

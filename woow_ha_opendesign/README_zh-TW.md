@@ -11,6 +11,7 @@
 - core 映像提供 Claude Code `2.1.296`、Codex CLI `0.162.1`、Pi Coding Agent `1.1.0` 與 OpenCode `1.18.33`（OpenDesign 原生 `byok-opencode` API runtime）；附加元件建置時以 UID 1001 逐一核對版本，不需要 Paseo 插件，也不會在首次使用時下載 CLI。
 - 來自 core 的 WoowTech 改動：白牌介面、繁體中文語系修正、匯出修正、內建 `woowtech-brand` skill，並移除 `brainstorming` skill。
 - **Omnigent 插件（0.2.10 起）：**原生插件 GUI 與 daemon 管理的 host，首次需輸入網址／帳密，新狀態私有持久化於 `/data`，不採用歷史退役登入。設定頁可經 Ingress 重新整理，Pi 自訂模型會列出，**Configure** 會在 daemon 建立的引導對話中開啟設定。已在 Home Assistant OS 驗收升級、Ingress 重新整理、全新與還原後連線、原生備份還原（見[設定、升級與驗證](DOCS.md#omnigent-plugin)）。
+- **存取與信任（0.2.12）：**只有 Home Assistant Ingress 閘道能連到附加元件的網頁埠 8099（其他容器一律以 403 拒絕，五條純轉址路徑除外，原本直接連 8099 埠的做法請改用側邊欄入口；MCP 埠 8081 另有權杖）；CLI Terminal 是可寫入的 shell；連上 Omnigent 伺服器等於讓該伺服器的使用者以 agent 使用者身分取得 shell 等級的存取，請用專用的非管理員帳號，斷開連線時也要到伺服器端撤銷登入。詳見 [信任與網路暴露](DOCS.md#trust-and-network-exposure)。
 - 透過 OpenDesign 原生 **Plugins** 頁面安裝的插件與 Skills，會由同一個 daemon 提供給 Claude Code、Codex、Pi、OpenCode 的專案執行流程。
 - OpenDesign「外掛」頁內建受 HA Ingress 保護的 **CLI 終端機**（`<Ingress>/console/`），可在 GUI 中完成 Claude Code、Codex、Pi 的互動登入。OpenCode 更多 API provider 可在 **Settings → API providers** 設定。
 - **內建 OpenDesign MCP server**（取代另一支「Woow OpenDesign MCP Server」附加元件）：MCP 用戶端連 `8081/tcp`＋Bearer token，Claude.ai 連接器用 `/private_<token>/mcp`。工具與 WOOW PaaS 的 OpenDesign MCP 相同共 15 支，預設全開，包含寫入工具 `create_project`、`send_message`（會執行 OpenDesign agent）與 `delete_project`。管理頁（token、工具權限）是 OpenDesign「外掛」頁內建的 **MCP Server**，只能經 HA Ingress 進入。詳見 [DOCS.md](DOCS.md#built-in-mcp-server)。

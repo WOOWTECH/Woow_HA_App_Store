@@ -26,6 +26,15 @@ export function assertListeners(actual, {running, state, config, workerListeners
 export function parseListeners(netstat) {
   return netstat.split('\n').filter(line => /\bLISTEN\s*$/.test(line)).map(line => line.trim().split(/\s+/)[3]);
 }
+// On a user-defined Docker network (Supervisor's hassio network is one, and so is the smoke test's) dockerd adds its embedded DNS resolver as
+// one TCP listener on 127.0.0.11 inside the container's network namespace. It is not the add-on's: drop at most one such address and keep
+// every other listener, so a second 127.0.0.11 socket or any other loopback address still fails the strict contract.
+export function withoutDockerResolver(listeners) {
+  const rest = [...listeners];
+  const resolver = rest.findIndex(address => /^127\.0\.0\.11:[1-9][0-9]*$/.test(address));
+  if (resolver !== -1) rest.splice(resolver, 1);
+  return rest;
+}
 export function readProcessTcpListeners(pid) {
   assert.ok(Number.isInteger(pid) && pid > 1, 'invalid worker PID');
   const sockets = new Set();

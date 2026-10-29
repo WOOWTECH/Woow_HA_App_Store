@@ -44,7 +44,7 @@ ha store add https://github.com/WOOWTECH/Woow_HA_App_Store
 | `woow-nginxproxymanager` | Woow Nginx Proxy Manager | 2.12.4-v2 | 本機建置 | Nginx Proxy Manager 的 WOOWTECH 版（與社群版 slug 不同） |
 | `woow_ha_code_server` | Woow Code Server | 0.1.6 | 預建映像 | code-server + pi coding agent + Claude Code + ACP 側邊欄（取代原 `vscode` 鏡像） |
 | `woow_ha_pi_agent` | Woow HA Pi Agent | 0.15.17 | 預建映像 | pi-web + coding agent SDK + 影音管線 |
-| `woow_ha_opendesign` | Woow HA OpenDesign | 0.2.11 | 預建映像 | Ingress-only BYOK 設計工作台 + PDF／圖片／PPTX 匯出 |
+| `woow_ha_opendesign` | Woow HA OpenDesign | 0.2.12 | 預建映像 | Ingress-only BYOK 設計工作台 + PDF／圖片／PPTX 匯出 |
 | `woow-omnigent` | Woow Omnigent | 0.1.16 | 預建映像 | Omnigent 編排伺服器 + 內建 Postgres（外部 runner 註冊制） |
 
 ### 🤖 MCP Server（WOOWTECH 自主開發，experimental）

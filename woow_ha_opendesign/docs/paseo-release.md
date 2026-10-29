@@ -85,7 +85,10 @@ fixture resolves the private runtime-reported worker PID, verifies UID 1001,
 and matches socket inodes from `/proc/<pid>/fd` with the kernel TCP tables.
 Exactly two listeners must belong to that worker; the auxiliary endpoint must
 return 401 for missing and invalid bearer tokens. Additional public, IPv6,
-unowned or duplicate listeners fail. It then requires only the four existing listeners
+unowned or duplicate listeners fail. On a user-defined Docker network (the smoke
+test's emulated hassio network, and Supervisor's own) Docker adds its embedded
+DNS resolver as one more TCP listener on `127.0.0.11`: at most one such
+listener is ignored, and any other loopback address still fails. It then requires only the four existing listeners
 after manual stop and after volume restore/restart. The bridge executable is
 also tested locally against a late native bind and temporarily unhealthy
 native endpoint: MCP reconciliation starts only after native health is ready.

@@ -5,7 +5,7 @@ import path from 'node:path';
 import {createHash} from 'node:crypto';
 import http from 'node:http';
 import {execFileSync} from 'node:child_process';
-import {assertListeners,parseListeners,readProcessTcpListeners} from './listener-contract.mjs';
+import {assertListeners,parseListeners,readProcessTcpListeners,withoutDockerResolver} from './listener-contract.mjs';
 import {setTimeout as delay} from 'node:timers/promises';
 const mode=process.argv[2];assert.ok(['prepare','restored','restored-enabled'].includes(mode));
 const runtimeDir='/data/opendesign/paseo/packages/runtime';
@@ -72,7 +72,7 @@ async function checkListeners(running) {
   workerListeners=readProcessTcpListeners(processInfo.workerPid);
  }
  const state=running?json('/data/opendesign/paseo/state.json'):undefined;
- assertListeners(parseListeners(execFileSync('netstat',['-ltn'],{encoding:'utf8'})), {
+ assertListeners(withoutDockerResolver(parseListeners(execFileSync('netstat',['-ltn'],{encoding:'utf8'}))), {
   running,workerListeners,state, ...(running?{config:json('/data/opendesign/paseo/daemon/config.json')}:{})
  });
  if(running){

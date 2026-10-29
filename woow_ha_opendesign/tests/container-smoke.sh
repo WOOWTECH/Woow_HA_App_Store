@@ -5,6 +5,13 @@ image=${1:-woow-ha-opendesign:test}
 container="woow-od-smoke-${RANDOM}"
 volume="woow-od-data-${RANDOM}"
 port=${SMOKE_PORT:-18099}
+# Emulates Home Assistant's hassio network. Supervisor Ingress reaches the add-on from 172.30.32.2; giving this bridge that gateway
+# address makes traffic from the host to the published port arrive at nginx with the same source, exactly like Ingress traffic in
+# production. Supervisor hands add-ons addresses from 172.30.33.0/24 of that network, so the add-on and the sibling container (any other container
+# on the hassio network) live there too: a relaxation such as `allow 172.30.33.0/24;` is then refused by the sibling check instead of passing it.
+net="woow-od-smoke-net-${RANDOM}"
+addon_ip=172.30.33.10
+sibling_ip=172.30.33.20
 # Deliberately fake. The native BYOK smoke verifies this value never leaves the
 # transient browser-style request as a log line or persisted /data artifact.
 readonly BYOK_FAKE_KEY='od-byok-test-key-not-a-secret'
@@ -18,11 +25,15 @@ cleanup() {
   fi
   docker rm -f "$container" >/dev/null 2>&1 || true
   docker volume rm "$volume" >/dev/null 2>&1 || true
+  docker network rm "$net" >/dev/null 2>&1 || true
   rm -rf "$tmp"
 }
 trap cleanup EXIT
+# A silent failing assertion (grep -q, test) used to leave only the container logs; name the line and command.
+trap 'echo "container-smoke.sh: line ${LINENO}: ${BASH_COMMAND} (exit status $?)" >&2' ERR
 
 docker volume create "$volume" >/dev/null
+docker network create --subnet 172.30.32.0/23 --gateway 172.30.32.2 "$net" >/dev/null
 
 # Deliberately fake, like Supervisor's: it must stay with the root launcher and
 # never reach a child process environment.
@@ -30,6 +41,7 @@ readonly SUPERVISOR_FAKE_TOKEN='supervisor-test-token-not-a-secret'
 
 start_container() {
   docker run -d --platform linux/amd64 --name "$container" \
+    --network "$net" --ip "$addon_ip" \
     -p "127.0.0.1:${port}:8099" \
     -e SUPERVISOR_TOKEN="$SUPERVISOR_FAKE_TOKEN" \
     -v "$volume:/data" \
@@ -37,10 +49,16 @@ start_container() {
 }
 
 wait_for_health() {
-  local attempt
+  local attempt code
   for ((attempt = 1; attempt <= 90; attempt += 1)); do
-    if curl -fsS "http://127.0.0.1:${port}/api/health" >"$tmp/health.json"; then
+    code=$(curl -sS --max-time 10 -o "$tmp/health.json" -w '%{http_code}' "http://127.0.0.1:${port}/api/health" 2>/dev/null || true)
+    if [[ "$code" == 200 ]]; then
       return 0
+    fi
+    if [[ "$code" == 403 ]]; then
+      echo 'nginx refused the host request: published-port traffic must arrive from the emulated Supervisor gateway 172.30.32.2' >&2
+      docker network inspect "$net" >&2 || true
+      return 1
     fi
     if ! docker inspect -f '{{.State.Running}}' "$container" 2>/dev/null | grep -qx true; then
       docker logs "$container" >&2 || true
@@ -69,6 +87,108 @@ import json
 import sys
 assert json.load(open(sys.argv[1], encoding='utf-8')).get('ok') is True
 PY
+
+# Any other container on the hassio network (and Home Assistant Core on the host network) is not the Supervisor Ingress gateway. Before 0.2.12
+# only /mcp-admin and Paseo checked the peer: the UI and API, the writable /console/ terminal and the Omnigent API answered 200 without credentials.
+#
+# The refusal must come from nginx itself. The MCP administration and the Paseo bridge also answer 403 on their own (no Ingress user header), and the
+# Paseo routes have an `X-Ingress-Path` guard, so a bare status check would stay green after the nginx rule was removed. nginx's stock error page is
+# the proof; routes that need Ingress-shaped headers are probed with them, from every source.
+nginx_page='<center>nginx</center>'
+ingress_headers=(-H 'X-Ingress-Path: /api/hassio_ingress/smokeprobe0123456789' -H 'X-Remote-User-Id: smoke-user'
+  -H 'X-OD-HA-Peer: 172.30.32.2' -H 'X-Forwarded-For: 172.30.32.2')
+acl_routes=(/mcp-admin/ /api/paseo-bridge /paseo/setup /paseo/setup/ /paseo/assets/setup.js)
+
+# probe PEER ROUTE [curl args...] sets probe_status and probe_body.
+#   host      the CI host through the published port: arrives from 172.30.32.2, i.e. the emulated Supervisor Ingress gateway
+#   sibling   another container on the emulated hassio network (172.30.33.20), also standing in for Home Assistant Core
+#   loopback  a process inside the add-on container
+probe() {
+  local peer=$1 route=$2 out
+  shift 2
+  # A curl failure (for example a timeout while Paseo or the MCP administration is still starting behind the route) becomes status 000: it is
+  # not a refusal by nginx, and the checks below decide what that means for the route.
+  case "$peer" in
+    host) out=$(curl -sS --max-time 15 -w '\n%{http_code}' "$@" "http://127.0.0.1:${port}${route}") || out=$'\n000' ;;
+    sibling) out=$(docker run --rm --platform linux/amd64 --network "$net" --ip "$sibling_ip" --entrypoint curl "$image" \
+      -sS --max-time 15 -w '\n%{http_code}' "$@" "http://${addon_ip}:8099${route}") || out=$'\n000' ;;
+    loopback) out=$(docker exec "$container" curl -sS --max-time 15 -w '\n%{http_code}' "$@" "http://127.0.0.1:8099${route}") || out=$'\n000' ;;
+    *) echo "unknown probe peer ${peer}" >&2; exit 1 ;;
+  esac
+  probe_status=${out##*$'\n'}
+  probe_body=${out%$'\n'*}
+}
+is_nginx_refusal() {
+  [[ "$probe_status" == 403 && "$probe_body" == *"$nginx_page"* ]]
+}
+expect_nginx_refusal() {
+  if ! is_nginx_refusal; then
+    echo "${1} got HTTP ${probe_status} for ${2}, expected nginx's own 403 page; the body starts with:" >&2
+    printf '%s\n' "${probe_body:0:200}" >&2
+    exit 1
+  fi
+}
+
+for route in / /console/ /api/health /api/integrations/omnigent/status /ha-ingress.js /ha-export-bridge.js \
+  /api/projects/smoke/export/pdf "${acl_routes[@]}"; do
+  probe sibling "$route"
+  expect_nginx_refusal 'a sibling container on the hassio network' "$route"
+  probe sibling "$route" "${ingress_headers[@]}"
+  expect_nginx_refusal 'a sibling container sending Ingress-shaped headers' "$route"
+done
+# nginx runs `return` in its rewrite phase, before allow/deny is evaluated, so the redirect-only routes answer any peer. They return a bare redirect
+# to a relative or fixed target and expose nothing; tests/validate.py pins that every `return` in the server block is a redirect, never content.
+sibling_redirect() {
+  local route=$1 target=$2 headers
+  headers=$(docker run --rm --platform linux/amd64 --network "$net" --ip "$sibling_ip" --entrypoint curl "$image" \
+    -sS -o /dev/null -D - --max-time 15 "http://${addon_ip}:8099${route}")
+  if ! grep -Eq '^HTTP/1\.1 30[12]' <<<"$headers" || ! grep -Fqx "Location: ${target}"$'\r' <<<"$headers"; then
+    echo "a sibling container got an unexpected answer for ${route} (wanted a bare redirect to ${target}):" >&2
+    echo "$headers" >&2
+    exit 1
+  fi
+}
+sibling_redirect /console /console/
+sibling_redirect /terminal /console/
+sibling_redirect /terminal/ /console/
+sibling_redirect /mcp-admin /mcp-admin/
+sibling_redirect /_woow/support https://aiot.woowtech.io/woow
+# Positive control for the emulation itself: the routes with their own allow/deny admit only 172.30.32.2 (not loopback). If the published port ever
+# reached nginx from another address, the host would be refused here instead of the suite silently no longer behaving like Ingress.
+for route in "${acl_routes[@]}"; do
+  probe host "$route" "${ingress_headers[@]}"
+  if is_nginx_refusal; then
+    echo "nginx refused the emulated Supervisor Ingress gateway on ${route}: published-port traffic does not arrive from 172.30.32.2" >&2
+    exit 1
+  fi
+done
+# The scripts nginx serves from the now root-owned /opt/ha-opendesign must stay readable for nginx (UID 1002) and reachable for the gateway.
+for route in /ha-ingress.js /ha-export-bridge.js; do
+  probe host "$route"
+  if [[ "$probe_status" != 200 ]]; then
+    echo "the emulated Supervisor Ingress gateway got HTTP ${probe_status} for ${route}, expected 200" >&2
+    exit 1
+  fi
+done
+# Loopback (processes inside this container, the in-container tests below) stays admitted for ordinary routes, but /mcp-admin and Paseo keep their
+# own Ingress-peer-only rules: with the headers that get a request past the application, only nginx's rule can refuse the container itself.
+test "$(docker exec "$container" curl -sS --max-time 15 -o /dev/null -w '%{http_code}' http://127.0.0.1:8099/api/health)" = 200
+for route in "${acl_routes[@]}"; do
+  probe loopback "$route" "${ingress_headers[@]}"
+  expect_nginx_refusal 'a process inside the add-on container' "$route"
+done
+# UID 1001 runs the agents (and every Omnigent session). It must not be able to rewrite the scripts nginx serves into the browser of the Home
+# Assistant user, or the helper tree they load from.
+docker exec -u 1001:1001 "$container" sh -ceu '
+  for path in /opt/ha-opendesign /opt/ha-opendesign/ha-ingress.js /opt/ha-opendesign/ha-export-bridge.js /opt/ha-opendesign/node_modules; do
+    test -e "$path" || { echo "missing $path" >&2; exit 1; }
+    if test -w "$path"; then echo "UID 1001 can write $path" >&2; exit 1; fi
+  done
+'
+# The core ships its own build contract for the native Omnigent runtime (SDK pin, five patches, host-kit, private defaults). Verify it holds in
+# this image too, in a throwaway container without network or volumes so the image, not this container's data, is what is checked.
+docker run --rm --platform linux/amd64 --network none --user 1001:1001 --entrypoint /opt/omnigent/venv/bin/python "$image" \
+  -I -B /usr/local/share/woow/verify-omnigent-runtime.py
 
 # HA Supervisor removes the public ingress prefix before proxying and supplies
 # it in X-Ingress-Path. Nginx therefore receives '/' and must inject/rewrite the
@@ -127,11 +247,18 @@ for old_path in /terminal /terminal/ /terminal/ws; do
   grep -Eq '^HTTP/1\.1 302' "$tmp/terminal-legacy.txt"
   grep -Fqx "Location: $ingress_prefix/console/"$'\r' "$tmp/terminal-legacy.txt"
 done
-test "$(docker port "$container" | wc -l)" = 1
-docker port "$container" | grep -Eq '^8099/tcp -> 127\.0\.0\.1:'
+# The image publishes exactly one container port, the Ingress port 8099, and only on loopback. On a user-defined network Docker may list the same
+# mapping once per address family (127.0.0.1 and ::1), so compare the set of published ports and the bind addresses, not the number of lines.
+ports=$(docker port "$container")
+if [[ "$(awk '{ print $1 }' <<<"$ports" | sort -u)" != 8099/tcp ]] \
+  || grep -Eqv -- '^8099/tcp -> (127\.0\.0\.1|\[::1\]):[0-9]+$' <<<"$ports"; then
+  echo 'unexpected published ports (only 8099/tcp on loopback is allowed):' >&2
+  echo "$ports" >&2
+  exit 1
+fi
 # The built-in MCP server listens on 8081 for LAN clients (never host-mapped
 # unless the user maps it). Its Ingress administration only admits the
-# Supervisor peer: this host request (Docker gateway source) is refused.
+# Supervisor peer: a sibling container's request is refused (checked above).
 docker exec "$container" sh -ceu '
   for _ in $(seq 1 60); do
     netstat -ltn | grep -q "0.0.0.0:8081 " && break
@@ -139,11 +266,16 @@ docker exec "$container" sh -ceu '
   done
   # Paseo may still be installing. Check public binds now; the lifecycle
   # fixture below checks the exact full set after both start and manual stop.
-  public=$(netstat -ltn | awk "/LISTEN/ { print \$4 }" | grep -v "^127\.0\.0\.1:" | sort)
-  test "$public" = "$(printf "%s\n" 0.0.0.0:8081 0.0.0.0:8099 | sort)"
+  # Everything in 127.0.0.0/8 is loopback: on a user-defined network (this
+  # smoke network, and the hassio network of Supervisor) Docker adds its
+  # embedded DNS resolver as one more TCP listener on 127.0.0.11.
+  public=$(netstat -ltn | awk "/LISTEN/ { print \$4 }" | grep -Ev "^127\." | sort)
+  want=$(printf "%s\n" 0.0.0.0:8081 0.0.0.0:8099 | sort)
+  if [ "$public" != "$want" ]; then
+    echo "unexpected public TCP listeners: $public" >&2
+    exit 1
+  fi
 '
-test "$(curl -sS -o /dev/null -w '%{http_code}' -H "X-Ingress-Path: $ingress_prefix" \
-  -H 'X-Remote-User-Id: 0123456789abcdef0123456789abcdef' "http://127.0.0.1:${port}/mcp-admin/")" = 403
 docker exec "$container" python3 -c '
 import json, urllib.error, urllib.request
 body = json.dumps({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}}).encode()

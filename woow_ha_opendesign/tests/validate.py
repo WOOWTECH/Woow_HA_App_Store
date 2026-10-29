@@ -27,7 +27,7 @@ with (ROOT / ".github/workflows/build.yml").open() as handle:
 check(isinstance(workflow, dict) and "jobs" in workflow, "GitHub Actions workflow YAML is invalid")
 check(set(repository) == {"name", "url", "maintainer"}, "repository.yaml must have the repository contract keys")
 check(repository.get("url") == "https://github.com/WOOWTECH/Woow_ha_opendesign_add_on", "repository URL mismatch")
-check(config.get("version") == "0.2.11", "release version must be 0.2.11")
+check(config.get("version") == "0.2.12", "release version must be 0.2.12")
 check("browser-local API BYOK" in config.get("description", ""), "add-on description must describe browser-local BYOK")
 check(config.get("arch") == ["amd64"], "the core image is amd64-only; only amd64 is allowed")
 check(config.get("ingress") is True, "ingress must be enabled")
@@ -78,7 +78,51 @@ check(len(re.findall(r'^start_child \w+ \\\n  "\$\{no_supervisor_env\[@\]\}" ', 
 check('"${no_supervisor_env[@]}" /opt/woow/bin/ha-opendesign-mcp' in launcher, "launcher must start the built-in MCP server")
 check("RUN python3 /tmp/ha-patches/sign-in-hint.py /app/apps/web/out" in dockerfile, "HA sign-in hint patch must run on the core web build")
 check("sh /tmp/mcp-runtime/install.sh" in dockerfile and "FROM ${BUILD_FROM} AS woow-mcp-ui" in dockerfile, "built-in MCP install missing")
-check("proxy_pass http://unix:/run/ha-opendesign-mcp/admin.sock:/;" in nginx and nginx.count("allow 172.30.32.2;") == 2 and nginx.count("deny all;") == 2, "MCP admin must be Ingress-peer only over the Unix socket")
+check("proxy_pass http://unix:/run/ha-opendesign-mcp/admin.sock:/;" in nginx and nginx.count("allow 172.30.32.2;") == 3 and nginx.count("deny all;") == 3, "MCP admin must be Ingress-peer only over the Unix socket")
+# Server-level source restriction (0.2.12): the first directives of the 8099 server block admit only the Supervisor Ingress gateway and
+# loopback. Without them every other container on the hassio network (and HA Core on the host network) reached the UI/API, the writable
+# /console/ terminal and the Omnigent API with no credentials. Locations that declare their own allow/deny (/mcp-admin, Paseo) replace them.
+server_block = nginx.partition("listen 8099 default_server;")[2]
+check(server_block != "", "nginx.conf must define the 8099 server block")
+server_head = [l.strip() for l in server_block.splitlines() if l.strip() and not l.strip().startswith("#")][:3]
+check(server_head == ["allow 172.30.32.2;", "allow 127.0.0.1;", "deny all;"],
+      "the 8099 server block must start with allow 172.30.32.2; allow 127.0.0.1; deny all;")
+# Every allow/deny directive of the shipped nginx configuration, comments removed (a trailing `# ...` must not hide one). The server level admits the
+# Supervisor and loopback; /mcp-admin (two locations) and the Paseo include admit only the Supervisor. A further allow anywhere (a subnet for "another
+# add-on", `allow all`, a location that replaces the server-level rules without ending in `deny all`) reopens the exposure this release closes, so the
+# whole multiset is pinned rather than a few spellings.
+def nginx_code(text):
+    return "\n".join(line.split("#", 1)[0] for line in text.splitlines())
+
+def nginx_rules(text, directive):
+    return sorted(re.findall(rf"\b{directive}\s+([^;\s]+)\s*;", nginx_code(text)))
+
+nginx_dir = ROOT / "rootfs/etc/nginx"
+paseo_proxy = (nginx_dir / "paseo-proxy.conf").read_text()
+paseo_setup = (nginx_dir / "paseo-setup.conf").read_text()
+check(nginx_rules(nginx, "allow") == sorted(["172.30.32.2", "127.0.0.1", "172.30.32.2", "172.30.32.2"]),
+      "nginx.conf may allow only the Supervisor (server level and the two /mcp-admin locations) and loopback (server level)")
+check(nginx_rules(nginx, "deny") == ["all"] * 3 and nginx_rules(paseo_proxy, "allow") == ["172.30.32.2"] and nginx_rules(paseo_proxy, "deny") == ["all"]
+      and nginx_rules(paseo_setup, "allow") == [] and nginx_rules(paseo_setup, "deny") == [],
+      "every allow must be paired with `deny all`; paseo-proxy.conf admits only the Supervisor; paseo-setup.conf has no rules of its own")
+for directive in ("satisfy", "auth_request", "auth_basic", "error_page", "real_ip_header", "set_real_ip_from", "try_files"):
+    check(not re.search(rf"^\s*{directive}\b", nginx_code(nginx) + nginx_code(paseo_proxy) + nginx_code(paseo_setup), re.M),
+          f"nginx must not use `{directive}`: it can change which peers pass the source rules (review the access matrix before adding it)")
+check(not re.search(r"\blisten\b[^;]*proxy_protocol", nginx_code(nginx)), "nginx must not trust PROXY protocol addresses")
+check(config.get("panel_admin") is True, "panel_admin must stay true: it is what keeps non-administrators out of the Ingress panel")
+# `return` runs in nginx's rewrite phase, before allow/deny: in this server block it may only issue redirects (301/302) or refusals (403), never content.
+server_code = "\n".join(line.split("#", 1)[0] for line in server_block.splitlines())
+returns = re.findall(r"\breturn\s+(\d+)", server_code)
+check(returns and all(code in ("301", "302", "403") for code in returns),
+      "a `return` in the 8099 server block bypasses the peer rules (rewrite phase): only 301/302/403 are allowed, never a content response")
+# The Paseo routes include paseo-proxy.conf, whose own allow/deny replaces the server-level rules: it must keep admitting only the Supervisor peer
+# (not loopback) and keep its X-Ingress-Path guard. Nothing else exercises this file's access rules without Ingress-shaped headers.
+paseo_proxy_head = [l.strip() for l in (ROOT / "rootfs/etc/nginx/paseo-proxy.conf").read_text().splitlines() if l.strip() and not l.strip().startswith("#")][:3]
+check(paseo_proxy_head == ["allow 172.30.32.2;", "deny all;", 'if ($safe_ingress_path = "") { return 403; }'],
+      "paseo-proxy.conf must start with allow 172.30.32.2; deny all; and the X-Ingress-Path guard")
+check(re.search(r"chown -R root:root /opt/ha-opendesign(\s|;|$)", dockerfile) and "chown -R open-design:open-design /opt/ha-opendesign" not in dockerfile,
+      "/opt/ha-opendesign must be root-owned: UID 1001 (agents, Omnigent sessions) must not rewrite scripts served into the HA browser")
+
 check("npm" not in launcher.lower(), "launcher must not download/install CLI packages at startup")
 check("shared-agents.mjs" not in launcher, "OpenDesign-native plugin/skill registries must not be replaced by startup symlinks")
 for setting in ["HA_OPENDESIGN_HOME=", "CLAUDE_CONFIG_DIR=", "CODEX_HOME=", "PI_CODING_AGENT_DIR=", "XDG_CONFIG_HOME="]:

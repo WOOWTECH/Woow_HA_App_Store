@@ -90,6 +90,11 @@ test('nginx enforces actual Supervisor peer, sanitized context, routes, origins 
  for(const route of ['/paseo/assets/setup.js','/paseo/assets/setup.css','/api/paseo-bridge'])assert.equal((await send(route)).status,200,route);
  // A sibling container cannot forge the Supervisor peer or authenticated user.
  for(const route of ['/paseo/setup/','/api/paseo-bridge'])assert.equal((await send(route,{...postHeaders,'X-OD-HA-Peer':'172.30.32.2','X-Forwarded-For':'172.30.32.2'},undefined,'127.0.0.2')).status,403);
+ // Server-level rule of the shipped config (0.2.12): ordinary routes admit only the Supervisor peer and loopback. 127.0.0.2 stands in for another
+ // container; loopback is admitted (nothing listens behind this fixture, so any answer but 403 will do).
+ for(const route of ['/','/api/health','/console/','/api/integrations/omnigent/status','/ha-ingress.js'])
+  assert.equal((await send(route,headers,undefined,'127.0.0.2')).status,403,route);
+ assert.notEqual((await send('/api/health')).status,403);
  for(const h of [
   {'X-Remote-User-Id':''},{'X-Ingress-Path':prefix+'/../evil'},{'X-Ingress-Path':'//evil.test'},
   {Origin:'https://evil.test','X-Forwarded-Host':'evil.test','X-Forwarded-Proto':'https'},
