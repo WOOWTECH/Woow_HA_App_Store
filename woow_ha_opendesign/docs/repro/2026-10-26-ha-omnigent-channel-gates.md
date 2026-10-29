@@ -14,4 +14,6 @@ The feature branch now incorporates HA main 0.2.8 (`28e5a3cabb5852391173cfc65645
 
 ## Remaining release gates
 
+*Status, 2026-10-29: the w2.10 core is public in GHCR and these gates have since been run on an isolated Home Assistant OS VM against the published 0.2.10 and the 0.2.11 candidate: upgrade from the previous build, Ingress reload, fresh and restored Omnigent connection, native backup restore (0.2.10), fresh install (0.2.11) and an OpenCode conversation through the Omnigent web client. The text below is the original 2026-10-26 plan.*
+
 The w2.10 core target is `20261027.1127` (`sha256:c8cd57f0…`); its Gitea candidate passed the installed-SDK suite and isolated PaaS Pi/OpenCode conversations, but public promotion is pending. The earlier w2.8 core is historical HA RC evidence. The branch-only HA candidate workflow must publish an exact-source image and pass container smoke after the public core import. Then verify actual HA upgrade, fresh GUI login, four-engine replies/stops, disable/re-enable, restart and cold restore. Provider credential transfer uses only a dedicated test key on the owned isolated HA. Before the stable PR merges, check its own container and Ingress tests. Finally verify Store/Local Download notifications and matching source/image/catalog receipts. Source checks alone do not satisfy these gates.

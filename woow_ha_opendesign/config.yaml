@@ -1,5 +1,5 @@
 name: Woow HA OpenDesign
-version: "0.2.10"
+version: "0.2.11"
 slug: woow_ha_opendesign
 description: OpenDesign 0.24.1 (WoowTech core) with browser-local API BYOK, headless exports and a built-in MCP server
 url: https://github.com/WOOWTECH/Woow_ha_opendesign_add_on

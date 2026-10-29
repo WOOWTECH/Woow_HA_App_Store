@@ -10,7 +10,7 @@
 # The w2.10 core is promoted and imported publicly only after Gitea approval;
 # it contains the native integration and preinstalled SDK. Keep Dockerfile, CI,
 # tests and the Supervisor local-build tag aligned with pin-core.sh.
-ARG BUILD_FROM=ghcr.io/woowtech/open-design-core:20261027.1127@sha256:c8cd57f07adaef23b8dddbb22a8b75f97bdf8ca42c8bfbec1b284dc60ee5a4cf
+ARG BUILD_FROM=ghcr.io/woowtech/open-design-core:20261029.0033@sha256:c8cd57f07adaef23b8dddbb22a8b75f97bdf8ca42c8bfbec1b284dc60ee5a4cf
 
 # --- Built-in Woow OpenDesign MCP server: admin UI assets (mcp-runtime/, see mcp-runtime/README.md) ---
 # Built with the core image's own Node/npm from the vendored, lock-pinned UI sources; only dist/ is kept.
@@ -138,7 +138,7 @@ RUN sh /tmp/mcp-runtime/install.sh && rm -rf /tmp/mcp-runtime
 
 # amd64 only: the core image is built for linux/amd64.
 ARG BUILD_ARCH=amd64
-ARG BUILD_VERSION=0.2.10
+ARG BUILD_VERSION=0.2.11
 ENV WOOW_ADDON_VERSION=${BUILD_VERSION}
 ARG BUILD_DATE
 ARG BUILD_DESCRIPTION="OpenDesign for Home Assistant"
