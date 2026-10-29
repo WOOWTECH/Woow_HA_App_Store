@@ -10,12 +10,15 @@ whose old folders are present in /config/custom_components:
 
 Each group is handled on its own: an error in one keeps only that group.
 
+It then removes a hacs folder that has no hacs_frontend/ (replace_hacs()), so the
+copy seeds the complete hacs; an error there keeps hacs as it is.
+
 Only component code folders are ever deleted; config entries, .storage and YAML
 are never touched. A missing core.config_entries means Home Assistant never ran
 with these components, so it does not count as in use. Log lines go to stderr.
-See the CHANGELOG entry that replaced the split components.
+See the CHANGELOG entries that replaced the split components and hacs.
 
-Usage: python seed_groups.py <config_dir>
+Usage: python seed_groups.py <config_dir> <seed_dir>
 """
 
 import json
@@ -27,6 +30,8 @@ from pathlib import Path
 PREFIX = "[apporo_seed]"
 TRASH = ".apporo_seed_removed"  # under /config, outside custom_components
 DONE = ".done"  # suffix of a group's trash folder once all its moves succeeded
+HACS = "hacs"
+FRONTEND = "hacs_frontend"  # built at HACS release time; not in the repository source
 
 
 @dataclass(frozen=True)
@@ -125,7 +130,7 @@ def keep(group, reason, hint=""):
 def recover(custom_components, trash):
     """Finish what an interrupted boot left in the trash. Returns the groups not restored.
 
-    <group>.done holds a group whose folders were all moved out: it is deleted.
+    <name>.done holds what was all moved out (a group's folders, or hacs): it is deleted.
     <group> holds a group interrupted while moving out or back: its folders are
     moved back, so a group is never left half deleted.
     """
@@ -208,7 +213,28 @@ def replace(group, config, custom_components, trash):
         log(f"removed old component: {name} ({group.name} group not in use)")
 
 
-def main(config):
+def replace_hacs(custom_components, seed_components, trash):
+    """Remove a hacs folder that has no hacs_frontend/, so the copy seeds a complete one.
+
+    hacs imports hacs_frontend/ at module level, and that folder only exists in a
+    HACS release asset; a hacs without it cannot load, so nobody can be using it.
+    Nothing is removed unless the seed's own hacs has hacs_frontend/. The folder is
+    moved out first, so it is either removed whole or left as it is.
+    """
+    hacs = custom_components / HACS
+    if not hacs.is_dir() or (hacs / FRONTEND).is_dir():
+        return
+    if not (seed_components / HACS / FRONTEND).is_dir():
+        return
+    done = trash / (HACS + DONE)
+    shutil.rmtree(done, ignore_errors=True)
+    trash.mkdir(exist_ok=True)
+    hacs.rename(done)
+    log(f"replaced custom_components/{HACS}: it has no {FRONTEND}/, so HACS could not load")
+    shutil.rmtree(done, ignore_errors=True)
+
+
+def main(config, seed):
     custom_components = config / "custom_components"
     trash = config / TRASH
     try:
@@ -227,7 +253,11 @@ def main(config):
                  f" Check or replace custom_components/{group.successor}.")
         except Exception as err:  # noqa: BLE001 - one group's error keeps only that group
             keep(group, f"check failed ({err})")
+    try:
+        replace_hacs(custom_components, seed / "custom_components", trash)
+    except Exception as err:  # noqa: BLE001 - any doubt keeps hacs as it is
+        log(f"could not replace custom_components/{HACS} ({err}); kept it as it is.")
 
 
 if __name__ == "__main__":
-    main(Path(sys.argv[1]))
+    main(Path(sys.argv[1]), Path(sys.argv[2]))

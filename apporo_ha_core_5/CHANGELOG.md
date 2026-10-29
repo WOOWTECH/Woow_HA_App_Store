@@ -1,5 +1,32 @@
 # Changelog
 
+## 2.4.2
+
+HACS can now be set up. Up to 2.4.1 the bundled `hacs` was HACS's source code,
+which lacks the `hacs_frontend/` folder that HACS only adds to its release
+download; without it the integration fails to load, so adding HACS showed an
+error. 2.4.2 bundles the complete HACS 2.0.5 release.
+
+### What happens on upgrade
+
+On every start, before Home Assistant, the add-on checks
+`custom_components/hacs`:
+
+- **No `hacs_frontend/` folder** (as 2.4.1 seeded it): the folder is deleted and
+  the complete HACS 2.0.5 is copied in. The add-on log shows a line starting
+  with `[apporo_seed] replaced custom_components/hacs`. This HACS could never
+  load, so nothing that was set up is lost.
+- **Has `hacs_frontend/`** (for example HACS you reinstalled yourself): left
+  exactly as it is.
+- **No `hacs` folder**: HACS 2.0.5 is copied in, as before.
+
+Only the `custom_components/hacs` code folder is ever deleted; `.storage`,
+config entries and YAML are never touched. If the folder cannot be removed, it
+is left as it is, the log says so, and Home Assistant starts as usual.
+
+HACS still needs to be added from Settings → Devices & services and authorized
+with GitHub; the add-on does not set it up.
+
 ## 2.4.1
 
 No change in what the add-on does. The check that replaces unused old component
