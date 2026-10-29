@@ -386,4 +386,4 @@ MIT © [WOOWTECH](https://github.com/WOOWTECH)。完整條款見 [`LICENSE`](LIC
 
 ## Paseo 網頁整合
 
-內建 Paseo 0.1.13 與 Omnigent 0.3.29，在設定中將 Paseo 放在 Omnigent 右側，並保留 Pi Web 0.12.0。兩者不建立或自動開啟設定對話，也沒有首頁或右上角快捷入口；只有使用者在 **Settings → Paseo** 按下配對按鈕時才開始配對。[HA Ingress、升級與驗證說明](docs/PASEO_HA.md)。
+內建 Paseo 0.1.14 與 Omnigent 0.3.29，在設定中將 Paseo 放在 Omnigent 右側，並保留 Pi Web 0.12.0。兩者不建立或自動開啟設定對話，也沒有首頁或右上角快捷入口；只有使用者在 **Settings → Paseo** 按下配對按鈕時才開始配對。[HA Ingress、升級與驗證說明](docs/PASEO_HA.md)。

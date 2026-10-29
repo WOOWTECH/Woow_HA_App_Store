@@ -126,7 +126,7 @@ test('hashed assets gzip after prefix rewrite, validate GET/HEAD/304 per represe
 });
 function fakePlugin() {
   const calls = [];
-  const plugin = { enabled: true, version: '0.1.13', api: {
+  const plugin = { enabled: true, version: '0.1.14', api: {
     status: async () => ({ phase: 'ready', daemon: { running: true }, webClient: { ready: true, version: '0.13.0-woow.1' }, providers: [{ provider: 'claude', status: 'ready' }], onboardingSessionId: 'legacy-id', token: 'never-project-this' }),
     pair: async () => { calls.push('pair'); return { url: '/paseo-web/#fixture' }; },
     lifecycle: async input => calls.push(input), listModels: async () => ({ models: [{ id: 'test', secret: 'never-project-this' }] }),

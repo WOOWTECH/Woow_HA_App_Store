@@ -25,7 +25,7 @@ phone settings, the MCP-adjacent order, blank/masked credentials, two model
 selections, disconnect confirmation, Escape, remount and the standalone page.
 The Omnigent runtime is a fixture: these tests do not validate provider logins,
 paid model responses or real HA Supervisor ingress. Paseo tests use the
-checksum-verified public 0.1.13 client and cover deep links, assets and gzip.
+checksum-verified public 0.1.14 client and cover deep links, assets and gzip.
 
 CI runs these checks with Playwright 1.62.1 and retains screenshots/receipts.
 Set `CHROMIUM_EXECUTABLE` to reuse an installed Chromium locally. Continue to
