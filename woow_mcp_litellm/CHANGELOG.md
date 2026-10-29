@@ -1,3 +1,8 @@
+## 0.4.5
+
+- Correct update-model registry metadata to the existing PATCH /model/{model_id}/update handler.
+- Back up before upgrading; review operation restrictions before downgrade. See root upgrade-notes.yaml.
+
 # LiteLLM Changelog
 
 ## 0.4.4 — 發佈候選（2026-10-29；映像待驗收）

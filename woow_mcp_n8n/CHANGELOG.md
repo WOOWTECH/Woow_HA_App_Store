@@ -1,3 +1,10 @@
+## 0.4.5
+
+- Failed native tool results now set MCP isError while preserving content and structuredContent.
+- Add 22 audited operation controls across agents, workflow test methods and catalog kinds; whole-tool grants still apply.
+- Unknown selectors are refused; blank or missing workflow test method retains auto. Denying trigger also denies auto.
+- Back up before upgrading; review operation restrictions before downgrade. See root upgrade-notes.yaml.
+
 # n8n Changelog
 
 ## 0.4.4 — 發佈候選（2026-10-29；映像待驗收）
