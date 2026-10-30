@@ -634,7 +634,9 @@ class StepHarness(unittest.TestCase):
         releases='\n'.join(json.dumps(r if isinstance(r,dict) else {'tag_name':r,'draft':False,'prerelease':False}) for r in releases)
         env=dict(os.environ,PATH=f"{tmp/'bin'}{os.pathsep}{os.environ['PATH']}",OLD=str(tmp/'old.yaml'),OLD_PATH=old_path,RELEASES=releases,REPO='WOOWTECH/t',BASE_SHA='b',
             GH_TOKEN='x',DB_MAX_AGE_HOURS='120',SBOM_ARTIFACT=sbom,SKIP_VULNERABILITY_SCAN=skip,RUNNER_TEMP=str(tmp),RUN_ATTEMPT='1',
-            GITHUB_OUTPUT=str(tmp/'out'),GITHUB_STEP_SUMMARY=str(tmp/'summary'),HISTORY=str(tmp/'history.json') if history is not None else '',GH_FAIL=gh_fail)
+            GITHUB_OUTPUT=str(tmp/'out'),GITHUB_STEP_SUMMARY=str(tmp/'summary'),HISTORY=str(tmp/'history.json') if history is not None else '',GH_FAIL=gh_fail,
+            TMPDIR=str(tmp/'mktemp'))
+        (tmp/'mktemp').mkdir(exist_ok=True)
         for one in (ident if isinstance(ident,tuple) else (ident,)):
             (tmp/'step.sh').write_text(self.step(one)['run'])
             r=subprocess.run(['bash',str(tmp/'step.sh')],cwd=tmp,env=env,capture_output=True,text=True)
@@ -938,6 +940,7 @@ class MainFirstVersion(StepHarness):
             ('d',{self.P:{'version':'1.9'},two:{'version':'3.0'}}),('e',{self.P:{'version':'1.9'},two:{'version':'2.9'}})]
         r,_,_=self.run_step('plan',policy='main',history=history,version='9.0',changed=2,skip='x',extra={'components':comps,'upgrade_comparison':{'skip_vulnerability_scan':'x'}})
         self.assertEqual(r.returncode,0,r.stdout+r.stderr);self.assertEqual({p['id']:p['target'] for p in self.plans},{'t':'c','t_2':'d'})
+        self.assertEqual(list((self.tmp/'mktemp').iterdir()),[])
     @needs_shell
     def test_the_old_image_is_the_one_of_the_commit_where_the_version_first_appeared(self):
         history=[('b',{self.P:{'version':'2.0','image':'ghcr.io/da-anda/new-{arch}'}}),('c',{self.P:{'version':'2.0'}}),('o',{self.P:{'version':'1.9'}})]
@@ -953,6 +956,7 @@ class MainFirstVersion(StepHarness):
                 self.assertEqual(r.returncode,1,r.stdout+r.stderr);self.assertEqual(plan,{})
                 self.assertIn('::error title=Upgrade comparison failed::t: '+reason,r.stdout)
                 self.assertIn('so the commit where the version first appeared is unknown; re-run this check',r.stdout)
+                self.assertEqual(list((self.tmp/'mktemp').iterdir()),[])
     @needs_shell
     def test_no_config_at_the_pr_base_is_a_new_add_on(self):
         # Nothing to look up: the PR base itself, with no config there (ComparisonTarget: no comparison target).
