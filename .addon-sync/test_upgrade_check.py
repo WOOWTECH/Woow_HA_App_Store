@@ -567,10 +567,11 @@ class ReusableWorkflow(unittest.TestCase):
         self.assertIn('actions/runs/${RUN_ID}/artifacts',steps[wait]['run'])
         self.assertEqual(self.wf['on']['workflow_call']['inputs']['sbom_wait_minutes']['default'],40)
         self.assertGreater(self.wf['jobs']['compare']['timeout-minutes'],40)
-    def test_ref_policy_main_compares_with_the_pr_base(self):
-        # apporo_ha_multi_ha_core, Woow_haos_ha_core, nginxpm have no stable Release: the Store follows main (#121).
+    def test_ref_policy_main_compares_with_where_the_base_version_first_appeared(self):
+        # apporo_ha_multi_ha_core, Woow_haos_ha_core, nginxpm have no stable Release: the Store follows main (#121), and the
+        # target is the commit on the PR base where its version first appeared (#129; MainFirstVersion runs it).
         plan=self.step('Find the comparison targets')
-        self.assertRegex(plan,r'if \[ "\$\{policy\}" = "main" \]; then\s+(#.*\s+)*target="\$\{BASE_SHA\}"')
+        self.assertRegex(plan,r'if \[ "\$\{policy\}" = "main" \]; then\s+(#.*\s+)*target="\$\(version_since "\$\{BASE_SHA\}" ')
         self.assertEqual(self.step_env('Find the comparison targets')['BASE_SHA'],'${{ github.event.pull_request.base.sha }}')
     def test_only_add_ons_whose_version_changed_are_compared(self):
         # Multi-add-on repositories: an add-on whose version is unchanged is listed as unchanged and never compared.
@@ -597,10 +598,13 @@ class StepHarness(unittest.TestCase):
     def setUp(self):self.wf=yaml.safe_load(self.WF.read_text(encoding='utf-8'))
     def step(self,ident):return next(s for s in self.wf['jobs']['compare']['steps'] if ident in (s.get('id'),s.get('name')))
     def run_step(self,ident,*,policy='release',extra=None,releases=('v1.0.0',),old_config=True,new_config=True,skip='',sbom='',version='1.1.0',old=None,old_path='',
-            new_path='addon/config.yaml',new=None,files=None,raw_version=None):
+            new_path='addon/config.yaml',new=None,files=None,raw_version=None,history=None,changed=1,gh_fail=''):
         """ident: one step, or a tuple run in order until one fails. new_path: where the PR has the config; new: changes to it;
         files: more files of the PR checkout; raw_version: {'old'/'new': the version line's YAML as written, e.g. 1.10 unquoted}.
-        self.tmp is the job's directory (also RUNNER_TEMP)."""
+        history: the PR base's history, newest first, [(sha, {path: changes to the config, or None for no file})]; the first
+        sha must be 'b' (BASE_SHA). Without it, every ref has `old` (at old_path when given) and 'b' is its only commit.
+        changed: how many registry add-ons the detect step reports as changed. gh_fail: any gh call containing it fails.
+        self.tmp is the job's directory (also RUNNER_TEMP); self.plans is every line of plan.jsonl."""
         import os,subprocess
         tmp=self.tmp=pathlib.Path(tempfile.mkdtemp());self.addCleanup(shutil.rmtree,tmp)
         (tmp/'tooling/.addon-sync').mkdir(parents=True);(tmp/'source').mkdir();(tmp/'bin').mkdir()
@@ -621,22 +625,54 @@ class StepHarness(unittest.TestCase):
         with contextlib.redirect_stdout(io.StringIO()) as provider:
             self.assertEqual(u.main(['components','--registry',str(tmp/'tooling/.addon-sync/registry.json'),'--repo','WOOWTECH/t']),0)
         (tmp/'provider.json').write_text(provider.getvalue())
-        (tmp/'changed.jsonl').write_text(''.join(json.dumps(dict(c,version=version,new=str(tmp/'t.new.yaml')))+'\n' for c in json.loads(provider.getvalue())['components'][:1]))
-        gh=tmp/'bin/gh'
-        gh.write_text('#!/bin/bash\ncase "$*" in\n  *releases*) [ -z "$RELEASES" ] || printf "%s\\n" "$RELEASES";;\n'
-            '  *contents*) if [ -s "$OLD" ] && [[ -z "$OLD_PATH" || "$*" == *"contents/$OLD_PATH?"* ]]; then cat "$OLD"; else echo "gh: Not Found (HTTP 404)" >&2; exit 1; fi;;\n  *) exit 1;;\nesac\n')
-        gh.chmod(0o755)
+        (tmp/'changed.jsonl').write_text(''.join(json.dumps(dict(c,version=version,new=str(tmp/'t.new.yaml')))+'\n' for c in json.loads(provider.getvalue())['components'][:changed]))
+        if history is not None:
+            (tmp/'history.json').write_text(json.dumps([{'sha':sha,'date':f'2026-01-01T00:{59-i:02d}:00Z','files':{p:dump(dict(cfg,**c),'old')
+                for p,c in at.items() if c is not None}} for i,(sha,at) in enumerate(history)]))
+        gh=tmp/'bin/gh';gh.write_text(GH_STUB);gh.chmod(0o755)
         # What `gh api --paginate .../releases --jq '.[]'` prints: one Release object per line; a bare tag is a stable Release.
         releases='\n'.join(json.dumps(r if isinstance(r,dict) else {'tag_name':r,'draft':False,'prerelease':False}) for r in releases)
         env=dict(os.environ,PATH=f"{tmp/'bin'}{os.pathsep}{os.environ['PATH']}",OLD=str(tmp/'old.yaml'),OLD_PATH=old_path,RELEASES=releases,REPO='WOOWTECH/t',BASE_SHA='b',
             GH_TOKEN='x',DB_MAX_AGE_HOURS='120',SBOM_ARTIFACT=sbom,SKIP_VULNERABILITY_SCAN=skip,RUNNER_TEMP=str(tmp),RUN_ATTEMPT='1',
-            GITHUB_OUTPUT=str(tmp/'out'),GITHUB_STEP_SUMMARY=str(tmp/'summary'))
+            GITHUB_OUTPUT=str(tmp/'out'),GITHUB_STEP_SUMMARY=str(tmp/'summary'),HISTORY=str(tmp/'history.json') if history is not None else '',GH_FAIL=gh_fail,
+            TMPDIR=str(tmp/'mktemp'))
+        (tmp/'mktemp').mkdir(exist_ok=True)
         for one in (ident if isinstance(ident,tuple) else (ident,)):
             (tmp/'step.sh').write_text(self.step(one)['run'])
             r=subprocess.run(['bash',str(tmp/'step.sh')],cwd=tmp,env=env,capture_output=True,text=True)
             if r.returncode:break
-        plan=json.loads((tmp/'plan.jsonl').read_text().splitlines()[0]) if (tmp/'plan.jsonl').exists() and (tmp/'plan.jsonl').read_text() else {}
-        return r,plan,(tmp/'out').read_text() if (tmp/'out').exists() else ''
+        self.plans=[json.loads(l) for l in (tmp/'plan.jsonl').read_text().splitlines()] if (tmp/'plan.jsonl').exists() else []
+        return r,(self.plans[0] if self.plans else {}),(tmp/'out').read_text() if (tmp/'out').exists() else ''
+
+# The fake GitHub API of StepHarness: Releases, raw files at a ref and the commits that changed a path (with --jq through jq).
+GH_STUB=r'''#!/usr/bin/env python3
+import json,os,re,subprocess,sys,urllib.parse
+args=sys.argv[1:];url=next(a for a in args if a.startswith('repos/'))
+def out(data):
+    if '--jq' not in args:print(json.dumps(data));sys.exit(0)
+    r=subprocess.run(['jq','-r',args[args.index('--jq')+1]],input=json.dumps(data),text=True);sys.exit(r.returncode)
+if os.environ.get('GH_FAIL') and os.environ['GH_FAIL'] in url:print('gh: Server Error (HTTP 502)',file=sys.stderr);sys.exit(1)
+history=json.load(open(os.environ['HISTORY'])) if os.environ.get('HISTORY') else None
+old=open(os.environ['OLD']).read();old_path=os.environ.get('OLD_PATH','')
+def legacy(path):return old if old and (not old_path or path==old_path) else None
+def at(ref,path):
+    for c in history or []:
+        if c['sha']==ref:return c['files'].get(path)
+    return legacy(path)
+if '/releases' in url:
+    if os.environ['RELEASES']:print(os.environ['RELEASES'])
+elif '/contents/' in url:
+    path,ref=re.fullmatch(r'repos/[^/]+/[^/]+/contents/(.*)\?ref=(.*)',url).groups();text=at(ref,path)
+    if text is None:print('gh: Not Found (HTTP 404)',file=sys.stderr);sys.exit(1)
+    sys.stdout.write(text)
+elif '/commits?' in url:
+    q={k:urllib.parse.unquote(v) for k,v in (p.split('=',1) for p in url.split('?',1)[1].split('&'))}
+    commits=history if history is not None else [{'sha':'b','date':'2026-01-01T00:00:00Z','files':{q['path']:legacy(q['path'])}}]
+    start=next(i for i,c in enumerate(commits) if c['sha']==q['sha'])
+    def changed(i):return commits[i]['files'].get(q['path'])!=(commits[i+1]['files'].get(q['path']) if i+1<len(commits) else None)
+    out([{'sha':c['sha'],'commit':{'committer':{'date':c['date']}}} for i,c in enumerate(commits) if i>=start and changed(i)])
+else:sys.exit(1)
+'''
 
 class SkipVulnerabilityScan(StepHarness):
     """skip_vulnerability_scan: a caller whose prebuilt image is not the one it builds (knxd ships a third-party image),
@@ -848,9 +884,85 @@ class ComparisonTarget(StepHarness):
         import re
         for step in self.wf['jobs']['compare']['steps']:
             run=step.get('run','')
-            for helper,use in [('gh_raw.sh',r'\b(fetch|config_at) '),('log.sh',r'\b(esc|fail|fail_output|no_cntrl) "'),('fields.sh',r'\bfields "')]:
+            for helper,use in [('gh_raw.sh',r'\b(fetch|config_at|version_since) '),('log.sh',r'\b(esc|fail|fail_output|no_cntrl) "'),('fields.sh',r'\bfields "')]:
                 with self.subTest(step=step.get('name'),helper=helper):
                     self.assertEqual('source tooling/.addon-sync/'+helper in run,bool(re.search(use,run)))
+
+class MainFirstVersion(StepHarness):
+    """ref_policy main (#129): users run the PR base's version as it first appeared on the default branch, so the target is
+    the commit where that version first appeared, not the PR base: a later same-version commit is in the comparison."""
+    SKIP=dict(skip='x',extra={'upgrade_comparison':{'skip_vulnerability_scan':'x'}})
+    STEPS=('plan','Compare with the comparison target')
+    NO_WORKERS={'options':{k:v for k,v in BASE['options'].items() if k!='workers'},'schema':{k:v for k,v in BASE['schema'].items() if k!='workers'}}
+    P='addon/config.yaml'
+    @needs_shell
+    def test_a_breaking_change_merged_without_a_bump_blocks_the_next_bump(self):
+        # PR A removed workers at 2.0 without a bump (passed: no version change); PR B bumps to 2.1 on top of it.
+        history=[('b',{self.P:{'version':'2.0',**self.NO_WORKERS}}),('c',{self.P:{'version':'2.0'}}),('o',{self.P:{'version':'1.9'}})]
+        r,plan,_=self.run_step(self.STEPS,policy='main',history=history,version='2.1',new=self.NO_WORKERS,**self.SKIP)
+        self.assertEqual(r.returncode,1,r.stdout+r.stderr);self.assertEqual(plan['target'],'c')
+        self.assertIn('Undeclared breaking change::option-removed workers',r.stdout);self.assertIn('t 2.0 → 2.1',r.stdout)
+    @needs_shell
+    def test_a_normal_bump_compares_with_the_commit_that_bumped_the_base(self):
+        # No PR in between: the PR base is the commit where its version first appeared, as before #129.
+        history=[('b',{self.P:{'version':'2.0'}}),('o',{self.P:{'version':'1.9'}})]
+        r,plan,_=self.run_step('plan',policy='main',history=history,version='2.1',**self.SKIP)
+        self.assertEqual(r.returncode,0,r.stdout+r.stderr);self.assertEqual(plan['target'],'b')
+        self.assertIn('t: comparing 2.1 with b, where version 2.0 first appeared on the PR base',r.stdout)
+        r,_,_=self.run_step(self.STEPS,policy='main',history=history,version='2.1',**self.SKIP)
+        self.assertEqual(r.returncode,0,r.stdout+r.stderr);self.assertIn('t 2.0 → 2.1',r.stdout)
+    @needs_shell
+    def test_a_version_unchanged_since_the_config_was_created_uses_the_creating_commit(self):
+        history=[('b',{self.P:{'version':'2.0',**self.NO_WORKERS}}),('c',{self.P:{'version':'2.0'}}),('a',{self.P:None})]
+        r,plan,_=self.run_step(self.STEPS,policy='main',history=history,version='2.1',new=self.NO_WORKERS,**self.SKIP)
+        self.assertEqual(r.returncode,1,r.stdout+r.stderr);self.assertEqual(plan['target'],'c')
+        self.assertIn('Undeclared breaking change::option-removed workers',r.stdout)
+    @needs_shell
+    def test_a_config_recreated_after_a_deletion_starts_its_history_again(self):
+        # Before the deletion it was another life of the add-on; its commits are not looked at.
+        history=[('b',{self.P:{'version':'2.0'}}),('d',{self.P:None}),('o',{self.P:{'version':'2.0'}})]
+        r,plan,_=self.run_step('plan',policy='main',history=history,version='2.1',**self.SKIP)
+        self.assertEqual(r.returncode,0,r.stdout+r.stderr);self.assertEqual(plan['target'],'b')
+    @needs_shell
+    def test_a_move_in_progress_follows_the_version_back_through_the_previous_path(self):
+        moved=ComparisonTarget.MOVED;old='old/config.yaml'
+        history=[('b',{self.P:{'version':'2.0',**self.NO_WORKERS},old:None}),('k',{old:{'version':'2.0','log_level':'warn'}}),
+            ('f',{old:{'version':'2.0'}}),('o',{old:{'version':'1.9'}})]
+        r,plan,_=self.run_step(self.STEPS,policy='main',history=history,version='2.1',new=self.NO_WORKERS,skip='x',
+            extra={**moved,'upgrade_comparison':{'skip_vulnerability_scan':'x'}})
+        self.assertEqual(r.returncode,1,r.stdout+r.stderr);self.assertEqual(plan['target'],'f')
+        self.assertIn('Undeclared breaking change::option-removed workers',r.stdout)
+    @needs_shell
+    def test_each_add_on_of_a_multi_add_on_repository_has_its_own_target(self):
+        comps=[{'id':'t','source_path':'addon','config_file':'config.yaml'},{'id':'t_2','source_path':'addon2','config_file':'config.yaml'}]
+        two='addon2/config.yaml'
+        history=[('b',{self.P:{'version':'2.0'},two:{'version':'3.0','log_level':'warn'}}),('c',{self.P:{'version':'2.0'},two:{'version':'3.0'}}),
+            ('d',{self.P:{'version':'1.9'},two:{'version':'3.0'}}),('e',{self.P:{'version':'1.9'},two:{'version':'2.9'}})]
+        r,_,_=self.run_step('plan',policy='main',history=history,version='9.0',changed=2,skip='x',extra={'components':comps,'upgrade_comparison':{'skip_vulnerability_scan':'x'}})
+        self.assertEqual(r.returncode,0,r.stdout+r.stderr);self.assertEqual({p['id']:p['target'] for p in self.plans},{'t':'c','t_2':'d'})
+        self.assertEqual(list((self.tmp/'mktemp').iterdir()),[])
+    @needs_shell
+    def test_the_old_image_is_the_one_of_the_commit_where_the_version_first_appeared(self):
+        history=[('b',{self.P:{'version':'2.0','image':'ghcr.io/da-anda/new-{arch}'}}),('c',{self.P:{'version':'2.0'}}),('o',{self.P:{'version':'1.9'}})]
+        r,plan,_=self.run_step('plan',policy='main',history=history,version='2.1',sbom='*')
+        self.assertEqual(r.returncode,0,r.stdout+r.stderr);self.assertEqual([plan['target'],plan['ref']],['c','ghcr.io/da-anda/addon-amd64:2.0'])
+    @needs_shell
+    def test_an_api_error_fails_and_never_falls_back_to_the_pr_base(self):
+        history=[('b',{self.P:{'version':'2.0'}}),('c',{self.P:{'version':'2.0'}}),('o',{self.P:{'version':'1.9'}})]
+        for gh_fail,reason in [('/commits?','cannot list the commits that changed addon/config.yaml on the PR base (GitHub API)'),
+                ('?ref=c','cannot read addon/config.yaml at c (GitHub API)')]:
+            with self.subTest(gh_fail):
+                r,plan,_=self.run_step('plan',policy='main',history=history,version='2.1',gh_fail=gh_fail,**self.SKIP)
+                self.assertEqual(r.returncode,1,r.stdout+r.stderr);self.assertEqual(plan,{})
+                self.assertIn('::error title=Upgrade comparison failed::t: '+reason,r.stdout)
+                self.assertIn('so the commit where the version first appeared is unknown; re-run this check',r.stdout)
+                self.assertEqual(list((self.tmp/'mktemp').iterdir()),[])
+    @needs_shell
+    def test_no_config_at_the_pr_base_is_a_new_add_on(self):
+        # Nothing to look up: the PR base itself, with no config there (ComparisonTarget: no comparison target).
+        r,plan,_=self.run_step('plan',policy='main',history=[('b',{self.P:None})],version='2.1',**self.SKIP)
+        self.assertEqual(r.returncode,0,r.stdout+r.stderr);self.assertEqual(plan['target'],'b')
+        self.assertIn('t: no config at the PR base, a new add-on',r.stdout)
 
 class VersionReading(StepHarness):
     """One reader of a config's version (addon_sync.config_version) for the workflow's steps, compare() and release():

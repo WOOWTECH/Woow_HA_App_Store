@@ -250,7 +250,7 @@ def _report(result, migrations, name, old_version, new_version, notes_path, scan
 
 def check_target(version, target, config, target_config_version, tag_version=None):
     """ValueError unless the comparison target's config (path `config`) gives the version its tag does (`tag_version`; None
-    under ref_policy main, whose target is the PR base) and `version` is newer than it (require_newer), so a PR fails
+    under ref_policy main, whose target is the commit on the PR base where its version first appeared) and `version` is newer than it (require_newer), so a PR fails
     before any scan; compare() reads the config's and requires the same. Tag and config are compared with version_cmp,
     so 1.3 and 1.3.0 agree; a pair that cannot be ordered does not. A config with no version (None) is the target's fault."""
     if target_config_version is None:raise ValueError(f'the comparison target {target} has no version in {config}; '+('correct that Release' if tag_version is not None else 'add a version to that config on the default branch')+', then re-run this check')
@@ -366,7 +366,7 @@ def main(argv=None):
     t.add_argument('--version',required=True,help="the PR's version: it must be newer than the target, as for the Release notes")
     g=sub.add_parser('check-target',help="fail unless the comparison target's config gives the version its tag does and --version is newer (check_target)")
     g.add_argument('--name',required=True,help='add-on id, for the error');g.add_argument('--version',required=True,help="the PR's version")
-    g.add_argument('--target',required=True,help="the target's tag, or the PR base");g.add_argument('--tag-version',default='',help="the target's version by its tag; '' when it has none")
+    g.add_argument('--target',required=True,help="the target's tag, or under ref_policy main the commit where the PR base's version first appeared");g.add_argument('--tag-version',default='',help="the target's version by its tag; '' when it has none")
     g.add_argument('--config',required=True,help="path of the target's config.yaml in the repository")
     g.add_argument('--config-version',required=True,help="the target's version by its config ('' when it has none; upgrade_check.py version)")
     v=sub.add_parser('version',help="print the version of a config.yaml as Home Assistant Supervisor reads it (addon_sync.config_version; nothing when it has none)")
