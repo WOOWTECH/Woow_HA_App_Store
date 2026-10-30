@@ -21,7 +21,7 @@
 | [woowtech_ha_multi_ha_core](https://github.com/WOOWTECH/woowtech_ha_multi_ha_core) | 正式 Release（`main`） | `woow_ha_core_3` | `woow_ha_core_3`／stable | `woow_ha_core_3` | ✓ | `release.yml`（amd64 建置） | 本機建置（aarch64、amd64、armhf、armv7、i386） | 已同步 |
 | [woowtech_ha_multi_ha_core](https://github.com/WOOWTECH/woowtech_ha_multi_ha_core) | 正式 Release（`main`） | `woow_ha_core_4` | `woow_ha_core_4`／stable | `woow_ha_core_4` | ✓ | `release.yml`（amd64 建置） | 本機建置（aarch64、amd64、armhf、armv7、i386） | 已同步 |
 | [woowtech_ha_multi_ha_core](https://github.com/WOOWTECH/woowtech_ha_multi_ha_core) | 正式 Release（`main`） | `woow_ha_core_5` | `woow_ha_core_5`／stable | `woow_ha_core_5` | ✓ | `release.yml`（amd64 建置） | 本機建置（aarch64、amd64、armhf、armv7、i386） | 已同步 |
-| [Woow_haos_ha_core](https://github.com/WOOWTECH/Woow_haos_ha_core) | 預設分支（`main`） | `ha_core` | `woow_ha_core`／stable | `woow_ha_core` | ✓ | `validate.yml` | 本機建置（amd64、aarch64） | 已同步 |
+| [Woow_haos_ha_core](https://github.com/WOOWTECH/Woow_haos_ha_core) | 正式 Release（`main`） | `ha_core` | `woow_ha_core`／stable | `woow_ha_core` | ✓ | `validate.yml` | 本機建置（amd64、aarch64） | 已同步 |
 | [Woow_ha_ai_mcp](https://github.com/WOOWTECH/Woow_ha_ai_mcp) | 預設分支（`master`） | `homeassistant-addon-dev` | `ha_mcp_dev`／prerelease | `ha_mcp_dev` | — | — | — | 開發通道，不進 stable |
 | [Woow_ha_ai_mcp](https://github.com/WOOWTECH/Woow_ha_ai_mcp) | 預設分支（`master`） | `homeassistant-addon-webhook-proxy-dev` | `ha_mcp_webhook_proxy_dev`／prerelease | `ha_mcp_webhook_proxy_dev` | — | — | — | 開發通道，不進 stable |
 | [Woow_ha_ai_mcp](https://github.com/WOOWTECH/Woow_ha_ai_mcp) | 預設分支（`master`） | `homeassistant-addon-webhook-proxy` | `ha_mcp_webhook_proxy`／stable | `ha_mcp_webhook_proxy` | ✓ | — | 本機建置（aarch64、amd64） | 已同步 |
