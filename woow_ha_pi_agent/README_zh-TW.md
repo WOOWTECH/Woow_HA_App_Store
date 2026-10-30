@@ -370,7 +370,7 @@ MIT © [WOOWTECH](https://github.com/WOOWTECH)。完整條款見 [`LICENSE`](LIC
 
 ## Omnigent
 
-映像已包含固定的 `pi-omnigent-plugin v0.3.29`、Python 3.12 與 Omnigent SDK 0.16.0。首次啟動自動註冊插件，但不建立或開啟設定對話；綁定只在 **Settings → Omnigent** 完成。
+映像已包含固定的 `pi-omnigent-plugin v0.3.30`、Python 3.12 與 Omnigent SDK 0.16.0。首次啟動自動註冊插件，但不建立或開啟設定對話；綁定只在 **Settings → Omnigent** 完成。
 
 1. 開啟 HA 側邊欄的 Pi Agent，進入 **Settings → Omnigent**（緊接 MCP；手機從設定下拉選單選取）。原生設定分頁會開啟受 HA ingress 保護的設定表單；首頁與右上角不提供額外入口。
 2. 每次全新設定都需輸入 Server URL、帳號及密碼；不內建預設 server、不沿用另一容器的登入。密碼欄位遮罩，送出／離開頁面後清空，不存於對話。
@@ -378,7 +378,9 @@ MIT © [WOOWTECH](https://github.com/WOOWTECH)。完整條款見 [`LICENSE`](LIC
 4. 選擇引擎及模型後按 **驗證實際對話**。此動作才會建立測試對話並使用模型額度；全部已安裝引擎實際回覆並停止測試後才顯示 ready。
 5. 按 **開啟 Omnigent**，在服務端選擇主機、引擎、模型與模組進行一般對話。取消連線只影響此 addon；既有歷史對話保留。
 
-此版本保留 **Pi Web 0.12.0**，原生 Omnigent 設定分頁使用私有 bridge。切換離開分頁會卸載登入表單；在表單按 Escape 可關閉設定。請勿執行只支援 Pi Web 0.10 的 `pi-omnigent install-ui`。連線資料只由設定頁表單處理。
+主機離線時（例如 host 程序因記憶體不足結束），設定頁會顯示 **重新連線**：以此 addon 先前完成的登入恢復同一個 host，不需輸入密碼，也不發送模型訊息。設定頁會顯示插件回報的問題原因碼；插件提供提示時，依頁面語言顯示下一步。若主機身分已被另一個 Omnigent 帳號使用（`NEEDS_RESET_ID`），在 addon 終端執行 `omnigent host reset-id --yes`，再於設定頁重新登入；server 上原本的 host 記錄不會自動刪除。背景啟動與恢復的結果會以狀態與原因碼寫入 addon 日誌。
+
+此版本保留 **Pi Web 0.12.0**，原生 Omnigent 設定分頁使用私有 bridge。切換離開分頁會卸載登入表單；在表單按 Escape 可關閉設定。Addon 內的 `pi-omnigent` 會拒絕 `install-ui`、`activate`、`install-host` 與 `launch-web`：它們會建立只支援 Pi Web 0.10 的介面副本或第二個 Pi Web 啟動器；其他指令照常交給插件。連線資料只由設定頁表單處理。
 
 既有自訂插件來源、連線資料與原生 Plugins 停用狀態都保留；移除插件後重啟不會自動裝回。需要恢復時在 Plugins 新增本機來源 `/opt/woow/pi-omnigent-plugin`，或安裝公開 GitHub source。來源與首次註冊記錄位於 `/data/pi-agent/omnigent-plugin/image-seed.json`。底層套件、host 身分及設定沿用原插件路徑並包含於 HA 備份。
 
@@ -386,4 +388,4 @@ MIT © [WOOWTECH](https://github.com/WOOWTECH)。完整條款見 [`LICENSE`](LIC
 
 ## Paseo 網頁整合
 
-內建 Paseo 0.1.14 與 Omnigent 0.3.29，在設定中將 Paseo 放在 Omnigent 右側，並保留 Pi Web 0.12.0。兩者不建立或自動開啟設定對話，也沒有首頁或右上角快捷入口；只有使用者在 **Settings → Paseo** 按下配對按鈕時才開始配對。[HA Ingress、升級與驗證說明](docs/PASEO_HA.md)。
+內建 Paseo 0.1.15 與 Omnigent 0.3.30，在設定中將 Paseo 放在 Omnigent 右側，並保留 Pi Web 0.12.0。兩者不建立或自動開啟設定對話，也沒有首頁或右上角快捷入口；只有使用者在 **Settings → Paseo** 按下配對按鈕時才開始配對。[HA Ingress、升級與驗證說明](docs/PASEO_HA.md)。

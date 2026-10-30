@@ -13,7 +13,7 @@ export async function verifyNativeRuntime({ bundle, runtimeDir }) {
   const transition = await import(pathToFileURL(path.join(bundle, 'src/pid-transition.mjs')).href);
   const pkg = JSON.parse(fs.readFileSync(path.join(bundle, 'package.json')));
   assert.equal(pkg.name, '@woowtech/pi-paseo');
-  assert.equal(pkg.version, '0.1.14');
+  assert.equal(pkg.version, '0.1.15');
   assert.equal(layout.RUNTIME_REVISION, '0.11.2-r3-6d8dbe515479');
   assert.equal(layout.runtimeReady({ runtimeDir }), true);
   const root = layout.runtimeDirectory({ runtimeDir });

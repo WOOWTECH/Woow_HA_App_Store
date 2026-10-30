@@ -126,7 +126,7 @@ test('hashed assets gzip after prefix rewrite, validate GET/HEAD/304 per represe
 });
 function fakePlugin() {
   const calls = [];
-  const plugin = { enabled: true, version: '0.1.14', api: {
+  const plugin = { enabled: true, version: '0.1.15', api: {
     status: async () => ({ phase: 'ready', daemon: { running: true }, webClient: { ready: true, version: '0.13.0-woow.1' }, providers: [{ provider: 'claude', status: 'ready' }], onboardingSessionId: 'legacy-id', token: 'never-project-this' }),
     pair: async () => { calls.push('pair'); return { url: '/paseo-web/#fixture' }; },
     lifecycle: async input => calls.push(input), listModels: async () => ({ models: [{ id: 'test', secret: 'never-project-this' }] }),
@@ -168,4 +168,38 @@ test('private bridge protects API, rewrites web and pairing under HA prefix, and
   assert.equal((await fetch(base + '/paseo-web/', { method: 'POST', headers })).status, 405);
   const head = await fetch(base + '/paseo-web/', { method: 'HEAD', headers });
   assert.equal(head.status, 200); assert.equal(await head.text(), '');
+});
+test('retired and missing static routes are 404; only listed codes reach the page, Node and system codes stay in the log', async t => {
+  const logged = []; t.mock.method(console, 'error', message => { logged.push(String(message)); });
+  let failure;
+  const bridge = { read: async () => { throw failure; }, act: async () => { throw failure; }, web: async () => { throw failure; } };
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'ha-paseo-static-'));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  fs.copyFileSync(path.join(root, 'rootfs/usr/local/share/pi-paseo-ha/index.html'), path.join(directory, 'index.html'));
+  const server = createServer({ bridge, directory });
+  server.listen(0, '127.0.0.1'); await once(server, 'listening');
+  t.after(() => { server.closeAllConnections(); server.close(); });
+  const base = `http://127.0.0.1:${server.address().port}`;
+  for (const route of ['/paseo/launcher.js', '/paseo/app.js']) {
+    const response = await fetch(base + route);
+    assert.equal(response.status, 404, route); assert.deepEqual(await response.json(), { error: { code: 'NOT_FOUND' } });
+  }
+  const token = (await (await fetch(base + '/paseo/setup')).text()).match(/name="paseo-token" content="([a-f0-9]+)"/)[1];
+  const headers = { 'X-Paseo-Token': token, 'Content-Type': 'application/json' };
+  for (const [error, status, code] of [
+    [Object.assign(new Error('ENOENT: no such file, open /data/pi-agent/private-file'), { code: 'ENOENT' }), 503, 'PASEO_FAILED'],
+    [Object.assign(new Error('EACCES: permission denied'), { code: 'EACCES' }), 503, 'PASEO_FAILED'],
+    [Object.assign(new Error('Cannot find module /opt/woow/private-module'), { code: 'ERR_MODULE_NOT_FOUND' }), 503, 'PASEO_FAILED'],
+    [Object.assign(new Error('daemon'), { code: 'DAEMON_UNREACHABLE' }), 503, 'DAEMON_UNREACHABLE'],
+    [Object.assign(new Error('disabled'), { code: 'PLUGIN_UNAVAILABLE' }), 409, 'PLUGIN_UNAVAILABLE'],
+    [Object.assign(new Error('action'), { code: 'INVALID_ACTION' }), 400, 'INVALID_ACTION'],
+  ]) {
+    failure = error;
+    for (const [route, init] of [['/api/paseo', { headers }], ['/api/paseo', { method: 'POST', headers, body: '{"action":"pair"}' }], ['/paseo-web/', {}]]) {
+      const response = await fetch(base + route, init);
+      assert.equal(response.status, status, `${route} ${code}`); assert.deepEqual(await response.json(), { error: { code } });
+    }
+  }
+  assert.ok(['ENOENT', 'EACCES', 'ERR_MODULE_NOT_FOUND'].every(value => logged.some(line => line.includes(`(${value})`))), logged.join('\n'));
+  assert.ok(logged.every(line => !/private-(file|module)/.test(line)), 'the add-on log keeps the code, never the message');
 });

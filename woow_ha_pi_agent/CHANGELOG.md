@@ -1,3 +1,9 @@
+## 0.15.18
+
+- Bundle the checksum-verified public Omnigent plugin 0.3.30 and Paseo plugin 0.1.15, the same generation that the root Pi Agent image 0.3.22 ships. Settings → Omnigent shows the reason and the next step for each issue code in the page's language (a host owned by another account asks you to sign in with that account first; `reset-id` is the last resort) and offers 重新連線 for an authorized host that went offline; a plugin source switch keeps the approved login, and Paseo is no longer switched off by one. Omnigent is still bound only from Settings → Omnigent; no setup conversation is created or opened.
+- The image no longer ships the unused musl Claude Code binaries (about 108 MiB smaller per architecture), applies the PaaS image's Omnigent system-reminder patch (the web chat no longer mirrors the context Claude Code injects), keeps every bundled version in `cli-runtime/versions.json`, and `pi-omnigent` only runs the commands that fit this add-on.
+- Keep Pi Web 0.12.0, add-on options, ports, architectures, user sessions, provider credentials and authorized-host recovery. No migration is needed.
+
 ## 0.15.17
 
 - Bundle the checksum-verified public Paseo plugin 0.1.14 (Omnigent plugin stays 0.3.29), the same generation that the root Pi Agent image 0.3.21 ships. Paseo no longer persists a user disable when its supervisor is only stopped (container restart, or a supervisor takeover after the plugin source changed), so a restart can no longer switch Paseo off; and an empty or error-cached provider model catalog is refreshed once after login, so a fresh login lists its models without a restart. Omnigent is still bound only from Settings → Omnigent; no setup conversation is created or opened.

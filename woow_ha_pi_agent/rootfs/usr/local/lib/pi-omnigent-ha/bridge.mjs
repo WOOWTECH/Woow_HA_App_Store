@@ -1,9 +1,27 @@
-// Safe view/action bridge adapted from pi-omnigent-plugin v0.3.11 (MIT).
+// Safe view/action bridge adapted from pi-omnigent-plugin v0.3.29 (MIT).
 // Upstream source: integrations/pi-web/adapter.patch, lib/omnigent-runtime.ts.
+// HA additions: the status issue (plugin issue contract) and the resume action.
 import { loadPlugin } from './lifecycle.mjs';
 const record = (value) => value && typeof value === "object" && !Array.isArray(value) ? value : {};
 const text = (value) => typeof value === "string" ? value.replace(/[\x00-\x1f\x7f]/g, "").slice(0, 256) : null;
-const code = (value) => typeof value === "string" && /^[A-Z_0-9]{1,64}$/.test(value) ? value : null;
+const code = (value) => typeof value === "string" && /^[A-Z][A-Z0-9_]{0,63}$/.test(value) ? value : null;
+const sentence = (value) => typeof value === "string" ? value.replace(/[\x00-\x1f\x7f]/g, "").trim().slice(0, 512) || null : null;
+const ISSUE_ACTIONS = ["relogin", "retry", "reset-host-id", "repair", "verify", "contact-admin"];
+/** Plugin issue contract (0.3.30+): {code, message, details?} plus hints in three
+ * locales and a next action. Older plugins send code/message only. Never details. */
+function safeIssue(value) {
+    const issue = record(value), id = code(issue.code);
+    if (!id)
+        return null;
+    const hints = Object.fromEntries(["en", "zh-TW", "zh-CN"].flatMap(locale => {
+        const hint = sentence(record(issue.hints)[locale]);
+        return hint ? [[locale, hint]] : [];
+    }));
+    return { code: id, message: sentence(issue.message), hints: Object.keys(hints).length ? hints : null,
+        action: ISSUE_ACTIONS.includes(issue.action) ? issue.action : null };
+}
+// resumeAuthorizedHost reports {ok: true, resumed: false, reason} when it has nothing to resume.
+const RESUME_SKIPPED = { "fresh-login-required": "FRESH_LOGIN_REQUIRED", inactive: "PLUGIN_UNAVAILABLE" };
 function safeServer(value) {
     if (typeof value !== "string")
         return null;
@@ -16,7 +34,7 @@ function safeServer(value) {
     }
 }
 const emptyView = (installed = false) => ({ installed, active: false, version: null, phase: "unavailable", server: null,
-    loginConfirmed: false, host: { id: null, name: null, connected: false }, engines: [] });
+    loginConfirmed: false, host: { id: null, name: null, connected: false }, issue: null, engines: [] });
 /** The same operations the installed plugin exposes, projected to safe UI data. */
 export function createOmnigentBridge(load = loadPlugin) {
     async function snapshot(plugin) {
@@ -31,6 +49,7 @@ export function createOmnigentBridge(load = loadPlugin) {
         return { installed: true, active: true, version: plugin.version, phase: text(current.phase) || "unknown",
             server: safeServer(current.server), loginConfirmed: current.loginConfirmed === true,
             host: { id: text(host.id), name: text(host.name), connected: host.connected === true },
+            issue: safeIssue(current.issue),
             engines: ["claude", "codex", "pi"].map(key => {
                 const engine = record(engines[key]), proof = record(proofs[key]), inventory = record(catalogEngines[key]);
                 return { key, installed: engine.available === true, version: text(engine.version),
@@ -67,6 +86,17 @@ export function createOmnigentBridge(load = loadPlugin) {
             }
             else if (body.action === "disconnect" && body.confirm === true)
                 result = await plugin.runtime.disconnect();
+            else if (body.action === "resume") {
+                // Reconnect with this installation's recorded login only: no login
+                // input, no provider or model call. Restarts a host that has stopped.
+                if (typeof plugin.runtime.resumeAuthorizedHost !== "function")
+                    result = { ok: false, error: { code: "RESUME_UNSUPPORTED" } };
+                else {
+                    result = record(await plugin.runtime.resumeAuthorizedHost({ lifecycle: () => plugin.lifecycle() }));
+                    if (result.ok === true && result.resumed !== true)
+                        result = { ok: false, error: { code: RESUME_SKIPPED[result.reason] || "RESUME_SKIPPED" } };
+                }
+            }
             else
                 throw Object.assign(new Error("Unsupported action"), { code: "INVALID_ACTION" });
             // A targeted verification can succeed while other installed engines still

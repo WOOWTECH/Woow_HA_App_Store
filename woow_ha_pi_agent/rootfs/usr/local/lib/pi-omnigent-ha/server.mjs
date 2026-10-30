@@ -8,7 +8,15 @@ const staticRoot = '/usr/local/share/pi-omnigent-ha';
 const files = new Map([['/omnigent', ['index.html', 'text/html']], ['/omnigent/', ['index.html', 'text/html']],
   ['/omnigent/app.js', ['app.js', 'application/javascript']],
   ['/omnigent/style.css', ['style.css', 'text/css']]]);
-const safeCode = error => /^[A-Z_0-9]{1,64}$/.test(error?.code || '') ? error.code : 'OMNIGENT_FAILED';
+// Only the bridge's own request and availability codes reach the page. A Node or
+// system code (ENOENT, EACCES, ERR_MODULE_NOT_FOUND, ...) is logged, code only.
+const publicCodes = new Set(['PLUGIN_UNAVAILABLE', 'INVALID_SETUP', 'INVALID_ENGINE', 'INVALID_MODEL', 'INVALID_ACTION']);
+const logCode = error => [error?.code, error?.name].find(value => typeof value === 'string' && /^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(value)) || 'unknown';
+function safeCode(error) {
+  if (publicCodes.has(error?.code)) return error.code;
+  console.error(`Omnigent settings request failed (${logCode(error)}).`);
+  return 'OMNIGENT_FAILED';
+}
 
 export function createServer({ bridge = createOmnigentBridge(), directory = staticRoot } = {}) {
   // This token stays in memory and the same-origin settings page. No cookie,
@@ -53,7 +61,10 @@ export function createServer({ bridge = createOmnigentBridge(), directory = stat
       const entry = files.get(url.pathname);
       if (!entry || req.method !== 'GET') return reply(404, { error: { code: 'NOT_FOUND' } });
       const prefix = /^\/api\/hassio_ingress\/[A-Za-z0-9_-]{16,128}$/.test(req.headers['x-ingress-path'] || '') ? req.headers['x-ingress-path'] : '';
-      const content = fs.readFileSync(path.join(directory, entry[0]), 'utf8').replace('__CSRF_TOKEN__', token).replaceAll('__INGRESS_PREFIX__', prefix);
+      let content;
+      try { content = fs.readFileSync(path.join(directory, entry[0]), 'utf8'); }
+      catch (error) { if (error.code === 'ENOENT') return reply(404, { error: { code: 'NOT_FOUND' } }); throw error; }
+      content = content.replace('__CSRF_TOKEN__', token).replaceAll('__INGRESS_PREFIX__', prefix);
       res.writeHead(200, { 'Content-Type': `${entry[1]}; charset=utf-8`, 'Cache-Control': 'no-store',
         'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer',
         'Content-Security-Policy': "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; form-action 'none'; base-uri 'none'; frame-ancestors 'self'" });

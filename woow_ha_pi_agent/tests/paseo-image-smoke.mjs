@@ -14,7 +14,7 @@ try {
   const lifecycle = await import('/usr/local/lib/pi-paseo-ha/lifecycle.mjs');
   await lifecycle.prepareImage(); assert.equal(lifecycle.seed().seeded, true);
   const plugin = await lifecycle.loadPlugin();
-  assert.equal(plugin.version, '0.1.14'); assert.equal(plugin.enabled, true);
+  assert.equal(plugin.version, '0.1.15'); assert.equal(plugin.enabled, true);
   assert.equal(plugin.hooks, undefined, 'image bridge must not offer conversation creation');
   const sessionsDir = path.join(agentDir, 'sessions');
   const sessions = fs.existsSync(sessionsDir) ? fs.readdirSync(sessionsDir, { recursive: true }).filter(file => file.endsWith('.jsonl')) : [];
@@ -31,5 +31,5 @@ try {
   assert.equal(sdk.version, '0.12.0');
   const settings = path.join(agentDir, 'settings.json'); fs.writeFileSync(settings, '{"packages":[]}');
   assert.equal(lifecycle.seed().seeded, false); assert.equal(await lifecycle.loadPlugin(), null);
-  console.log('PASS offline HA image: Paseo 0.1.14, CLI 0.11.2 r3, both native writers, fixed web, Pi Web 0.12 SDK, settings-only registration/removal.', JSON.stringify(native));
+  console.log('PASS offline HA image: Paseo 0.1.15, CLI 0.11.2 r3, both native writers, fixed web, Pi Web 0.12 SDK, settings-only registration/removal.', JSON.stringify(native));
 } finally { fs.rmSync(agentDir, { recursive: true, force: true }); }

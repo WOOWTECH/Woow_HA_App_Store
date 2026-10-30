@@ -1,0 +1,28 @@
+#!/bin/sh
+# `pi-omnigent` — the Omnigent plugin CLI, limited to commands that fit this add-on.
+#
+# The add-on starts Pi Web 0.12.0 and the Omnigent host itself
+# (/usr/local/lib/pi-omnigent-ha/launch.mjs) and binds from Settings → Omnigent.
+# The plugin's own Pi Web 0.10 setup commands would work against that:
+# install-ui builds a patched Pi Web copy of several GB under ~/.local/share,
+# which every Home Assistant backup then carries; activate and install-host put
+# a Pi Web launcher in ~/.local/bin; launch-web starts a second Pi Web. Any
+# other command is refused too, so a new plugin command is reviewed first.
+cli=/opt/woow/pi-omnigent-plugin/bin/cli.mjs
+command="${1-status}"
+case "${command}" in
+  status|catalog|verify|acceptance|initialize|repair|disconnect|install-dependencies|enable|disable|boot|cleanup-ui|uninstall-host)
+    exec node "${cli}" "$@" ;;
+  install-ui)
+    reason="it builds the plugin's Pi Web 0.10 UI copy (several GB, kept in every Home Assistant backup); this add-on keeps the pinned Pi Web 0.12.0 with Settings → Omnigent." ;;
+  activate|install-host)
+    reason="it installs the plugin's own Pi Web launcher; this add-on starts Pi Web and the Omnigent host itself. To reconnect, use Settings → Omnigent → 重新連線, or run: pi-omnigent boot" ;;
+  launch-web)
+    reason="it starts a second Pi Web; the add-on already runs Pi Web 0.12.0. Restart the add-on instead." ;;
+  *)
+    reason="" ;;
+esac
+printf "pi-omnigent: '%s' is not available in this Home Assistant add-on.\n" "${command}" >&2
+[ -n "${reason}" ] && printf 'pi-omnigent: %s\n' "${reason}" >&2
+printf '%s\n' "pi-omnigent: available commands: status, catalog, verify, acceptance, initialize, repair, disconnect, install-dependencies, enable, disable, boot, cleanup-ui, uninstall-host" >&2
+exit 2

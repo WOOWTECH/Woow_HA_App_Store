@@ -168,6 +168,5 @@ export PLAYWRIGHT_BROWSERS_PATH=/data/pi-agent/playwright-cache
 export RCLONE_CONFIG=/data/pi-agent/rclone/rclone.conf
 
 bashio::log.info "Starting pi-web on 127.0.0.1:30141 (data: ${PI_CODING_AGENT_DIR}, home: ${HOME})"
-export PI_OMNIGENT_PI_WEB_URL="http://127.0.0.1:30141"
 export PI_OMNIGENT_SDK_ROOT="/usr/local/lib/node_modules/@agegr/pi-web"
 exec node /usr/local/lib/pi-paseo-ha/launch.mjs

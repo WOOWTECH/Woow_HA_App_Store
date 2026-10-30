@@ -25,39 +25,32 @@ phone settings, the MCP-adjacent order, blank/masked credentials, two model
 selections, disconnect confirmation, Escape, remount and the standalone page.
 The Omnigent runtime is a fixture: these tests do not validate provider logins,
 paid model responses or real HA Supervisor ingress. Paseo tests use the
-checksum-verified public 0.1.14 client and cover deep links, assets and gzip.
+checksum-verified public 0.1.15 client and cover deep links, assets and gzip.
 
 CI runs these checks with Playwright 1.62.1 and retains screenshots/receipts.
 Set `CHROMIUM_EXECUTABLE` to reuse an installed Chromium locally. Continue to
-run `tests/omnigent-browser.mjs` for the independent fallback form. A release
-also requires both architecture image builds and real Supervisor acceptance;
-the compiled browser test does not replace them.
+run `tests/omnigent-browser.mjs` for the independent fallback form. It also
+covers an offline host after a confirmed login: the plugin's issue hint in the
+page language (issue contract, plugin 0.3.30+), the code-and-message fallback
+of plugin 0.3.30, and **重新連線** (resume). A release also requires both
+architecture image builds and real Supervisor acceptance; the compiled browser
+test does not replace them.
 
 The native browser suite also saves separate Omnigent and Paseo fixture
-conversations through the real SDK. On a fresh untouched homepage it checks
-zero-click exact Omnigent selection and visible setup instructions on desktop
-and phone. It preserves all original transcript bytes; Pi Web may append its
-normal runtime metadata when opening a saved session. No prompt is submitted.
+conversations through the real SDK, plus a stale `onboarding.json` naming the
+Omnigent one, as images before 0.15.11 left it. On the homepage it checks that
+neither conversation opens, that there is no floating Omnigent or Paseo link,
+and that the retired `/omnigent/onboarding`, `/omnigent/launcher.js` and
+`/paseo/launcher.js` routes return 404. It preserves all original transcript
+bytes; Pi Web may append its normal runtime metadata when opening a saved
+session. No prompt is submitted.
 
-Auto-open is restricted to a registered, active, enabled plugin with unfinished
-setup. A small same-origin GET exposes only that eligibility and the saved ID;
-the existing token requirement for settings and mutations is unchanged. Eligibility
-reads only regular, same-UID, 0600 local state/onboarding files; it never calls
-runtime status, dependency probes, Python, catalog or a remote Omnigent server.
-Absent state during registered cold boot may wait but cannot open a stale
-onboarding until enabled state is saved. Unreadable, malformed, unknown or
-completed state stops immediately. The
-client confirms the ID exists in the session summary catalog before navigating.
-Explicit URLs, saved tab/workspace/terminal selection, drafts and interaction
-(including before hydration) take precedence. Cold boot may retry for at most
-30 seconds/30 attempts, stopping on disable, removal, completion or interaction.
-A per-tab, Ingress-scoped marker prevents Back/reload loops. A missed deadline
-leaves the homepage and its ordinary sidebar navigation usable.
-
-These local fixtures prove selection and instruction rendering, not the real
-plugin's interactive wizard. Official HA QA must separately prove the initial
-blank URL input/setup prompt in a fresh browser after Supervisor reinstall,
-after first completing the original host's upgrade/restart persistence tests.
+Binding happens only in Settings → Omnigent: no setup conversation is created
+or opened, and the homepage does not navigate on its own (0.15.11 removed
+that). These local fixtures prove the settings form, not the real plugin's
+server login. Official HA QA must separately prove a fresh login in Settings
+after a Supervisor reinstall, after first completing the original host's
+upgrade/restart persistence tests.
 
 The adapter intentionally accepts only the verified official 0.12.0 artifacts.
 For another upstream release or rebuilt artifact, inspect SettingsPanel and
@@ -70,8 +63,48 @@ modules, rejects a competing flock, and exercises acquire/update/refresh/release
 in each compiled module copy. It checks PID inode preservation on update,
 generation-aware release and the persistent guard inode. All writes use a
 temporary private home; no daemon, provider, pairing or model call is started
-by this native writer probe. The surrounding smoke retains its onboarding,
-registration/removal, CLI and fixed-client checks.
+by this native writer probe. The surrounding smoke checks settings-only
+registration (no conversation is created), removal, the CLI version and the
+fixed client.
+
+## Version pins and the released Omnigent plugin
+
+`cli-runtime/versions.json` is the only place the bundled Omnigent plugin
+(version, release URL, sha256), Omnigent CLI, Claude Code and Codex versions
+are written. The Dockerfile's `pins` stage splits it into one file per pin, the
+CI test job reads it with `jq`, and the image smoke reads the image's copy at
+`/usr/local/share/woow-ha-pi-agent/versions.json`. `tests/versions.test.mjs`
+checks that the Claude/Codex package locks, the hash-locked Omnigent
+requirements and the reminder patch's validated version agree with it, and
+that the Dockerfile, CI and image checks do not repeat the values. Among the
+build and test inputs, a plugin bump changes only this file; a CLI bump also
+regenerates that CLI's lock. Pi Web stays pinned by the settings patch's
+artifact hashes and Paseo by its Dockerfile ARGs.
+
+`tests/omnigent-contract.test.mjs` drives the released plugin tarball through
+this repository's seed, lifecycle and Settings bridge in about ten seconds,
+before any image build: a fresh install, a same-path image upgrade that must
+keep the confirmed login and receipts, and a switch between the image bundle
+and a git install. Each add-on start runs `tests/omnigent-plugin-boot.mjs` in a
+new process, which mirrors the launcher's package activation without the boot
+worker; no server, login, network or Omnigent CLI is used.
+
+```sh
+url="$(jq -r .omnigentPlugin.url cli-runtime/versions.json)"
+curl -fLsS "$url" -o /tmp/omnigent-plugin.tgz   # then check the sha256 pin
+OMNIGENT_PLUGIN_TGZ=/tmp/omnigent-plugin.tgz PI_WEB_ROOT=/path/to/pi-web/package \
+  node --test tests/versions.test.mjs tests/omnigent-contract.test.mjs
+```
+
+`PI_WEB_ROOT` is the official Pi Web package with the production dependencies
+the CI step installs. A Pi Web session that loaded the extension from a
+previous plugin root is outside this contract.
+
+The Omnigent system-reminder patch in `patches/omnigent-reminder-patch/` is a
+byte-identical copy of the PaaS image's (paas-odoo-ci
+`pi-agent/omnigent-reminder-patch`). The image build applies it with `--strict`
+and runs `patches/tests/omnigent-reminder-patch.test.py` against the patched
+package; a different Omnigent version or a moved anchor fails the build.
 
 ## Local source-build context
 

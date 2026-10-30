@@ -13,7 +13,7 @@ const prefix = '/api/hassio_ingress/browserfixture0123456789';
 const calls = [];
 const current = { phase: 'needs-login', host: { id: 'fixture', connected: false }, loginConfirmed: false,
   engines: { pi: { available: true, version: '1.1.0' }, codex: { available: true, version: '0.162.1' } } };
-const plugin = { version: '0.3.11', lifecycle: async () => ({ active: true }), onboarding: () => ({ sessionId: 'fixture-session' }),
+const plugin = { version: '0.3.11', lifecycle: async () => ({ active: true }),
   runtime: { status: async () => current,
     catalog: async () => ({ data: { engines: { pi: { models: [{ id: 'test-model-a', displayName: 'Test model A' }, { id: 'test-model-b', displayName: 'Test model B' }] } } } }),
     initialize: async input => { calls.push({ action: 'connect', ...input }); Object.assign(current, { loginConfirmed: true, server: input.server, host: { id: 'fixture', connected: true } }); return { ok: true }; },
@@ -65,7 +65,41 @@ try {
     assert.deepEqual(errors, []);
     await page.close();
   }
+  // An offline host after a confirmed login: the plugin's issue, never "login finished".
+  const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  const errors = []; page.on('pageerror', error => errors.push(error.message));
+  const notice = () => page.locator('#notice').innerText();
+  Object.assign(current, { phase: 'error', loginConfirmed: true, server: 'https://example.test', host: { id: 'fixture', connected: false },
+    issue: { code: 'NEEDS_RESET_ID', message: '舊版訊息', action: 'reset-host-id', hints: { en: 'English hint', 'zh-CN': '简体提示',
+      'zh-TW': '這個主機身分已被另一個 Omnigent 帳號使用。請在終端機執行 omnigent host reset-id --yes，再重新連線。' } } });
+  await page.goto(`http://127.0.0.1:${ingress.address().port}${prefix}/omnigent`);
+  await page.waitForFunction(() => document.querySelector('#notice').textContent.includes('NEEDS_RESET_ID'));
+  assert.equal(await notice(), '這個主機身分已被另一個 Omnigent 帳號使用。請在終端機執行 omnigent host reset-id --yes，再重新連線。（NEEDS_RESET_ID）', 'zh-TW hint for this zh-Hant page');
+  assert.equal(await page.locator('#resume').isVisible(), true);
+  // Plugin 0.3.29 sends a code and message only.
+  current.issue = { code: 'HOST_PROCESS_MISSING', message: '原 host 程序未保持執行；請查看插件狀態。' };
+  await page.locator('#refresh').click();
+  await page.waitForFunction(() => document.querySelector('#notice').textContent.includes('HOST_PROCESS_MISSING'));
+  assert.equal(await notice(), '原 host 程序未保持執行；請查看插件狀態。（HOST_PROCESS_MISSING）');
+  delete current.issue;
+  await page.locator('#refresh').click();
+  await page.waitForFunction(() => document.querySelector('#notice').textContent.startsWith('連線發生問題'));
+  assert.ok((await notice()).includes('重新連線'), 'without an issue the error notice points to the resume button');
+  plugin.runtime.resumeAuthorizedHost = async ({ lifecycle }) => {
+    calls.push({ action: 'resume', lifecycle: await lifecycle() });
+    Object.assign(current, { phase: 'needs-verification', host: { id: 'fixture', connected: true } });
+    return { ok: true, resumed: true, server: current.server, host: current.host };
+  };
+  await page.locator('#resume').click();
+  await page.waitForFunction(() => document.querySelector('#notice').textContent === '已用原登入重新連線此主機。');
+  assert.deepEqual(calls.at(-1), { action: 'resume', lifecycle: { active: true } });
+  assert.equal(await page.locator('#resume').isHidden(), true, 'a connected host needs no resume');
+  await page.locator('#refresh').click();
+  await page.waitForFunction(() => document.querySelector('#notice').textContent.includes('Server 登入完成'));
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true);
+  assert.deepEqual(errors, []);
+  await page.close();
   assert.deepEqual(escaped.filter(url => url !== '/favicon.ico'), []);
   assert.equal(calls.filter(call => call.action === 'connect').every(call => call.verify === false), true);
-  console.log('Desktop/mobile HA ingress form passed: fresh fields, masked/cleared password, two model switches, confirmed disconnect, no escaped API/asset routes.');
+  console.log('Desktop/mobile HA ingress form passed: fresh fields, masked/cleared password, two model switches, confirmed disconnect, issue hints with 0.3.29 fallback, resume, no escaped API/asset routes.');
 } finally { await browser.close(); backend.closeAllConnections(); backend.close(); ingress.closeAllConnections(); ingress.close(); }

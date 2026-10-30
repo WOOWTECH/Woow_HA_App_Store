@@ -8,9 +8,18 @@ import { createPaseoBridge } from './bridge.mjs';
 
 const staticRoot = '/usr/local/share/pi-paseo-ha';
 const files = new Map([['/paseo', ['index.html', 'text/html']], ['/paseo/', ['index.html', 'text/html']], ['/paseo/setup', ['index.html', 'text/html']],
-  ['/paseo/app.js', ['app.js', 'application/javascript']], ['/paseo/launcher.js', ['launcher.js', 'application/javascript']],
-  ['/paseo/style.css', ['style.css', 'text/css']]]);
-const safeCode = error => /^[A-Z_0-9]{1,64}$/.test(error?.code || '') ? error.code : 'PASEO_FAILED';
+  ['/paseo/app.js', ['app.js', 'application/javascript']], ['/paseo/style.css', ['style.css', 'text/css']]]);
+// Only the bridge's own codes and the plugin errors these actions can raise reach
+// the page. A Node or system code (ENOENT, EACCES, ERR_*, ...) is logged, code only.
+const publicCodes = new Set(['PLUGIN_UNAVAILABLE', 'INVALID_ACTION', 'PAIRING_ORIGIN_INVALID', 'PAIRING_UNAVAILABLE',
+  'WEB_CLIENT_NOT_READY', 'DAEMON_UNREACHABLE', 'DAEMON_REQUEST_TIMEOUT', 'PROVIDER_MODELS_UNAVAILABLE',
+  'LOCK_BUSY', 'RUNTIME_BUSY', 'STATE_BUSY', 'RESTART_REQUIRED', 'COMMAND_FAILED', 'COMMAND_UNAVAILABLE']);
+const logCode = error => [error?.code, error?.name].find(value => typeof value === 'string' && /^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(value)) || 'unknown';
+function safeCode(error) {
+  if (publicCodes.has(error?.code)) return error.code;
+  console.error(`Paseo settings request failed (${logCode(error)}).`);
+  return 'PASEO_FAILED';
+}
 
 export function createServer({ bridge = createPaseoBridge(), directory = staticRoot } = {}) {
   // This token stays in memory and the same-origin settings page. No cookie,
@@ -65,7 +74,10 @@ export function createServer({ bridge = createPaseoBridge(), directory = staticR
       }
       const entry = files.get(url.pathname);
       if (!entry || req.method !== 'GET') return reply(404, { error: { code: 'NOT_FOUND' } });
-      const content = fs.readFileSync(path.join(directory, entry[0]), 'utf8').replace('__CSRF_TOKEN__', token).replaceAll('__INGRESS_PREFIX__', prefix);
+      let content;
+      try { content = fs.readFileSync(path.join(directory, entry[0]), 'utf8'); }
+      catch (error) { if (error.code === 'ENOENT') return reply(404, { error: { code: 'NOT_FOUND' } }); throw error; }
+      content = content.replace('__CSRF_TOKEN__', token).replaceAll('__INGRESS_PREFIX__', prefix);
       res.writeHead(200, { 'Content-Type': `${entry[1]}; charset=utf-8`, 'Cache-Control': 'no-store',
         'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer',
         'Content-Security-Policy': "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; form-action 'none'; base-uri 'none'; frame-ancestors 'self'" });

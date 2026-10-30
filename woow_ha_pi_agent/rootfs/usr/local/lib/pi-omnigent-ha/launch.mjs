@@ -3,9 +3,12 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { seed, loadPlugin, BUNDLE } from './lifecycle.mjs';
 import { createServer } from './server.mjs';
+import { startBootWorker } from './worker.mjs';
 
 const agentDir = process.env.PI_CODING_AGENT_DIR;
 const socket = path.join(agentDir, 'omnigent-ha.sock');
+// Codes only: an error message can carry paths or server responses.
+const logCode = error => [error?.code, error?.name].find(value => typeof value === 'string' && /^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(value)) || 'unknown';
 let plugin, worker, child, stopWatching, shuttingDown = false, activeRoot = null;
 function stopWorker() {
   if (!worker) return;
@@ -21,7 +24,8 @@ async function activate() {
   if (activeRoot === next.root) return;
   stopWorker();
   activeRoot = next.root;
-  worker = spawn(process.execPath, [path.join(next.root, 'bin/cli.mjs'), 'boot'], { env: process.env, stdio: 'ignore', detached: true });
+  // Its boot result (resume outcome) and stderr reach the add-on log, redacted.
+  worker = startBootWorker(next.root, { env: process.env });
   const current = worker;
   current.once('error', () => { if (worker === current) worker = null; });
   current.once('exit', () => { if (worker === current) worker = null; });
@@ -31,17 +35,17 @@ try {
   const web = await import(`${BUNDLE}/src/web.mjs`);
   await activate();
   stopWatching = web.watchPackageLifecycle(async () => { if (!shuttingDown) await activate(); });
-} catch { console.error('Omnigent setup needs attention; Pi Web remains available.'); }
+} catch (error) { console.error(`Omnigent setup needs attention (${logCode(error)}); Pi Web remains available.`); }
 
 // A private Unix socket adds no host-network listener. Existing nginx peer
 // restrictions remain the browser authentication boundary.
 const server = createServer();
-server.on('error', () => console.error('Omnigent settings socket unavailable.'));
+server.on('error', error => console.error(`Omnigent settings socket unavailable (${logCode(error)}).`));
 try {
   try { if (fs.lstatSync(socket).isSocket()) fs.unlinkSync(socket); else throw new Error('Socket path occupied'); }
   catch (error) { if (error.code !== 'ENOENT') throw error; }
   server.listen(socket, () => fs.chmodSync(socket, 0o666));
-} catch { console.error('Omnigent settings socket unavailable; Pi Web remains available.'); }
+} catch (error) { console.error(`Omnigent settings socket unavailable (${logCode(error)}); Pi Web remains available.`); }
 // Use the pinned image runtime; never install/rebuild the plugin's Pi Web 0.10 overlay.
 child = spawn('/usr/local/bin/pi-web', process.argv.slice(2), { stdio: 'inherit', env: process.env });
 async function close() {

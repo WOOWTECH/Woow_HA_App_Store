@@ -1,6 +1,29 @@
 ARG BUILD_FROM=ghcr.io/hassio-addons/debian-base:9.1.0
 
 # =============================================================================
+# Stage 0 — split the pinned versions into one small file per pin.
+# =============================================================================
+#
+# cli-runtime/versions.json is the single source of the bundled Omnigent plugin
+# (release URL and sha256), Omnigent CLI, Claude Code and Codex versions. CI and
+# the tests read the same file. Each stage below copies only the pins it uses:
+# BuildKit keys COPY --from on file content, so a bump re-runs only the stage
+# that consumes the changed pin. The other components keep their cached layers,
+# and HA hosts do not download those layers again.
+FROM ${BUILD_FROM} AS pins
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+COPY cli-runtime/versions.json /tmp/versions.json
+RUN set -euo pipefail; \
+    semver='^[0-9]+[.][0-9]+[.][0-9]+$'; \
+    pin() { mkdir -p "$(dirname "/pins/$1")"; jq -er --arg re "$3" "$2 | strings | select(test(\$re))" /tmp/versions.json > "/pins/$1"; }; \
+    pin claude/version .claude.version "${semver}"; \
+    pin codex/version .codex.version "${semver}"; \
+    pin omnigent/version .omnigent.version "${semver}"; \
+    pin omnigent-plugin/version .omnigentPlugin.version "${semver}"; \
+    pin omnigent-plugin/url .omnigentPlugin.url '^https://github[.]com/WOOWTECH/pi-omnigent-plugin/releases/download/'; \
+    pin omnigent-plugin/sha256 .omnigentPlugin.sha256 '^[0-9a-f]{64}$'
+
+# =============================================================================
 # Stage 1 — build pi-web (and compile node-pty) in a throwaway toolchain image.
 # =============================================================================
 #
@@ -84,15 +107,28 @@ RUN npm install --omit=dev --ignore-scripts --prefix=/opt/piweb/lib/node_modules
 # persistent HOME still take precedence. Separate package locks, builder runs,
 # and final COPY instructions keep each registry layer under the host transfer
 # ceiling; the previous combined layer was 377 MiB and repeatedly ended in EOF.
+#
+# npm also installs the musl Claude executable on Debian: the lock's platform
+# entries carry no libc field, so `npm ci` cannot skip it. The postinstall
+# hard-links the glibc binary to bin/claude.exe, and the unused ~250 MB musl
+# copy doubled this layer. Remove it, as build-paseo.mjs drops the Paseo SDK's
+# musl binary; the final stage fails the build if any musl copy survives.
+COPY --from=pins /pins/claude/ /tmp/pins/claude/
 COPY cli-runtime/claude/ /opt/pi-clis/claude/
 RUN npm ci --omit=dev --prefix=/opt/pi-clis/claude \
-    && /opt/pi-clis/claude/node_modules/.bin/claude --version | grep -q '^2.1.296' \
+    && CLAUDE_VERSION="$(< /tmp/pins/claude/version)" \
+    && CLAUDE_NATIVE=/opt/pi-clis/claude/node_modules/@anthropic-ai/claude-code \
+    && cmp -s "${CLAUDE_NATIVE}/bin/claude.exe" "${CLAUDE_NATIVE}-linux-$(node -p process.arch)/claude" \
+    && rm -rf "${CLAUDE_NATIVE}"-linux-*-musl \
+    && /opt/pi-clis/claude/node_modules/.bin/claude --version | grep -qwF -e "${CLAUDE_VERSION:?}" \
     && chmod -R a+rX,go-w /opt/pi-clis/claude \
     && rm -rf /tmp/npm-cache
 
+COPY --from=pins /pins/codex/ /tmp/pins/codex/
 COPY cli-runtime/codex/ /opt/pi-clis/codex/
 RUN npm ci --omit=dev --prefix=/opt/pi-clis/codex \
-    && /opt/pi-clis/codex/node_modules/.bin/codex --version | grep -q '0.162.1' \
+    && CODEX_VERSION="$(< /tmp/pins/codex/version)" \
+    && /opt/pi-clis/codex/node_modules/.bin/codex --version | grep -qwF -e "${CODEX_VERSION:?}" \
     && chmod -R a+rX,go-w /opt/pi-clis/codex \
     && rm -rf /tmp/npm-cache
 
@@ -158,6 +194,7 @@ RUN node /opt/patches/patch-omnigent-settings.mjs /opt/piweb/lib/node_modules/@a
 FROM ${BUILD_FROM} AS omnigent-builder
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 ENV UV_PYTHON_INSTALL_DIR=/opt/omnigent/python UV_NO_CACHE=1
+COPY --from=pins /pins/omnigent/ /tmp/pins/omnigent/
 COPY cli-runtime/omnigent/requirements.lock /tmp/omnigent-requirements.lock
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates curl python3-venv \
@@ -166,24 +203,38 @@ RUN apt-get update \
     && /tmp/uv/bin/uv python install 3.12.12 \
     && /tmp/uv/bin/uv venv --python 3.12.12 /opt/omnigent/venv \
     && /tmp/uv/bin/uv pip sync --python /opt/omnigent/venv/bin/python --require-hashes /tmp/omnigent-requirements.lock \
-    && /opt/omnigent/venv/bin/python -c 'import importlib.metadata; assert importlib.metadata.version("omnigent") == "0.16.0"'
+    && /opt/omnigent/venv/bin/python -c 'import importlib.metadata, sys; assert importlib.metadata.version("omnigent") == sys.argv[1]' "$(< /tmp/pins/omnigent/version)"
 # HA already ships a pinned official Claude CLI. The SDK falls back to PATH;
 # remove its duplicate binary before any runtime COPY creates an OCI layer.
 RUN /opt/omnigent/venv/bin/python -c 'from pathlib import Path; import claude_agent_sdk; p=Path(claude_agent_sdk.__file__).parent / "_bundled" / "claude"; print("Removed duplicate Claude bytes:", p.stat().st_size if p.exists() else 0); p.unlink(missing_ok=True)'
-ARG PI_OMNIGENT_VERSION=0.3.29
-ARG PI_OMNIGENT_SHA256=e5bba36758870c913c773702d52d0160e3a11fa9d82eeee19c5ca51c048ec9e7
-RUN curl --fail --silent --show-error --location --retry 3 \
-      "https://github.com/WOOWTECH/pi-omnigent-plugin/releases/download/v${PI_OMNIGENT_VERSION}/woowtech-pi-omnigent-plugin-${PI_OMNIGENT_VERSION}.tgz" -o /tmp/plugin.tgz \
-    && echo "${PI_OMNIGENT_SHA256}  /tmp/plugin.tgz" | sha256sum --check --strict \
+# Claude Code writes its <system-reminder> context (CLAUDE.md, the memory index,
+# task notifications) into the person's own transcript record, and Omnigent
+# mirrors every block: the web chat shows a ~19 KB reminder bubble, the session
+# title is generated from it, and api-request-blob copies show every message
+# twice. This is the PaaS image's patch (paas-odoo-ci
+# pi-agent/omnigent-reminder-patch, byte-identical copy). It is version-gated
+# and exact-anchor, so moving the Omnigent pin or an anchor drift fails the
+# build; its unit tests then run against the patched package.
+COPY patches/omnigent-reminder-patch/ /opt/patches/omnigent-reminder-patch/
+COPY patches/tests/omnigent-reminder-patch.test.py /opt/patches/tests/omnigent-reminder-patch.test.py
+RUN SITE_PACKAGES="$(/opt/omnigent/venv/bin/python -c 'import sysconfig; print(sysconfig.get_paths()["purelib"])')" \
+    && /opt/omnigent/venv/bin/python /opt/patches/omnigent-reminder-patch/omnigent-reminder-patch.py --site-packages "${SITE_PACKAGES}" --strict \
+    && /opt/omnigent/venv/bin/python /opt/patches/tests/omnigent-reminder-patch.test.py \
+    && grep -q 'omnigent-reminder-patch v2' "${SITE_PACKAGES}/omnigent/harnesses/claude_native/bridge.py"
+COPY --from=pins /pins/omnigent-plugin/ /tmp/pins/omnigent-plugin/
+RUN curl --fail --silent --show-error --location --retry 3 "$(< /tmp/pins/omnigent-plugin/url)" -o /tmp/plugin.tgz \
+    && echo "$(< /tmp/pins/omnigent-plugin/sha256)  /tmp/plugin.tgz" | sha256sum --check --strict \
     && mkdir -p /opt/woow/pi-omnigent-plugin \
     && tar -xzf /tmp/plugin.tgz --strip-components=1 -C /opt/woow/pi-omnigent-plugin \
+    && jq -e --arg version "$(< /tmp/pins/omnigent-plugin/version)" \
+         '.name == "@woowtech/pi-omnigent-plugin" and .version == $version' /opt/woow/pi-omnigent-plugin/package.json \
     && chmod -R a+rX,go-w /opt/woow/pi-omnigent-plugin
 
 # The HA bridge consumes the plugin API; never apply its Pi Web 0.10 overlay.
 # Build the daemon + fixed Expo client once for each native image architecture.
 FROM piweb-builder AS paseo-builder
-ARG PI_PASEO_VERSION=0.1.14
-ARG PI_PASEO_SHA256=523b60bc9d1562f8e4c8311f41a3e12e11671fb5913a1c6956a0893901c704cd
+ARG PI_PASEO_VERSION=0.1.15
+ARG PI_PASEO_SHA256=1a8fd99a503d544a6bd324b93d080ed46dd0bb94cefbff863580580d9c72d4f5
 RUN curl --fail --silent --show-error --location --retry 3 \
       "https://github.com/WOOWTECH/pi-paseo-plugin/releases/download/v${PI_PASEO_VERSION}/woowtech-pi-paseo-${PI_PASEO_VERSION}.tgz" -o /tmp/paseo.tgz \
     && echo "${PI_PASEO_SHA256}  /tmp/paseo.tgz" | sha256sum --check --strict \
@@ -279,9 +330,11 @@ RUN ln -s /usr/local/lib/node_modules/@agegr/pi-web/node_modules /opt/woow/pi-pa
     && ln -s /opt/woow/pi-paseo-plugin/bin/cli.mjs /usr/local/bin/pi-paseo \
     && chmod +x /opt/woow/pi-paseo-plugin/bin/cli.mjs
 
+# /usr/local/bin/pi-omnigent comes from rootfs: a wrapper that refuses the
+# plugin's Pi Web 0.10 setup commands (install-ui, activate, install-host,
+# launch-web) and passes the others to bin/cli.mjs.
 RUN ln -s /usr/local/lib/node_modules/@agegr/pi-web/node_modules /opt/woow/pi-omnigent-plugin/node_modules \
     && ln -s /opt/omnigent/venv/bin/omnigent /usr/local/bin/omnigent \
-    && ln -s /opt/woow/pi-omnigent-plugin/bin/cli.mjs /usr/local/bin/pi-omnigent \
     && chmod +x /opt/woow/pi-omnigent-plugin/bin/cli.mjs \
     && /opt/omnigent/venv/bin/omnigent --version
 
@@ -293,12 +346,26 @@ RUN ln -s /usr/local/lib/node_modules/@agegr/pi-web/node_modules /opt/woow/pi-om
 RUN node -e 'const p=require("/usr/local/lib/node_modules/@agegr/pi-web/node_modules/node-pty"); if (typeof p.spawn !== "function") { throw new Error("node-pty has no spawn()"); } console.log("[build] node-pty loads under the runtime node");'
 
 
+# The pins this image was built from: the image smoke compares the installed
+# plugin and CLIs with them, and an installed add-on can be inspected with jq.
+COPY cli-runtime/versions.json /usr/local/share/woow-ha-pi-agent/versions.json
+
 # /usr/local/bin/claude and /usr/local/bin/codex are wrappers from rootfs that
 # refresh the shared Pi Web MCP/skills state and then exec these pinned
 # binaries. Check the binaries directly: running a wrapper here would write
 # shared state into the image.
-RUN /opt/pi-clis/claude/node_modules/.bin/claude --version | grep -q '^2.1.296' \
-    && /opt/pi-clis/codex/node_modules/.bin/codex --version | grep -q '0.162.1'
+#
+# The shipped Claude tree must hold exactly one native binary: no musl copy,
+# and at most 16 MiB beside bin/claude.exe (du counts its hard link once).
+RUN PINS=/usr/local/share/woow-ha-pi-agent/versions.json \
+    && CLAUDE_VERSION="$(jq -er .claude.version "${PINS}")" \
+    && CODEX_VERSION="$(jq -er .codex.version "${PINS}")" \
+    && /opt/pi-clis/claude/node_modules/.bin/claude --version | grep -qwF -e "${CLAUDE_VERSION:?}" \
+    && /opt/pi-clis/codex/node_modules/.bin/codex --version | grep -qwF -e "${CODEX_VERSION:?}" \
+    && ! compgen -G '/opt/pi-clis/claude/node_modules/@anthropic-ai/*musl*' \
+    && CLAUDE_TREE_BYTES="$(du -sb /opt/pi-clis/claude | cut -f1)" \
+    && CLAUDE_BINARY_BYTES="$(stat -c %s /opt/pi-clis/claude/node_modules/@anthropic-ai/claude-code/bin/claude.exe)" \
+    && test $((CLAUDE_TREE_BYTES - CLAUDE_BINARY_BYTES)) -le $((16 * 1024 * 1024))
 
 COPY rootfs/ /
 COPY tests/omnigent-image-smoke.mjs /tmp/omnigent-image-smoke.mjs
@@ -315,9 +382,11 @@ RUN chmod +x \
       /usr/local/bin/pi \
       /usr/local/bin/claude \
       /usr/local/bin/codex \
+      /usr/local/bin/pi-omnigent \
       /usr/local/bin/pi-agent-share-state.mjs \
     && sh -n /usr/local/bin/claude \
     && sh -n /usr/local/bin/codex \
+    && sh -n /usr/local/bin/pi-omnigent \
     # Codex 0.162 runs `ps` to manage its background app-server; without
     # procps a plain `codex` exits before the sign-in screen.
     && command -v ps \
