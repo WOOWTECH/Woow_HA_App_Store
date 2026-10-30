@@ -13,9 +13,9 @@ The native desktop tabs and mobile picker are MCP → Omnigent → Paseo.
   `68388f19198f1f696efe18906df42049e208d135`, stream repair
   `043aa8286b90418eb1f4e9982ca1a349c84f2a3d`, archive SHA256
   `7e7495f70f721e96e121f76bd91573150cf91aa112143d9f4d51a3fcf9dc8bce`.
-- Omnigent 0.3.30, source `30e2406f34340b6d017ecca8d08b6925921bd5d4`, public archive SHA256
-  `cd00bf3480b3de648c7c7c8af6ace2908242bc0af3eb9b66bc6f06bbae3164a8`.
-  HA 0.15.18 keeps authorized-host recovery and native Pi Web 0.12 settings;
+- Omnigent 0.3.31, source `a5671f00b280e14c3a376d84bfa4ec65f9aeefd9`, public archive SHA256
+  `b62059cdb6e5035c577e0e759d01a2586f1353768b40da2d190ec2db6f3bb4e7`.
+  HA 0.15.19 keeps authorized-host recovery and native Pi Web 0.12 settings;
   Omnigent setup runs only from Settings. There is no floating link, setup
   conversation or link to one (0.15.14, which had them, is withdrawn).
   Paseo pairing is available only through Settings.

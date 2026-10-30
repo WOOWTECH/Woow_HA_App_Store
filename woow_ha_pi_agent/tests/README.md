@@ -32,7 +32,7 @@ Set `CHROMIUM_EXECUTABLE` to reuse an installed Chromium locally. Continue to
 run `tests/omnigent-browser.mjs` for the independent fallback form. It also
 covers an offline host after a confirmed login: the plugin's issue hint in the
 page language (issue contract, plugin 0.3.30+), the code-and-message fallback
-of plugin 0.3.30, and **重新連線** (resume). A release also requires both
+of plugin 0.3.31, and **重新連線** (resume). A release also requires both
 architecture image builds and real Supervisor acceptance; the compiled browser
 test does not replace them.
 

@@ -1,3 +1,8 @@
+## 0.15.19
+
+- Bundle the checksum-verified public Omnigent plugin 0.3.31, the same generation that the root Pi Agent image 0.3.23 ships. Settings → Omnigent opens faster: engine version probes are cached for 10 minutes instead of 15 s (a replaced or removed engine is still probed at once), and when you are signed in the status and the model catalog are read at the same time. An empty Pi model list still runs `pi update --models`, but the page waits at most 5 s for it and the refresh finishes in the background.
+- Keep Paseo 0.1.15, Pi Web 0.12.0, add-on options, ports, architectures, user sessions, provider credentials and authorized-host recovery. Omnigent is still bound only from Settings → Omnigent. No migration is needed.
+
 ## 0.15.18
 
 - Bundle the checksum-verified public Omnigent plugin 0.3.30 and Paseo plugin 0.1.15, the same generation that the root Pi Agent image 0.3.22 ships. Settings → Omnigent shows the reason and the next step for each issue code in the page's language (a host owned by another account asks you to sign in with that account first; `reset-id` is the last resort) and offers 重新連線 for an authorized host that went offline; a plugin source switch keeps the approved login, and Paseo is no longer switched off by one. Omnigent is still bound only from Settings → Omnigent; no setup conversation is created or opened.
