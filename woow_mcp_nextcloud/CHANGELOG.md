@@ -1,3 +1,8 @@
+## 0.4.9 — images published and verified
+
+- Synchronize 0.4.9 release metadata with the Hermes session deletion correction; this product retains the reviewed 0.4.8 behavior and dependency pins.
+- Exact-source image `ghcr.io/woowtech/amd64-mcp-nextcloud@sha256:ac31985a39f34a2bc7653566d389fde92ce54c86a926f88d3c672578dd262404` passed P1–P5, anonymous verification and fresh remote layer/diffID checks. See ../../docs/provenance/release-0.4.9-images.json and ../../docs/operations/release-decision-0.4.9.md. Stable Release/Store distribution and actual HAOS acceptance remain separate evidence.
+
 ## 0.4.8 — release candidate (2026-10-30; images pending)
 
 - Use Nextcloud MCP v0.1.6 vendored upstream credential masking; preserve the existing output-schema adaptation and tool contracts.

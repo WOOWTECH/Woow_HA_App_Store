@@ -1,3 +1,8 @@
+## 0.4.9 — images published and verified
+
+- Synchronize 0.4.9 release metadata with the Hermes session deletion correction; this product retains the reviewed 0.4.8 behavior and dependency pins.
+- Exact-source image `ghcr.io/woowtech/amd64-mcp-emqx@sha256:4aae905d1cb4f685bbb236269779e1906438914c626b6ebaadd41a88dc4a187b` passed P1–P5, anonymous verification and fresh remote layer/diffID checks. See ../../docs/provenance/release-0.4.9-images.json and ../../docs/operations/release-decision-0.4.9.md. Stable Release/Store distribution and actual HAOS acceptance remain separate evidence.
+
 ## 0.4.8 — release candidate (2026-10-30; images pending)
 
 - Synchronized 0.4.8 release with Nextcloud MCP v0.1.6; this product retains the 0.4.7 runtime and management contracts.
