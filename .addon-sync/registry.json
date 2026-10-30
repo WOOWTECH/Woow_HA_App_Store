@@ -744,7 +744,7 @@
       "observe_workflow_names": [
         "CI"
       ],
-      "ref_policy": "main",
+      "ref_policy": "release",
       "branch_rules": {
         "required_checks": [
           "Validate and build nginxpm (amd64)",

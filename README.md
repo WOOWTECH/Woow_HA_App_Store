@@ -195,7 +195,7 @@ Hermes Paseo 的最新[安裝與首次 project 建立教學](https://github.com/
   3. 全部通過後才更新 App 目錄與 [`.addon-sync/catalog.json`](.addon-sync/catalog.json)。
   
   細節見 [`.addon-sync/README.md`](.addon-sync/README.md)。
-- **只同步正式 Release**（ADR-0002）：43 個 App 裡 32 個（含 6 個 `woow_mcp_*`）。以下 11 個仍跟隨來源 repo 的預設分支，正在逐步切換：`apporo_ha_core_1..5`、`woow_ha_core`、`ha_mcp`、`ha_mcp_webhook_proxy`、`frigate`、`jellyfin`、`woow-nginxproxymanager`。每個來源的設定以 [`registry.json`](.addon-sync/registry.json) 的 `ref_policy` 為準。
+- **只同步正式 Release**（ADR-0002）：43 個 App 裡 33 個（含 6 個 `woow_mcp_*`）。以下 10 個仍跟隨來源 repo 的預設分支，正在逐步切換：`apporo_ha_core_1..5`、`woow_ha_core`、`ha_mcp`、`ha_mcp_webhook_proxy`、`frigate`、`jellyfin`。每個來源的設定以 [`registry.json`](.addon-sync/registry.json) 的 `ref_policy` 為準。
 - 觸發方式（盡力而為，不是即時）：
   - 排程每 5 分鐘一次，錯開整點。此帳號的 GitHub 排程實測常延遲 2–7 小時。
   - 來源 repo 寫出新的通知後（共用發布 workflow 的 output `ready` 為 `true`），由該 repo `woow-addon-sync.yml` 的 `notify-store` job 送 `repository_dispatch`（`woow-addon-ready`），幾分鐘內同步。來源 repo 要設 `APP_STORE_DISPATCH_TOKEN`，沒設時等排程。27 個來源 repo 都已設（2026-10-13）；token 的權限與輪替見 `.addon-sync/SOURCES.md` 的「Store dispatch token」。
