@@ -160,7 +160,7 @@
       "observe_workflow_names": [
         "Validate package"
       ],
-      "ref_policy": "main",
+      "ref_policy": "release",
       "branch_rules": {
         "required_checks": [
           "package",

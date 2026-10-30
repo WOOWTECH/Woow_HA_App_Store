@@ -178,7 +178,7 @@ class Tests(unittest.TestCase):
         for version,blocked in [('2.12.4-v3',False),('2.12.4-v2',True),('2.12.4-v10',True),('2.12.4',True),('2.12.3-v9',True)]:
             with self.subTest(version):self.assertEqual(run(cfg,self.notes(version),old=old,old_version='2.12.4-v2')['blocked'],blocked)
     def test_haos_core_dash_revision_versions(self):
-        # Woow_haos_ha_core (ref_policy main) versions as <HA release>-<revision>: 2026.9.1-1 -> 2026.9.1-2, then 2026.9.2.
+        # Woow_haos_ha_core versions as <HA release>-<revision>: 2026.9.1-1 -> 2026.9.1-2, then 2026.9.2.
         old=copy.deepcopy(BASE);old['version']='2026.9.1-1'
         for new_version,declared,blocked in [('2026.9.1-2','2026.9.1-2',False),('2026.9.1-2','2026.9.1-1',True),
                 ('2026.9.2','2026.9.1-2',False),('2026.9.2','2026.9.2-1',True),('2026.9.1-10','2026.9.1-2',False)]:
@@ -568,7 +568,7 @@ class ReusableWorkflow(unittest.TestCase):
         self.assertEqual(self.wf['on']['workflow_call']['inputs']['sbom_wait_minutes']['default'],40)
         self.assertGreater(self.wf['jobs']['compare']['timeout-minutes'],40)
     def test_ref_policy_main_compares_with_where_the_base_version_first_appeared(self):
-        # apporo_ha_multi_ha_core and Woow_haos_ha_core have no stable Release: the Store follows main (#121), and the
+        # apporo_ha_multi_ha_core has no stable Release: the Store follows main (#121), and the
         # target is the commit on the PR base where its version first appeared (#129; MainFirstVersion runs it).
         plan=self.step('Find the comparison targets')
         self.assertRegex(plan,r'if \[ "\$\{policy\}" = "main" \]; then\s+(#.*\s+)*target="\$\(version_since "\$\{BASE_SHA\}" ')
