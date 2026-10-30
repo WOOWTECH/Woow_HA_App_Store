@@ -1,3 +1,8 @@
+## 0.4.8 — release candidate (2026-10-30; images pending)
+
+- Synchronized 0.4.8 release with Nextcloud MCP v0.1.6; this product retains the 0.4.7 runtime and management contracts.
+- Exact-source image gates and publication evidence are recorded separately.
+
 ## 0.4.7 — release candidate (2026-10-30; images pending)
 
 - Require the exact reviewed configuration revision for every persisted admin mutation.

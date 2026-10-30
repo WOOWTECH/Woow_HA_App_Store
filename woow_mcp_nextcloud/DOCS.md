@@ -20,7 +20,7 @@ supply-chain gate（2026-10-11），以測過的 image ID 推送、匿名拉取�
 其他版本（含之後的 patch 與 beta）整個管理面板都回 403；0.4.1 以前看起來和「不是管理員」完全一樣（add-on 紀錄也沒有訊息），0.4.2 起管理面板改顯示「這個 HA Core 版本尚未審核：<版本>」，add-on 紀錄也記一行同樣的說明（不含權杖）；
 MCP 端點（Bearer token）不經這項檢查，不受影響。新的 Core 版本要等 add-on 發新版才支援，升級 Core 前請先對照這份清單。0.4.3 起，舊版升級後自動全開的設定在未審核的 Core 上也無法用管理面板還原或調整：請先把 add-on 更新到審過這個 Core 的版本，再到管理面板「還原升級前的限制」；需要立刻限制 MCP 時先停止 add-on（進階的離線還原步驟見 [legacy migration](https://github.com/WOOWTECH/Woow_ha_mcp_addons/blob/claude-delivery/docs/operations/legacy-migration.md#when-the-panel-refuses-an-unreviewed-core)）。
 
-本產品 runtime：**FastMCP 4.1.3 / MCP SDK 2.3.0**（0.4.0 起；0.3.4 是 FastMCP 3.4.11 / SDK 1.30.0，之前 FastMCP 3.4.5），子程序是 WOOWTECH 的 MIT 套件 `nextcloud_mcp_server` v0.1.5（commit 4e09c86）
+本產品 runtime：**FastMCP 4.1.3 / MCP SDK 2.3.0**（0.4.0 起；0.3.4 是 FastMCP 3.4.11 / SDK 1.30.0，之前 FastMCP 3.4.5），子程序是 WOOWTECH 的 MIT 套件 `nextcloud_mcp_server` v0.1.6（commit 8aa6be3，0.4.8 起；0.1.7–0.4.7 是 v0.1.5，commit 4e09c86）
 放在 `apps/nextcloud/vendor`，對上游的修改逐檔記在 `docs/provenance/runtime-sources.json`。上游 9 個工具全部支援：
 
 | 工具 | 類型 | 預設 |
