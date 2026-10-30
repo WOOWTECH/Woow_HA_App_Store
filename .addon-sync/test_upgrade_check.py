@@ -172,7 +172,7 @@ class Tests(unittest.TestCase):
         self.assertTrue(run(cfg,self.notes('2.12.4-beta'),old=old,old_version='2.12.4-v2')['blocked'])
         with self.assertRaises(ValueError):run(cfg,self.notes('2.12.4-foo'),old=old,old_version='2.12.4-v2')
     def test_rebuild_suffix_bumps_order_by_their_suffix_number(self):
-        # nginxpm (ref_policy main) bumps only its -v<N> suffix while upstream stays put: 2.12.4-v2 -> 2.12.4-v3.
+        # nginxpm bumps only its -v<N> suffix while upstream stays put: 2.12.4-v2 -> 2.12.4-v3.
         old=copy.deepcopy(BASE);old['version']='2.12.4-v2'
         cfg=self.REMOVED();cfg['version']='2.12.4-v3'
         for version,blocked in [('2.12.4-v3',False),('2.12.4-v2',True),('2.12.4-v10',True),('2.12.4',True),('2.12.3-v9',True)]:
@@ -568,7 +568,7 @@ class ReusableWorkflow(unittest.TestCase):
         self.assertEqual(self.wf['on']['workflow_call']['inputs']['sbom_wait_minutes']['default'],40)
         self.assertGreater(self.wf['jobs']['compare']['timeout-minutes'],40)
     def test_ref_policy_main_compares_with_where_the_base_version_first_appeared(self):
-        # apporo_ha_multi_ha_core, Woow_haos_ha_core, nginxpm have no stable Release: the Store follows main (#121), and the
+        # apporo_ha_multi_ha_core and Woow_haos_ha_core have no stable Release: the Store follows main (#121), and the
         # target is the commit on the PR base where its version first appeared (#129; MainFirstVersion runs it).
         plan=self.step('Find the comparison targets')
         self.assertRegex(plan,r'if \[ "\$\{policy\}" = "main" \]; then\s+(#.*\s+)*target="\$\(version_since "\$\{BASE_SHA\}" ')
