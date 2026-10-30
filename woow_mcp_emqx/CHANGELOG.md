@@ -1,3 +1,13 @@
+## 0.4.7 — release candidate (2026-10-30; images pending)
+
+- Require the exact reviewed configuration revision for every persisted admin mutation.
+- EMQX retained reads report non-404 failures; failed retained deletes never dispatch a fallback publish. Invalid/empty JSON success bodies are refused except explicit204.
+- The P9 operator driver uses the shared reviewed-revision and operation-receipt client, stops on unconfirmed results and does not resend automatically.
+- Token rotation, revocation and child restart use durable operation IDs; query or explicitly resend the same ID after a lost response without repeating a completed effect.
+- Recheck current administrator authority before receipt disclosure/replay; HA receipts belong to the original user. Replays never return historical tokens.
+- Admin API clients must send If-Match and, for token/restart actions, Idempotency-Key. Token revoke now returns200 JSON instead of204. Include the hidden operation journal in data backups; unknown outcomes require state review, not blind retries.
+- Six enabled images require fresh exact-image P1–P5, anonymous verification and provenance before release. OpenDesign remains disabled. See docs/operations/release-decision-0.4.7.md and upgrade-notes.yaml.
+
 ## 0.4.5
 
 - Shared audited n8n operation policy; existing grants and schema 4 state preserved.

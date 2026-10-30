@@ -1,7 +1,7 @@
 name: Woow Nextcloud MCP Server
 # Shared add-on version (packaging/validate.py VERSION): every add-on carries the same value until the next release
 # bump. Nextcloud is first released with 0.1.7; no Nextcloud image exists for any earlier version.
-version: 0.4.6
+version: 0.4.7
 slug: woow_mcp_nextcloud
 description: Experimental; HA admin-role management; one Nextcloud account (files, calendars, tasks), every tool and write on by default (each can be turned off in the panel).
 url: https://github.com/WOOWTECH/Woow_ha_mcp_addons
