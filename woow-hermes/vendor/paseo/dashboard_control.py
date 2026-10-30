@@ -49,18 +49,33 @@ def origin(value, allow_trailing_slash=False):
         return None
 
 
-def allowed_origins(primary):
+def allowed_origins(primary, required=True):
+    """The origins this Dashboard accepts, or 503 when the host cannot name one.
+
+    A malformed ingress origin was always reported; an unset or malformed public URL
+    was swallowed into an empty set instead, which is a worse failure in both
+    directions: a browser request then got ORIGIN_DENIED, blaming the caller for the
+    host's own misconfiguration, while a request carrying no Origin header at all was
+    never compared against anything. Both now say INVALID_DASHBOARD_ORIGIN.
+
+    `required=False` reports an unusable public URL as an empty set for the one caller
+    that must keep working without it: turning the plugin off. It does NOT relax a
+    malformed ingress origin, which stays closed on every route — that value is set
+    deliberately, so a broken one is a signal rather than an absence.
+    """
     # Preserve the public URL callback (including its historical root slash).
     expected = origin(primary, allow_trailing_slash=True)
     ingress = os.environ.get('HERMES_PASEO_INGRESS_ORIGIN')
     extra = origin(ingress) if ingress is not None else None
     if ingress is not None and extra is None:
         raise HTTPException(503, detail='INVALID_DASHBOARD_ORIGIN')
+    if required and expected is None:
+        raise HTTPException(503, detail='INVALID_DASHBOARD_ORIGIN')
     # Ingress supplements, never replaces, the required public URL.
     return {expected, extra} - {None} if expected else set()
 
 
-def check_origin(request, primary, require_metadata=False):
+def check_origin(request, primary, require_metadata=False, require_origin_config=True):
     for name in ('origin', 'sec-fetch-site', 'sec-fetch-mode', 'content-type',
                  'content-length', 'content-encoding', 'host'):
         if len(request.headers.getlist(name)) > 1:
@@ -72,14 +87,17 @@ def check_origin(request, primary, require_metadata=False):
         raise HTTPException(403, detail='ORIGIN_DENIED')
     if request.headers.get('sec-fetch-mode') in ('navigate', 'no-cors'):
         raise HTTPException(403, detail='ORIGIN_DENIED')
-    expected = allowed_origins(primary)
+    expected = allowed_origins(primary, required=require_origin_config)
     actual = request.headers.get('origin')
     if actual is not None:
-        if origin(actual) not in expected:
+        # An empty set is reachable only for a caller that passed
+        # require_origin_config=False. Fetch metadata is then the whole gate, and
+        # require_metadata has already narrowed it to same-origin/none, which a
+        # cross-site page cannot forge.
+        if expected and origin(actual) not in expected:
             raise HTTPException(403, detail='ORIGIN_DENIED')
-    elif request.method not in ('GET', 'HEAD', 'OPTIONS'):
-        if site != 'same-origin' or not expected:
-            raise HTTPException(403, detail='ORIGIN_REQUIRED')
+    elif request.method not in ('GET', 'HEAD', 'OPTIONS') and site != 'same-origin':
+        raise HTTPException(403, detail='ORIGIN_REQUIRED')
     return expected
 
 
@@ -137,8 +155,10 @@ def make_router(require_auth, public_origin, enabled, control=None, lifecycle=No
 
     @router.get('/capabilities')
     def capabilities(request: Request):
-        expected = check(request)
-        return JSONResponse({'supported': control.supported() and bool(expected),
+        # check() already refused an unusable origin configuration with 503, so
+        # reaching here means the accepted set is non-empty.
+        check(request)
+        return JSONResponse({'supported': control.supported(),
                              'generation': control.generation, 'pending': control.pending,
                              'lifecycleError': lifecycle.error if lifecycle else None},
                             headers=HEADERS)
@@ -221,7 +241,14 @@ def install(server, enabled=None, public_origin=None, control=None, lifecycle=No
             if changing:
                 try:
                     server._require_token(request)
-                    check_origin(request, public_origin(), require_metadata=True)
+                    # Turning the plugin off must not depend on the origin
+                    # configuration being usable: this middleware is installed by
+                    # the adapter and survives the plugin, so refusing here left a
+                    # host whose public URL was unset or malformed unable to disable
+                    # or remove the plugin at all. A verified native session plus
+                    # same-origin fetch metadata still gate it.
+                    check_origin(request, public_origin(), require_metadata=True,
+                                 require_origin_config=False)
                     await asyncio.to_thread(lifecycle.stop_for_disable, False)
                 except HTTPException as error:
                     return JSONResponse({'detail': error.detail}, status_code=error.status_code, headers=HEADERS)

@@ -1,10 +1,10 @@
 {
   "repository": "https://github.com/WOOWTECH/hermes-paseo-plugin",
-  "commit": "39775c43c212dc4afc7ed44d6db3adeec147a76e",
-  "version": "0.1.4-rc.6",
+  "commit": "1101a5da63178e08bd0fdf849db8e2a5de4d6ef1",
+  "version": "0.1.4-rc.9",
   "source_directory": "host",
   "sha256": {
-    "dashboard_control.py": "9d485cfc05f8a3c95d9e01638b67825ef3477f29abb7742b9957b3ec786128d1",
+    "dashboard_control.py": "542cb4cd394b6c1b068723dd68cb16cdb98a77f4e7147aab3632ae8f6968d01e",
     "profile_lifecycle.py": "3768bc96572512eb8040231641fe16d39611dd9e8b16153c79d31584c0ab1b55",
     "resource_limits.py": "2195c5b2c5a88f6ddc81c24fe606b6a1911b1d7a2be6f48cc7eb86350f37512d",
     "hermes": "4ce75929789b63d098b8f19b489d9b6bb508b29d3f896aa2d1fc73622ca96bc8"

@@ -1,3 +1,10 @@
+## 0.1.14
+
+- Refresh the bundled Paseo host adapter to plugin `v0.1.4-rc.9`. Only `dashboard_control.py` changes: an unset or malformed Dashboard public URL used to be swallowed into an empty accepted-origin set, so a browser request got `ORIGIN_DENIED` — blaming the caller for the host's own configuration — while a request carrying no `Origin` header at all was never compared against anything. Both now answer `503 INVALID_DASHBOARD_ORIGIN`.
+- Fix a state the add-on could not leave: the adapter installs the middleware that stops the Paseo daemon before a native disable or removal, and it used that same empty set to check the request origin. With the public URL unset or malformed, Hermes could no longer disable or remove the plugin at all — the recovery action was gated on the thing that was broken. Turning the plugin off no longer requires a usable origin configuration; a verified native session and same-origin fetch metadata still gate it. A malformed `paseo_ingress_url` stays closed on every route.
+- DOCS and README now recommend plugin `v0.1.4-rc.9`.
+- No add-on option, port, architecture or data migration changes. `profile_lifecycle.py`, `resource_limits.py` and the `hermes` shim are byte-identical to 0.1.13.
+
 ## 0.1.13
 
 - Documentation and provenance only. The Paseo section of DOCS and the README now recommend plugin `v0.1.4-rc.6`, and the bundled host adapter provenance identifies the rc.6 source commit. The four packaged host files are byte-identical to 0.1.12; the add-on does not install or update the separately managed plugin.

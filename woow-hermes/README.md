@@ -47,7 +47,7 @@ https://github.com/WOOWTECH/Woow_HA_App_Store
 - **Skills**：內建與自訂 skill，並可從 skill hub 安裝。
 - **OpenAI 相容 API**：`/v1/chat/completions`、`/v1/responses`，支援串流。
 - **Webhook**：外部服務（GitHub、GitLab 等）以 HMAC 簽章觸發 agent。
-- **Paseo 遠端對話**（0.1.11 起）：在 Plugins 安裝 `WOOWTECH/hermes-paseo-plugin`（建議目前公開的 `v0.1.4-rc.6`），啟用後開啟配對導引；通常不需要重載，必要時可直接在 Dashboard 重載。首次使用會下載 Paseo runtime，模型帳號仍在 Hermes 設定。完整步驟見 [DOCS](DOCS.md#paseo-remote-plugin-ha-ingress)。
+- **Paseo 遠端對話**（0.1.11 起）：在 Plugins 安裝 `WOOWTECH/hermes-paseo-plugin`（建議目前公開的 `v0.1.4-rc.9`），啟用後開啟配對導引；通常不需要重載，必要時可直接在 Dashboard 重載。首次使用會下載 Paseo runtime，模型帳號仍在 Hermes 設定。完整步驟見 [DOCS](DOCS.md#paseo-remote-plugin-ha-ingress)。
 
 本 add-on 以 [Woow_podman_hermes](https://github.com/WOOWTECH/Woow_podman_hermes) 的 `slim` 映像為基礎，包成 Home Assistant add-on，並補上 HA Ingress 所需的轉接層。
 
