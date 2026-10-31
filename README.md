@@ -76,7 +76,7 @@ ha store add https://github.com/WOOWTECH/Woow_HA_App_Store
 | `hamh` | Home-Assistant-Matter-Hub | 2.0.59 | 預建映像 | [riddix/home-assistant-matter-hub](https://github.com/riddix/home-assistant-matter-hub) |
 | `frigate` | Frigate | 0.18.2 | 預建映像 | [blakeblackshear/frigate-hass-addons](https://github.com/blakeblackshear/frigate-hass-addons) |
 | `jellyfin` | Jellyfin | 0.2.2 | 預建映像 | [hassio-addons/app-jellyfin](https://github.com/hassio-addons/app-jellyfin) |
-| `music_assistant` | Music Assistant | 2.10.8 | 預建映像 | [music-assistant.io](https://music-assistant.io) |
+| `music_assistant` | Music Assistant | 2.10.9 | 預建映像 | [music-assistant.io](https://music-assistant.io) |
 | `local_audio` | Local Audio | 0.2.0 | 預建映像 | [music-assistant/local-audio-addon](https://github.com/music-assistant/local-audio-addon)；manifest 標為 **experimental** |
 | `netease_cloud_music_api` | NetEase Cloud Music API | 0.1.1 | 本機建置 | [NeteaseCloudMusicApiEnhanced/api-enhanced](https://github.com/NeteaseCloudMusicApiEnhanced/api-enhanced)（Music Assistant 用） |
 | `ytm_po_token_generator` | YT Music PO Token Generator | 2.0.2 | 預建映像 | [Brainicism/bgutil-ytdlp-pot-provider](https://github.com/Brainicism/bgutil-ytdlp-pot-provider) |
