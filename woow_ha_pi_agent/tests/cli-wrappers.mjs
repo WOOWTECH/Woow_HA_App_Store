@@ -9,7 +9,7 @@ import assert from "node:assert/strict";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 
 const repo = process.cwd();
 const dockerfile = readFileSync(path.join(repo, "Dockerfile"), "utf8");
@@ -74,6 +74,43 @@ try {
   const entries = shell.stdout.split(":");
   assert.ok(entries.includes(`${home}/.local/bin`) && entries.indexOf(`${home}/.local/bin`) < entries.indexOf("/usr/local/bin"), "login shell puts ~/.local/bin before /usr/local/bin like the pi-web service");
   assert.equal(entries.filter((entry) => entry === `${home}/.local/bin`).length, 1, "profile is idempotent");
+  // Claude Code, Codex and Pi use one Pi Web MCP server at the same time: each starts its own
+  // copy from its own configuration (no shared process), so three concurrent calls all answer.
+  const probe = path.join(temp, "probe-mcp.mjs");
+  writeFileSync(probe, `import readline from "node:readline";
+const send = m => process.stdout.write(JSON.stringify(m) + "\\n");
+readline.createInterface({ input: process.stdin }).on("line", line => {
+  let m; try { m = JSON.parse(line); } catch { return; }
+  if (m.method === "initialize") send({ jsonrpc: "2.0", id: m.id, result: { protocolVersion: "2025-06-18", capabilities: { tools: {} }, serverInfo: { name: "probe", version: "1" } } });
+  else if (m.method === "tools/call") send({ jsonrpc: "2.0", id: m.id, result: { content: [{ type: "text", text: "PROBE_OK " + process.pid }] } });
+  else if (m.id !== undefined) send({ jsonrpc: "2.0", id: m.id, result: {} });
+});\n`);
+  writeFileSync(path.join(data, "mcp.json"), JSON.stringify({ mcpServers: { probe: { command: process.execPath, args: [probe] } } }));
+  assert.equal(spawnSync(process.execPath, [sync], { env, encoding: "utf8" }).status, 0);
+  const fromPi = JSON.parse(readFileSync(path.join(data, "mcp.json"), "utf8")).mcpServers.probe;
+  const fromClaude = JSON.parse(readFileSync(path.join(home, ".claude.json"), "utf8")).mcpServers.probe;
+  const codexTable = readFileSync(path.join(home, ".codex/config.toml"), "utf8").split(/\n(?=\[)/).find(part => part.startsWith('[mcp_servers."probe"]')) || "";
+  const fromCodex = { command: JSON.parse(codexTable.match(/^command = (.+)$/m)?.[1] ?? "null"), args: JSON.parse(codexTable.match(/^args = (.+)$/m)?.[1] ?? "null") };
+  const callOnce = server => new Promise((resolve, reject) => {
+    const child = spawn(server.command, server.args || [], { stdio: ["pipe", "pipe", "ignore"] });
+    let buffer = "";
+    const timer = setTimeout(() => { child.kill(); reject(new Error("probe call timed out")); }, 20000);
+    child.stdout.on("data", chunk => {
+      buffer += chunk;
+      for (const line of buffer.split("\n").slice(0, -1)) {
+        const message = JSON.parse(line);
+        if (message.id === 2) { clearTimeout(timer); child.kill(); resolve(message.result.content[0].text); }
+      }
+      buffer = buffer.slice(buffer.lastIndexOf("\n") + 1);
+    });
+    child.stdin.write(JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "test", version: "1" } } }) + "\n");
+    child.stdin.write(JSON.stringify({ jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "probe", arguments: {} } }) + "\n");
+  });
+  const answers = await Promise.all([fromClaude, fromCodex, fromPi].map(callOnce));
+  assert.ok(answers.every(answer => answer.startsWith("PROBE_OK ")), "Claude, Codex and Pi each reach the shared MCP server");
+  assert.equal(new Set(answers).size, 3, "the three callers run independently at the same time");
+  writeFileSync(path.join(data, "mcp.json"), JSON.stringify({ mcpServers: {} }));
+
   console.log("Claude/Codex wrappers refresh Pi Web MCP for every caller; old launchers retired; terminal PATH matches pi-web.");
 } finally {
   rmSync(temp, { recursive: true, force: true });

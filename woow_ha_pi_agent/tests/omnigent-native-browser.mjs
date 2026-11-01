@@ -181,6 +181,9 @@ try {
     };
     await select('paseo');
     const paseoFrame = page.frameLocator('iframe[title="Paseo"]');
+    // The embedded pages show enabled controls until app.js starts its first status read; on a real
+    // HAOS (Ingress latency) `:enabled` matched while the page still said 讀取中…. Wait for the read.
+    await paseoFrame.locator('#notice').filter({ hasNotText: '讀取中' }).waitFor();
     await paseoFrame.locator('#pair:enabled').waitFor();
     assert.equal(await paseoFrame.locator('#onboarding').count(), 0, 'Settings must not link to a setup conversation');
     assert.equal(await page.locator('iframe[title="Paseo"]').getAttribute('src'), prefix + '/paseo/setup?embedded=1');
@@ -233,6 +236,7 @@ try {
     await clientPage.close();
     await select('omnigent');
     const frame = page.frameLocator('iframe[title="Omnigent"]');
+    await frame.locator('#notice').filter({ hasNotText: '正在讀取狀態' }).waitFor();
     await frame.locator('#setup button:enabled').waitFor();
     assert.equal(await page.locator('iframe[title="Omnigent"]').getAttribute('src'), `${prefix}/omnigent?embedded=1`);
     assert.equal(await frame.locator('[name=server]').inputValue(), '');
@@ -244,6 +248,7 @@ try {
     await select('mcp');
     assert.equal(await page.locator('iframe[title="Omnigent"]').count(), 0, 'leaving the panel unmounts its password form');
     await select('omnigent');
+    await frame.locator('#notice').filter({ hasNotText: '正在讀取狀態' }).waitFor();
     await frame.locator('#setup button:enabled').waitFor();
     assert.equal(await frame.locator('[name=password]').inputValue(), '');
     await frame.locator('[name=server]').fill('https://example.test');
@@ -269,9 +274,11 @@ try {
     await frame.locator('[name=username]').focus(); await page.keyboard.press('Escape');
     await dialog.waitFor({ state: 'hidden' });
     await page.getByRole('button', { name: 'Settings', exact: true }).click();
+    await page.frameLocator('iframe[title="Omnigent"]').locator('#notice').filter({ hasNotText: '正在讀取狀態' }).waitFor();
     await page.frameLocator('iframe[title="Omnigent"]').locator('#setup button:enabled').waitFor();
     assert.equal(await page.locator('.settings-section-tab[aria-current=page]').textContent(), 'Omnigent', 'last section survives closing settings');
     await page.goto(base + '/omnigent');
+    await page.locator('#notice').filter({ hasNotText: '正在讀取狀態' }).waitFor();
     await page.locator('#setup button:enabled').waitFor();
     assert.equal(await page.locator('#back').getAttribute('href'), prefix + '/');
     assert.equal(await page.locator('#back').getAttribute('target'), null, 'standalone fallback stays standalone');

@@ -1,3 +1,9 @@
+## 0.15.20
+
+- Settings → Omnigent can now pick a Pi model when Pi runs on a gateway you configured yourself. Omnigent 0.16.0 lists an own-login Pi's models from `auth.json` and `models-store.json` only; Pi fills that store solely for providers whose catalog it fetches over the network, so an OpenAI-compatible endpoint added on the Models page (LiteLLM, Ollama, vLLM, any proxy) appeared in neither file and the "Configure Pi" dialog offered only "Default" — Pi could not be used through Omnigent at all, even though it answered normally in the terminal and in Pi Web. The image now patches that one fallback to ask `pi --list-models`, which already knows. A real Pi login still wins, so nothing changes for accounts signed in to Anthropic, OpenAI or any other built-in provider.
+- The patch is the same script the root Pi Agent image's chart runs, is version-gated to Omnigent 0.16.0 and is applied with its unit tests at build time, so moving the Omnigent pin fails the build instead of quietly shipping an empty model picker.
+- Keep Omnigent plugin 0.3.31, Paseo 0.1.15, Pi Web 0.12.0, add-on options, ports, architectures, user sessions, provider credentials and authorized-host recovery. No migration is needed.
+
 ## 0.15.19
 
 - Bundle the checksum-verified public Omnigent plugin 0.3.31, the same generation that the root Pi Agent image 0.3.23 ships. Settings → Omnigent opens faster: engine version probes are cached for 10 minutes instead of 15 s (a replaced or removed engine is still probed at once), and when you are signed in the status and the model catalog are read at the same time. An empty Pi model list still runs `pi update --models`, but the page waits at most 5 s for it and the refresh finishes in the background.

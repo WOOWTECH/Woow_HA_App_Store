@@ -221,6 +221,24 @@ RUN SITE_PACKAGES="$(/opt/omnigent/venv/bin/python -c 'import sysconfig; print(s
     && /opt/omnigent/venv/bin/python /opt/patches/omnigent-reminder-patch/omnigent-reminder-patch.py --site-packages "${SITE_PACKAGES}" --strict \
     && /opt/omnigent/venv/bin/python /opt/patches/tests/omnigent-reminder-patch.test.py \
     && grep -q 'omnigent-reminder-patch v2' "${SITE_PACKAGES}/omnigent/harnesses/claude_native/bridge.py"
+# Omnigent's "Configure Pi" model picker asks the host which models a Pi
+# session may start with. For a Pi on its own login, the pinned Omnigent
+# answers from auth.json INTERSECT models-store.json. Pi writes that store for
+# providers whose catalog it refreshes over the network, so a compatible
+# endpoint declared in models.json -- which is what this image's own Models
+# page writes -- is in neither file: the dialog then offers only "Default" and
+# Pi cannot be used through Omnigent at all. The patch routes that empty case
+# to `pi --list-models`, which already knows. Same script as
+# Woow_k3s_pi_agent_package charts/pi-agent/files (byte-identical copy), where
+# it runs from the chart's postStart instead. The gate reads the same pin the
+# venv was built from, and --strict turns a version bump or an anchor drift
+# into a red build rather than an image that silently ships an empty picker.
+COPY patches/omnigent-model-options-patch/ /opt/patches/omnigent-model-options-patch/
+COPY patches/tests/omnigent-model-options-patch.test.py /opt/patches/tests/omnigent-model-options-patch.test.py
+RUN SITE_PACKAGES="$(/opt/omnigent/venv/bin/python -c 'import sysconfig; print(sysconfig.get_paths()["purelib"])')" \
+    && /opt/omnigent/venv/bin/python /opt/patches/omnigent-model-options-patch/omnigent-model-options-patch.py --site-packages "${SITE_PACKAGES}" --strict --expected-version "$(< /tmp/pins/omnigent/version)" \
+    && /opt/omnigent/venv/bin/python /opt/patches/tests/omnigent-model-options-patch.test.py \
+    && grep -q '_ambient_pi_model_options' "${SITE_PACKAGES}/omnigent/harnesses/pi_native/credentials.py"
 COPY --from=pins /pins/omnigent-plugin/ /tmp/pins/omnigent-plugin/
 RUN curl --fail --silent --show-error --location --retry 3 "$(< /tmp/pins/omnigent-plugin/url)" -o /tmp/plugin.tgz \
     && echo "$(< /tmp/pins/omnigent-plugin/sha256)  /tmp/plugin.tgz" | sha256sum --check --strict \
