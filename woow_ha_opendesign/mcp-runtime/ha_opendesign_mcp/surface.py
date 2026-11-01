@@ -5,16 +5,16 @@ strict argument model (extra fields forbidden, as every vendored model).
 added the other four of the vendored server:
 
   list_connectors  read   no arguments; the child returns od_rules.project_connectors()
-  read_file        read   project UUID + FileInfo's relative path, minus secret-like names (od_rules.secret_like)
+  read_file        read   safe project id + FileInfo's relative path, minus secret-like names (od_rules.secret_like)
   create_project   write  prompt (1..PROMPT_MAX characters) + agent_id (a safe id pattern, default "claude")
-  send_message     write  project UUID + prompt + agent_id
+  send_message     write  safe project id + prompt + agent_id
 
 0.2.6 (runtime 0.4.0): the vendored TOOLS['opendesign'] is now the standalone add-on's full surface (its
 surface.full_tools: ChildArguments, any JSON object, with the child's own inputSchema listed), and the bounded 0.1.x
 table that 0.2.0-0.2.5 used remains as products.BOUNDED_TOOLS['opendesign']. TABLE is that bounded table plus the same
 four tools, in 0.2.5's order; install() puts it into TOOLS['opendesign'] in place, before the state store is opened, so
-the gateway keeps the bounded models and checks grants against them (state.BuiltinState, make_apps). This draft extends
-only the project UUID and file path character patterns for six tools; the other model bounds stay as 0.2.5.
+the gateway keeps the bounded models and checks grants against them (state.BuiltinState, make_apps). The overlay extends
+only the project id and file path character patterns for six tools; the other model bounds stay as 0.2.5.
 The child's handlers for the four tools (and,
 since 0.2.6, list_runs) are replaced by od_tools.py. Which tools are on by default: defaults.py.
 """
@@ -41,11 +41,11 @@ def agent_field():
 
 
 class Project(PinnedProject):
-    project_id: str = Field(pattern=od_rules.UUID_PATTERN)
+    project_id: str = Field(max_length=128, pattern=od_rules.PROJECT_ID_PATTERN)
 
 
 class FileInfo(PinnedFileInfo):
-    project_id: str = Field(pattern=od_rules.UUID_PATTERN)
+    project_id: str = Field(max_length=128, pattern=od_rules.PROJECT_ID_PATTERN)
     file_path: str = Field(min_length=1, max_length=256, pattern=od_rules.FILE_PATH_PATTERN)
 
 

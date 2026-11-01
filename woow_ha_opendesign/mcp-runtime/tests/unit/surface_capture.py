@@ -168,7 +168,7 @@ CASES = [
     ('create_project/busy', 'create_project', {'prompt': 'x'}, {'busy': True}),
     ('send_message', 'send_message', {'project_id': PROJECT, 'prompt': 'hi', 'agent_id': 'opencode'}),
     ('send_message/unknown-project', 'send_message', {'project_id': MISSING, 'prompt': 'hi'}),
-    ('send_message/invalid', 'send_message', {'project_id': 'x', 'prompt': 'hi'}),
+    ('send_message/invalid', 'send_message', {'project_id': '../secret', 'prompt': 'hi'}),
     ('delete_project', 'delete_project', {'project_id': PROJECT}),
     ('delete_project/unknown-project', 'delete_project', {'project_id': MISSING}),
 ]

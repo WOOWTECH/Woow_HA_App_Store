@@ -25,6 +25,7 @@ CODE = os.environ.get('HA_OD_MCP_CODE', str(HERE.parents[1]))
 VENDOR = Path(os.environ.get('HA_OD_MCP_VENDOR', str(HERE.parents[1] / 'vendor')))
 FIXTURES = HERE / 'fixtures'
 PROJECT = '62720fb2-1795-474e-ab8c-f03657706bed'
+IMPORTED = 'imported-project_1'
 MISSING = '00000000-0000-4000-8000-000000000000'
 BIG = 'x' * (1024 * 1024 + 1)
 
@@ -37,6 +38,7 @@ class Daemon(BaseHTTPRequestHandler):
     LISTED_SIZES = {'grown.txt': 10}  # the list shows an older, smaller size
     chat = 'chat-claude-auth.sse'
     chat_status = 200
+    chat_project_id = PROJECT
     stall = 0.0  # seconds of keepalives before the chat body
     requests = []
 
@@ -64,9 +66,10 @@ class Daemon(BaseHTTPRequestHandler):
                                               'status': 'failed', 'error': 'auth failed at /data/opendesign/home',
                                               'eventsLogPath': '/data/opendesign/runs/x/events.jsonl'}],
                                     'awaitingInputProjectIds': []})
-        prefix = '/api/projects/%s' % PROJECT
+        prefix = '/api/projects/%s' % (IMPORTED if path.startswith('/api/projects/' + IMPORTED) else PROJECT)
         if path == prefix:
-            return self.reply(200, {'project': {'id': PROJECT}, 'resolvedDir': '/data/opendesign/projects/x'})
+            return self.reply(200, {'project': {'id': prefix.rsplit('/', 1)[-1]},
+                                    'resolvedDir': '/data/opendesign/projects/x'})
         if path == prefix + '/files':
             return self.reply(200, {'files': [
                 {'name': name, 'path': name, 'type': 'file', 'size': self.LISTED_SIZES.get(name, len(data)),
@@ -78,6 +81,12 @@ class Daemon(BaseHTTPRequestHandler):
                 return self.reply(200, self.FILES[name], 'application/octet-stream')
             return self.reply(404, {'error': {'code': 'FILE_NOT_FOUND', 'message': 'ENOENT /data/opendesign/x'}})
         return self.reply(404, {'error': {'code': 'PROJECT_NOT_FOUND', 'message': 'project not found'}})
+
+    def do_DELETE(self):
+        Daemon.requests.append(('DELETE', self.path))
+        if self.path in ('/api/projects/' + PROJECT, '/api/projects/' + IMPORTED):
+            return self.reply(200, {'ok': True})
+        return self.reply(404, {'error': {'code': 'PROJECT_NOT_FOUND'}})
 
     def do_POST(self):
         body = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
@@ -97,7 +106,8 @@ class Daemon(BaseHTTPRequestHandler):
                 self.wfile.write(b': keepalive\n\n')
                 self.wfile.flush()
                 time.sleep(0.05)
-            self.wfile.write((FIXTURES / self.chat).read_bytes())
+            data = (FIXTURES / self.chat).read_bytes()
+            self.wfile.write(data.replace(PROJECT.encode(), self.chat_project_id.encode()))
         except (BrokenPipeError, ConnectionResetError):
             pass  # the handler stopped reading (deadline)
 
@@ -155,6 +165,57 @@ class Tools(unittest.TestCase):
     def setUp(self):
         Daemon.requests = []
         Daemon.chat, Daemon.chat_status, Daemon.stall = 'chat-claude-auth.sse', 200, 0.0
+        Daemon.chat_project_id = PROJECT
+
+    def test_six_project_tools_accept_imported_id_against_one_fake_daemon(self):
+        self.assertFalse(call('get_project', {'project_id': IMPORTED})[0])
+        self.assertFalse(call('list_project_files', {'project_id': IMPORTED})[0])
+        self.assertFalse(call('get_file_info', {'project_id': IMPORTED, 'file_path': 'index.html'})[0])
+        self.assertEqual(call('read_file', {'project_id': IMPORTED, 'file_path': '資料/說明.txt'}),
+                         (False, '可讀的說明\n'))
+        Daemon.chat = 'chat-success.sse'
+        Daemon.chat_project_id = IMPORTED
+        error, text = call('send_message', {'project_id': IMPORTED, 'prompt': 'hi'})
+        self.assertFalse(error, text)
+        self.assertEqual(json.loads(text)['projectId'], IMPORTED)
+        self.assertTrue(od_rules.UUID.fullmatch(json.loads(text)['runId']))
+        self.assertFalse(call('delete_project', {'project_id': IMPORTED})[0])
+        paths = [event[1] for event in Daemon.requests]
+        self.assertEqual(paths, ['/api/projects/' + IMPORTED,
+                                 '/api/projects/' + IMPORTED + '/files',
+                                 '/api/projects/' + IMPORTED + '/files',
+                                 '/api/projects/' + IMPORTED + '/files',
+                                 '/api/projects/' + IMPORTED + '/files/' + quote('資料/說明.txt'),
+                                 '/api/projects/' + IMPORTED, '/api/chat', '/api/projects/' + IMPORTED])
+        self.assertEqual(Daemon.requests[-2][2]['projectId'], IMPORTED)
+
+    def test_unsafe_project_ids_never_reach_fake_daemon_for_six_tools(self):
+        cases = {'get_project': {}, 'delete_project': {}, 'list_project_files': {},
+                 'get_file_info': {'file_path': 'index.html'},
+                 'read_file': {'file_path': 'index.html'}, 'send_message': {'prompt': 'hi'}}
+        for name, extra in cases.items():
+            for value in ('..', '../secret', 'a/b', 'a%2fb', '.env/secret', 'a' * 129):
+                with self.subTest(name=name, value=value):
+                    error, text = call(name, {'project_id': value, **extra})
+                    self.assertTrue(error)
+                    self.assertTrue(text.endswith(': INVALID_ARGUMENTS'), text)
+        self.assertEqual(Daemon.requests, [])
+
+    def test_get_file_info_child_rejects_unsafe_paths_before_file_list_get(self):
+        for path in ('../secret', 'a//b', 'a/./b', '/absolute', 'a%2e%2e/b'):
+            with self.subTest(path=path):
+                error, text = call('get_file_info', {'project_id': PROJECT, 'file_path': path})
+                self.assertTrue(error, text)
+                self.assertTrue(text.endswith(': INVALID_ARGUMENTS'), text)
+                self.assertEqual(Daemon.requests, [])
+        unicode_path = '資料/說明.txt'
+        error, text = call('get_file_info', {'project_id': PROJECT, 'file_path': unicode_path})
+        self.assertFalse(error, text)
+        self.assertEqual(json.loads(text)['path'], unicode_path)
+        error, text = call('get_file_info', {'project_id': PROJECT, 'file_path': '.env'})
+        self.assertFalse(error, text)
+        self.assertIn("File '.env' not found", text)
+        self.assertEqual(Daemon.requests, [('GET', '/api/projects/%s/files' % PROJECT)] * 2)
 
     def test_list_connectors(self):
         error, text = call('list_connectors', {})
@@ -254,7 +315,7 @@ class Tools(unittest.TestCase):
         self.assertFalse([r for r in Daemon.requests if r[1] == '/api/chat'])
 
     def test_bad_arguments_refused_in_child_too(self):
-        for name, arguments in (('send_message', {'project_id': 'x', 'prompt': 'hi'}),
+        for name, arguments in (('send_message', {'project_id': '../secret', 'prompt': 'hi'}),
                                 ('create_project', {'prompt': 'hi', 'agent_id': 'A B'}),
                                 ('create_project', {'prompt': 'x' * 20001})):
             with self.subTest(name=name):

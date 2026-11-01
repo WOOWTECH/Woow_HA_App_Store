@@ -28,7 +28,7 @@ import tempfile
 import threading
 import time
 import unittest
-from urllib.parse import unquote
+from urllib.parse import quote, unquote
 
 HERE = Path(__file__).resolve().parent
 CODE = Path(os.environ.get('HA_OD_MCP_CODE', str(HERE.parents[1])))
@@ -52,6 +52,7 @@ MISSING = '00000000-0000-4000-8000-000000000000'
 UPPER_PROJECT = '76C45D7A-3147-45CF-A3F4-295EE256E48E'
 UNICODE_FILE = '資料/說明.txt'
 PROJECT = '76c45d7a-3147-45cf-a3f4-295ee256e48e'
+IMPORTED = 'imported-project_1'
 FILE_TEXT = '<h1>sample</h1>\n'
 MODERN = '2026-07-28'
 ACCEPT = {'Accept': 'application/json, text/event-stream'}
@@ -66,13 +67,23 @@ def initialize(version):
 
 
 class Daemon(BaseHTTPRequestHandler):
+    requests = []
+
     def log_message(self, *args):
         pass
 
     def do_GET(self):
+        Daemon.requests.append(('GET', self.path))
         path = unquote(self.path)
         if path == '/api/health':
             status, body = 200, {'ok': True, 'version': '0.24.1'}
+        elif path == '/api/projects/' + IMPORTED:
+            status, body = 200, {'project': {'id': IMPORTED}}
+        elif path == '/api/projects/' + IMPORTED + '/files':
+            status, body = 200, {'files': [{'path': UNICODE_FILE, 'type': 'file',
+                                            'size': len('中文檔案\n'.encode())}]}
+        elif path == '/api/projects/' + IMPORTED + '/files/' + UNICODE_FILE:
+            status, body = 200, '中文檔案\n'.encode()
         elif path == '/api/projects/' + UPPER_PROJECT + '/files':
             status, body = 200, {'files': [{'name': UNICODE_FILE, 'path': UNICODE_FILE,
                                             'type': 'file', 'size': len('中文檔案\n'.encode())}]}
@@ -159,6 +170,7 @@ class GatewayAndChild(unittest.IsolatedAsyncioTestCase):
         cls.tmp.cleanup()
 
     async def asyncSetUp(self):
+        Daemon.requests = []
         self.state_dir = tempfile.TemporaryDirectory()
         self.store = BuiltinStore(Path(self.state_dir.name) / 'mcp')
         runtime.pin_backend(self.store)
@@ -233,7 +245,10 @@ class GatewayAndChild(unittest.IsolatedAsyncioTestCase):
                             self.assertEqual(tool.pop('outputSchema'), output_contract.READ_FILE_OUTPUT)
                         if name in CHANGED_SCHEMAS:
                             self.assertEqual(tool['inputSchema'], policy.declared_schema(surface.TABLE[name].arguments))
-                            self.assertEqual({**tool, 'inputSchema': old[name]['inputSchema']}, old[name])
+                            expected = dict(old[name])
+                            expected['description'] = expected['description'].replace(
+                                'UUID of the project', 'Safe project ID (UUID or imported ID)')
+                            self.assertEqual({**tool, 'inputSchema': old[name]['inputSchema']}, expected)
                         else:
                             self.assertEqual(tool, old[name])
                     self.assertEqual({key: value for key, value in listed.items() if key != 'tools'},
@@ -270,6 +285,56 @@ class GatewayAndChild(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn('tools', answer.text)
         listed = (await self.rpc(headers, {'jsonrpc': '2.0', 'id': 3, 'method': 'tools/list'}))['result']
         self.assertEqual(len(listed['tools']), 15)
+        await self.client.delete('/mcp', headers=headers)
+
+    async def test_imported_project_passes_both_boundaries_unsafe_id_stops_before_daemon(self):
+        headers = dict(self.auth)
+        await self.handshake('2025-11-25', headers)
+        got = (await self.rpc(headers, {'jsonrpc': '2.0', 'id': 20, 'method': 'tools/call', 'params': {
+            'name': 'get_project', 'arguments': {'project_id': IMPORTED}}}))['result']
+        self.assertIsNot(got.get('isError'), True, got)
+        self.assertEqual(json.loads(got['content'][0]['text'])['project']['id'], IMPORTED)
+        read = (await self.rpc(headers, {'jsonrpc': '2.0', 'id': 21, 'method': 'tools/call', 'params': {
+            'name': 'read_file', 'arguments': {'project_id': IMPORTED, 'file_path': UNICODE_FILE}}}))['result']
+        self.assertIsNot(read.get('isError'), True, read)
+        self.assertEqual(read['content'][0]['text'], '中文檔案\n')
+        before = list(Daemon.requests)
+        for project_id in ('../secret', '..', 'a%2fb'):
+            rejected = await self.rpc(headers, {'jsonrpc': '2.0', 'id': 22, 'method': 'tools/call', 'params': {
+                'name': 'get_project', 'arguments': {'project_id': project_id}}})
+            self.assertEqual(rejected['error']['code'], -32602)
+        self.assertEqual(Daemon.requests, before)
+        self.assertEqual(before, [('GET', '/api/projects/' + IMPORTED),
+                                  ('GET', '/api/projects/' + IMPORTED + '/files'),
+                                  ('GET', '/api/projects/' + IMPORTED + '/files/' + quote(UNICODE_FILE))])
+        await self.client.delete('/mcp', headers=headers)
+
+    async def test_get_file_info_metadata_paths_and_gateway_rejections(self):
+        headers = dict(self.auth)
+        await self.handshake('2025-11-25', headers)
+        for path in (UNICODE_FILE, '.env'):
+            with self.subTest(path=path):
+                result = (await self.rpc(headers, {'jsonrpc': '2.0', 'id': 30, 'method': 'tools/call', 'params': {
+                    'name': 'get_file_info', 'arguments': {'project_id': IMPORTED, 'file_path': path}}}))['result']
+                self.assertIsNot(result.get('isError'), True, result)
+                metadata = json.loads(result['content'][0]['text'])
+                if path == UNICODE_FILE:
+                    self.assertEqual(metadata['path'], path)
+                else:
+                    self.assertIn('error', metadata)
+        expected = [('GET', '/api/projects/' + IMPORTED + '/files')] * 2
+        self.assertEqual(Daemon.requests, expected)
+        for path in ('../secret', 'a//b', 'a/./b', '/absolute', 'a%2e%2e/b'):
+            with self.subTest(path=path):
+                refused = await self.rpc(headers, {'jsonrpc': '2.0', 'id': 31, 'method': 'tools/call', 'params': {
+                    'name': 'get_file_info', 'arguments': {'project_id': IMPORTED, 'file_path': path}}})
+                self.assertEqual(refused['error']['code'], -32602)
+                self.assertEqual(refused['error']['data']['errors'][0]['field'], 'file_path')
+                self.assertEqual(Daemon.requests, expected)
+        read_secret = await self.rpc(headers, {'jsonrpc': '2.0', 'id': 32, 'method': 'tools/call', 'params': {
+            'name': 'read_file', 'arguments': {'project_id': IMPORTED, 'file_path': '.env'}}})
+        self.assertEqual(read_secret['error']['code'], -32602)
+        self.assertEqual(Daemon.requests, expected)
         await self.client.delete('/mcp', headers=headers)
 
     async def test_the_request_body_ceiling(self):

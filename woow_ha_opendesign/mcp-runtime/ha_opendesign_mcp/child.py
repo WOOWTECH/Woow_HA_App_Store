@@ -6,6 +6,7 @@ steps in the same order, and main() serves the result with uvicorn on the socket
 
 0.2.1: before BoundedTools wraps the synchronous tools, od_tools.install() replaces the vendored handlers of
 list_connectors, read_file, create_project and send_message (0.2.6: and list_runs) with bounded ones (see od_tools.py).
+The four retained project handlers receive a safe project-ID guard before BoundedTools wraps them.
 The add-on root (/opt/woow) is APPENDED to sys.path for that import only, so nothing in it can shadow the child's own
 modules.
 

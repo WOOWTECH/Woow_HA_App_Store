@@ -17,6 +17,7 @@ import unittest
 
 HERE = Path(__file__).resolve().parent
 BASELINE = json.loads((HERE / 'fixtures' / 'surface-0.2.5.json').read_text())['child']
+PROJECT_TOOLS = {'get_project', 'delete_project', 'list_project_files', 'get_file_info', 'read_file', 'send_message'}
 
 
 class Unchanged(unittest.TestCase):
@@ -40,8 +41,11 @@ class Unchanged(unittest.TestCase):
         self.assertEqual(len(self.current['tools']['tools']), 15)
         for before, after in zip(BASELINE['tools']['tools'], self.current['tools']['tools']):
             with self.subTest(tool=before['name']):
-                self.assertEqual(after, before)
-        self.assertEqual(self.current['tools'], BASELINE['tools'])
+                expected = dict(before)
+                if before['name'] in PROJECT_TOOLS:
+                    expected['description'] = expected['description'].replace(
+                        'UUID of the project', 'Safe project ID (UUID or imported ID)')
+                self.assertEqual(after, expected)
 
     def test_every_call_unchanged(self):
         self.assertEqual(sorted(self.current['calls']), sorted(BASELINE['calls']))

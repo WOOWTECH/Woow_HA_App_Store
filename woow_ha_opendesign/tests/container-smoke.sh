@@ -324,7 +324,8 @@ assert body["tools"]["catalog_count"] == 15, body["tools"]["catalog_count"]
 # client) gets the gateway's own JSON-RPC -32601; the 2025 handshake works, also
 # with a 2026-07-28 MCP-Protocol-Version header (no longer forwarded with an
 # initialize: an SDK 2 child refuses it); the 15 tools keep their 0.2.5 catalog
-# except the six reviewed UUID/path input schemas and read_file outputSchema;
+# except the six reviewed project-ID/path input schemas and project-ID descriptions,
+# plus read_file outputSchema;
 # calls work and a failure keeps its 0.2.5 text. The add-on
 # token is read inside the container and never printed.
 docker exec -i "$container" /opt/woow/.venv/bin/python -c '
@@ -380,7 +381,10 @@ with httpx.Client(base_url="http://127.0.0.1:8081", timeout=60, trust_env=False)
             assert current.pop("outputSchema") == output_contract.READ_FILE_OUTPUT
         if current["name"] in changed_schemas:
             assert current["inputSchema"] == declared_schema(surface.TABLE[current["name"]].arguments), current["name"]
-            current = {**current, "inputSchema": old["inputSchema"]}
+            assert old["description"].count("UUID of the project") == 1, current["name"]
+            assert current["description"] == old["description"].replace(
+                "UUID of the project", "Safe project ID (UUID or imported ID)"), current["name"]
+            current = {**current, "inputSchema": old["inputSchema"], "description": old["description"]}
         assert current == old, current["name"]
     assert {**tools["result"], "tools": old_tools} == listed
     def call(ident, name, arguments):

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.14
+
+- The built-in OpenDesign MCP server accepts safe imported project IDs, such as `imported-project_1`, on all six project tools. Existing UUIDs remain accepted. Project IDs with slashes, escapes, dot-only values or more than 128 characters are rejected before the OpenDesign daemon is contacted.
+- The management gateway and child now apply the same project-ID rule. The six tool descriptions explain that imported IDs are supported. The direct child also refuses malformed `get_file_info` paths before asking the daemon for its file list; legal relative Unicode paths and metadata-only `.env` lookup remain available. Output schemas, write grants and tool count remain unchanged.
+- No data migration is required from 0.2.13. The bundled OpenDesign core image, add-on options, ports and storage layout are unchanged.
+
 ## 0.2.13
 
 - The built-in OpenDesign MCP server now accepts uppercase UUID syntax and Chinese file paths for the six project/file tools that use those arguments. Path traversal, secret-file names, control characters and bidirectional controls remain rejected. A project lookup remains case-sensitive when the OpenDesign daemon stores a lowercase ID.

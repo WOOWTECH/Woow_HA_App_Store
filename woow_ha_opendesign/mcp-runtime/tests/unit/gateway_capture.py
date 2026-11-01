@@ -41,7 +41,7 @@ CASES = {
     'health': ('health', {}),
     'health/extra': ('health', {'verbose': True}),
     'get_project': ('get_project', {'project_id': PROJECT}),
-    'get_project/not-a-uuid': ('get_project', {'project_id': 'abc'}),
+    'get_project/not-a-uuid': ('get_project', {'project_id': '../secret'}),  # legacy case key; now tests unsafe path
     'get_project/missing': ('get_project', {}),
     'get_file_info': ('get_file_info', {'project_id': PROJECT, 'file_path': 'src/index.html'}),
     'get_file_info/traversal': ('get_file_info', {'project_id': PROJECT, 'file_path': '../x'}),

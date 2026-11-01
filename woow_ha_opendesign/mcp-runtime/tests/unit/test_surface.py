@@ -125,7 +125,20 @@ class Arguments(unittest.TestCase):
                 self.assertEqual(self.refused('read_file', {'project_id': PROJECT, 'file_path': path}).kind,
                                  'invalid_params')
         self.refused('read_file', {'project_id': PROJECT, 'file_path': 'a.html', 'extra': MARKER})
-        self.refused('read_file', {'project_id': MARKER, 'file_path': 'a.html'})
+        self.refused('read_file', {'project_id': MARKER + '/secret', 'file_path': 'a.html'})
+
+    def test_get_file_info_metadata_path_stays_relative_without_read_secret_policy(self):
+        for path in ('資料/說明.txt', '.env', 'config/.env.production'):
+            with self.subTest(path=path):
+                self.assertEqual(self.allowed('get_file_info', {'project_id': PROJECT, 'file_path': path})['file_path'],
+                                 path)
+        for path in ('../secret', 'a//b', 'a/./b', '/absolute', 'a%2e%2e/b'):
+            with self.subTest(path=path):
+                refusal = self.refused('get_file_info', {'project_id': PROJECT, 'file_path': path})
+                self.assertEqual(refusal.kind, 'invalid_params')
+                self.assertEqual(refusal.errors[0]['field'], 'file_path')
+        self.assertEqual(self.refused('read_file', {'project_id': PROJECT, 'file_path': '.env'}).kind,
+                         'invalid_params')
 
     def test_unicode_filename_and_uppercase_uuid_are_bounded_inputs(self):
         upper = PROJECT.upper()
@@ -140,6 +153,22 @@ class Arguments(unittest.TestCase):
             with self.subTest(path=path):
                 self.assertEqual(self.refused('read_file', {'project_id': PROJECT, 'file_path': path}).kind,
                                  'invalid_params')
+
+    def test_six_project_tools_accept_safe_imports_and_refuse_path_shaping_ids(self):
+        tools = {'get_project': {}, 'delete_project': {}, 'list_project_files': {},
+                 'read_file': {'file_path': '資料/說明.txt'},
+                 'get_file_info': {'file_path': '資料/說明.txt'},
+                 'send_message': {'prompt': 'hi'}}
+        for name, extra in tools.items():
+            for project_id in ('imported-project_1', '..safe', 'a' * 128, '.' * 127 + 'a', PROJECT.upper()):
+                with self.subTest(name=name, project_id=project_id):
+                    self.assertEqual(self.allowed(name, {'project_id': project_id, **extra})['project_id'], project_id)
+            for project_id in ('', '.', '..', '.' * 128, '../secret', 'a/b', 'a\\b', 'a%2fb', 'a' * 129):
+                with self.subTest(name=name, project_id=project_id):
+                    self.assertEqual(self.refused(name, {'project_id': project_id, **extra}).kind, 'invalid_params')
+            schema = policy.declared_schema(TABLE[name].arguments)['properties']['project_id']
+            self.assertEqual(schema['pattern'], surface.od_rules.PROJECT_ID_PATTERN)
+            self.assertEqual(schema['maxLength'], 128)
 
     def test_list_connectors(self):
         self.assertEqual(self.allowed('list_connectors', {}), {})
@@ -160,7 +189,7 @@ class Arguments(unittest.TestCase):
         self.assertEqual(self.allowed('send_message', {'project_id': PROJECT, 'prompt': 'Make it blue'}),
                          {'project_id': PROJECT, 'prompt': 'Make it blue', 'agent_id': 'claude'})
         self.refused('send_message', {'prompt': 'x'})
-        self.refused('send_message', {'project_id': 'nope', 'prompt': 'x'})
+        self.refused('send_message', {'project_id': '../secret', 'prompt': 'x'})
 
 
 class Defaults(unittest.TestCase):

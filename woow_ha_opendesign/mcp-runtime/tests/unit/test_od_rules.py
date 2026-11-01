@@ -67,6 +67,15 @@ class SecretNames(unittest.TestCase):
         self.assertEqual(od_rules.file_path_problem('.env'), 'secret-like file name refused')
         self.assertEqual(od_rules.file_path_problem(None), 'path characters not allowed')
 
+    def test_metadata_path_uses_relative_rules_without_read_secret_policy(self):
+        for path in ('資料/說明.txt', '.env', 'config/.env.production'):
+            with self.subTest(path=path):
+                self.assertIsNone(od_rules.file_path_problem(path, for_read=False))
+        for path in ('../secret', 'a//b', 'a/./b', '/absolute', 'a%2e%2e/b'):
+            with self.subTest(path=path):
+                self.assertIsNotNone(od_rules.file_path_problem(path, for_read=False))
+        self.assertEqual(od_rules.file_path_problem('.env'), 'secret-like file name refused')
+
     def test_unicode_filename_and_uppercase_uuid_without_weaker_path_guards(self):
         self.assertIsNone(od_rules.file_path_problem('資料/說明.txt'))
         self.assertTrue(od_rules.UUID.fullmatch(PROJECT.upper()))
@@ -74,6 +83,19 @@ class SecretNames(unittest.TestCase):
                      '資料\\說明.txt', '資料／說明.txt', '資料/說明\u202e.txt'):
             with self.subTest(path=path):
                 self.assertIsNotNone(od_rules.file_path_problem(path))
+
+    def test_imported_project_id_grammar_keeps_run_ids_uuid_only(self):
+        for project_id in (PROJECT, PROJECT.upper(), 'imported-project_1', '..safe', 'a' * 128, '.' * 127 + 'a'):
+            with self.subTest(project_id=project_id):
+                self.assertTrue(od_rules.safe_project_id(project_id))
+        for project_id in ('', '.', '..', '.' * 128, '../secret', 'a/b', 'a\\b',
+                           'a%2fb', '.env/secret', '資料', 'a' * 129, None, 123):
+            with self.subTest(project_id=project_id):
+                self.assertFalse(od_rules.safe_project_id(project_id))
+        stream = od_rules.ChatStream()
+        stream.feed(b'event: start\ndata: {"projectId":"imported-project_1","runId":"imported-project_1"}\n\n')
+        self.assertEqual(stream.project_id, 'imported-project_1')
+        self.assertIsNone(stream.run_id)
 
 
 class ReadFileRules(unittest.TestCase):

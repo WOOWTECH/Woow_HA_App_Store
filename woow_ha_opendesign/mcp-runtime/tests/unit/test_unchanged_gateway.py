@@ -23,9 +23,14 @@ from mcp_admin_core import policy  # noqa: E402
 
 from ha_opendesign_mcp import surface  # noqa: E402
 
-CURRENT = gateway_capture.capture(FIXTURE['child'])
 CHANGED_SCHEMAS = frozenset({'get_project', 'delete_project', 'list_project_files',
                              'get_file_info', 'read_file', 'send_message'})
+PROJECT_ID_DESCRIPTION = 'Safe project ID (UUID or imported ID)'
+CHILD = copy.deepcopy(FIXTURE['child'])
+for tool in CHILD['tools']['tools']:
+    if tool['name'] in CHANGED_SCHEMAS:
+        tool['description'] = tool['description'].replace('UUID of the project', PROJECT_ID_DESCRIPTION)
+CURRENT = gateway_capture.capture(CHILD)
 CHANGED_ERROR_PATTERNS = {'get_project/not-a-uuid': ('get_project', 'project_id'),
                           'read_file/characters': ('read_file', 'file_path')}
 
@@ -40,7 +45,10 @@ class Unchanged(unittest.TestCase):
                 for name, tool in new_tools.items():
                     if name in CHANGED_SCHEMAS:
                         self.assertEqual(tool['inputSchema'], policy.declared_schema(surface.TABLE[name].arguments))
-                        self.assertEqual({**tool, 'inputSchema': old_tools[name]['inputSchema']}, old_tools[name])
+                        expected = dict(old_tools[name])
+                        expected['description'] = expected['description'].replace('UUID of the project',
+                                                                                  PROJECT_ID_DESCRIPTION)
+                        self.assertEqual({**tool, 'inputSchema': old_tools[name]['inputSchema']}, expected)
                     else:
                         self.assertEqual(tool, old_tools[name])
         listed = CURRENT['listed']['granted']['tools']
@@ -76,6 +84,7 @@ class Unchanged(unittest.TestCase):
             for tool in listed['tools']:
                 if tool['name'] in CHANGED_SCHEMAS:
                     tool['inputSchema'] = old[tool['name']]['inputSchema']
+                    tool['description'] = old[tool['name']]['description']
         for variant, cases in current['requests'].items():
             for case in CHANGED_ERROR_PATTERNS:
                 cases[case]['error']['data']['errors'][0]['message'] = (

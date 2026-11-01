@@ -4,7 +4,8 @@ Shared by the gateway's argument models (surface.py, management process) and the
 so both sides refuse the same things. Nothing here does I/O: tests/run.sh runs tests/unit/test_od_rules.py with the
 system Python.
 
-  read_file        file_path rules (FileInfo's, plus SECRET_* below), text only, at most READ_FILE_MAX_BYTES
+  get_file_info    relative file_path rules without read-only secret-name restrictions
+  read_file        the same file_path rules plus SECRET_* below, text only, at most READ_FILE_MAX_BYTES
   list_connectors  project_connectors(): a positive projection of GET /api/connectors
   create_project,  ChatStream: the OpenDesign 0.24.1 /api/chat event stream (measured 2026-10-15) parsed with
   send_message     bounded time, bytes and agent text into a projected result (chat_result())
@@ -21,6 +22,16 @@ import time
 # imported project ids can be case-sensitive in the daemon's database.
 UUID_PATTERN = r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
 UUID = re.compile(UUID_PATTERN)
+# OpenDesign imports can keep a non-UUID project id. Match the PaaS child policy:
+# one safe URL path component, 1..128 ASCII characters, containing a non-dot.
+# The pattern is shared by Pydantic/JSON Schema and Python's child guard; it
+# uses no lookahead (unsupported by pydantic-core's regex engine).
+PROJECT_ID_PATTERN = r'^\.*[A-Za-z0-9_-][A-Za-z0-9._-]*$'
+PROJECT_ID = re.compile(PROJECT_ID_PATTERN)
+
+
+def safe_project_id(value):
+    return isinstance(value, str) and len(value) <= 128 and PROJECT_ID.fullmatch(value) is not None
 # Keep the former ASCII characters and add CJK Unified Ideographs (including
 # Extension A), which the pinned OpenDesign daemon keeps in filenames. This
 # deliberately excludes controls, bidi markers, backslashes and percent escapes.
@@ -55,13 +66,13 @@ def secret_like(path):
     return False
 
 
-def file_path_problem(path):
-    """None when read_file may ask OpenDesign for `path`, else a plain reason (no quotes: the gateway shows it)."""
+def file_path_problem(path, *, for_read=True):
+    """None for a safe relative path; reads additionally refuse secret-like names."""
     if not isinstance(path, str) or not FILE_PATH.fullmatch(path):
         return 'path characters not allowed'
     if any(part in ('', '.', '..') for part in path.split('/')):
         return 'relative non-traversing path required'
-    if secret_like(path):
+    if for_read and secret_like(path):
         return 'secret-like file name refused'
     return None
 
@@ -274,7 +285,7 @@ class ChatStream:
         if event == 'start':
             if isinstance(payload.get('runId'), str) and UUID.fullmatch(payload['runId']):
                 self.run_id = payload['runId']
-            if isinstance(payload.get('projectId'), str) and UUID.fullmatch(payload['projectId']):
+            if safe_project_id(payload.get('projectId')):
                 self.project_id = payload['projectId']
         elif event == 'agent':
             if payload.get('type') == 'text_delta' and isinstance(payload.get('delta'), str):
