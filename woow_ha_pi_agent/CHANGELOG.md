@@ -1,3 +1,9 @@
+## 0.15.21
+
+- Settings → Omnigent no longer offers a Pi model that does not exist. The 0.15.20 model-options patch read every two-word line printed by `pi --list-models` as a model, but when Pi has nothing configured it prints a "No models available. Use /login …" notice on stdout (exit code 0) instead of a table, and that notice became a model called `No/models` that cannot start. The patch now reads only the rows under the `provider  model` header, so an add-on with nothing configured lists nothing again; gateways declared on the Models page and a real Pi login behave exactly as in 0.15.20.
+- The patch also points `pi --list-models` at the agent directory it just read (`PI_CODING_AGENT_DIR`) and gives it 12 seconds instead of 30: Omnigent's server stops waiting for the host after 15 seconds, so a slow CLI now means an empty picker instead of an HTTP 504.
+- Keep Omnigent plugin 0.3.31, Paseo 0.1.15, Pi Web 0.12.0, add-on options, ports, architectures, user sessions, provider credentials and authorized-host recovery. No migration is needed.
+
 ## 0.15.20
 
 - Settings → Omnigent can now pick a Pi model when Pi runs on a gateway you configured yourself. Omnigent 0.16.0 lists an own-login Pi's models from `auth.json` and `models-store.json` only; Pi fills that store solely for providers whose catalog it fetches over the network, so an OpenAI-compatible endpoint added on the Models page (LiteLLM, Ollama, vLLM, any proxy) appeared in neither file and the "Configure Pi" dialog offered only "Default" — Pi could not be used through Omnigent at all, even though it answered normally in the terminal and in Pi Web. The image now patches that one fallback to ask `pi --list-models`, which already knows. A real Pi login still wins, so nothing changes for accounts signed in to Anthropic, OpenAI or any other built-in provider.

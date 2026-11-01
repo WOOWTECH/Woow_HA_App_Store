@@ -17,6 +17,14 @@ PaaS tenants whose Pi models come from the pi-web Models page.
 The installed Pi CLI already knows the answer (`pi --list-models`), so this
 patch routes the empty case there instead of giving up.
 
+Two details of that CLI matter. With nothing configured it prints a "No models
+available. Use /login ..." notice on STDOUT with exit code 0 instead of a table;
+only the rows after the `provider  model ...` header are models, otherwise the
+notice would be read as a model called `No/models` and the picker would offer
+an entry that cannot start. And it is given 12 seconds, not 30: the host RPC
+that asks (omnigent server/routes/hosts.py, _MODEL_OPTIONS_TIMEOUT_S) is cut
+off at 15, so a slower CLI should mean an empty picker, not an HTTP 504.
+
 Why a runtime patch and not a chart value or an image layer: omnigent lives in
 a venv that is either `uv tool install`-ed into $HOME (on the PVC, so no image
 layer can carry it) or baked at /opt/omnigent; upstream exposes no hook for
@@ -94,23 +102,36 @@ def pi_own_login_model_options(agent_dir: Path | None = None) -> list[dict[str, 
                 "displayName": name if isinstance(name, str) and name else model_id,
             }
     if not options:
-        return _ambient_pi_model_options()
+        return _ambient_pi_model_options(agent_dir)
     return [options[model_id] for model_id in sorted(options)]
 
 
-def _ambient_pi_model_options() -> list[dict[str, object]]:
-    """List models exposed by Pi's own configured providers, without launching one."""
+def _ambient_pi_model_options(agent_dir: Path | None = None) -> list[dict[str, object]]:
+    """List models exposed by Pi's own configured providers, without launching one.
+
+    Only the rows after the ``provider  model ...`` header are models. With
+    nothing configured Pi prints a "No models available" notice instead of a
+    table (on stdout, exit code 0), which has no header and must not become a
+    model. Total by contract: a missing CLI, a failure, a timeout or output that
+    is not Pi's table yields ``[]``.
+    """
+    import os as _os
+    import re as _re
+
+    env = None if agent_dir is None else {**_os.environ, "PI_CODING_AGENT_DIR": str(agent_dir)}
     try:
         result = subprocess.run(
             ["pi", "--list-models"],
             capture_output=True,
             text=True,
-            # `pi --list-models` measures ~5s idle on these hosts, and the
-            # first minute after a start is not idle -- 15s (upstream's value)
-            # expired there and handed the dialog an empty picker, which is the
-            # very failure this patch exists to remove.
-            timeout=30,
+            errors="replace",
+            # `pi --list-models` measures 1-5s here. The host RPC that asks is cut
+            # off at 15s (omnigent server/routes/hosts.py), so stay clear of it:
+            # a slow CLI then means an empty picker, not an HTTP 504.
+            timeout=12,
             check=False,
+            stdin=subprocess.DEVNULL,
+            env=env,
         )
     except (OSError, subprocess.SubprocessError):
         _LOGGER.info("pi-native: could not run `pi --list-models` for the model picker")
@@ -119,19 +140,22 @@ def _ambient_pi_model_options() -> list[dict[str, object]]:
         _LOGGER.info("pi-native: `pi --list-models` failed; leaving the model picker empty")
         return []
 
+    provider_ids = _re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
     options: dict[str, dict[str, object]] = {}
+    in_table = False
     for line in result.stdout.splitlines():
         columns = line.split()
-        # Pi's stable table begins ``provider model context ...``.  Ignore the
-        # header, separators, and any future non-tabular diagnostic lines.
-        if len(columns) < 2 or columns[0] == "provider" or columns[0].startswith("-"):
+        if not in_table:
+            in_table = columns[:2] == ["provider", "model"]
             continue
-        provider_id, model_id = columns[:2]
-        qualified = f"{provider_id}/{model_id}"
+        # Skips blanks, a ``-----`` separator row and any trailing diagnostics.
+        if len(columns) < 2 or not provider_ids.fullmatch(columns[0]):
+            continue
+        qualified = f"{columns[0]}/{columns[1]}"
         options[qualified] = {
             "id": qualified,
             "model": qualified,
-            "displayName": model_id,
+            "displayName": columns[1],
         }
     return [options[model_id] for model_id in sorted(options)]
 '''
