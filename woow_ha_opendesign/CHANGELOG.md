@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.13
+
+- The built-in OpenDesign MCP server now accepts uppercase UUID syntax and Chinese file paths for the six project/file tools that use those arguments. Path traversal, secret-file names, control characters and bidirectional controls remain rejected. A project lookup remains case-sensitive when the OpenDesign daemon stores a lowercase ID.
+- `tools/list` now includes the reviewed `{result: string}` output schema for `read_file` when the child advertises that exact schema and the tool is enabled. The administration catalog shows the same observed contract. Changed, duplicate, disabled or unavailable child declarations are not promoted. Successful tool results retain their existing `structuredContent.result` shape.
+- The bundled OpenDesign core image, MCP tool count, add-on options, ports, data layout and permissions are unchanged. No migration is required from 0.2.12. The PaaS management catalog does not yet show output schemas, so this release only closes the HA MCP listing gap.
+
 ## 0.2.12
 
 - **Security: only the Supervisor Ingress gateway may reach the add-on's web port.** nginx on port 8099 now admits only `172.30.32.2` (the Supervisor, which carries Ingress and the watchdog probe) and loopback. Every other container on the Home Assistant network, and Home Assistant Core itself on the host network, gets HTTP 403 on every content route; five redirect-only routes (`/console`, `/terminal`, `/terminal/`, `/mcp-admin`, `/_woow/support`) still answer with a bare redirect and show nothing. `/mcp-admin` and Paseo keep their own stricter peer-only rules (loopback is refused there). Before this release only those two checked the peer, so any other container on the Home Assistant network, and Home Assistant Core itself, could open the OpenDesign UI and API, the writable `/console/` terminal (no password) and the Omnigent settings API without signing in. The sidebar entry, the Supervisor watchdog and the built-in MCP server on port 8081 (Bearer token) are not affected. Port 8099 is not published.

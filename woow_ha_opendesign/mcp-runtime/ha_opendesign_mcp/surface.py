@@ -13,15 +13,18 @@ added the other four of the vendored server:
 surface.full_tools: ChildArguments, any JSON object, with the child's own inputSchema listed), and the bounded 0.1.x
 table that 0.2.0-0.2.5 used remains as products.BOUNDED_TOOLS['opendesign']. TABLE is that bounded table plus the same
 four tools, in 0.2.5's order; install() puts it into TOOLS['opendesign'] in place, before the state store is opened, so
-the gateway accepts exactly the arguments 0.2.5 accepted, lists the same inputSchemas (policy.declared_schema of these
-models) and checks grants against it (state.BuiltinState, make_apps). The child's handlers for the four tools (and,
+the gateway keeps the bounded models and checks grants against them (state.BuiltinState, make_apps). This draft extends
+only the project UUID and file path character patterns for six tools; the other model bounds stay as 0.2.5.
+The child's handlers for the four tools (and,
 since 0.2.6, list_runs) are replaced by od_tools.py. Which tools are on by default: defaults.py.
 """
+from dataclasses import replace
+
 from pydantic import Field, field_validator
 
 from mcp_admin_core import products
 from mcp_admin_core.policy import Tool
-from mcp_admin_core.products import Arguments, FileInfo, Project
+from mcp_admin_core.products import Arguments, FileInfo as PinnedFileInfo, Project as PinnedProject
 
 from . import PRODUCT, od_rules
 
@@ -37,12 +40,22 @@ def agent_field():
         'configured in OpenDesign.'))
 
 
+class Project(PinnedProject):
+    project_id: str = Field(pattern=od_rules.UUID_PATTERN)
+
+
+class FileInfo(PinnedFileInfo):
+    project_id: str = Field(pattern=od_rules.UUID_PATTERN)
+    file_path: str = Field(min_length=1, max_length=256, pattern=od_rules.FILE_PATH_PATTERN)
+
+
 class ReadFile(FileInfo):
     @field_validator('file_path')
     @classmethod
     def not_secret(cls, value):
-        if od_rules.secret_like(value):
-            raise ValueError('secret-like file name refused')
+        problem = od_rules.file_path_problem(value)
+        if problem is not None:
+            raise ValueError(problem)
         return value
 
 
@@ -81,7 +94,22 @@ def table():
         raise RuntimeError('unexpected pinned OpenDesign table; review the HA overlay')
     if {name for name, tool in bounded.items() if tool.write} != {'delete_project'}:
         raise RuntimeError('unexpected pinned OpenDesign writers; review the HA overlay')
-    result = {**bounded, **ADDED}
+    # Change only the four bounded entries that carry project ids/file paths.
+    # Keep the vendored source byte-for-byte and retain every existing grant,
+    # write flag, operation and default by replacing only each argument model.
+    replacements = {
+        'get_project': (PinnedProject, Project),
+        'list_project_files': (PinnedProject, Project),
+        'get_file_info': (PinnedFileInfo, FileInfo),
+        'delete_project': (PinnedProject, Project),
+    }
+    for name, (pinned, _) in replacements.items():
+        if bounded[name].arguments is not pinned:
+            raise RuntimeError('unexpected pinned OpenDesign model: ' + name)
+    result = dict(bounded)
+    for name, (_, accepted) in replacements.items():
+        result[name] = replace(bounded[name], arguments=accepted)
+    result.update(ADDED)
     if set(result) != NAMES:
         raise RuntimeError('unexpected OpenDesign tool table; review the HA overlay')
     return result

@@ -48,10 +48,11 @@ from mcp_admin_core.products import INSTRUCTIONS, TOOLS, child_spec
 from mcp_admin_core.run_product import Listener
 
 from . import ADMIN_SOCKET, BACKEND_URL, CHILD_SOCKET, DATA_DIR, INGRESS_PEER, MCP_HOST, MCP_PORT, PRODUCT
-from . import defaults, surface
+from . import defaults, output_contract, surface
 from .state import BuiltinStore
 
 surface.install()
+output_contract.install()
 VENDORED_SNAPSHOT = capabilities.capability_snapshot
 
 

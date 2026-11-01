@@ -20,7 +20,7 @@ from mcp_admin_core import VERSION
 from mcp_admin_core.configuration import ConfigurationState
 from mcp_admin_core.gateway import make_apps
 from mcp_admin_core.products import TOOLS
-from ha_opendesign_mcp import defaults, runtime, surface
+from ha_opendesign_mcp import defaults, output_contract, runtime, surface
 from ha_opendesign_mcp.state import BuiltinStore
 
 
@@ -43,6 +43,8 @@ class Management(unittest.IsolatedAsyncioTestCase):
                     if message['method'] == 'tools/list':
                         result = {'tools': [{'name': name, 'description': name, 'inputSchema': {'type': 'object'}}
                                            for name in surface.NAMES]}
+                        next(tool for tool in result['tools'] if tool['name'] == 'read_file')['outputSchema'] = (
+                            output_contract.READ_FILE_OUTPUT)
                     return httpx.Response(200, headers={'mcp-session-id': 'owned'}, json={
                         'jsonrpc': '2.0', 'id': message['id'], 'result': result})
                 async with httpx.AsyncClient(transport=httpx.MockTransport(reply)) as child:
@@ -72,6 +74,11 @@ class Management(unittest.IsolatedAsyncioTestCase):
                         self.assertFalse(items['send_message']['policy_enabled'])
                         self.assertEqual(items['read_file']['schema_source'], 'registry')
                         self.assertIn('file_path', items['read_file']['inputSchema']['properties'])
+                        self.assertTrue(items['read_file']['effective'])
+                        self.assertEqual(items['read_file']['outputSchema'], output_contract.READ_FILE_OUTPUT)
+                        self.assertEqual(items['read_file']['output_schema_source'], 'reviewed_child')
+                        self.assertNotIn('outputSchema', items['send_message'])
+                        self.assertNotIn('outputSchema', items['health'])
                         denied = await client.put('/api/backend', headers={**identity, 'x-csrf-token': b['csrf']},
                                                   json={'connection': {'url': 'http://127.0.0.1:9999'}})
                         self.assertEqual(denied.status_code, 403)

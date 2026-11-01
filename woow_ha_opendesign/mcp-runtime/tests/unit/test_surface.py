@@ -6,6 +6,7 @@ HA_OD_MCP_CODE: the directory holding ha_opendesign_mcp; HA_OD_MCP_VENDOR: the d
 """
 import json
 import os
+from dataclasses import replace
 from pathlib import Path
 import sys
 import tempfile
@@ -49,7 +50,14 @@ class Table(unittest.TestCase):
         # 0.2.6: the pinned runtime's own TOOLS['opendesign'] is the standalone add-on's full surface (any JSON object,
         # the child's schema). This table keeps the bounded models: the 11 of products.BOUNDED_TOOLS plus ADDED.
         self.assertFalse(any(tool.child_schema for tool in TABLE.values()))
-        self.assertTrue(all(TABLE[name] is tool for name, tool in products.BOUNDED_TOOLS['opendesign'].items()))
+        changed = {'get_project': surface.Project, 'list_project_files': surface.Project,
+                   'get_file_info': surface.FileInfo, 'delete_project': surface.Project}
+        for name, pinned in products.BOUNDED_TOOLS['opendesign'].items():
+            if name in changed:
+                self.assertIs(TABLE[name].arguments, changed[name])
+                self.assertEqual(replace(TABLE[name], arguments=pinned.arguments), pinned)
+            else:
+                self.assertIs(TABLE[name], pinned)
         self.assertEqual(list(products.BOUNDED_TOOLS['opendesign']), list(surface.BOUNDED))
         full = products.full_tools('opendesign')
         self.assertEqual(set(full), set(TABLE))  # same names, other models
@@ -118,6 +126,20 @@ class Arguments(unittest.TestCase):
                                  'invalid_params')
         self.refused('read_file', {'project_id': PROJECT, 'file_path': 'a.html', 'extra': MARKER})
         self.refused('read_file', {'project_id': MARKER, 'file_path': 'a.html'})
+
+    def test_unicode_filename_and_uppercase_uuid_are_bounded_inputs(self):
+        upper = PROJECT.upper()
+        self.assertEqual(self.allowed('get_project', {'project_id': upper}), {'project_id': upper})
+        self.assertEqual(self.allowed('read_file', {'project_id': upper, 'file_path': '資料/說明.txt'}),
+                         {'project_id': upper, 'file_path': '資料/說明.txt'})
+        schema = policy.declared_schema(TABLE['read_file'].arguments)
+        self.assertIn('file_path', schema['properties'])
+        self.assertIn('project_id', schema['properties'])
+        for path in ('資料/../secret', '資料/.env', '資料/server.pem', '資料\\說明.txt',
+                     '資料／說明.txt', '資料/說明\u202e.txt'):
+            with self.subTest(path=path):
+                self.assertEqual(self.refused('read_file', {'project_id': PROJECT, 'file_path': path}).kind,
+                                 'invalid_params')
 
     def test_list_connectors(self):
         self.assertEqual(self.allowed('list_connectors', {}), {})

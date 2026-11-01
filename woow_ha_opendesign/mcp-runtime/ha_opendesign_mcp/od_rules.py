@@ -17,9 +17,17 @@ import time
 
 # --- arguments -------------------------------------------------------------------------------------------------------
 
-UUID = re.compile(r'[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}')
-# The gateway's FileInfo pattern (vendored products.FileInfo): letters, digits, '_', '.', ' ', '/', '-'.
-FILE_PATH = re.compile(r'[A-Za-z0-9_. /-]{1,256}')
+# A UUID's hex digits are case-insensitive. Preserve the caller's spelling:
+# imported project ids can be case-sensitive in the daemon's database.
+UUID_PATTERN = r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+UUID = re.compile(UUID_PATTERN)
+# Keep the former ASCII characters and add CJK Unified Ideographs (including
+# Extension A), which the pinned OpenDesign daemon keeps in filenames. This
+# deliberately excludes controls, bidi markers, backslashes and percent escapes.
+# Both Python and JSON-Schema/ECMAScript regex engines understand the literal
+# character range; the gateway and child use the same pattern.
+FILE_PATH_PATTERN = r'^[A-Za-z0-9_㐀-鿿. /-]{1,256}$'
+FILE_PATH = re.compile(FILE_PATH_PATTERN)
 # OpenDesign agent ids (GET /api/agents on 0.24.1: claude, codex, opencode, byok-opencode, pi, gemini...).
 AGENT_ID_PATTERN = r'^[a-z][a-z0-9-]{0,63}$'
 AGENT_ID = re.compile(AGENT_ID_PATTERN[1:-1])

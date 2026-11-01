@@ -18,6 +18,7 @@ import threading
 import time
 import unittest
 from unittest import mock
+from urllib.parse import quote, unquote
 
 HERE = Path(__file__).resolve().parent
 CODE = os.environ.get('HA_OD_MCP_CODE', str(HERE.parents[1]))
@@ -30,7 +31,8 @@ BIG = 'x' * (1024 * 1024 + 1)
 
 class Daemon(BaseHTTPRequestHandler):
     """Answers like OpenDesign 0.24.1 (2026-10-15 measurement), from FILES / CHAT below."""
-    FILES = {'index.html': b'<h1>hi</h1>\n', 'sub/a.txt': b'nested\n', 'bin.dat': b'\x89PNG\x00\x01',
+    FILES = {'index.html': b'<h1>hi</h1>\n', 'sub/a.txt': b'nested\n',
+             '資料/說明.txt': '可讀的說明\n'.encode('utf-8'), 'bin.dat': b'\x89PNG\x00\x01',
              'bad.txt': b'\xff\xfe', 'big.txt': BIG.encode(), 'grown.txt': BIG.encode(), '.env': b'FAKE=1\n'}
     LISTED_SIZES = {'grown.txt': 10}  # the list shows an older, smaller size
     chat = 'chat-claude-auth.sse'
@@ -51,26 +53,27 @@ class Daemon(BaseHTTPRequestHandler):
 
     def do_GET(self):
         Daemon.requests.append(('GET', self.path))
-        if self.path == '/api/connectors':
+        path = unquote(self.path)
+        if path == '/api/connectors':
             return self.reply(200, {'connectors': [{'id': 'github', 'name': 'GitHub', 'status': 'available',
                                                     'auth': {'configured': False, 'token': 'tok-secret'},
                                                     'url': 'https://example.invalid/x',
                                                     'tools': [{'name': 'github.github_get_issue'}]}]})
-        if self.path == '/api/runs':
+        if path == '/api/runs':
             return self.reply(200, {'runs': [{'id': 'e9138737-f40d-4766-9153-ddb8407177f9', 'projectId': PROJECT,
                                               'status': 'failed', 'error': 'auth failed at /data/opendesign/home',
                                               'eventsLogPath': '/data/opendesign/runs/x/events.jsonl'}],
                                     'awaitingInputProjectIds': []})
         prefix = '/api/projects/%s' % PROJECT
-        if self.path == prefix:
+        if path == prefix:
             return self.reply(200, {'project': {'id': PROJECT}, 'resolvedDir': '/data/opendesign/projects/x'})
-        if self.path == prefix + '/files':
+        if path == prefix + '/files':
             return self.reply(200, {'files': [
                 {'name': name, 'path': name, 'type': 'file', 'size': self.LISTED_SIZES.get(name, len(data)),
                  'localPath': '/data/opendesign/projects/x/' + name}
                 for name, data in self.FILES.items() if not name.startswith('.')]})
-        if self.path.startswith(prefix + '/files/'):
-            name = self.path[len(prefix + '/files/'):]
+        if path.startswith(prefix + '/files/'):
+            name = path[len(prefix + '/files/'):]
             if name in self.FILES:
                 return self.reply(200, self.FILES[name], 'application/octet-stream')
             return self.reply(404, {'error': {'code': 'FILE_NOT_FOUND', 'message': 'ENOENT /data/opendesign/x'}})
@@ -173,6 +176,23 @@ class Tools(unittest.TestCase):
     def test_read_file(self):
         self.assertEqual(call('read_file', {'project_id': PROJECT, 'file_path': 'index.html'}), (False, '<h1>hi</h1>\n'))
         self.assertEqual(call('read_file', {'project_id': PROJECT, 'file_path': 'sub/a.txt'}), (False, 'nested\n'))
+
+    def test_read_file_unicode_path_reaches_only_listed_regular_file(self):
+        name = '資料/說明.txt'
+        self.assertEqual(call('read_file', {'project_id': PROJECT, 'file_path': name}),
+                         (False, '可讀的說明\n'))
+        self.assertEqual(Daemon.requests, [
+            ('GET', '/api/projects/%s/files' % PROJECT),
+            ('GET', '/api/projects/%s/files/%s' % (PROJECT, quote(name))),
+        ])
+
+    def test_read_file_unicode_path_does_not_weaken_child_rejections(self):
+        for name in ('資料/../secret', '資料/.env', '資料/server.pem', '資料\\說明.txt',
+                     '資料／說明.txt', '資料/說明\u202e.txt'):
+            with self.subTest(name=name):
+                self.assertTrue(call('read_file', {'project_id': PROJECT, 'file_path': name})[1]
+                                .endswith(': FILE_PATH_REFUSED'))
+        self.assertFalse(Daemon.requests)
 
     def test_read_file_refusals(self):
         cases = {'.env': 'FILE_PATH_REFUSED', 'keys/server.pem': 'FILE_PATH_REFUSED', '../x': 'FILE_PATH_REFUSED',

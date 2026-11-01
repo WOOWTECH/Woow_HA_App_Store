@@ -67,6 +67,14 @@ class SecretNames(unittest.TestCase):
         self.assertEqual(od_rules.file_path_problem('.env'), 'secret-like file name refused')
         self.assertEqual(od_rules.file_path_problem(None), 'path characters not allowed')
 
+    def test_unicode_filename_and_uppercase_uuid_without_weaker_path_guards(self):
+        self.assertIsNone(od_rules.file_path_problem('資料/說明.txt'))
+        self.assertTrue(od_rules.UUID.fullmatch(PROJECT.upper()))
+        for path in ('資料/../secret', '資料/.env', '資料/server.pem',
+                     '資料\\說明.txt', '資料／說明.txt', '資料/說明\u202e.txt'):
+            with self.subTest(path=path):
+                self.assertIsNotNone(od_rules.file_path_problem(path))
+
 
 class ReadFileRules(unittest.TestCase):
     LISTING = {'files': [

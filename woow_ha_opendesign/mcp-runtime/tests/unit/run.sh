@@ -19,6 +19,7 @@ export PYTHONDONTWRITEBYTECODE=1
 "$mgmt" -B -W ignore "$here/test_surface.py"
 "$mgmt" -B -W ignore "$here/test_state.py"
 "$mgmt" -B -W ignore "$here/test_management.py"
+"$mgmt" -B -W ignore "$here/test_output_contract.py"
 "$mgmt" -B -W ignore "$here/test_bootstrap.py"
 "$mgmt" -B -W ignore "$here/test_unchanged_gateway.py"
 "$child" -B -W ignore "$here/test_od_tools.py"
