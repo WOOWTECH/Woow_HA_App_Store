@@ -62,4 +62,4 @@ API BYOK 的供應商、模型與金鑰只存在管理員瀏覽器的 localStora
 
 ## 授權
 
-目標執行映像衍生自 WoowTech fork 建置的 OpenDesign 0.24.1 core。本附加元件把 Dockerfile 與 CI 以 digest 釘至 `ghcr.io/woowtech/open-design-core:20261029.0033@sha256:c8cd57f07adaef23b8dddbb22a8b75f97bdf8ca42c8bfbec1b284dc60ee5a4cf`（與 0.2.10 以 `20261027.1127` 釘的是同一個 digest）。Home Assistant 本機附加元件建置器不接受 `build.yaml` 的 digest 語法，因此本機開發路徑使用對應 tag；必須先確認公開 tag 解析到相同 digest 才能建置發行。OpenDesign 採 Apache-2.0 授權，core 映像附有其授權與 WoowTech 改動聲明；本儲存庫的附加元件封裝及整合程式採 MIT 授權，詳見 [LICENSE](LICENSE)，因此映像標示為 `Apache-2.0 AND MIT`。
+目標執行映像衍生自 WoowTech fork 建置的 OpenDesign 0.24.1 core。本附加元件把 Dockerfile 與 CI 以 digest 釘至 `ghcr.io/woowtech/open-design-core:20261101.2319@sha256:a3d1e6ce84774d11e03a31b379be438b5f53fe832ddd4b72d31fc837462bbd62`（0.2.15 由 w2.10 core `20261029.0033` 升上來）。Home Assistant 本機附加元件建置器不接受 `build.yaml` 的 digest 語法，因此本機開發路徑使用對應 tag；必須先確認公開 tag 解析到相同 digest 才能建置發行。OpenDesign 採 Apache-2.0 授權，core 映像附有其授權與 WoowTech 改動聲明；本儲存庫的附加元件封裝及整合程式採 MIT 授權，詳見 [LICENSE](LICENSE)，因此映像標示為 `Apache-2.0 AND MIT`。

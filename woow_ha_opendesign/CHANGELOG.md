@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.15
+
+- Update the bundled OpenDesign core from the w2.10 core `20261029.0033` to the w2.11 core `20261101.2319` (`sha256:a3d1e6ce…`, WoowTech fork revision `05b23f5a`). The only behaviour change is Omnigent's Pi model menu: when a provider key reaches Pi through an environment variable, or `models.json` only overrides a built-in provider, the menu now lists the models Pi itself reports instead of showing none. Custom gateways written in `models.json` are still read directly, and with nothing configured the menu stays empty without a placeholder entry.
+- No option, port, architecture, image name or data-layout change. OpenDesign 0.24.1 and the agent CLI versions the core must provide (Claude Code 2.1.296, Codex 0.162.1, Pi 1.1.0, OpenCode 1.18.33) are unchanged, so the build-time contract in the Dockerfile is untouched. Upgrading from 0.2.14 needs no migration.
+
 ## 0.2.14
 
 - The built-in OpenDesign MCP server accepts safe imported project IDs, such as `imported-project_1`, on all six project tools. Existing UUIDs remain accepted. Project IDs with slashes, escapes, dot-only values or more than 128 characters are rejected before the OpenDesign daemon is contacted.
