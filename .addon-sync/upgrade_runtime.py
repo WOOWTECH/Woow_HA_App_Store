@@ -26,6 +26,8 @@ from addon_sync import markdown_cell, workflow_command
 MOCK_IMAGE = 'python:3.12-alpine@sha256:e6dae589c1c05976188fd3bd019afd091445fc533ed2ea29001beddc7368a9c8'
 SUBNET, GATEWAY, SUPERVISOR_IP, ADDON_IP = '172.30.32.0/23', '172.30.32.1', '172.30.32.2', '172.30.33.10'
 TOOLING = pathlib.Path(__file__).resolve().parent
+# How the mock Supervisor runs, and how long open() waits for it to answer (tests slow or break it).
+MOCK_COMMAND, MOCK_WAIT = ['python', '-u', '/tooling/mock_supervisor.py', 'serve'], 30
 STARTUP_ONLY = 'Startup only: data was not checked (只檢查啟動，沒有檢查資料).'
 PHASE_LABEL = {'old': 'the comparison target', 'new': 'the new version'}
 
@@ -61,7 +63,17 @@ class UpgradeTestEnv:
         docker('network', 'create', '--subnet', SUBNET, '--gateway', GATEWAY, self.net)
         docker('run', '-d', '--name', self.supervisor, '--network', self.net, '--ip', SUPERVISOR_IP, '-e', f'SUPERVISOR_TOKEN={self.token}',
             '--mount', f'type=bind,source={TOOLING},target=/tooling,readonly', '--mount', f'type=bind,source={self.state},target=/state',
-            MOCK_IMAGE, 'python', '-u', '/tooling/mock_supervisor.py', 'serve')
+            MOCK_IMAGE, *MOCK_COMMAND)
+        # Real Supervisor is up before any add-on starts, and add-ons ask it for their info at once (bashio reads
+        # options at boot): return only when the mock answers. Any HTTP answer will do (401 without the token).
+        deadline = time.monotonic() + MOCK_WAIT
+        while not self.probe('http://127.0.0.1/supervisor/ping', 500):
+            down = _down(self.supervisor)
+            if down or time.monotonic() >= deadline:
+                logs = subprocess.run(['docker', 'logs', '--tail', '20', self.supervisor], capture_output=True, text=True, encoding='utf-8', errors='replace')
+                why = f'({down})' if down else f'within {MOCK_WAIT} s'
+                raise RuntimeError(f'the mock Supervisor did not answer {why}; its last log lines: {(logs.stdout + logs.stderr).strip()[-1000:]}')
+            time.sleep(0.5)
     def probe(self, url, below):
         """One check of `url` from the Supervisor's address (mock_supervisor.py probe; `below` None for tcp)."""
         limit = [] if below is None else ['--below', str(below)]

@@ -3,6 +3,7 @@
 Each fake add-on asks the mock Supervisor for its own info with its token (a wrong answer exits), reads
 /data/options.json and counts its starts in /data. Needs a Docker daemon (GitHub runners have one)."""
 import contextlib, io, json, pathlib, shutil, subprocess, tempfile, unittest, uuid
+from unittest import mock
 import yaml
 import upgrade_runtime as rt
 from upgrade_check import ASSIGNED_INGRESS_PORT
@@ -107,6 +108,19 @@ class Runtime(unittest.TestCase):
         self.settings(startup_timeout=6, stable_seconds=3)
         code, result, out = self.run_test('good', 'good', watchdog='http://[HOST]:[PORT:9999]/health')
         self.assertEqual(code, 1); self.assertIn('the watchdog http://172.30.33.10:9999/health did not answer with success within 6 s', result['reason'])
+    def test_add_on_that_asks_supervisor_at_once_starts_when_the_mock_is_slow_to_listen(self):
+        # Real Supervisor is up before any add-on starts: the add-on must not race the mock (CI run 41613705993).
+        slow = ['sh', '-c', 'sleep 4; exec python -u /tooling/mock_supervisor.py serve']
+        with mock.patch.object(rt, 'MOCK_COMMAND', slow):
+            code, result, out = self.run_test('good', 'good', ingress=True, ingress_port=0)
+        self.assertEqual(code, 0, out); self.assertEqual([p['started'] for p in result['phases']], [True, True])
+    def test_mock_supervisor_that_never_answers_is_a_tool_error_with_its_log(self):
+        broken = ['sh', '-c', 'echo mock is broken; sleep 600']
+        with mock.patch.object(rt, 'MOCK_COMMAND', broken), mock.patch.object(rt, 'MOCK_WAIT', 4):
+            code, result, out = self.run_test('good', 'good')
+        self.assertEqual(code, 2); self.assertEqual(result['phases'], [])
+        self.assertIn('the upgrade test could not run: the mock Supervisor did not answer within 4 s', result['reason'])
+        self.assertIn('mock is broken', result['reason'])
     def test_settings_that_are_not_a_mapping_fail_with_the_reason(self):
         (self.dir / 'addon/upgrade-check').mkdir()
         (self.dir / 'addon/upgrade-check/settings.yaml').write_text('- 5\n', encoding='utf-8')
