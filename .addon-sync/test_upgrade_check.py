@@ -1357,8 +1357,9 @@ class RuntimeRulesCommand(unittest.TestCase):
         p=self.probe(webui='[PROTO:ssl]://[HOST]:[PORT:443]/',options={'ssl':True})
         self.assertEqual((p['method'],p['url']),('webui','https://[HOST]:443/'))
         p=self.probe();self.assertEqual((p['method'],p['url'],p['stable_seconds']),('stays-up','',60))
-        # ingress_port 0 is a port Supervisor picks at install: not probed.
-        self.assertEqual(self.probe(ingress=True,ingress_port=0)['method'],'stays-up')
+        # ingress_port 0 is a port Supervisor picks at install: still ingress, at the port the upgrade test assigns.
+        p=self.probe(ingress=True,ingress_port=0,webui='http://[HOST]:[PORT:5678]')
+        self.assertEqual((p['method'],p['url']),('ingress',f'http://[HOST]:{u.ASSIGNED_INGRESS_PORT}/'))
     def test_watchdog_needs_success_ingress_and_webui_any_answer_short_of_a_server_error(self):
         self.assertEqual(self.probe(watchdog='http://[HOST]:[PORT:1]/')['below'],300)
         self.assertIsNone(self.probe(watchdog='tcp://[HOST]:[PORT:1]')['below'])

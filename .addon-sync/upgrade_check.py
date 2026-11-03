@@ -326,6 +326,16 @@ def mounts(config, root):
 # [PROTO:option] https when that option is true.
 _URL=re.compile(r'^(https?|tcp|\[PROTO:(\w+)\])://\[HOST\]:(?:\[PORT:)?(\d+)\]?(.*)$')
 STARTUP_DEFAULTS={'startup_timeout':300,'stable_seconds':60}
+# Supervisor gives an ingress_port of 0 a free port in 62000-65500 at install and keeps it for the add-on
+# (supervisor/apps/app.py _check_ingress_port); the upgrade test assigns the first one, the same for both versions.
+ASSIGNED_INGRESS_PORT=62000
+
+def ingress_port(config):
+    """The port Supervisor serves the add-on's ingress on: config.yaml's ingress_port (default 8099), or the
+    port it assigns when that is 0. None without ingress."""
+    if not config.get('ingress'):return None
+    port=config.get('ingress_port',8099)
+    return ASSIGNED_INGRESS_PORT if port==0 else port
 
 def _probe_url(text, options):
     m=_URL.match(str(text))
@@ -342,7 +352,7 @@ def startup_probe(config, settings=None):
     must run stable_seconds without exiting or restarting (owner, 2026-11-03). `settings`: the add-on's upgrade-check/settings.yaml (parsed, or None), which may
     override startup_timeout and stable_seconds. The url keeps [HOST] for the runtime to fill in; `below` is the HTTP
     status an answer must stay under (None for tcp and stays-up). An ingress_port of 0 (a port Supervisor picks) is
-    not probed: the webui or staying up decides."""
+    still ingress, probed at the port the upgrade test assigns (ingress_port())."""
     limits=dict(STARTUP_DEFAULTS)
     if settings is not None and not isinstance(settings,dict):raise ValueError('settings must be a mapping of setting: seconds')
     for key,value in (settings or {}).items():
@@ -352,7 +362,7 @@ def startup_probe(config, settings=None):
     if limits['stable_seconds']>=limits['startup_timeout']:raise ValueError(f'stable_seconds ({limits["stable_seconds"]}) must be below startup_timeout ({limits["startup_timeout"]})')
     options=config.get('options') or {}
     if config.get('watchdog'):method,url,below='watchdog',_probe_url(config['watchdog'],options),300
-    elif config.get('ingress') and config.get('ingress_port',8099)!=0:method,url,below='ingress',f'http://[HOST]:{config.get("ingress_port",8099)}/',500
+    elif config.get('ingress'):method,url,below='ingress',f'http://[HOST]:{ingress_port(config)}/',500
     elif config.get('webui'):method,url,below='webui',_probe_url(config['webui'],options),500
     else:method,url,below='stays-up','',None
     if url.startswith('tcp://'):below=None

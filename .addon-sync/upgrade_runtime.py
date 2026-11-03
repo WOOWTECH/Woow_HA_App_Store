@@ -19,7 +19,7 @@ Needs Docker; both images must be local or pullable.
 from __future__ import annotations
 import argparse, json, pathlib, secrets, shutil, subprocess, sys, tempfile, time
 import yaml
-from upgrade_check import mounts, startup_probe
+from upgrade_check import ingress_port, mounts, startup_probe
 from addon_sync import markdown_cell, workflow_command
 
 # The mock Supervisor runs in this image; the fake add-ons of test_upgrade_runtime.py build on it too.
@@ -43,6 +43,8 @@ def addon_info(config, options):
     """The mock Supervisor's /addons/self/info for this version."""
     keys = ('name', 'slug', 'version', 'description', 'url', 'arch', 'ingress', 'ingress_port', 'ingress_entry', 'webui', 'watchdog', 'ports')
     info = {k: config[k] for k in keys if k in config}
+    # The port the add-on must serve ingress on, as Supervisor reports it: never 0, which it replaces at install.
+    if config.get('ingress'):info['ingress_port'] = ingress_port(config)
     return {**info, 'hostname': f'local-{config.get("slug", "addon")}', 'ip_address': ADDON_IP, 'state': 'started', 'boot': 'auto',
         'repository': 'local', 'version_latest': config.get('version'), 'update_available': False, 'options': options,
         'ingress_url': f'/api/hassio_ingress/{secrets.token_hex(8)}/' if config.get('ingress') else None, 'network': config.get('ports')}

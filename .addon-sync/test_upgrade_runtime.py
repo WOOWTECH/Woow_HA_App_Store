@@ -5,6 +5,7 @@ Each fake add-on asks the mock Supervisor for its own info with its token (a wro
 import contextlib, io, json, pathlib, shutil, subprocess, tempfile, unittest, uuid
 import yaml
 import upgrade_runtime as rt
+from upgrade_check import ASSIGNED_INGRESS_PORT
 
 FAKE = r'''
 import json, os, sys, time, urllib.request, http.server
@@ -21,7 +22,8 @@ if os.environ['MODE'] == 'crash':
 class H(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200 if self.path == '/health' else 404); self.end_headers(); self.wfile.write(str(starts).encode())
-server = http.server.HTTPServer(('0.0.0.0', 8080), H)
+# Like hamh and woow-tailscale (ingress_port: 0), serve on the ingress port Supervisor reports, if any.
+server = http.server.HTTPServer(('0.0.0.0', info.get('ingress_port') or 8080), H)
 if os.environ['MODE'] == 'answer-then-crash':
     # Answers its watchdog at once, then dies: a version that only looks started.
     import threading; threading.Thread(target=server.serve_forever, daemon=True).start(); time.sleep(4); os._exit(4)
@@ -75,6 +77,13 @@ class Runtime(unittest.TestCase):
         self.assertIn('2', result['phases'][1]['answer'])
         summary = (self.dir / 'summary.md').read_text(encoding='utf-8')
         self.assertIn('Startup only: data was not checked', summary); self.assertIn('只檢查啟動，沒有檢查資料', summary)
+    def test_ingress_port_0_is_probed_at_the_port_supervisor_would_assign(self):
+        # The add-on reads its port from /addons/self/info: it must get a real one, the same for both versions.
+        self.settings(stable_seconds=3)
+        code, result, out = self.run_test('good', 'good', ingress=True, ingress_port=0, webui='http://[HOST]:[PORT:9999]/')
+        self.assertEqual(code, 0, out)
+        self.assertEqual([(p['started'], p['method']) for p in result['phases']], [(True, 'ingress'), (True, 'ingress')])
+        self.assertIn(f'the ingress http://172.30.33.10:{ASSIGNED_INGRESS_PORT}/ answered', result['phases'][1]['detail'])
     def test_new_version_that_crashes_after_starting_fails_with_the_reason(self):
         self.settings(stable_seconds=8)
         code, result, out = self.run_test('good', 'crash')
