@@ -189,7 +189,8 @@ jobs:
         published="$(jq -r '.scan_published_image' provider.json)"
         releases="$(gh api --paginate "repos/${REPO}/releases?per_page=100" --jq '.[]' | jq -sc .)"
         # plan.jsonl, one object per add-on: id, notes (path in the PR), new (where the detect step left the PR's config),
-        # target, ref (old image; "" = no scan), artifact (the addon-sbom artifact of its new image), note (why there is no scan).
+        # target, ref (old image; "" = no scan), new_ref (with scan_published_image the new image to pull; "" = the caller's
+        # build hands over its SBOM), artifact (the addon-sbom artifact of its new image), note (why there is no scan).
         : > plan.jsonl; status=0
         while IFS= read -r component; do
           fields "${component}" id=id path=config previous=previous_config notes=notes version=version new=new
@@ -231,7 +232,7 @@ jobs:
           fi
           # Category 4: needs a prebuilt image and a comparison target; then the new image's SBOM is mandatory, from the
           # caller's build or, when the registry approves scan_published_image, from the image the PR's config names.
-          image="$(yq -r '.image // ""' "${new}")"; new_ref=""
+          image="$(yq -r '.image // ""' "${new}")"; new_ref=""; scan_old=""
           artifact="upgrade-comparison-sbom-${id}-attempt-${RUN_ATTEMPT}"
           if [ -n "${SKIP_VULNERABILITY_SCAN}" ]; then
             # The detect step checked the approval; the report gives the registry's reason, never the caller's text.
@@ -245,9 +246,7 @@ jobs:
           elif [ -n "${published}" ]; then
             # The image users would install from this PR (Supervisor: image with {arch}, tag = version); pulled, not built.
             no_cntrl "${image}" "${id}: the image in ${path} has a control character (newline, tab...): ${image}" || exit 1
-            old_image="$(yq -r '.image' "${old}")"
-            no_cntrl "${old_image}" "${id}: the comparison target ${target} has a control character (newline, tab...) in its image: ${old_image}" || exit 1
-            ref="${old_image//\{arch\}/amd64}:${old_version}"; new_ref="${image//\{arch\}/amd64}:${version}"
+            new_ref="${image//\{arch\}/amd64}:${version}"; scan_old=1
           elif [ -z "${SBOM_ARTIFACT}" ]; then
             fail "${id} has a prebuilt image but the caller passes no sbom_artifact; run the addon-sbom action after the amd64 build and pass sbom_artifact: upgrade-comparison-sbom-*"
             status=1
@@ -256,6 +255,10 @@ jobs:
             fail "${id}: sbom_artifact '${SBOM_ARTIFACT}' does not match ${artifact}, the artifact the addon-sbom action uploads for component ${id}"
             status=1
           else
+            scan_old=1
+          fi
+          # Both scanning branches: the comparison target's image, as users run it now.
+          if [ -n "${scan_old}" ]; then
             old_image="$(yq -r '.image' "${old}")"
             no_cntrl "${old_image}" "${id}: the comparison target ${target} has a control character (newline, tab...) in its image: ${old_image}" || exit 1
             ref="${old_image//\{arch\}/amd64}:${old_version}"

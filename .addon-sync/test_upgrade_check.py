@@ -717,6 +717,11 @@ scan={'matches':[match] if source=='docker:'+os.environ.get('VULNERABLE','') els
 json.dump(scan,open(args[args.index('--file')+1],'w'))
 '''
 
+def registry_approvals(key):
+    """{repository: approved reason} of the Store registry's upgrade_comparison.<key>."""
+    registry=json.loads((StepHarness.STORE/'.addon-sync/registry.json').read_text(encoding='utf-8'))
+    return {repo:p['upgrade_comparison'][key] for repo,p in registry['providers'].items() if key in (p.get('upgrade_comparison') or {})}
+
 class SkipVulnerabilityScan(StepHarness):
     """skip_vulnerability_scan: a caller whose category 4 cannot run (mcp_addons builds no PR image) opts out with a
     reason; category 1 still runs and the report says why.
@@ -728,16 +733,10 @@ class SkipVulnerabilityScan(StepHarness):
         self.assertEqual((inp['type'],inp['default']),('string',''))
         for ident in ('detect','plan'):
             with self.subTest(ident):self.assertEqual(self.step(ident)['env']['SKIP_VULNERABILITY_SCAN'],'${{ inputs.skip_vulnerability_scan }}')
-    def approved(self,key):
-        registry=json.loads((self.STORE/'.addon-sync/registry.json').read_text(encoding='utf-8'))
-        return {repo:p['upgrade_comparison'][key] for repo,p in registry['providers'].items() if key in (p.get('upgrade_comparison') or {})}
     def test_registry_approves_the_skip_only_for_mcp_addons(self):
         # #123 (mcp_addons builds no PR image): its category 4 is #148. knxd scans its published image instead (#147).
-        approved=self.approved('skip_vulnerability_scan')
+        approved=registry_approvals('skip_vulnerability_scan')
         self.assertEqual(sorted(approved),['WOOWTECH/Woow_ha_mcp_addons']);self.assertIn('#123',approved['WOOWTECH/Woow_ha_mcp_addons'])
-    def test_registry_approves_the_published_image_scan_only_for_knxd(self):
-        approved=self.approved('scan_published_image')
-        self.assertEqual(sorted(approved),['WOOWTECH/Woow_ha_knxd_add_on']);self.assertIn('#147',approved['WOOWTECH/Woow_ha_knxd_add_on'])
     @needs_shell
     def test_unapproved_provider_that_sets_the_skip_fails(self):
         r,_,_=self.run_step('detect',skip=self.REASON)
@@ -763,6 +762,11 @@ class PublishedImageScan(StepHarness):
     """scan_published_image (#147): knxd ships the third-party image its config.yaml names, so category 4 scans that image
     at the comparison target's version and at the PR's version (the version is the tag), not an SBOM of the PR's build."""
     APPROVED={'upgrade_comparison':{'scan_published_image':'#147: knxd ships the third-party image config.yaml names'}}
+    SBOMS=('plan',"SBOMs of the comparison targets' images")
+    OLD,NEW='ghcr.io/da-anda/addon-amd64:1.0.0','ghcr.io/da-anda/addon-amd64:1.1.0'
+    def test_registry_approves_it_only_for_knxd(self):
+        approved=registry_approvals('scan_published_image')
+        self.assertEqual(sorted(approved),['WOOWTECH/Woow_ha_knxd_add_on']);self.assertIn('#147',approved['WOOWTECH/Woow_ha_knxd_add_on'])
     @needs_shell
     def test_both_sides_are_the_published_image_at_their_version(self):
         r,plan,out=self.run_step('plan',extra=self.APPROVED)
@@ -779,8 +783,6 @@ class PublishedImageScan(StepHarness):
     def test_a_prebuilt_image_without_the_approval_still_awaits_its_sbom(self):
         r,plan,out=self.run_step('plan',sbom='upgrade-comparison-sbom-*')
         self.assertEqual(r.returncode,0,r.stdout+r.stderr);self.assertEqual(plan['new_ref'],'');self.assertIn('wait=true',out)
-    SBOMS=('plan',"SBOMs of the comparison targets' images")
-    OLD,NEW='ghcr.io/da-anda/addon-amd64:1.0.0','ghcr.io/da-anda/addon-amd64:1.1.0'
     @needs_shell
     def test_both_published_images_get_an_sbom_for_the_compare_step(self):
         r,_,_=self.run_step(self.SBOMS,extra=self.APPROVED,images=(self.OLD,self.NEW))
