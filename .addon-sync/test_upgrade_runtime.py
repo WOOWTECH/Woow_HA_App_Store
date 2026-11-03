@@ -83,9 +83,14 @@ class Runtime(unittest.TestCase):
         self.assertEqual(code, 1); self.assertEqual([p['phase'] for p in result['phases']], ['old'])
         self.assertIn('the comparison target (1.0.0) did not start', result['reason'])
     def test_no_answer_within_the_time_limit_fails(self):
-        self.settings(startup_timeout=6)
+        self.settings(startup_timeout=6, stable_seconds=3)
         code, result, out = self.run_test('good', 'good', watchdog='http://[HOST]:[PORT:9999]/health')
         self.assertEqual(code, 1); self.assertIn('the watchdog http://172.30.33.10:9999/health did not answer with success within 6 s', result['reason'])
+    def test_settings_that_are_not_a_mapping_fail_with_the_reason(self):
+        (self.dir / 'addon/upgrade-check').mkdir()
+        (self.dir / 'addon/upgrade-check/settings.yaml').write_text('- 5\n', encoding='utf-8')
+        code, result, out = self.run_test('good', 'good')
+        self.assertEqual(code, 2); self.assertIn('could not run: settings must be a mapping', result['reason'])
 
 if __name__ == '__main__':
     unittest.main()

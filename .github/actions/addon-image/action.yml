@@ -35,7 +35,10 @@ runs:
       IMAGE: ${{ inputs.image }}
     run: |
       set -euo pipefail
-      case "${COMPONENT}" in ''|*/*|*..*|*:*) echo "::error title=Add-on image::invalid component '${COMPONENT}'"; exit 1;; esac
+      # Not echoed: a newline in the input must not start a workflow command.
+      if [[ ! "${COMPONENT}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || [[ "${COMPONENT}" == *..* ]]; then
+        echo "::error title=Add-on image::invalid component: give the Store registry component id (letters, digits, . _ -)"; exit 1
+      fi
       mkdir -p "${RUNNER_TEMP}/addon-image"
       docker tag "${IMAGE}" "upgrade-comparison/${COMPONENT}:new"
       docker save -o "${RUNNER_TEMP}/addon-image/${COMPONENT}.tar" "upgrade-comparison/${COMPONENT}:new"

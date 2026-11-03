@@ -309,13 +309,17 @@ def mounts(config, root):
     Each is the directory <root>/<type>, so the comparison target and the new version share the same set even when
     one of them moves a type to another path. A string entry is read-only unless it ends in :rw; a mapping is
     read-only unless read_only: false (Supervisor's defaults)."""
-    out=[{'type':'data','source':f'{root}/data','target':'/data','read_only':False}]
+    out=[{'source':f'{root}/data','target':'/data','read_only':False}]
     for entry in config.get('map') or []:
         if isinstance(entry,str):kind,_,mode=entry.partition(':');read_only=mode!='rw';path=None
         elif isinstance(entry,dict):kind,read_only,path=entry.get('type'),entry.get('read_only',True) is not False,entry.get('path')
         else:kind=None
         if kind not in MAP_PATHS:raise ValueError(f'unknown map entry {entry!r}')
-        out.append({'type':kind,'source':f'{root}/{kind}','target':path or MAP_PATHS[kind],'read_only':read_only})
+        out.append({'source':f'{root}/{kind}','target':path or MAP_PATHS[kind],'read_only':read_only})
+    # Two entries at one path (config and addon_config both default to /config) cannot both be mounted.
+    targets=[m['target'] for m in out]
+    for t in targets:
+        if targets.count(t)>1:raise ValueError(f'two data directories are mounted at {t}; give one of the map entries a path')
     return out
 
 # watchdog and webui as Supervisor writes them: [HOST] is the add-on's address, [PORT:n] its container port n,
@@ -335,18 +339,23 @@ def startup_probe(config, settings=None):
     (HTTP below 300, or the TCP port accepts); else the ingress port answers; else the webui port answers (any HTTP
     status below 500); else the container neither exits nor restarts for stable_seconds. Every wait ends at
     startup_timeout seconds. `settings`: the add-on's upgrade-check/settings.yaml (parsed, or None), which may
-    override startup_timeout and stable_seconds. The url keeps [HOST] for the runtime to fill in."""
+    override startup_timeout and stable_seconds. The url keeps [HOST] for the runtime to fill in; `below` is the HTTP
+    status an answer must stay under (None for tcp and stays-up). An ingress_port of 0 (a port Supervisor picks) is
+    not probed: the webui or staying up decides."""
     limits=dict(STARTUP_DEFAULTS)
+    if settings is not None and not isinstance(settings,dict):raise ValueError('settings must be a mapping of setting: seconds')
     for key,value in (settings or {}).items():
         if key not in limits:raise ValueError(f'unknown setting {key!r} (known: {", ".join(limits)})')
         if not isinstance(value,int) or isinstance(value,bool) or value<=0:raise ValueError(f'{key} must be a whole number of seconds above 0, not {value!r}')
         limits[key]=value
+    if limits['stable_seconds']>=limits['startup_timeout']:raise ValueError(f'stable_seconds ({limits["stable_seconds"]}) must be below startup_timeout ({limits["startup_timeout"]})')
     options=config.get('options') or {}
-    if config.get('watchdog'):method,url='watchdog',_probe_url(config['watchdog'],options)
-    elif config.get('ingress') and config.get('ingress_port',8099)!=0:method,url='ingress',f'http://[HOST]:{config.get("ingress_port",8099)}/'
-    elif config.get('webui'):method,url='webui',_probe_url(config['webui'],options)
-    else:method,url='stays-up',''
-    return {'method':method,'url':url,'timeout':limits['startup_timeout'],'stable_seconds':limits['stable_seconds']}
+    if config.get('watchdog'):method,url,below='watchdog',_probe_url(config['watchdog'],options),300
+    elif config.get('ingress') and config.get('ingress_port',8099)!=0:method,url,below='ingress',f'http://[HOST]:{config.get("ingress_port",8099)}/',500
+    elif config.get('webui'):method,url,below='webui',_probe_url(config['webui'],options),500
+    else:method,url,below='stays-up','',None
+    if url.startswith('tcp://'):below=None
+    return {'method':method,'url':url,'below':below,'timeout':limits['startup_timeout'],'stable_seconds':limits['stable_seconds']}
 
 class _Failed(Exception):
     """A command's expected failure: main() reports it as an ::error (title, message) and exits 2."""
@@ -438,9 +447,9 @@ def main(argv=None):
     v.add_argument('--as-written',action='store_true',help="the PR's version: fail unless it reads as its text does (unquoted 1.10 is 1.1)")
     k=sub.add_parser('components',help="print what the workflow needs from the repository's registry entry (JSON, see components())")
     k.add_argument('--registry',required=True,help='Store registry.json');k.add_argument('--repo',required=True,help='source repository, owner/name')
-    m=sub.add_parser('mounts',help="print the upgrade test's data directories as JSON [{type, source, target, read_only}] (mounts())")
+    m=sub.add_parser('mounts',help="print the upgrade test's data directories as JSON [{source, target, read_only}] (mounts())")
     m.add_argument('--config',required=True,help="the version's config.yaml");m.add_argument('--root',required=True,help='directory holding one directory per type')
-    s=sub.add_parser('startup-probe',help='print how the upgrade test judges that a version starts, as JSON {method, url, timeout, stable_seconds} (startup_probe())')
+    s=sub.add_parser('startup-probe',help='print how the upgrade test judges that a version starts, as JSON {method, url, below, timeout, stable_seconds} (startup_probe())')
     s.add_argument('--config',required=True,help="the version's config.yaml");s.add_argument('--settings',help='upgrade-check/settings.yaml of the add-on (may be absent)')
     a=p.parse_args(argv)
     try:return COMMANDS[a.command](a)

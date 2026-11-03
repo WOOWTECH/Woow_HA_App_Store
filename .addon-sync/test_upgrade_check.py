@@ -616,9 +616,15 @@ class ReusableWorkflow(unittest.TestCase):
         self.assertIn("upgrade test failed: $(jq -r '.reason'",step['run'])
         self.assertIn('if [ "${RUNTIME_RESULT}" != success ]',step['run'])
         self.assertIn('只檢查啟動，沒有檢查資料',step['run'])
-        upload=next(s for s in self.wf['jobs']['runtime']['steps'] if s.get('name')=='Upload the upgrade test results')
+        names=[s.get('name') for s in self.wf['jobs']['runtime']['steps']];steps=self.wf['jobs']['runtime']['steps']
+        upload=steps[names.index('Upload the upgrade test results')]
         self.assertEqual(upload['with']['name'],'upgrade-comparison-runtime-attempt-${{ github.run_attempt }}')
         self.assertTrue(upload['if'].startswith('always()'))
+        # A runtime step that fails before any add-on result (plan, pull, wait, load) still hands compare its reasons.
+        record=steps[names.index('Record why the runtime job failed')]
+        self.assertLess(names.index('Record why the runtime job failed'),names.index('Upload the upgrade test results'))
+        self.assertTrue(record['if'].startswith('failure()'));self.assertIn('${FAIL_LOG}',record['run'])
+        self.assertEqual(self.wf['jobs']['runtime']['env']['FAIL_LOG'],'${{ github.workspace }}/runtime-failures.txt')
     def test_new_image_comes_from_this_attempts_build_not_a_rebuild_or_ghcr(self):
         steps={s.get('name'):s for s in self.wf['jobs']['runtime']['steps']}
         self.assertIn('artifact="upgrade-comparison-image-${id}-attempt-${RUN_ATTEMPT}"',steps['Plan the upgrade tests']['run'])
@@ -1239,6 +1245,16 @@ class LogEscaping(StepHarness):
         r=subprocess.run([shutil.which('bash'),'-c','source "$1"; esc "$2"','-',(self.STORE/'.addon-sync/log.sh').as_posix(),text],capture_output=True)
         self.assertEqual(r.returncode,0,r.stderr);self.assertEqual(r.stdout.decode(),addon_sync.annotation(text))
     @unittest.skipUnless(shutil.which('bash'),'needs bash')
+    def test_fail_also_writes_its_reason_to_fail_log(self):
+        # The runtime job sets FAIL_LOG, so compare can quote why it failed before any add-on result (#137).
+        import os,subprocess
+        tmp=pathlib.Path(tempfile.mkdtemp());self.addCleanup(shutil.rmtree,tmp)
+        script='source "$1"; fail "a: no image"; (fail_output "::error title=Upgrade comparison failed::b: bad tag") || true'
+        r=subprocess.run([shutil.which('bash'),'-c',script,'-',(self.STORE/'.addon-sync/log.sh').as_posix()],capture_output=True,
+            env=dict(os.environ,FAIL_LOG=(tmp/'f.txt').as_posix()))
+        self.assertIn(b'::error title=Upgrade comparison failed::a: no image',r.stdout,r.stderr)
+        self.assertEqual((tmp/'f.txt').read_bytes().replace(b'\r',b''),b'a: no image\nb: bad tag\n')
+    @unittest.skipUnless(shutil.which('bash'),'needs bash')
     def test_fail_is_the_escaped_error_line(self):
         import subprocess,addon_sync
         text='50%\r\n::warning title=Injected::boom\n'
@@ -1322,6 +1338,8 @@ class RuntimeRulesCommand(unittest.TestCase):
     def test_unknown_map_type_fails_with_the_reason(self):
         code,out=self.run_cmd('mounts','--config',self.config(map=['nope']),'--root','/w')
         self.assertEqual(code,2);self.assertIn("unknown map entry 'nope'",out)
+        code,out=self.run_cmd('mounts','--config',self.config(map=['config:rw','addon_config:rw']),'--root','/w')
+        self.assertEqual(code,2);self.assertIn('two data directories are mounted at /config',out)
     def probe(self,settings=None,**cfg):
         args=['startup-probe','--config',self.config(**cfg)]
         if settings is not None:
@@ -1339,6 +1357,12 @@ class RuntimeRulesCommand(unittest.TestCase):
         p=self.probe(webui='[PROTO:ssl]://[HOST]:[PORT:443]/',options={'ssl':True})
         self.assertEqual((p['method'],p['url']),('webui','https://[HOST]:443/'))
         p=self.probe();self.assertEqual((p['method'],p['url'],p['stable_seconds']),('stays-up','',60))
+        # ingress_port 0 is a port Supervisor picks at install: not probed.
+        self.assertEqual(self.probe(ingress=True,ingress_port=0)['method'],'stays-up')
+    def test_watchdog_needs_success_ingress_and_webui_any_answer_short_of_a_server_error(self):
+        self.assertEqual(self.probe(watchdog='http://[HOST]:[PORT:1]/')['below'],300)
+        self.assertIsNone(self.probe(watchdog='tcp://[HOST]:[PORT:1]')['below'])
+        self.assertEqual(self.probe(ingress=True)['below'],500);self.assertEqual(self.probe(webui='http://[HOST]:[PORT:1]')['below'],500)
     def test_time_limits_have_defaults_and_can_be_overridden(self):
         p=self.probe(watchdog='tcp://[HOST]:[PORT:1]')
         self.assertEqual((p['timeout'],p['stable_seconds']),(300,60))
@@ -1346,7 +1370,8 @@ class RuntimeRulesCommand(unittest.TestCase):
         self.assertEqual((p['timeout'],p['stable_seconds']),(900,90))
     def test_bad_settings_fail_with_the_reason(self):
         path=self.dir/'settings.yaml'
-        for text,reason in [('startup_timeout: 0\n','startup_timeout'),('startup_timeout: soon\n','startup_timeout'),('wait: 5\n',"unknown setting 'wait'")]:
+        for text,reason in [('startup_timeout: 0\n','startup_timeout'),('startup_timeout: soon\n','startup_timeout'),('wait: 5\n',"unknown setting 'wait'"),
+                ('- 5\n','settings must be a mapping'),('stable_seconds: 300\n','stable_seconds (300) must be below startup_timeout (300)')]:
             with self.subTest(text):
                 path.write_text(text,encoding='utf-8')
                 code,out=self.run_cmd('startup-probe','--config',self.config(),'--settings',str(path))

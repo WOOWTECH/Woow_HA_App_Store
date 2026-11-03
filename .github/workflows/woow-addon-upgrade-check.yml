@@ -423,18 +423,19 @@ jobs:
         mkdir -p runtime-reports; status=0
         artifact="$(gh api --paginate "repos/${REPO}/actions/runs/${RUN_ID}/artifacts?per_page=100" \
           --jq ".artifacts[] | select(.name == \"upgrade-comparison-runtime-attempt-${RUN_ATTEMPT}\") | .id" | tail -n1)"
-        if [ -n "${artifact}" ]; then
-          gh api "repos/${REPO}/actions/artifacts/${artifact}/zip" > "$RUNNER_TEMP/runtime-reports.zip"
-          unzip -o -q "$RUNNER_TEMP/runtime-reports.zip" -d runtime-reports
+        if [ -n "${artifact}" ] && ! { gh api "repos/${REPO}/actions/artifacts/${artifact}/zip" > "$RUNNER_TEMP/runtime-reports.zip" \
+            && unzip -o -q "$RUNNER_TEMP/runtime-reports.zip" -d runtime-reports; }; then
+          fail "cannot download the upgrade test results (artifact upgrade-comparison-runtime-attempt-${RUN_ATTEMPT}); re-run all jobs"; exit 1
         fi
         echo "## Upgrade test" >> "$GITHUB_STEP_SUMMARY"
         for result in runtime-reports/*.json; do
           [ -e "${result}" ] || break
-          # upgrade_runtime.py's result, or the runtime job's note on why the test did not run.
+          # upgrade_runtime.py's result, the runtime job's note on why the test did not run, or why that job failed.
           id="$(jq -r '.name' "${result}")"
           case "$(jq -r '.passed' "${result}")" in
             true) echo "- ${id}: passed, startup only: data was not checked (只檢查啟動，沒有檢查資料)" >> "$GITHUB_STEP_SUMMARY";;
-            false) fail "${id}: upgrade test failed: $(jq -r '.reason' "${result}") (the runtime job's summary has the report)"; status=1;;
+            false) fail "${id}: upgrade test failed: $(jq -r '.reason' "${result}") (the runtime job's summary has the report)"; status=1
+              echo "- ${id}: **failed**, startup only: data was not checked (只檢查啟動，沒有檢查資料)" >> "$GITHUB_STEP_SUMMARY";;
             *) echo "- ${id}: not run ($(jq -r '.note' "${result}"))" >> "$GITHUB_STEP_SUMMARY";;
           esac
         done
@@ -447,6 +448,9 @@ jobs:
     name: runtime
     runs-on: ubuntu-latest
     timeout-minutes: 90
+    env:
+      # Every fail (log.sh) of this job is also written here; "Record why the runtime job failed" hands it to compare.
+      FAIL_LOG: ${{ github.workspace }}/runtime-failures.txt
     steps:
     - *not-pr
     - *checkout-pr
@@ -551,6 +555,15 @@ jobs:
           [ "${rc}" = 0 ] || status=1
         done < <(jq -c 'select(.old_ref != "")' upgrade.jsonl)
         exit "${status}"
+    # A step that failed before upgrade_runtime.py wrote a result (plan, pull, wait, load) leaves its reasons in
+    # FAIL_LOG; compare quotes them instead of only saying that this job failed.
+    - name: Record why the runtime job failed
+      if: failure() && github.event_name == 'pull_request'
+      run: |
+        set -euo pipefail
+        mkdir -p runtime-reports
+        if [ -s "${FAIL_LOG}" ]; then reason="$(cat "${FAIL_LOG}")"; else reason="a step failed without a reason; the runtime job's log has it"; fi
+        jq -n --arg reason "${reason}" '{name: "runtime job", passed: false, reason: $reason}' > runtime-reports/runtime-job.json
     - name: Upload the upgrade test results
       if: always() && github.event_name == 'pull_request'
       uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2

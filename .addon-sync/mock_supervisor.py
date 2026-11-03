@@ -9,8 +9,8 @@ upgrade_runtime.py runs this in a container at the Supervisor's address
                        version, read on every request); requests are logged to
                        DIR/requests.log. Every call needs the add-on's token.
   probe --url URL      one check from the Supervisor's address: exit 0 when an
-                       http(s) URL answers below --below (watchdog 300, ingress
-                       and webui 500) or a tcp://host:port accepts a connection.
+                       http(s) URL answers below --below (upgrade_check.startup_probe
+                       sets it) or a tcp://host:port accepts a connection.
 
 The minimal API: /addons/self/info (also /addons/<slug>/info and /addons/self),
 /addons/self/options/config, /addons/self/stats, /info, /os/info, /core/info,
@@ -50,7 +50,7 @@ def _network_info():
         'docker': {'interface': 'hassio', 'address': '172.30.32.0/23', 'gateway': '172.30.32.1', 'dns': '172.30.32.3'},
         'host_internet': True, 'supervisor_internet': True}
 
-def route(method, path):
+def route(path):
     """(status, data) for one API call; data None means 404."""
     path = path.split('?', 1)[0].rstrip('/') or '/'
     addon = _addon()
@@ -73,7 +73,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if not TOKEN or token != TOKEN:
             status, body = 401, {'result': 'error', 'message': 'Unauthorized'}
         else:
-            status, data = route(self.command, self.path)
+            status, data = route(self.path)
             body = {'result': 'ok', 'data': data} if status == 200 else {'result': 'error', 'message': f'{self.path} is not mocked'}
         with open(STATE / 'requests.log', 'a', encoding='utf-8') as log:
             log.write(f'{self.command} {self.path} {status}\n')
