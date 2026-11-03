@@ -8,8 +8,8 @@ upgrade_check.mounts), each under a mock Home Assistant Supervisor
 Supervisor at 172.30.32.2 (also as host `supervisor`), a fake
 SUPERVISOR_TOKEN/HASSIO_TOKEN and /data/options.json from config.yaml's
 option defaults. Each version must start, judged as upgrade_check.startup_probe
-says from the Supervisor's address; the add-on's upgrade-check/settings.yaml
-may override the time limits.
+says from the Supervisor's address, and then stay up for stable_seconds; the
+add-on's upgrade-check/settings.yaml may override the time limits.
 
 Writes <report-dir>/<name>.json and <name>.md, appends the report to
 --summary and exits 1 when the upgrade test fails (::error with the reason),
@@ -102,27 +102,42 @@ def _state(container):
 
 def wait_started(env, container, probe):
     """(started, detail, answer): whether the version started as `probe` (upgrade_check.startup_probe) says, why or
-    why not, and the start of what its url answered (http only)."""
+    why not, and the start of what its url answered (http only). Started: the probe answers within the time limit
+    (none for stays-up), then the container runs stable_seconds without exiting or restarting."""
     url = probe['url'].replace('[HOST]', ADDON_IP)
     if probe['below'] is not None:
         answered = 'with success' if probe['method'] == 'watchdog' else f'below HTTP {probe["below"]}'
     else:answered = 'by accepting a connection'
     started = time.monotonic(); deadline = started + probe['timeout']
-    while True:
-        state, restarts = _state(container)
-        if not state.get('Running'):
-            return False, f'the container exited with code {state.get("ExitCode")}', ''
-        if restarts:
-            return False, f'the container restarted {restarts} times', ''
-        if probe['method'] == 'stays-up':
-            if time.monotonic() - started >= probe['stable_seconds']:
-                return True, f'the container ran {probe["stable_seconds"]} s without exiting or restarting', ''
-        elif env.probe(url, probe['below']):
-            return True, f'the {probe["method"]} {url} answered {answered}', env.fetch(url) if url.startswith('http') else ''
-        # startup_probe keeps stable_seconds below the timeout, so only a probe can run out of time.
-        if time.monotonic() >= deadline:
-            return False, f'the {probe["method"]} {url} did not answer {answered} within {probe["timeout"]} s', ''
+    stays = probe['stable_seconds']; answer = ''; prefix = ''
+    if probe['method'] != 'stays-up':
+        # 1. The probe answers within the time limit (the container must not exit or restart meanwhile).
+        while not env.probe(url, probe['below']):
+            down = _down(container)
+            if down:return False, down, ''
+            # startup_probe keeps stable_seconds below the timeout, so only a probe can run out of time.
+            if time.monotonic() >= deadline:
+                return False, f'the {probe["method"]} {url} did not answer {answered} within {probe["timeout"]} s', ''
+            time.sleep(1)
+        answer = env.fetch(url) if url.startswith('http') else ''
+        prefix = f'the {probe["method"]} {url} answered {answered}, then '
+    # 2. The container then runs stable_seconds without exiting or restarting: a version that answers once and
+    # dies did not start (owner, 2026-11-03). With no probe, this alone decides.
+    since = time.monotonic()
+    while time.monotonic() - since < stays:
+        down = _down(container)
+        if down:return False, f'{prefix}{down} within {stays} s', answer
         time.sleep(1)
+    down = _down(container)
+    if down:return False, f'{prefix}{down} within {stays} s', answer
+    return True, f'{prefix}the container ran {stays} s without exiting or restarting', answer
+
+def _down(container):
+    """Why the container is no longer up ('the container exited with code 3' or '... restarted 2 times'), or ''."""
+    state, restarts = _state(container)
+    if not state.get('Running'):return f'the container exited with code {state.get("ExitCode")}'
+    if restarts:return f'the container restarted {restarts} times'
+    return ''
 
 def upgrade_test(name, addon_dir, old_image, old_config, new_image, new_config, work):
     """{'name', 'passed', 'reason', 'phases': [{phase, version, image, method, started, detail, answer, logs}]}."""

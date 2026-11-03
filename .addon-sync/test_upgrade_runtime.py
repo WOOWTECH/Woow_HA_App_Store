@@ -21,7 +21,11 @@ if os.environ['MODE'] == 'crash':
 class H(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200 if self.path == '/health' else 404); self.end_headers(); self.wfile.write(str(starts).encode())
-http.server.HTTPServer(('0.0.0.0', 8080), H).serve_forever()
+server = http.server.HTTPServer(('0.0.0.0', 8080), H)
+if os.environ['MODE'] == 'answer-then-crash':
+    # Answers its watchdog at once, then dies: a version that only looks started.
+    import threading; threading.Thread(target=server.serve_forever, daemon=True).start(); time.sleep(4); os._exit(4)
+server.serve_forever()
 '''
 
 def docker_ok():
@@ -36,7 +40,7 @@ class Runtime(unittest.TestCase):
         build = pathlib.Path(tempfile.mkdtemp())
         try:
             (build / 'run.py').write_text(FAKE, encoding='utf-8')
-            for mode in ('good', 'crash'):
+            for mode in ('good', 'crash', 'answer-then-crash'):
                 (build / 'Dockerfile').write_text(f'FROM {rt.MOCK_IMAGE}\nENV MODE={mode}\nCOPY run.py /run.py\nCMD ["python", "-u", "/run.py"]\n')
                 tag = f'local/upgrade-test-fake-{mode}:{uuid.uuid4().hex[:8]}'
                 subprocess.run(['docker', 'build', '-q', '-t', tag, str(build)], check=True, capture_output=True)
@@ -62,7 +66,9 @@ class Runtime(unittest.TestCase):
         with contextlib.redirect_stdout(io.StringIO()) as out:code = rt.main(args)
         return code, json.loads((self.reports / 'fake.json').read_text(encoding='utf-8')), out.getvalue()
     def test_new_version_that_starts_on_the_old_data_passes(self):
+        self.settings(stable_seconds=8)
         code, result, out = self.run_test('good', 'good', watchdog='http://[HOST]:[PORT:8080]/health')
+        self.assertIn('answered with success, then the container ran 8 s without exiting or restarting', result['phases'][1]['detail'])
         self.assertEqual(code, 0, out); self.assertTrue(result['passed'])
         self.assertEqual([(p['phase'], p['started'], p['method']) for p in result['phases']], [('old', True, 'watchdog'), ('new', True, 'watchdog')])
         # The new version started on the comparison target's /data: its start count went on from the old one's.
@@ -77,6 +83,12 @@ class Runtime(unittest.TestCase):
         self.assertIn('the new version (1.1.0) did not start: the container exited with code 3', result['reason'])
         self.assertIn('::error title=Upgrade test::fake: the new version (1.1.0) did not start', out)
         self.assertIn('started 2', result['phases'][1]['logs'])
+    def test_new_version_that_answers_its_watchdog_then_crashes_fails(self):
+        # The probe passing is not enough: the container must then stay up for stable_seconds (owner, 2026-11-03).
+        self.settings(stable_seconds=10)
+        code, result, out = self.run_test('good', 'answer-then-crash', watchdog='http://[HOST]:[PORT:8080]/health')
+        self.assertEqual(code, 1); self.assertEqual([p['started'] for p in result['phases']], [True, False])
+        self.assertIn('answered with success, then the container exited with code 4 within 10 s', result['reason'])
     def test_comparison_target_that_does_not_start_fails_before_the_new_version(self):
         self.settings(stable_seconds=8)
         code, result, out = self.run_test('crash', 'good')

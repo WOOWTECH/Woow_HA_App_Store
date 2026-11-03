@@ -335,10 +335,11 @@ def _probe_url(text, options):
     return f'{scheme}://[HOST]:{port}{path}'
 
 def startup_probe(config, settings=None):
-    """How the upgrade test judges that a version starts, in Supervisor's order: the watchdog answers with success
-    (HTTP below 300, or the TCP port accepts); else the ingress port answers; else the webui port answers (any HTTP
-    status below 500); else the container neither exits nor restarts for stable_seconds. Every wait ends at
-    startup_timeout seconds. `settings`: the add-on's upgrade-check/settings.yaml (parsed, or None), which may
+    """How the upgrade test judges that a version starts. One probe, the first config.yaml declares, in Supervisor's
+    order (no fallback to the next when it does not answer): the watchdog answers with success (HTTP below 300, or
+    the TCP port accepts); else the ingress port answers; else the webui port answers (any HTTP status below 500);
+    else none. The probe must answer within startup_timeout seconds; then (or at once, with no probe) the container
+    must run stable_seconds without exiting or restarting (owner, 2026-11-03). `settings`: the add-on's upgrade-check/settings.yaml (parsed, or None), which may
     override startup_timeout and stable_seconds. The url keeps [HOST] for the runtime to fill in; `below` is the HTTP
     status an answer must stay under (None for tcp and stays-up). An ingress_port of 0 (a port Supervisor picks) is
     not probed: the webui or staying up decides."""
