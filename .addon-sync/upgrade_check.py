@@ -279,7 +279,9 @@ def _error(title, message):
 
 def components(registry, repo):
     """What the reusable workflow needs from repo's registry entry: ref_policy, the approved reason to skip category 4
-    ('' when not approved) and, for each add-on it releases (addon_sync.publishes_releases: a retired or prerelease add-on
+    ('' when not approved), the approved reason to scan, on both sides, the image config.yaml names at its version
+    instead of the PR build's SBOM (scan_published_image, #147: a repository that ships a third-party image; '' when
+    not approved; never together with the skip) and, for each add-on it releases (addon_sync.publishes_releases: a retired or prerelease add-on
     is not compared), the repository paths of its config and upgrade-notes.yaml (config, notes) and, while a config move
     is in progress, of the location it left (previous_config, previous_notes; '' when none). The workflow reads the
     previous ones at a commit that does not have the registry's path, as addon_sync.locate does."""
@@ -291,7 +293,10 @@ def components(registry, repo):
                 out[prefix+'config'],out[prefix+'notes']=source_file(c,c['config_file']),source_file(c,'upgrade-notes.yaml')
         except Blocked as e:raise ValueError(f'{repo} {comp["id"]}: {e}') from None
         return out
-    return {'ref_policy':provider['ref_policy'],'skip_vulnerability_scan':(provider.get('upgrade_comparison') or {}).get('skip_vulnerability_scan',''),
+    approved=provider.get('upgrade_comparison') or {}
+    skip,published=approved.get('skip_vulnerability_scan',''),approved.get('scan_published_image','')
+    if skip and published:raise ValueError(f'{repo}: the Store registry gives both skip_vulnerability_scan and scan_published_image; category 4 is either skipped or scans the published image, keep one')
+    return {'ref_policy':provider['ref_policy'],'skip_vulnerability_scan':skip,'scan_published_image':published,
         'components':[{'id':c['id'],**paths(c)} for c in provider['components'] if publishes_releases(c)]}
 
 class _Failed(Exception):
