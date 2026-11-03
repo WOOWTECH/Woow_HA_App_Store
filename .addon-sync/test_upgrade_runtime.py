@@ -35,6 +35,11 @@ def docker_ok():
     try:return subprocess.run(['docker', 'info'], capture_output=True).returncode == 0
     except OSError:return False
 
+def leftovers():
+    """Containers and networks an upgrade test left behind (close() removes them, also when open() fails)."""
+    names = subprocess.run(['docker', 'ps', '-a', '--filter', 'name=upgrade-test-', '--format', '{{.Names}}'], capture_output=True, text=True).stdout.split()
+    return names + subprocess.run(['docker', 'network', 'ls', '--filter', 'name=upgrade-test-', '--format', '{{.Name}}'], capture_output=True, text=True).stdout.split()
+
 @unittest.skipUnless(docker_ok(), 'needs a Docker daemon (present on GitHub runners)')
 class Runtime(unittest.TestCase):
     @classmethod
@@ -120,7 +125,22 @@ class Runtime(unittest.TestCase):
             code, result, out = self.run_test('good', 'good')
         self.assertEqual(code, 2); self.assertEqual(result['phases'], [])
         self.assertIn('the upgrade test could not run: the mock Supervisor did not answer within 4 s', result['reason'])
-        self.assertIn('mock is broken', result['reason'])
+        self.assertIn('mock is broken', result['reason']); self.assertEqual(leftovers(), [])
+    def test_mock_supervisor_that_exits_is_a_tool_error_at_once(self):
+        crashed = ['sh', '-c', 'echo mock crashed; exit 5']
+        with mock.patch.object(rt, 'MOCK_COMMAND', crashed):
+            code, result, out = self.run_test('good', 'good')
+        self.assertEqual(code, 2)
+        self.assertIn('the mock Supervisor did not answer (the container exited with code 5)', result['reason'])
+        self.assertIn('mock crashed', result['reason']); self.assertEqual(leftovers(), [])
+    def test_request_log_keeps_the_add_ons_calls_not_the_readiness_check(self):
+        # What #142 reports as unmocked Supervisor calls must come from the add-on only.
+        self.settings(stable_seconds=3); seen = []; close = rt.UpgradeTestEnv.close
+        def keep_log(env):
+            seen.append((env.state / 'requests.log').read_text(encoding='utf-8')); close(env)
+        with mock.patch.object(rt.UpgradeTestEnv, 'close', keep_log):
+            code, result, out = self.run_test('good', 'good')
+        self.assertEqual(code, 0, out); self.assertEqual(seen[0].splitlines(), ['GET /addons/self/info 200'] * 2)
     def test_settings_that_are_not_a_mapping_fail_with_the_reason(self):
         (self.dir / 'addon/upgrade-check').mkdir()
         (self.dir / 'addon/upgrade-check/settings.yaml').write_text('- 5\n', encoding='utf-8')

@@ -7,7 +7,8 @@ upgrade_runtime.py runs this in a container at the Supervisor's address
   serve --state DIR    answer the Supervisor API on port 80. DIR/addon.json is
                        the add-on's own info (written by the runtime for each
                        version, read on every request); requests are logged to
-                       DIR/requests.log. Every call needs the add-on's token.
+                       DIR/requests.log, except those from 127.0.0.1 (the
+                       runtime's readiness check). Every call needs the add-on's token.
   probe --url URL      one check from the Supervisor's address: exit 0 when an
                        http(s) URL answers below --below (upgrade_check.startup_probe
                        sets it) or a tcp://host:port accepts a connection.
@@ -75,8 +76,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
         else:
             status, data = route(self.path)
             body = {'result': 'ok', 'data': data} if status == 200 else {'result': 'error', 'message': f'{self.path} is not mocked'}
-        with open(STATE / 'requests.log', 'a', encoding='utf-8') as log:
-            log.write(f'{self.command} {self.path} {status}\n')
+        # The runtime's own readiness check comes from inside this container: the log keeps the add-on's calls only.
+        if self.client_address[0] != '127.0.0.1':
+            with open(STATE / 'requests.log', 'a', encoding='utf-8') as log:
+                log.write(f'{self.command} {self.path} {status}\n')
         raw = json.dumps(body).encode()
         self.send_response(status)
         self.send_header('Content-Type', 'application/json')

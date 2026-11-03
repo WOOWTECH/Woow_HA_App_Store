@@ -65,20 +65,20 @@ class UpgradeTestEnv:
             '--mount', f'type=bind,source={TOOLING},target=/tooling,readonly', '--mount', f'type=bind,source={self.state},target=/state',
             MOCK_IMAGE, *MOCK_COMMAND)
         # Real Supervisor is up before any add-on starts, and add-ons ask it for their info at once (bashio reads
-        # options at boot): return only when the mock answers. Any HTTP answer will do (401 without the token).
+        # options at boot): return only when the mock answers. Any answer below HTTP 500 will do (401 without the
+        # token). Asked from inside the mock (127.0.0.1), so its request log keeps only the add-on's calls.
         deadline = time.monotonic() + MOCK_WAIT
-        while not self.probe('http://127.0.0.1/supervisor/ping', 500):
+        while not self.probe('http://127.0.0.1/supervisor/ping', 500, timeout=2):
             down = _down(self.supervisor)
             if down or time.monotonic() >= deadline:
-                logs = subprocess.run(['docker', 'logs', '--tail', '20', self.supervisor], capture_output=True, text=True, encoding='utf-8', errors='replace')
                 why = f'({down})' if down else f'within {MOCK_WAIT} s'
-                raise RuntimeError(f'the mock Supervisor did not answer {why}; its last log lines: {(logs.stdout + logs.stderr).strip()[-1000:]}')
+                raise RuntimeError(f'the mock Supervisor did not answer {why}; its last log lines: {_logs(self.supervisor, 20).strip()[-1000:]}')
             time.sleep(0.5)
-    def probe(self, url, below):
+    def probe(self, url, below, timeout=5):
         """One check of `url` from the Supervisor's address (mock_supervisor.py probe; `below` None for tcp)."""
         limit = [] if below is None else ['--below', str(below)]
-        return subprocess.run(['docker', 'exec', self.supervisor, 'python', '/tooling/mock_supervisor.py', 'probe', '--url', url, *limit],
-            capture_output=True).returncode == 0
+        return subprocess.run(['docker', 'exec', self.supervisor, 'python', '/tooling/mock_supervisor.py', 'probe', '--url', url, *limit,
+            '--timeout', str(timeout)], capture_output=True).returncode == 0
     def fetch(self, url):
         """The first 200 characters of what `url` answers from the Supervisor's address ('' when it does not)."""
         code = (f'import urllib.request,ssl;print(urllib.request.urlopen({url!r},timeout=5,context=ssl._create_unverified_context())'
@@ -108,6 +108,11 @@ class UpgradeTestEnv:
         docker('network', 'rm', self.net, check=False)
         # Containers write as root: remove what they left through a container, then the rest.
         docker('run', '--rm', '--mount', f'type=bind,source={self.work},target=/w', '--entrypoint', 'sh', MOCK_IMAGE, '-c', 'rm -rf /w/* /w/.[!.]*', check=False)
+
+def _logs(container, tail):
+    """The container's last `tail` log lines, stdout and stderr."""
+    r = subprocess.run(['docker', 'logs', '--tail', str(tail), container], capture_output=True, text=True, encoding='utf-8', errors='replace')
+    return r.stdout + r.stderr
 
 def _state(container):
     """(docker's State of the container, its RestartCount)."""
@@ -164,9 +169,8 @@ def upgrade_test(name, addon_dir, old_image, old_config, new_image, new_config, 
             probe = startup_probe(config, settings)
             container = env.start(phase, image, config)
             ok, detail, answer = wait_started(env, container, probe)
-            logs = subprocess.run(['docker', 'logs', '--tail', '60', container], capture_output=True, text=True, encoding='utf-8', errors='replace')
             phases.append({'phase': phase, 'version': str(config.get('version')), 'image': image, 'method': probe['method'], 'started': ok,
-                'detail': detail, 'answer': answer, 'logs': (logs.stdout + logs.stderr)[-4000:]})
+                'detail': detail, 'answer': answer, 'logs': _logs(container, 60)[-4000:]})
             env.stop(container, config)
             if not ok:
                 result['reason'] = f'{PHASE_LABEL[phase]} ({config.get("version")}) did not start: {detail}'
