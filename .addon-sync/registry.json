@@ -462,7 +462,7 @@
     },
     "WOOWTECH/Woow_ha_knxd_add_on": {
       "upgrade_comparison": {
-        "skip_vulnerability_scan": "#122: knxd ships a third-party image, not the one its CI builds; its vulnerability comparison (category 4) moves to #90"
+        "scan_published_image": "#147: knxd ships the third-party image its config.yaml names (ghcr.io/da-anda/hass-io-addons-{arch}-addon-knxd), not the one its CI builds; category 4 scans that image at the comparison target's version and at the PR's"
       },
       "default_branch": "main",
       "required_workflows": [

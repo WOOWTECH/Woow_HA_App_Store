@@ -507,11 +507,24 @@ class ComponentsCommand(unittest.TestCase):
     def test_paths_policy_and_approved_skip(self):
         comps=[{'id':'a','source_path':'.','config_file':'config.yaml'},{'id':'b','source_path':'addons/b','config_file':'config.yml'}]
         code,out=self.main({'providers':{'WOOWTECH/r':{'ref_policy':'main','components':comps,'upgrade_comparison':{'skip_vulnerability_scan':'#1: why'}}}})
-        self.assertEqual(code,0);self.assertEqual(json.loads(out),{'ref_policy':'main','skip_vulnerability_scan':'#1: why','components':[
+        self.assertEqual(code,0);self.assertEqual(json.loads(out),{'ref_policy':'main','skip_vulnerability_scan':'#1: why','scan_published_image':'','components':[
             {'id':'a','config':'config.yaml','notes':'upgrade-notes.yaml','previous_config':'','previous_notes':''},
             {'id':'b','config':'addons/b/config.yml','notes':'addons/b/upgrade-notes.yaml','previous_config':'','previous_notes':''}]})
         code,out=self.main({'providers':{'WOOWTECH/r':{'ref_policy':'release','components':comps}}})
         self.assertEqual(json.loads(out)['skip_vulnerability_scan'],'')
+    def test_approved_published_image_scan(self):
+        # #147: the reason the registry approves scanning the image config.yaml names (image:version) on both sides.
+        comps=[{'id':'a','source_path':'.','config_file':'config.yaml'}]
+        code,out=self.main({'providers':{'WOOWTECH/r':{'ref_policy':'release','components':comps,'upgrade_comparison':{'scan_published_image':'#147: why'}}}})
+        self.assertEqual((code,json.loads(out)['scan_published_image']),(0,'#147: why'))
+        code,out=self.main({'providers':{'WOOWTECH/r':{'ref_policy':'release','components':comps}}})
+        self.assertEqual(json.loads(out)['scan_published_image'],'')
+    def test_skip_and_published_image_scan_together_fail(self):
+        # Both name what category 4 scans; the registry must pick one.
+        comps=[{'id':'a','source_path':'.','config_file':'config.yaml'}]
+        code,out=self.main({'providers':{'WOOWTECH/r':{'ref_policy':'release','components':comps,
+            'upgrade_comparison':{'scan_published_image':'x','skip_vulnerability_scan':'y'}}}})
+        self.assertEqual(code,2);self.assertIn('both skip_vulnerability_scan and scan_published_image',out)
     def test_a_move_in_progress_gives_the_previous_config_and_its_notes(self):
         # addon_sync.locations: previous_config is a config at the root of its add-on directory, with upgrade-notes.yaml beside it.
         comps=[{'id':'a','source_path':'addons/a','config_file':'config.yaml','previous_config':'a/config.yml'},
@@ -598,12 +611,15 @@ class StepHarness(unittest.TestCase):
     def setUp(self):self.wf=yaml.safe_load(self.WF.read_text(encoding='utf-8'))
     def step(self,ident):return next(s for s in self.wf['jobs']['compare']['steps'] if ident in (s.get('id'),s.get('name')))
     def run_step(self,ident,*,policy='release',extra=None,releases=('v1.0.0',),old_config=True,new_config=True,skip='',sbom='',version='1.1.0',old=None,old_path='',
-            new_path='addon/config.yaml',new=None,files=None,raw_version=None,history=None,changed=1,gh_fail=''):
+            new_path='addon/config.yaml',new=None,files=None,raw_version=None,history=None,changed=1,gh_fail='',images=(),vulnerable=''):
         """ident: one step, or a tuple run in order until one fails. new_path: where the PR has the config; new: changes to it;
         files: more files of the PR checkout; raw_version: {'old'/'new': the version line's YAML as written, e.g. 1.10 unquoted}.
         history: the PR base's history, newest first, [(sha, {path: changes to the config, or None for no file})]; the first
         sha must be 'b' (BASE_SHA). Without it, every ref has `old` (at old_path when given) and 'b' is its only commit.
         changed: how many registry add-ons the detect step reports as changed. gh_fail: any gh call containing it fails.
+        images: the image references the registry has; `docker pull` of any other fails, and the stub Syft writes
+        {"source": "<what it scanned>"} as the SBOM. vulnerable: the image whose SBOM the stub Grype finds a High fixable
+        vulnerability in (CVE-2026-0001 openssl, fixed in 3.0.9); every scan reports the same DB.
         self.tmp is the job's directory (also RUNNER_TEMP); self.plans is every line of plan.jsonl."""
         import os,subprocess
         tmp=self.tmp=pathlib.Path(tempfile.mkdtemp());self.addCleanup(shutil.rmtree,tmp)
@@ -630,10 +646,12 @@ class StepHarness(unittest.TestCase):
             (tmp/'history.json').write_text(json.dumps([{'sha':sha,'date':f'2026-01-01T00:{59-i:02d}:00Z','files':{p:dump(dict(cfg,**c),'old')
                 for p,c in at.items() if c is not None}} for i,(sha,at) in enumerate(history)]))
         gh=tmp/'bin/gh';gh.write_text(GH_STUB);gh.chmod(0o755)
+        (tmp/'scanners').mkdir()
+        for path,stub in ((tmp/'bin/docker',DOCKER_STUB),(tmp/'scanners/syft',SYFT_STUB),(tmp/'scanners/grype',GRYPE_STUB)):path.write_text(stub);path.chmod(0o755)
         # What `gh api --paginate .../releases --jq '.[]'` prints: one Release object per line; a bare tag is a stable Release.
         releases='\n'.join(json.dumps(r if isinstance(r,dict) else {'tag_name':r,'draft':False,'prerelease':False}) for r in releases)
         env=dict(os.environ,PATH=f"{tmp/'bin'}{os.pathsep}{os.environ['PATH']}",OLD=str(tmp/'old.yaml'),OLD_PATH=old_path,RELEASES=releases,REPO='WOOWTECH/t',BASE_SHA='b',
-            GH_TOKEN='x',DB_MAX_AGE_HOURS='120',SBOM_ARTIFACT=sbom,SKIP_VULNERABILITY_SCAN=skip,RUNNER_TEMP=str(tmp),RUN_ATTEMPT='1',
+            GH_TOKEN='x',DB_MAX_AGE_HOURS='120',IMAGES='\n'.join(images),VULNERABLE=vulnerable,SBOM_ARTIFACT=sbom,SKIP_VULNERABILITY_SCAN=skip,RUNNER_TEMP=str(tmp),RUN_ATTEMPT='1',
             GITHUB_OUTPUT=str(tmp/'out'),GITHUB_STEP_SUMMARY=str(tmp/'summary'),HISTORY=str(tmp/'history.json') if history is not None else '',GH_FAIL=gh_fail,
             TMPDIR=str(tmp/'mktemp'))
         (tmp/'mktemp').mkdir(exist_ok=True)
@@ -674,9 +692,34 @@ elif '/commits?' in url:
 else:sys.exit(1)
 '''
 
+# StepHarness's image registry: `docker pull` succeeds only for a reference in $IMAGES; `docker image rm` always does.
+DOCKER_STUB=r'''#!/usr/bin/env python3
+import os,sys
+args=sys.argv[1:]
+if args[:1]==['pull']:
+    if args[-1] in os.environ.get('IMAGES','').split('\n'):sys.exit(0)
+    print(f'Error response from daemon: manifest unknown: {args[-1]}',file=sys.stderr);sys.exit(1)
+sys.exit(0 if args[:2]==['image','rm'] else 1)
+'''
+# Stub Syft: `syft scan <source> --config ... -o syft-json=<file>` writes {"source": <source>} to <file>.
+SYFT_STUB=r'''#!/usr/bin/env python3
+import json,sys
+args=sys.argv[1:];out=next(a for a in args if a.startswith('syft-json=')).split('=',1)[1]
+json.dump({'source':args[1]},open(out,'w'))
+'''
+# Stub Grype: `grype sbom:<file> -o json --file <out>`; one High fixable match when the SBOM is of $VULNERABLE.
+GRYPE_STUB=r'''#!/usr/bin/env python3
+import json,os,sys
+args=sys.argv[1:];source=json.load(open(args[0].split(':',1)[1]))['source']
+match={'vulnerability':{'id':'CVE-2026-0001','severity':'High','fix':{'state':'fixed','versions':['3.0.9']}},'artifact':{'name':'openssl'}}
+scan={'matches':[match] if source=='docker:'+os.environ.get('VULNERABLE','') else [],
+    'descriptor':{'db':{'status':{'built':'2026-11-01T00:00:00Z','from':'https://grype.anchore.io/db'}}}}
+json.dump(scan,open(args[args.index('--file')+1],'w'))
+'''
+
 class SkipVulnerabilityScan(StepHarness):
-    """skip_vulnerability_scan: a caller whose prebuilt image is not the one it builds (knxd ships a third-party image),
-    or whose category 4 moved elsewhere, opts out with a reason; category 1 still runs and the report says why.
+    """skip_vulnerability_scan: a caller whose category 4 cannot run (mcp_addons builds no PR image) opts out with a
+    reason; category 1 still runs and the report says why.
     Only a provider the Store registry approves may skip (upgrade_comparison.skip_vulnerability_scan, with the reason)."""
     REASON='the shipped image is third-party; category 4 for it is out of scope'
     APPROVED={'upgrade_comparison':{'skip_vulnerability_scan':'#122: third-party image; category 4 moves to #90'}}
@@ -685,14 +728,16 @@ class SkipVulnerabilityScan(StepHarness):
         self.assertEqual((inp['type'],inp['default']),('string',''))
         for ident in ('detect','plan'):
             with self.subTest(ident):self.assertEqual(self.step(ident)['env']['SKIP_VULNERABILITY_SCAN'],'${{ inputs.skip_vulnerability_scan }}')
-    def test_registry_approves_the_skip_only_for_knxd_and_mcp_addons(self):
-        # #122 (knxd ships a third-party image) and #123 (mcp_addons builds no PR image): category 4 moves to #90.
+    def approved(self,key):
         registry=json.loads((self.STORE/'.addon-sync/registry.json').read_text(encoding='utf-8'))
-        approved={repo:p['upgrade_comparison']['skip_vulnerability_scan'] for repo,p in registry['providers'].items()
-            if 'skip_vulnerability_scan' in (p.get('upgrade_comparison') or {})}
-        self.assertEqual(sorted(approved),['WOOWTECH/Woow_ha_knxd_add_on','WOOWTECH/Woow_ha_mcp_addons'])
-        self.assertIn('#122',approved['WOOWTECH/Woow_ha_knxd_add_on']);self.assertIn('#123',approved['WOOWTECH/Woow_ha_mcp_addons'])
-        for reason in approved.values():self.assertIn('#90',reason)
+        return {repo:p['upgrade_comparison'][key] for repo,p in registry['providers'].items() if key in (p.get('upgrade_comparison') or {})}
+    def test_registry_approves_the_skip_only_for_mcp_addons(self):
+        # #123 (mcp_addons builds no PR image): its category 4 is #148. knxd scans its published image instead (#147).
+        approved=self.approved('skip_vulnerability_scan')
+        self.assertEqual(sorted(approved),['WOOWTECH/Woow_ha_mcp_addons']);self.assertIn('#123',approved['WOOWTECH/Woow_ha_mcp_addons'])
+    def test_registry_approves_the_published_image_scan_only_for_knxd(self):
+        approved=self.approved('scan_published_image')
+        self.assertEqual(sorted(approved),['WOOWTECH/Woow_ha_knxd_add_on']);self.assertIn('#147',approved['WOOWTECH/Woow_ha_knxd_add_on'])
     @needs_shell
     def test_unapproved_provider_that_sets_the_skip_fails(self):
         r,_,_=self.run_step('detect',skip=self.REASON)
@@ -713,6 +758,60 @@ class SkipVulnerabilityScan(StepHarness):
     def test_without_skip_a_prebuilt_image_still_needs_its_sbom(self):
         r,_,_=self.run_step('plan')
         self.assertEqual(r.returncode,1);self.assertIn('passes no sbom_artifact',r.stdout+r.stderr)
+
+class PublishedImageScan(StepHarness):
+    """scan_published_image (#147): knxd ships the third-party image its config.yaml names, so category 4 scans that image
+    at the comparison target's version and at the PR's version (the version is the tag), not an SBOM of the PR's build."""
+    APPROVED={'upgrade_comparison':{'scan_published_image':'#147: knxd ships the third-party image config.yaml names'}}
+    @needs_shell
+    def test_both_sides_are_the_published_image_at_their_version(self):
+        r,plan,out=self.run_step('plan',extra=self.APPROVED)
+        self.assertEqual(r.returncode,0,r.stdout+r.stderr)
+        self.assertEqual([plan['ref'],plan['new_ref'],plan['note']],['ghcr.io/da-anda/addon-amd64:1.0.0','ghcr.io/da-anda/addon-amd64:1.1.0',''])
+        # No SBOM artifact of the caller's build is needed or awaited.
+        self.assertIn('scan=true',out);self.assertIn('wait=false',out)
+    @needs_shell
+    def test_the_new_image_is_the_one_the_pr_names(self):
+        # A changed image is category 1's image-changed; category 4 still scans what users would install.
+        r,plan,_=self.run_step('plan',extra=self.APPROVED,new={'image':'ghcr.io/da-anda/other-{arch}'})
+        self.assertEqual(r.returncode,0,r.stdout+r.stderr);self.assertEqual(plan['new_ref'],'ghcr.io/da-anda/other-amd64:1.1.0')
+    @needs_shell
+    def test_a_prebuilt_image_without_the_approval_still_awaits_its_sbom(self):
+        r,plan,out=self.run_step('plan',sbom='upgrade-comparison-sbom-*')
+        self.assertEqual(r.returncode,0,r.stdout+r.stderr);self.assertEqual(plan['new_ref'],'');self.assertIn('wait=true',out)
+    SBOMS=('plan',"SBOMs of the comparison targets' images")
+    OLD,NEW='ghcr.io/da-anda/addon-amd64:1.0.0','ghcr.io/da-anda/addon-amd64:1.1.0'
+    @needs_shell
+    def test_both_published_images_get_an_sbom_for_the_compare_step(self):
+        r,_,_=self.run_step(self.SBOMS,extra=self.APPROVED,images=(self.OLD,self.NEW))
+        self.assertEqual(r.returncode,0,r.stdout+r.stderr)
+        # Where the compare step reads them: the old one in RUNNER_TEMP, the new one where a downloaded artifact would be.
+        self.assertEqual(json.loads((self.tmp/'t.old.syft.json').read_text()),{'source':'docker:'+self.OLD})
+        self.assertEqual(json.loads((self.tmp/'sboms/t.syft.json').read_text()),{'source':'docker:'+self.NEW})
+    @needs_shell
+    def test_a_version_the_upstream_has_not_published_fails_saying_so(self):
+        r,_,_=self.run_step(self.SBOMS,extra=self.APPROVED,images=(self.OLD,))
+        self.assertEqual(r.returncode,1,r.stdout+r.stderr)
+        self.assertIn(f'::error title=Upgrade comparison failed::t: cannot pull {self.NEW}, the image users would install with this PR: '
+            'the upstream has not published tag 1.1.0 of ghcr.io/da-anda/addon-amd64 yet',r.stdout)
+        self.assertFalse((self.tmp/'sboms/t.syft.json').exists())
+    def test_a_published_new_image_is_not_awaited_or_downloaded(self):
+        # The harness runs a step whatever its `if:`; in the workflow these two must not run for a pulled new image.
+        for name in ("Wait for the new images' SBOMs","Download the new images' SBOMs"):
+            with self.subTest(name):self.assertIn("steps.plan.outputs.wait == 'true'",self.step(name)['if'])
+    @needs_shell
+    def test_a_new_fixable_vulnerability_in_the_published_image_blocks(self):
+        steps=self.SBOMS+('Compare with the comparison target',)
+        r,_,_=self.run_step(steps,extra=self.APPROVED,images=(self.OLD,self.NEW),vulnerable=self.NEW)
+        self.assertEqual(r.returncode,1,r.stdout+r.stderr)
+        self.assertIn('::error title=New fixable vulnerability::CVE-2026-0001 openssl (High, fixed in 3.0.9)',r.stdout)
+        self.assertIn(f't: scanned {self.OLD} (v1.0.0) and {self.NEW} with the same DB',r.stdout)
+        r,_,_=self.run_step(steps,extra=self.APPROVED,images=(self.OLD,self.NEW),vulnerable=self.OLD)
+        self.assertEqual(r.returncode,0,r.stdout+r.stderr);self.assertIn('No new fixable vulnerabilities.',r.stdout)
+    @needs_shell
+    def test_a_new_image_with_a_newline_is_rejected(self):
+        r,plan,_=self.run_step('plan',extra=self.APPROVED,new={'image':'ghcr.io/x/a-{arch}\n::warning title=Injected::boom'})
+        self.assertEqual(r.returncode,1,r.stdout+r.stderr);self.assertIn('control character',r.stdout);self.assertEqual(plan,{})
 
 class ComparisonTarget(StepHarness):
     """"No comparison target" only when there is no stable Release (or, for ref_policy main, no config at the PR base)."""

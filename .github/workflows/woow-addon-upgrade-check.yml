@@ -22,14 +22,20 @@
 # of the same run attempt, through the Actions API (a re-run judges its own
 # build, so re-run all jobs). An add-on with a prebuilt image whose SBOM
 # never arrives fails the check; it is never skipped.
-# Add-ons built on the device are reported as compared in #90. A caller whose
-# prebuilt image is not what its CI builds (knxd ships a third-party image),
-# or whose category 4 runs elsewhere, passes skip_vulnerability_scan (any
-# non-empty text, e.g. the reason): category 4 is then skipped for every add-on
-# in the call; the configuration comparison still runs. Only a provider whose
-# Store registry entry has upgrade_comparison.skip_vulnerability_scan (the
-# approved reason and ticket) may pass it, and the report gives that approved
-# reason, not the caller's text; any other caller that passes it fails.
+# Add-ons built on the device are reported as compared in #90. A provider
+# whose shipped image is not what its CI builds but the published image its
+# config.yaml names (knxd ships a third-party image) has
+# upgrade_comparison.scan_published_image in the Store registry (the approved
+# reason and ticket, #147): both sides are then that image's amd64 tag
+# <version>, pulled like the comparison target's, and no SBOM artifact is
+# awaited; a PR whose version the upstream has not published yet fails. A
+# caller whose category 4 cannot run (mcp_addons builds no PR image) passes
+# skip_vulnerability_scan (any non-empty text, e.g. the reason): category 4 is
+# then skipped for every add-on in the call; the configuration comparison
+# still runs. Only a provider whose Store registry entry has
+# upgrade_comparison.skip_vulnerability_scan (the approved reason and ticket)
+# may pass it, and the report gives that approved reason, not the caller's
+# text; any other caller that passes it fails.
 #
 # Caller (in a workflow that also runs on push to the default branch, so
 # addon_sync's ci_gate keeps seeing a successful non-PR run; no path filter,
@@ -42,7 +48,7 @@
 #       actions: read                             # find and download this run's SBOM artifact
 #     uses: WOOWTECH/Woow_HA_App_Store/.github/workflows/woow-addon-upgrade-check.yml@main
 #     with:
-#       sbom_artifact: upgrade-comparison-sbom-*  # omit only when no add-on has a prebuilt image
+#       sbom_artifact: upgrade-comparison-sbom-*  # omit only when no add-on has a prebuilt image, or with scan_published_image
 #       # skip_vulnerability_scan: "<reason>"      # instead of sbom_artifact, only when category 4 does not apply (quote it)
 #
 # GitHub names the check "<caller job> / <job>": "Upgrade comparison / compare".
@@ -180,6 +186,7 @@ jobs:
         source tooling/.addon-sync/log.sh
         source tooling/.addon-sync/fields.sh
         policy="$(jq -r '.ref_policy' provider.json)"; approved="$(jq -r '.skip_vulnerability_scan' provider.json)"
+        published="$(jq -r '.scan_published_image' provider.json)"
         releases="$(gh api --paginate "repos/${REPO}/releases?per_page=100" --jq '.[]' | jq -sc .)"
         # plan.jsonl, one object per add-on: id, notes (path in the PR), new (where the detect step left the PR's config),
         # target, ref (old image; "" = no scan), artifact (the addon-sbom artifact of its new image), note (why there is no scan).
@@ -222,8 +229,9 @@ jobs:
           else
             echo "${id}: no stable Release yet"
           fi
-          # Category 4: needs a prebuilt image and a comparison target; then the new image's SBOM is mandatory.
-          image="$(yq -r '.image // ""' "${new}")"
+          # Category 4: needs a prebuilt image and a comparison target; then the new image's SBOM is mandatory, from the
+          # caller's build or, when the registry approves scan_published_image, from the image the PR's config names.
+          image="$(yq -r '.image // ""' "${new}")"; new_ref=""
           artifact="upgrade-comparison-sbom-${id}-attempt-${RUN_ATTEMPT}"
           if [ -n "${SKIP_VULNERABILITY_SCAN}" ]; then
             # The detect step checked the approval; the report gives the registry's reason, never the caller's text.
@@ -234,6 +242,12 @@ jobs:
             note="no comparison target"
           elif [ -z "$(yq -r '.image // ""' "${old}")" ]; then
             note="the comparison target ${target} has no prebuilt image"
+          elif [ -n "${published}" ]; then
+            # The image users would install from this PR (Supervisor: image with {arch}, tag = version); pulled, not built.
+            no_cntrl "${image}" "${id}: the image in ${path} has a control character (newline, tab...): ${image}" || exit 1
+            old_image="$(yq -r '.image' "${old}")"
+            no_cntrl "${old_image}" "${id}: the comparison target ${target} has a control character (newline, tab...) in its image: ${old_image}" || exit 1
+            ref="${old_image//\{arch\}/amd64}:${old_version}"; new_ref="${image//\{arch\}/amd64}:${version}"
           elif [ -z "${SBOM_ARTIFACT}" ]; then
             fail "${id} has a prebuilt image but the caller passes no sbom_artifact; run the addon-sbom action after the amd64 build and pass sbom_artifact: upgrade-comparison-sbom-*"
             status=1
@@ -247,9 +261,11 @@ jobs:
             ref="${old_image//\{arch\}/amd64}:${old_version}"
           fi
           jq -nc --arg id "${id}" --arg notes "${notes}" --arg new "${new}" --arg target "${target}" --arg ref "${ref}" \
-            --arg artifact "${artifact}" --arg note "${note}" '$ARGS.named' >> plan.jsonl
+            --arg new_ref "${new_ref}" --arg artifact "${artifact}" --arg note "${note}" '$ARGS.named' >> plan.jsonl
         done < changed.jsonl
         if [ -n "$(jq -r 'select(.ref != "") | .id' plan.jsonl)" ]; then echo "scan=true" >> "$GITHUB_OUTPUT"; else echo "scan=false" >> "$GITHUB_OUTPUT"; fi
+        # Only a new image built by the caller hands over its SBOM as an artifact; a published one is pulled.
+        if [ -n "$(jq -r 'select(.ref != "" and .new_ref == "") | .id' plan.jsonl)" ]; then echo "wait=true" >> "$GITHUB_OUTPUT"; else echo "wait=false" >> "$GITHUB_OUTPUT"; fi
         exit "${status}"
     # While the caller's amd64 build is still running: scanners, DB and the old images' SBOMs.
     - name: Install pinned Syft and Grype
@@ -271,6 +287,7 @@ jobs:
         if [ "${age}" -gt $(( DB_MAX_AGE_HOURS * 3600 )) ]; then
           echo "::error title=Vulnerability database::the Grype DB was built ${built}, more than ${DB_MAX_AGE_HOURS}h ago; refusing to judge with stale data"; exit 1
         fi
+    # With scan_published_image also the new image the PR's config names: its SBOM goes where a downloaded artifact would.
     - name: SBOMs of the comparison targets' images
       if: steps.plan.outputs.scan == 'true'
       run: |
@@ -278,21 +295,29 @@ jobs:
         source tooling/.addon-sync/log.sh
         source tooling/.addon-sync/fields.sh
         export SYFT_CHECK_FOR_APP_UPDATE=false
+        mkdir -p sboms
         while IFS= read -r row; do
-          fields "${row}" id=id target=target ref=ref
+          fields "${row}" id=id target=target ref=ref new_ref=new_ref
           if ! docker pull --quiet --platform linux/amd64 "${ref}"; then
             fail "${id}: cannot pull the comparison target's image ${ref} from the registry; re-run, or check that the image of ${target} exists"; exit 1
           fi
-          if ! "$RUNNER_TEMP/scanners/syft" scan "docker:${ref}" --config tooling/.github/actions/addon-sbom/syft.yaml -o "syft-json=$RUNNER_TEMP/${id}.old.syft.json"; then
-            fail "${id}: Syft could not read ${ref}"; exit 1
+          if [ -n "${new_ref}" ] && ! docker pull --quiet --platform linux/amd64 "${new_ref}"; then
+            fail "${id}: cannot pull ${new_ref}, the image users would install with this PR: the upstream has not published tag ${new_ref##*:} of ${new_ref%:*} yet (or the registry is unreachable); bump to a version the upstream has released, or wait for its release, then re-run"; exit 1
           fi
-          docker image rm --force "${ref}" > /dev/null
+          for side in old new; do
+            image="${ref}"; sbom="$RUNNER_TEMP/${id}.old.syft.json"
+            if [ "${side}" = new ]; then [ -n "${new_ref}" ] || continue; image="${new_ref}"; sbom="sboms/${id}.syft.json"; fi
+            if ! "$RUNNER_TEMP/scanners/syft" scan "docker:${image}" --config tooling/.github/actions/addon-sbom/syft.yaml -o "syft-json=${sbom}"; then
+              fail "${id}: Syft could not read ${image}"; exit 1
+            fi
+            docker image rm --force "${image}" > /dev/null
+          done
         done < <(jq -c 'select(.ref != "")' plan.jsonl)
     # The caller does not make this job wait on its build (`needs:`), so a PR that changes no
     # version passes in seconds; only here, after a version change, does the job wait for the
     # addon-sbom artifact of this same run.
     - name: Wait for the new images' SBOMs
-      if: steps.detect.outputs.changed == 'true' && steps.plan.outputs.scan == 'true'
+      if: steps.detect.outputs.changed == 'true' && steps.plan.outputs.wait == 'true'
       env:
         GH_TOKEN: ${{ github.token }}
         REPO: ${{ github.repository }}
@@ -311,7 +336,7 @@ jobs:
           while IFS=$'\t' read -r id n; do
             row="$(awk -F'\t' -v n="${n}" '$1 == n' <<<"${arts}" | tail -n1)"
             if [ -n "${row}" ]; then printf '%s\t%s\n' "${id}" "$(cut -f3 <<<"${row}")" >> artifacts.tsv; else missing="${missing} ${id}"; fi
-          done < <(jq -r 'select(.ref != "") | [.id, .artifact] | @tsv' plan.jsonl)
+          done < <(jq -r 'select(.ref != "" and .new_ref == "") | [.id, .artifact] | @tsv' plan.jsonl)
           if [ -z "${missing}" ]; then echo "All SBOMs are uploaded."; break; fi
           # Every other job of this attempt finished (only this one still open), twice in a row:
           # the build ended without uploading the SBOM, so waiting longer cannot help.
@@ -327,7 +352,7 @@ jobs:
           echo "Waiting for the SBOM of${missing} (${open} jobs still open)..."; sleep 20
         done
     - name: Download the new images' SBOMs
-      if: steps.plan.outputs.scan == 'true'
+      if: steps.plan.outputs.wait == 'true'
       env:
         GH_TOKEN: ${{ github.token }}
         REPO: ${{ github.repository }}
@@ -348,7 +373,7 @@ jobs:
           GRYPE_DB_MAX_ALLOWED_BUILT_AGE="${DB_MAX_AGE_HOURS}h" GRYPE_CHECK_FOR_APP_UPDATE=false
         status=0
         while IFS= read -r row; do
-          fields "${row}" id=id notes=notes new=new target=target ref=ref note=note
+          fields "${row}" id=id notes=notes new=new target=target ref=ref new_ref=new_ref note=note
           old="$RUNNER_TEMP/${id}.old.yaml"
           args=(--name "${id}" --new "${new}" --notes "source/${notes}" --notes-path "${notes}")
           [ ! -s "${old}" ] || args+=(--old "${old}")
@@ -363,7 +388,7 @@ jobs:
                 fail "${id}: Grype could not scan the ${side} image's SBOM"; status=1; continue 2
               fi
             done
-            echo "${id}: scanned $(esc "${ref}") ($(esc "${target}")) and the PR image with the same DB"
+            echo "${id}: scanned $(esc "${ref}") ($(esc "${target}")) and $(esc "${new_ref:-the PR image}") with the same DB"
             args+=(--old-scan "$RUNNER_TEMP/${id}.old.grype.json" --new-scan "$RUNNER_TEMP/${id}.new.grype.json")
           fi
           rc=0; python3 tooling/.addon-sync/upgrade_check.py compare "${args[@]}" || rc=$?
