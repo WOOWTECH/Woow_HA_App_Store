@@ -556,13 +556,16 @@ jobs:
         done < <(jq -c 'select(.old_ref != "")' upgrade.jsonl)
         exit "${status}"
     # A step that failed before upgrade_runtime.py wrote a result (plan, pull, wait, load) leaves its reasons in
-    # FAIL_LOG; compare quotes them instead of only saying that this job failed.
+    # FAIL_LOG; compare quotes them instead of only saying that this job failed. When upgrade_runtime.py already
+    # wrote why an add-on failed, that is the reason: a second entry would only say that this job failed.
     - name: Record why the runtime job failed
       if: failure() && github.event_name == 'pull_request'
       run: |
         set -euo pipefail
         mkdir -p runtime-reports
-        if [ -s "${FAIL_LOG}" ]; then reason="$(cat "${FAIL_LOG}")"; else reason="a step failed without a reason; the runtime job's log has it"; fi
+        if [ -s "${FAIL_LOG}" ]; then reason="$(cat "${FAIL_LOG}")"
+        elif jq -e -s 'any(.[]; .passed == false)' runtime-reports/*.json > /dev/null 2>&1; then exit 0
+        else reason="a step failed without a reason; the runtime job's log has it"; fi
         jq -n --arg reason "${reason}" '{name: "runtime job", passed: false, reason: $reason}' > runtime-reports/runtime-job.json
     - name: Upload the upgrade test results
       if: always() && github.event_name == 'pull_request'

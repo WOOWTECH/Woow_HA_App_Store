@@ -793,6 +793,33 @@ class UpgradeTestPlan(StepHarness):
         r,rows,out=self.plan(image_artifact='other-*')
         self.assertNotEqual(r.returncode,0);self.assertIn("image_artifact 'other-*' does not match upgrade-comparison-image-t-attempt-1",r.stdout)
 
+class RuntimeFailureRecord(StepHarness):
+    """'Record why the runtime job failed': compare gets each reason once, and no reason-less entry next to a real one."""
+    def record(self,*,fail_log='',results=()):
+        """fail_log: what earlier steps wrote to FAIL_LOG. results: the runtime-reports/*.json already written.
+        Returns the reports compare would read, by file name."""
+        import os,subprocess
+        tmp=pathlib.Path(tempfile.mkdtemp());self.addCleanup(shutil.rmtree,tmp)
+        (tmp/'runtime-reports').mkdir()
+        for r in results:(tmp/'runtime-reports'/f"{r['name']}.json").write_text(json.dumps(r))
+        (tmp/'failures.txt').write_text(fail_log);(tmp/'step.sh').write_text(self.step('Record why the runtime job failed')['run'])
+        r=subprocess.run(['bash',str(tmp/'step.sh')],cwd=tmp,env=dict(os.environ,FAIL_LOG=str(tmp/'failures.txt')),capture_output=True,text=True)
+        self.assertEqual(r.returncode,0,r.stdout+r.stderr)
+        return {p.name:json.loads(p.read_text()) for p in (tmp/'runtime-reports').iterdir()}
+    @needs_shell
+    def test_failed_upgrade_test_is_the_only_reason(self):
+        failed={'name':'t','passed':False,'reason':'the new version (1.1.0) did not start: the container exited with code 3','phases':[]}
+        self.assertEqual(self.record(results=(failed,)),{'t.json':failed})
+    @needs_shell
+    def test_step_that_failed_before_the_test_hands_compare_its_reasons(self):
+        reports=self.record(fail_log='t: cannot pull the comparison target\'s image\n',results=({'name':'t','passed':None,'note':'n'},))
+        self.assertEqual(reports['runtime-job.json'],{'name':'runtime job','passed':False,'reason':"t: cannot pull the comparison target's image"})
+    @needs_shell
+    def test_failure_with_no_reason_anywhere_still_fails_compare(self):
+        self.assertEqual(self.record()['runtime-job.json']['reason'],"a step failed without a reason; the runtime job's log has it")
+        passed={'name':'t','passed':True,'reason':'','phases':[]}
+        self.assertEqual(self.record(results=(passed,))['runtime-job.json']['passed'],False)
+
 class SkipVulnerabilityScan(StepHarness):
     """skip_vulnerability_scan: a caller whose category 4 cannot run (mcp_addons builds no PR image) opts out with a
     reason; category 1 still runs and the report says why.
