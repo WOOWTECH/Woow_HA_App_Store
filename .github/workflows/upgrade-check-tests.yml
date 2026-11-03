@@ -1,4 +1,4 @@
-# Tests for the upgrade comparison (pipeline #89) before a change reaches the
+# Tests for the upgrade comparison (pipeline #89, #137) before a change reaches the
 # reusable woow-addon-upgrade-check.yml that every managed source repo calls.
 # upgrade_check imports addon_sync's Release rules (#119), and every source
 # repo's release runs addon_sync, so test_addon_sync.py runs here too.
@@ -14,10 +14,15 @@ name: Upgrade comparison tests
     - .addon-sync/gh_raw.sh
     - .addon-sync/log.sh
     - .addon-sync/fields.sh
+    - .addon-sync/wait_artifacts.sh
+    - .addon-sync/upgrade_runtime.py
+    - .addon-sync/test_upgrade_runtime.py
+    - .addon-sync/mock_supervisor.py
     - .addon-sync/registry.json
     - .github/workflows/woow-addon-upgrade-check.yml
     - .github/workflows/upgrade-check-tests.yml
     - .github/actions/addon-sbom/**
+    - .github/actions/addon-image/**
   push:
     branches: [main]
     paths:
@@ -29,16 +34,21 @@ name: Upgrade comparison tests
     - .addon-sync/gh_raw.sh
     - .addon-sync/log.sh
     - .addon-sync/fields.sh
+    - .addon-sync/wait_artifacts.sh
+    - .addon-sync/upgrade_runtime.py
+    - .addon-sync/test_upgrade_runtime.py
+    - .addon-sync/mock_supervisor.py
     - .addon-sync/registry.json
     - .github/workflows/woow-addon-upgrade-check.yml
     - .github/workflows/upgrade-check-tests.yml
     - .github/actions/addon-sbom/**
+    - .github/actions/addon-image/**
 permissions:
   contents: read
 jobs:
   test:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     steps:
     - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
       with:
@@ -47,5 +57,8 @@ jobs:
       run: python3 -m pip install -r .addon-sync/requirements.txt
     - name: Test the upgrade comparison
       run: python3 .addon-sync/test_upgrade_check.py -v
+    # Fake add-ons on the runner's real Docker: the mock Supervisor, the shared data directories and the startup check (#137).
+    - name: Test the upgrade test runtime
+      run: python3 .addon-sync/test_upgrade_runtime.py -v
     - name: Test the publisher and Release notes
       run: python3 .addon-sync/test_addon_sync.py -v

@@ -1,0 +1,49 @@
+# The PR's amd64 add-on image for the upgrade test (pipeline #137, category 2).
+#
+# Add one step after the repository's own amd64 build, which must leave the
+# image in the local docker daemon:
+#
+#   - uses: WOOWTECH/Woow_HA_App_Store/.github/actions/addon-image@main
+#     if: github.event_name == 'pull_request'
+#     with:
+#       component: woow-n8n          # the Store registry component id
+#       image: local/woow-n8n:ci
+#
+# It saves the image (docker save, tagged upgrade-comparison/<component>:new)
+# and uploads artifact upgrade-comparison-image-<component>-attempt-<run attempt>
+# holding <component>.tar. The caller job of woow-addon-upgrade-check.yml passes
+# image_artifact: upgrade-comparison-image-*; its runtime job loads this image as
+# the new version, so the upgrade test runs what CI built: no PR tag is pushed
+# to GHCR and nothing is rebuilt. Like addon-sbom, the comparison does NOT
+# `needs:` this job; it waits for this attempt's artifact after a version change.
+name: Add-on image for the upgrade test
+description: Save a locally built amd64 add-on image and upload it as an artifact for the upgrade comparison's runtime job.
+inputs:
+  component:
+    description: Store registry component id of the add-on (names the file, the tag and the artifact).
+    required: true
+  image:
+    description: Image reference in the local docker daemon.
+    required: true
+runs:
+  using: composite
+  steps:
+  - name: Save the image
+    shell: bash
+    env:
+      COMPONENT: ${{ inputs.component }}
+      IMAGE: ${{ inputs.image }}
+    run: |
+      set -euo pipefail
+      case "${COMPONENT}" in ''|*/*|*..*|*:*) echo "::error title=Add-on image::invalid component '${COMPONENT}'"; exit 1;; esac
+      mkdir -p "${RUNNER_TEMP}/addon-image"
+      docker tag "${IMAGE}" "upgrade-comparison/${COMPONENT}:new"
+      docker save -o "${RUNNER_TEMP}/addon-image/${COMPONENT}.tar" "upgrade-comparison/${COMPONENT}:new"
+  - name: Upload the image
+    uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+    with:
+      # The run attempt in the name: a re-run's upgrade test must not pick up an earlier attempt's image.
+      name: upgrade-comparison-image-${{ inputs.component }}-attempt-${{ github.run_attempt }}
+      path: ${{ runner.temp }}/addon-image/${{ inputs.component }}.tar
+      if-no-files-found: error
+      retention-days: 3

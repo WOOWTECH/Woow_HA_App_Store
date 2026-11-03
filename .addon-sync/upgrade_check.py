@@ -31,7 +31,7 @@ values, required made optional, added optional keys (not maps), added keys with 
 upgrade-notes.yaml format, version order and Release notes (#119): addon_sync, the comment above REBUILD.
 """
 from __future__ import annotations
-import argparse, contextlib, json, os, pathlib, secrets, sys
+import argparse, contextlib, json, os, pathlib, re, secrets, sys
 import yaml
 # addon_sync owns the Release rules (version order, upgrade-notes.yaml parsing, Release notes); it does not import this module.
 from addon_sync import Blocked, comparison_target, config_version, declaration_text, declarations, find_component, find_provider, locations, markdown_cell, publishes_releases, release_notes, release_tag, require_newer, source_file, stable_versions, version_cmp, workflow_command
@@ -299,6 +299,55 @@ def components(registry, repo):
     return {'ref_policy':provider['ref_policy'],'skip_vulnerability_scan':skip,'scan_published_image':published,
         'components':[{'id':c['id'],**paths(c)} for c in provider['components'] if publishes_releases(c)]}
 
+# Upgrade test (#137, category 2). Where Supervisor mounts each `map` type when the entry gives no `path`
+# (supervisor/addons/validate.py; `config` is the legacy name for Home Assistant's config, at /config).
+MAP_PATHS={'config':'/config','homeassistant_config':'/homeassistant','addon_config':'/config','all_addon_configs':'/addon_configs',
+    'ssl':'/ssl','addons':'/addons','backup':'/backup','share':'/share','media':'/media'}
+
+def mounts(config, root):
+    """The data directories of an add-on: /data, then one per `map` entry at its `path` (or Supervisor's default).
+    Each is the directory <root>/<type>, so the comparison target and the new version share the same set even when
+    one of them moves a type to another path. A string entry is read-only unless it ends in :rw; a mapping is
+    read-only unless read_only: false (Supervisor's defaults)."""
+    out=[{'type':'data','source':f'{root}/data','target':'/data','read_only':False}]
+    for entry in config.get('map') or []:
+        if isinstance(entry,str):kind,_,mode=entry.partition(':');read_only=mode!='rw';path=None
+        elif isinstance(entry,dict):kind,read_only,path=entry.get('type'),entry.get('read_only',True) is not False,entry.get('path')
+        else:kind=None
+        if kind not in MAP_PATHS:raise ValueError(f'unknown map entry {entry!r}')
+        out.append({'type':kind,'source':f'{root}/{kind}','target':path or MAP_PATHS[kind],'read_only':read_only})
+    return out
+
+# watchdog and webui as Supervisor writes them: [HOST] is the add-on's address, [PORT:n] its container port n,
+# [PROTO:option] https when that option is true.
+_URL=re.compile(r'^(https?|tcp|\[PROTO:(\w+)\])://\[HOST\]:(?:\[PORT:)?(\d+)\]?(.*)$')
+STARTUP_DEFAULTS={'startup_timeout':300,'stable_seconds':60}
+
+def _probe_url(text, options):
+    m=_URL.match(str(text))
+    if not m:raise ValueError(f'cannot read {text!r} as Supervisor does ([HOST] and [PORT:n])')
+    scheme,option,port,path=m.groups()
+    if option:scheme='https' if (options or {}).get(option) else 'http'
+    return f'{scheme}://[HOST]:{port}{path}'
+
+def startup_probe(config, settings=None):
+    """How the upgrade test judges that a version starts, in Supervisor's order: the watchdog answers with success
+    (HTTP below 300, or the TCP port accepts); else the ingress port answers; else the webui port answers (any HTTP
+    status below 500); else the container neither exits nor restarts for stable_seconds. Every wait ends at
+    startup_timeout seconds. `settings`: the add-on's upgrade-check/settings.yaml (parsed, or None), which may
+    override startup_timeout and stable_seconds. The url keeps [HOST] for the runtime to fill in."""
+    limits=dict(STARTUP_DEFAULTS)
+    for key,value in (settings or {}).items():
+        if key not in limits:raise ValueError(f'unknown setting {key!r} (known: {", ".join(limits)})')
+        if not isinstance(value,int) or isinstance(value,bool) or value<=0:raise ValueError(f'{key} must be a whole number of seconds above 0, not {value!r}')
+        limits[key]=value
+    options=config.get('options') or {}
+    if config.get('watchdog'):method,url='watchdog',_probe_url(config['watchdog'],options)
+    elif config.get('ingress') and config.get('ingress_port',8099)!=0:method,url='ingress',f'http://[HOST]:{config.get("ingress_port",8099)}/'
+    elif config.get('webui'):method,url='webui',_probe_url(config['webui'],options)
+    else:method,url='stays-up',''
+    return {'method':method,'url':url,'timeout':limits['startup_timeout'],'stable_seconds':limits['stable_seconds']}
+
 class _Failed(Exception):
     """A command's expected failure: main() reports it as an ::error (title, message) and exits 2."""
 
@@ -351,7 +400,16 @@ def _compare(a):
     for problem in r['problems']:_error('Invalid declaration',problem)
     return 1 if r['blocked'] else 0
 
-COMMANDS={'components':_components,'comparison-target':_comparison_target,'version':_version_command,'check-target':_check_target,'release-notes':_release_notes,'compare':_compare}
+def _mounts(a):
+    with _failing((ValueError,OSError,yaml.YAMLError),f'{a.config}: '):print(json.dumps(mounts(_load(a.config,'yaml') or {},a.root)))
+    return 0
+
+def _startup_probe(a):
+    with _failing((ValueError,OSError,yaml.YAMLError,AttributeError),f'{a.settings or a.config}: '):
+        print(json.dumps(startup_probe(_load(a.config,'yaml') or {},_load(a.settings,'yaml',optional=True))))
+    return 0
+
+COMMANDS={'mounts':_mounts,'startup-probe':_startup_probe,'components':_components,'comparison-target':_comparison_target,'version':_version_command,'check-target':_check_target,'release-notes':_release_notes,'compare':_compare}
 
 def main(argv=None):
     p=argparse.ArgumentParser(description=__doc__.splitlines()[0]);sub=p.add_subparsers(dest='command',required=True)
@@ -380,6 +438,10 @@ def main(argv=None):
     v.add_argument('--as-written',action='store_true',help="the PR's version: fail unless it reads as its text does (unquoted 1.10 is 1.1)")
     k=sub.add_parser('components',help="print what the workflow needs from the repository's registry entry (JSON, see components())")
     k.add_argument('--registry',required=True,help='Store registry.json');k.add_argument('--repo',required=True,help='source repository, owner/name')
+    m=sub.add_parser('mounts',help="print the upgrade test's data directories as JSON [{type, source, target, read_only}] (mounts())")
+    m.add_argument('--config',required=True,help="the version's config.yaml");m.add_argument('--root',required=True,help='directory holding one directory per type')
+    s=sub.add_parser('startup-probe',help='print how the upgrade test judges that a version starts, as JSON {method, url, timeout, stable_seconds} (startup_probe())')
+    s.add_argument('--config',required=True,help="the version's config.yaml");s.add_argument('--settings',help='upgrade-check/settings.yaml of the add-on (may be absent)')
     a=p.parse_args(argv)
     try:return COMMANDS[a.command](a)
     except _Failed as e:

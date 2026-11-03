@@ -549,10 +549,13 @@ class ReusableWorkflow(unittest.TestCase):
     def setUp(self):
         path=pathlib.Path(__file__).resolve().parent.parent/'.github/workflows/woow-addon-upgrade-check.yml'
         self.text=path.read_text(encoding='utf-8');self.wf=yaml.safe_load(self.text)
-    def test_single_compare_job_reports_on_every_event(self):
-        # The required check is "Upgrade comparison / compare": caller job name / this job's name.
-        self.assertIn('workflow_call',self.wf['on']);self.assertEqual(list(self.wf['jobs']),['compare'])
-        job=self.wf['jobs']['compare'];self.assertEqual(job['name'],'compare');self.assertNotIn('if',job)
+    def test_compare_job_reports_on_every_event_after_runtime(self):
+        # The required check is "Upgrade comparison / compare": caller job name / this job's name. It waits for the
+        # upgrade test (runtime, #137) and runs whatever runtime's result: a skipped required check counts as passed.
+        self.assertIn('workflow_call',self.wf['on']);self.assertEqual(sorted(self.wf['jobs']),['compare','runtime'])
+        job=self.wf['jobs']['compare'];self.assertEqual(job['name'],'compare')
+        self.assertEqual((job['needs'],job['if']),('runtime','${{ always() }}'))
+        self.assertNotIn('if',self.wf['jobs']['runtime']);self.assertNotIn('needs',self.wf['jobs']['runtime'])
         # actions: read lets the job find this run's SBOM artifact without `needs:` on the build (user story 5).
         self.assertEqual(self.wf['permissions'],{'contents':'read','actions':'read'})
     def test_store_tooling_is_tested_in_store_ci_not_in_every_source_pr(self):
@@ -577,7 +580,7 @@ class ReusableWorkflow(unittest.TestCase):
         wait=names.index("Wait for the new images' SBOMs");download=names.index("Download the new images' SBOMs")
         self.assertLess(wait,download)
         self.assertIn("steps.detect.outputs.changed == 'true'",steps[wait]['if'])
-        self.assertIn('actions/runs/${RUN_ID}/artifacts',steps[wait]['run'])
+        self.assertIn('wait_artifacts.sh wanted-sboms.tsv artifacts.tsv',steps[wait]['run'])
         self.assertEqual(self.wf['on']['workflow_call']['inputs']['sbom_wait_minutes']['default'],40)
         self.assertGreater(self.wf['jobs']['compare']['timeout-minutes'],40)
     def test_ref_policy_main_compares_with_where_the_base_version_first_appeared(self):
@@ -600,6 +603,39 @@ class ReusableWorkflow(unittest.TestCase):
             with self.subTest(duplicate):self.assertNotIn(duplicate,self.text.split('jobs:',1)[1])
     def test_device_built_add_ons_are_reported_as_compared_in_90(self):
         self.assertIn('built on the device; the vulnerability comparison for these add-ons is #90',self.step('Find the comparison targets'))
+    def test_runtime_plans_with_the_same_steps_as_compare(self):
+        # Both jobs judge the same add-ons and comparison targets: runtime repeats compare's steps up to the plan.
+        compare,runtime=self.wf['jobs']['compare']['steps'],self.wf['jobs']['runtime']['steps']
+        plan=[s.get('name') for s in compare].index('Find the comparison targets')
+        self.assertEqual(runtime[:plan+1],compare[:plan+1])
+    def test_upgrade_test_result_fails_compare_with_the_reason(self):
+        step=next(s for s in self.wf['jobs']['compare']['steps'] if s.get('name')=='Upgrade test result')
+        self.assertEqual(step['if'],"always() && github.event_name == 'pull_request'")
+        self.assertEqual(step['env']['RUNTIME_RESULT'],'${{ needs.runtime.result }}')
+        self.assertIn('upgrade-comparison-runtime-attempt-${RUN_ATTEMPT}',step['run'])
+        self.assertIn("upgrade test failed: $(jq -r '.reason'",step['run'])
+        self.assertIn('if [ "${RUNTIME_RESULT}" != success ]',step['run'])
+        self.assertIn('只檢查啟動，沒有檢查資料',step['run'])
+        upload=next(s for s in self.wf['jobs']['runtime']['steps'] if s.get('name')=='Upload the upgrade test results')
+        self.assertEqual(upload['with']['name'],'upgrade-comparison-runtime-attempt-${{ github.run_attempt }}')
+        self.assertTrue(upload['if'].startswith('always()'))
+    def test_new_image_comes_from_this_attempts_build_not_a_rebuild_or_ghcr(self):
+        steps={s.get('name'):s for s in self.wf['jobs']['runtime']['steps']}
+        self.assertIn('artifact="upgrade-comparison-image-${id}-attempt-${RUN_ATTEMPT}"',steps['Plan the upgrade tests']['run'])
+        self.assertIn('wait_artifacts.sh wanted-images.tsv images.tsv',steps['Wait for the new images']['run'])
+        self.assertIn('docker load -i',steps['Load the new images']['run'])
+        self.assertIn('--new-image "upgrade-comparison/${id}:new"',steps['Run the upgrade tests']['run'])
+        runtime=yaml.safe_dump(self.wf['jobs']['runtime'])
+        for absent in ('docker build','docker push','buildx'):
+            with self.subTest(absent):self.assertNotIn(absent,runtime)
+        action=yaml.safe_load((pathlib.Path(__file__).resolve().parent.parent/'.github/actions/addon-image/action.yml').read_text(encoding='utf-8'))
+        upload=next(s for s in action['runs']['steps'] if s.get('uses','').startswith('actions/upload-artifact@'))
+        self.assertEqual(upload['with']['name'],'upgrade-comparison-image-${{ inputs.component }}-attempt-${{ github.run_attempt }}')
+        save=action['runs']['steps'][0]['run'];self.assertIn('docker save',save);self.assertIn('upgrade-comparison/${COMPONENT}:new',save)
+    def test_add_ons_without_a_test_yet_are_named_with_their_ticket(self):
+        plan=next(s for s in self.wf['jobs']['runtime']['steps'] if s.get('name')=='Plan the upgrade tests')['run']
+        self.assertIn('built on the device; the upgrade test for these add-ons is #144',plan)
+        self.assertIn('the caller passes no image_artifact; the upgrade test is being rolled out in #143',plan)
     def step(self,name):return next(s for s in self.wf['jobs']['compare']['steps'] if s.get('name')==name)['run']
     def step_env(self,name):return next(s for s in self.wf['jobs']['compare']['steps'] if s.get('name')==name)['env']
 SHELL_TOOLS=all(shutil.which(t) for t in ('bash','jq','yq'))
@@ -609,9 +645,9 @@ class StepHarness(unittest.TestCase):
     STORE=pathlib.Path(__file__).resolve().parent.parent
     WF=STORE/'.github/workflows/woow-addon-upgrade-check.yml'
     def setUp(self):self.wf=yaml.safe_load(self.WF.read_text(encoding='utf-8'))
-    def step(self,ident):return next(s for s in self.wf['jobs']['compare']['steps'] if ident in (s.get('id'),s.get('name')))
+    def step(self,ident):return next(s for j in ('compare','runtime') for s in self.wf['jobs'][j]['steps'] if ident in (s.get('id'),s.get('name')))
     def run_step(self,ident,*,policy='release',extra=None,releases=('v1.0.0',),old_config=True,new_config=True,skip='',sbom='',version='1.1.0',old=None,old_path='',
-            new_path='addon/config.yaml',new=None,files=None,raw_version=None,history=None,changed=1,gh_fail='',images=(),vulnerable=''):
+            new_path='addon/config.yaml',new=None,files=None,raw_version=None,history=None,changed=1,gh_fail='',images=(),vulnerable='',image_artifact=''):
         """ident: one step, or a tuple run in order until one fails. new_path: where the PR has the config; new: changes to it;
         files: more files of the PR checkout; raw_version: {'old'/'new': the version line's YAML as written, e.g. 1.10 unquoted}.
         history: the PR base's history, newest first, [(sha, {path: changes to the config, or None for no file})]; the first
@@ -620,6 +656,7 @@ class StepHarness(unittest.TestCase):
         images: the image references the registry has; `docker pull` of any other fails, and the stub Syft writes
         {"source": "<what it scanned>"} as the SBOM. vulnerable: the image whose SBOM the stub Grype finds a High fixable
         vulnerability in (CVE-2026-0001 openssl, fixed in 3.0.9); every scan reports the same DB.
+        image_artifact: the caller's image_artifact (the runtime job's plan, #137).
         self.tmp is the job's directory (also RUNNER_TEMP); self.plans is every line of plan.jsonl."""
         import os,subprocess
         tmp=self.tmp=pathlib.Path(tempfile.mkdtemp());self.addCleanup(shutil.rmtree,tmp)
@@ -651,7 +688,7 @@ class StepHarness(unittest.TestCase):
         # What `gh api --paginate .../releases --jq '.[]'` prints: one Release object per line; a bare tag is a stable Release.
         releases='\n'.join(json.dumps(r if isinstance(r,dict) else {'tag_name':r,'draft':False,'prerelease':False}) for r in releases)
         env=dict(os.environ,PATH=f"{tmp/'bin'}{os.pathsep}{os.environ['PATH']}",OLD=str(tmp/'old.yaml'),OLD_PATH=old_path,RELEASES=releases,REPO='WOOWTECH/t',BASE_SHA='b',
-            GH_TOKEN='x',DB_MAX_AGE_HOURS='120',IMAGES='\n'.join(images),VULNERABLE=vulnerable,SBOM_ARTIFACT=sbom,SKIP_VULNERABILITY_SCAN=skip,RUNNER_TEMP=str(tmp),RUN_ATTEMPT='1',
+            GH_TOKEN='x',DB_MAX_AGE_HOURS='120',IMAGES='\n'.join(images),VULNERABLE=vulnerable,SBOM_ARTIFACT=sbom,IMAGE_ARTIFACT=image_artifact,SKIP_VULNERABILITY_SCAN=skip,RUNNER_TEMP=str(tmp),RUN_ATTEMPT='1',
             GITHUB_OUTPUT=str(tmp/'out'),GITHUB_STEP_SUMMARY=str(tmp/'summary'),HISTORY=str(tmp/'history.json') if history is not None else '',GH_FAIL=gh_fail,
             TMPDIR=str(tmp/'mktemp'))
         (tmp/'mktemp').mkdir(exist_ok=True)
@@ -721,6 +758,34 @@ def registry_approvals(key):
     """{repository: approved reason} of the Store registry's upgrade_comparison.<key>."""
     registry=json.loads((StepHarness.STORE/'.addon-sync/registry.json').read_text(encoding='utf-8'))
     return {repo:p['upgrade_comparison'][key] for repo,p in registry['providers'].items() if key in (p.get('upgrade_comparison') or {})}
+
+class UpgradeTestPlan(StepHarness):
+    """The runtime job's plan (#137): which add-ons get the upgrade test, with which old image and new-image artifact."""
+    def plan(self,**kw):
+        kw.setdefault('sbom','upgrade-comparison-sbom-*')
+        r,_,out=self.run_step(('plan','upgrade'),**kw)
+        rows=[json.loads(l) for l in (self.tmp/'upgrade.jsonl').read_text().splitlines()] if (self.tmp/'upgrade.jsonl').exists() else []
+        return r,rows,out
+    def note(self):return json.loads((self.tmp/'runtime-reports/t.json').read_text())
+    @needs_shell
+    def test_prebuilt_add_on_is_tested_with_the_targets_ghcr_image_and_this_attempts_artifact(self):
+        r,(row,),out=self.plan(image_artifact='upgrade-comparison-image-*')
+        self.assertEqual(r.returncode,0,r.stdout+r.stderr);self.assertIn('run=true',out)
+        self.assertEqual((row['old_ref'],row['artifact'],row['addon_dir']),('ghcr.io/da-anda/addon-amd64:1.0.0','upgrade-comparison-image-t-attempt-1','source/addon'))
+        self.assertFalse((self.tmp/'runtime-reports/t.json').exists())
+    @needs_shell
+    def test_caller_without_image_artifact_is_reported_as_not_rolled_out(self):
+        r,(row,),out=self.plan()
+        self.assertEqual(r.returncode,0,r.stdout+r.stderr);self.assertIn('run=false',out);self.assertEqual(row['old_ref'],'')
+        self.assertEqual(self.note(),{'name':'t','passed':None,'note':'the caller passes no image_artifact; the upgrade test is being rolled out in #143'})
+    @needs_shell
+    def test_device_built_add_on_is_reported_as_144(self):
+        r,(row,),out=self.plan(image_artifact='upgrade-comparison-image-*',new={'image':None},old={'image':None},sbom='')
+        self.assertEqual(r.returncode,0,r.stdout+r.stderr);self.assertIn('#144',self.note()['note'])
+    @needs_shell
+    def test_image_artifact_that_does_not_match_fails(self):
+        r,rows,out=self.plan(image_artifact='other-*')
+        self.assertNotEqual(r.returncode,0);self.assertIn("image_artifact 'other-*' does not match upgrade-comparison-image-t-attempt-1",r.stdout)
 
 class SkipVulnerabilityScan(StepHarness):
     """skip_vulnerability_scan: a caller whose category 4 cannot run (mcp_addons builds no PR image) opts out with a
@@ -1224,9 +1289,70 @@ class Scanners(unittest.TestCase):
                 self.assertRegex(pin['sha256'],r'^[0-9a-f]{64}$');self.assertIn(f'/v{pin["version"]}/',pin['url'])
     def test_third_party_actions_are_pinned_by_commit(self):
         import re
-        for path in [self.ACTION/'action.yml',self.ACTION.parent.parent/'workflows/woow-addon-upgrade-check.yml']:
+        for path in [self.ACTION/'action.yml',self.ACTION.parent/'addon-image/action.yml',self.ACTION.parent.parent/'workflows/woow-addon-upgrade-check.yml']:
             for ref in re.findall(r'uses: *([^\s#]+)',path.read_text(encoding='utf-8')):
                 with self.subTest(ref):
                     if not ref.startswith('WOOWTECH/'):self.assertRegex(ref,r'@[0-9a-f]{40}$')
+
+class RuntimeRulesCommand(unittest.TestCase):
+    """The upgrade test's pure rules (#137): where each data directory is mounted, and how "it starts" is judged."""
+    def setUp(self):
+        self.dir=pathlib.Path(tempfile.mkdtemp());self.addCleanup(shutil.rmtree,self.dir)
+    def run_cmd(self,*args):
+        with contextlib.redirect_stdout(io.StringIO()) as out:code=u.main(list(args))
+        return code,out.getvalue()
+    def config(self,**cfg):
+        path=self.dir/'config.yaml';path.write_text(yaml.safe_dump(dict(BASE,**cfg)),encoding='utf-8');return str(path)
+    def mounts(self,**cfg):
+        code,out=self.run_cmd('mounts','--config',self.config(**cfg),'--root','/w')
+        self.assertEqual(code,0,out);return [(m['source'],m['target'],m['read_only']) for m in json.loads(out)]
+    def test_data_is_always_mounted_and_shared_by_type(self):
+        self.assertEqual(self.mounts(),[('/w/data','/data',False)])
+    def test_map_entries_mount_at_supervisor_default_paths(self):
+        # n8n's map: its data is in /config (addon_config); a dict entry is read-only unless read_only: false.
+        got=self.mounts(map=[{'type':'addon_config','read_only':False},{'type':'share'},'media:rw','ssl','homeassistant_config'])
+        self.assertEqual(got,[('/w/data','/data',False),('/w/addon_config','/config',False),('/w/share','/share',True),
+            ('/w/media','/media',False),('/w/ssl','/ssl',True),('/w/homeassistant_config','/homeassistant',True)])
+    def test_custom_path_is_where_the_directory_is_mounted(self):
+        # headscale keeps its database in /var/lib/headscale.
+        got=self.mounts(map=[{'type':'addon_config','path':'/var/lib/headscale','read_only':False}])
+        self.assertEqual(got,[('/w/data','/data',False),('/w/addon_config','/var/lib/headscale',False)])
+    def test_legacy_config_is_home_assistant_config_at_config(self):
+        self.assertEqual(self.mounts(map=['config:rw']),[('/w/data','/data',False),('/w/config','/config',False)])
+    def test_unknown_map_type_fails_with_the_reason(self):
+        code,out=self.run_cmd('mounts','--config',self.config(map=['nope']),'--root','/w')
+        self.assertEqual(code,2);self.assertIn("unknown map entry 'nope'",out)
+    def probe(self,settings=None,**cfg):
+        args=['startup-probe','--config',self.config(**cfg)]
+        if settings is not None:
+            path=self.dir/'settings.yaml';path.write_text(yaml.safe_dump(settings),encoding='utf-8');args+=['--settings',str(path)]
+        code,out=self.run_cmd(*args);self.assertEqual(code,0,out);return json.loads(out)
+    def test_startup_is_judged_by_watchdog_first(self):
+        # n8n: watchdog, ingress and webui all present; the watchdog wins, at its container port.
+        p=self.probe(watchdog='http://[HOST]:[PORT:5690]/_woow/watchdog',ingress=True,ingress_port=5690,webui='http://[HOST]:[PORT:5678]')
+        self.assertEqual((p['method'],p['url']),('watchdog','http://[HOST]:5690/_woow/watchdog'))
+        self.assertEqual(self.probe(watchdog='tcp://[HOST]:[PORT:1883]')['url'],'tcp://[HOST]:1883')
+    def test_then_ingress_port_then_webui_then_staying_up(self):
+        self.assertEqual(self.probe(ingress=True,ingress_port=5690,webui='http://[HOST]:[PORT:5678]/x')['url'],'http://[HOST]:5690/')
+        self.assertEqual(self.probe(ingress=True)['url'],'http://[HOST]:8099/')  # Supervisor's default ingress_port
+        self.assertEqual(self.probe(webui='http://[HOST]:[PORT:5678]/admin')['url'],'http://[HOST]:5678/admin')
+        p=self.probe(webui='[PROTO:ssl]://[HOST]:[PORT:443]/',options={'ssl':True})
+        self.assertEqual((p['method'],p['url']),('webui','https://[HOST]:443/'))
+        p=self.probe();self.assertEqual((p['method'],p['url'],p['stable_seconds']),('stays-up','',60))
+    def test_time_limits_have_defaults_and_can_be_overridden(self):
+        p=self.probe(watchdog='tcp://[HOST]:[PORT:1]')
+        self.assertEqual((p['timeout'],p['stable_seconds']),(300,60))
+        p=self.probe({'startup_timeout':900,'stable_seconds':90},watchdog='tcp://[HOST]:[PORT:1]')
+        self.assertEqual((p['timeout'],p['stable_seconds']),(900,90))
+    def test_bad_settings_fail_with_the_reason(self):
+        path=self.dir/'settings.yaml'
+        for text,reason in [('startup_timeout: 0\n','startup_timeout'),('startup_timeout: soon\n','startup_timeout'),('wait: 5\n',"unknown setting 'wait'")]:
+            with self.subTest(text):
+                path.write_text(text,encoding='utf-8')
+                code,out=self.run_cmd('startup-probe','--config',self.config(),'--settings',str(path))
+                self.assertEqual(code,2);self.assertIn(reason,out)
+    def test_absent_settings_file_uses_the_defaults(self):
+        code,out=self.run_cmd('startup-probe','--config',self.config(),'--settings',str(self.dir/'absent.yaml'))
+        self.assertEqual((code,json.loads(out)['timeout']),(0,300))
 
 if __name__=='__main__':unittest.main()
