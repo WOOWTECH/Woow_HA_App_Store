@@ -2,7 +2,7 @@
 
 Each fake add-on asks the mock Supervisor for its own info with its token (a wrong answer exits), reads
 /data/options.json and counts its starts in /data. Needs a Docker daemon (GitHub runners have one)."""
-import contextlib, io, json, pathlib, shutil, subprocess, tempfile, unittest, uuid
+import contextlib, io, json, pathlib, re, shutil, subprocess, tempfile, unittest, uuid
 from unittest import mock
 import yaml
 import upgrade_runtime as rt
@@ -110,6 +110,8 @@ SEED_OPTIONS = r'''#!/usr/bin/env python3
 import json, os, shutil
 shutil.copy(os.environ['DATA_DIR_DATA'] + '/options.json', os.environ['HOOK_STATE_DIR'] + '/old-options.json')
 print('pw=' + json.load(open(os.environ['DATA_DIR_DATA'] + '/options.json'))['pw'])
+# Then enough output that the password sits where the report cuts the output to its last 4000 characters.
+print('.' * 3988)
 '''
 VERIFY_OPTIONS = r'''#!/usr/bin/env python3
 import json, os, re, sys
@@ -397,9 +399,11 @@ class Runtime(unittest.TestCase):
             schema=self.OPTIONS_SCHEMA, sides={'new': {'schema': {**self.OPTIONS_SCHEMA, 'extra': 'str?'}}})
         self.assertEqual(code, 0, out + json.dumps(result, indent=1)); self.assertTrue(result['passed'])
         self.assertEqual([c['result'] for c in result['phases'][1]['hooks'][0]['checks']], ['pass'] * 6)
-        self.assertEqual(result['options'], {'from_repo': ['extra', 'level', 'token'], 'generated': ['pw']})
+        self.assertEqual(result['options'], {'from_repo': ['extra', 'level', 'token'], 'generated': ['pw'], 'warnings': []})
         # Both hooks printed the password: the result and the report show the mask instead.
-        for p in result['phases']:self.assertIn(f'pw={rt.MASK}', p['hooks'][0]['output'])
+        for p in result['phases']:self.assertIn(f'{rt.MASK}', p['hooks'][0]['output'])
+        # Masked before the cut: no piece of the password is left at the start of seed's output.
+        self.assertIsNone(re.search('[A-Za-z0-9]{8}', result['phases'][0]['hooks'][0]['output'].replace(rt.MASK, '')))
         summary = (self.dir / 'summary.md').read_text(encoding='utf-8')
         self.assertIn('Test options (測試用的 options): upgrade-check/options.yaml sets `extra`, `level`, `token`; random passwords for `pw`', summary)
         self.assertNotIn('repo-token-value', json.dumps(result) + summary + out)
@@ -412,33 +416,44 @@ class Runtime(unittest.TestCase):
 
 class TestOptions(unittest.TestCase):
     """#157: what /data/options.json holds for each version, without Docker."""
-    def build(self, config, given=None, generated=None):
-        generated = {} if generated is None else generated
-        return rt.phase_options(config, given, generated), generated
+    def build(self, config, given=None):
+        (options,), generated = rt.build_test_options([config], given)
+        return options, generated
     def test_without_options_yaml_or_passwords_the_defaults_stay(self):
         config = {'options': {'a': 1, 'b': None, 'c': ''}, 'schema': {'a': 'int', 'b': 'str?', 'c': 'str'}}
         self.assertEqual(self.build(config), ({'a': 1, 'c': ''}, {}))
-        self.assertEqual(self.build(config)[0], rt.default_options(config))
     def test_repo_values_win_as_supervisor_merges_them(self):
         config = {'options': {'a': 1, 'nested': {'x': 1, 'y': 2}, 'items': [1, 2], 'gone': 'default'},
             'schema': {'a': 'int', 'nested': {'x': 'int', 'y': 'int'}, 'items': ['int'], 'gone': 'str?', 'new': 'str?'}}
         options, _ = self.build(config, {'a': 5, 'nested': {'y': 9}, 'items': [3], 'gone': None, 'new': 'n'})
         self.assertEqual(options, {'a': 5, 'nested': {'x': 1, 'y': 9}, 'items': [3], 'new': 'n'})
     def test_a_key_one_schema_lacks_is_left_out_for_that_version(self):
-        old, new = {'options': {}, 'schema': {'a': 'str'}}, {'options': {}, 'schema': {'a': 'str', 'b': 'str?'}}
-        rt.check_test_options({'b': 'x'}, (old, new))
-        self.assertEqual(self.build(old, {'a': 'x', 'b': 'x'})[0], {'a': 'x'}); self.assertEqual(self.build(new, {'b': 'x'})[0], {'b': 'x'})
+        old = {'options': {}, 'schema': {'a': 'str', 'n': {'x': 'str'}}}
+        new = {'options': {}, 'schema': {'a': 'str', 'b': 'str?', 'n': {'x': 'str', 'y': 'str?'}}}
+        given = {'a': 'x', 'b': 'x', 'n': {'x': '1', 'y': '2'}}
+        rt.check_test_options(given, (old, new))
+        (o, n), _ = rt.build_test_options([old, new], given)
+        self.assertEqual(o, {'a': 'x', 'n': {'x': '1'}}); self.assertEqual(n, given)
         with self.assertRaisesRegex(ValueError, r"sets 'c', which no version's config.yaml schema has \(Supervisor drops"):
             rt.check_test_options({'a': 'x', 'c': 'x'}, (old, new))
+        # Nested too, as Supervisor drops unknown keys of a nested mapping.
+        with self.assertRaisesRegex(ValueError, r"sets 'n.z', which no version's config.yaml schema has"):
+            rt.check_test_options({'n': {'x': '1', 'z': '3'}}, (old, new))
         # Without a schema mapping nothing is checked or left out.
         rt.check_test_options({'c': 'x'}, (old, {'options': {}, 'schema': False}))
         self.assertEqual(self.build({'options': {}}, {'c': 'x'})[0], {'c': 'x'})
+    def test_a_password_value_that_is_not_a_string_is_refused(self):
+        config = {'schema': {'pw': 'password?', 'n': {'pw': 'password'}, 'port': 'int'}}
+        rt.check_test_options({'pw': None, 'port': 5, 'n': {'pw': 'ok'}}, [config])
+        for given, name in (({'pw': 1234}, "'pw'"), ({'n': {'pw': True}}, "'n.pw'")):
+            with self.subTest(given), self.assertRaisesRegex(ValueError, f'{name} is a password option, so its value must be a string, not a'):
+                rt.check_test_options(given, [config])
     def test_required_passwords_left_empty_get_one_random_value_for_both_versions(self):
         # omnigent: admin_password ''; odoo and nextcloud: null; nextcloud's db_password is password? (optional).
         old = {'options': {'admin_password': '', 'admin_passwd': None, 'db_password': None, 'user': ''},
             'schema': {'admin_password': 'password', 'admin_passwd': 'password', 'db_password': 'password?', 'user': 'str', 'smtp': 'password?'}}
         new = {**old, 'schema': {**old['schema'], 'short': 'password(4,12)', 'long': 'password(40,)'}}
-        first, generated = self.build(old); second, _ = self.build(new, generated=generated)
+        (first, second), generated = rt.build_test_options([old, new], None)
         self.assertEqual(sorted(generated), ['admin_passwd', 'admin_password', 'long', 'short'])
         for options in (first, second):
             self.assertRegex(options['admin_password'], r'^[A-Za-z0-9]{32}$'); self.assertRegex(options['admin_passwd'], r'^[A-Za-z0-9]{32}$')
@@ -447,21 +462,46 @@ class TestOptions(unittest.TestCase):
         self.assertEqual([first[k] for k in ('admin_password', 'admin_passwd')], [second[k] for k in ('admin_password', 'admin_passwd')])
         self.assertNotEqual(first['admin_password'], first['admin_passwd'])
         self.assertEqual((len(second['short']), len(second['long'])), (12, 40))
+    def test_a_shared_password_fits_both_versions_length_ranges(self):
+        old, new = {'options': {}, 'schema': {'pw': 'password(,20)'}}, {'options': {}, 'schema': {'pw': 'password(10,40)'}}
+        (o, n), generated = rt.build_test_options([old, new], None)
+        self.assertEqual((len(o['pw']), o['pw']), (20, n['pw']))
+        self.assertEqual(rt.password_length('pw', ['password(40,)', 'password']), 40)
+        with self.assertRaisesRegex(ValueError, r"'pw' needs a generated value, but its length ranges \(password\(,8\), password\(10,\)\) do not overlap"):
+            rt.build_test_options([{'schema': {'pw': 'password(,8)'}}, {'schema': {'pw': 'password(10,)'}}], None)
+        # A version that gets the password from the repository does not constrain the generated one.
+        (o, n), generated = rt.build_test_options([{'schema': {'pw': 'password(,8)'}}, {'schema': {'pw': 'password(10,)'}}], {'pw': 'given-by-repo'})
+        self.assertEqual((o['pw'], n['pw'], generated), ('given-by-repo', 'given-by-repo', {}))
     def test_a_repo_password_is_kept_and_nested_passwords_are_generated(self):
         config = {'options': {'pw': '', 'db': {'pw': None, 'host': 'h'}, 'users': [{'name': 'a'}]},
-            'schema': {'pw': 'password', 'db': {'pw': 'password', 'host': 'str'}, 'users': [{'name': 'str', 'pw': 'password'}]}}
+            'schema': {'pw': 'password', 'db': {'pw': 'password', 'host': 'str'}, 'users': [{'name': 'str', 'pw': 'password'}],
+                'auth': {'secret': 'password', 'realm': 'str?'}}}
         options, generated = self.build(config, {'pw': 'from-repo'})
-        self.assertEqual(options['pw'], 'from-repo'); self.assertEqual(sorted(generated), ['db.pw'])
+        self.assertEqual(options['pw'], 'from-repo'); self.assertEqual(sorted(generated), ['auth.secret', 'db.pw'])
         self.assertEqual(options['db']['pw'], generated['db.pw']); self.assertEqual(options['users'], [{'name': 'a'}])
+        # A required nested mapping the options lack is created for its password.
+        self.assertEqual(options['auth'], {'secret': generated['auth.secret']})
     def test_options_yaml_is_read_and_must_be_a_mapping(self):
         d = pathlib.Path(tempfile.mkdtemp()); self.addCleanup(shutil.rmtree, d, True)
         self.assertIsNone(rt.read_test_options(d))
         for text, expected in (('', {}), ('a: 1\nb: [x]\n', {'a': 1, 'b': ['x']})):
             (d / 'options.yaml').write_text(text, encoding='utf-8'); self.assertEqual(rt.read_test_options(d), expected)
-        for text, message in (('- a\n', 'must be a mapping of option: value'), ('a: [unclosed\n', 'is not valid YAML'),
-                ('1: x\n', 'must be a mapping of option: value'), ('just text\n', 'must be a mapping')):
+        for text, message in (('- secret-one\n', 'must be a mapping of option: value .as in config.yaml options., not a list'),
+                ('pw: [secret-two\n', 'is not valid YAML at line 2, column 1'),
+                ('1: secret-three\n', 'must be a mapping of option: value; a key is a int, not a name'), ('secret-four\n', 'must be a mapping')):
             (d / 'options.yaml').write_text(text, encoding='utf-8')
-            with self.subTest(text), self.assertRaisesRegex(ValueError, 'upgrade-check/options.yaml ' + message):rt.read_test_options(d)
+            with self.subTest(text):
+                with self.assertRaisesRegex(ValueError, 'upgrade-check/options.yaml ' + message) as caught:rt.read_test_options(d)
+                # The file may hold passwords: the error never quotes it.
+                self.assertNotIn('secret', str(caught.exception))
+    def test_an_options_yaml_linked_out_of_upgrade_check_is_refused(self):
+        d = pathlib.Path(tempfile.mkdtemp()); self.addCleanup(shutil.rmtree, d, True)
+        (d / 'hooks').mkdir(); (d / 'elsewhere.yaml').write_text('a: 1\n', encoding='utf-8'); (d / 'hooks/inside.yaml').write_text('b: 2\n', encoding='utf-8')
+        try:(d / 'hooks/options.yaml').symlink_to(d / 'elsewhere.yaml')
+        except OSError:self.skipTest('this account cannot create symlinks (Windows without developer mode)')
+        with self.assertRaisesRegex(ValueError, 'upgrade-check/options.yaml is a symlink to .*, outside upgrade-check/'):rt.read_test_options(d / 'hooks')
+        (d / 'hooks/options.yaml').unlink(); (d / 'hooks/options.yaml').symlink_to(d / 'hooks/inside.yaml')
+        self.assertEqual(rt.read_test_options(d / 'hooks'), {'b': 2})
     def test_a_malformed_options_yaml_is_a_tool_error_before_docker(self):
         d = pathlib.Path(tempfile.mkdtemp()); self.addCleanup(shutil.rmtree, d, True)
         (d / 'addon/upgrade-check').mkdir(parents=True); (d / 'addon/upgrade-check/options.yaml').write_text('- a\n', encoding='utf-8')
@@ -473,13 +513,26 @@ class TestOptions(unittest.TestCase):
         result = json.loads((d / 'reports/fake.json').read_text(encoding='utf-8'))
         self.assertIn('the upgrade test could not run: upgrade-check/options.yaml must be a mapping of option: value', result['reason'])
         self.assertIn('::error title=Upgrade test::fake: the upgrade test could not run: upgrade-check/options.yaml', out.getvalue())
-    def test_passwords_are_masked_but_short_ones_and_other_values_are_not(self):
+    def test_generated_and_repo_passwords_are_masked_but_not_defaults_or_names(self):
         config = {'schema': {'pw': 'password', 'opt': 'password?', 'list': ['password'], 'name': 'str'}}
-        options = {'pw': 'generated-secret-1', 'opt': 'abc', 'list': ['listed-secret'], 'name': 'visible-name'}
-        words = rt.mask_words({'pw': 'generated-secret-1'}, [options], [config])
-        self.assertEqual(words, ['generated-secret-1', 'listed-secret'])
-        masked = rt.mask({'a': ['x generated-secret-1 y', {'b': 'listed-secret abc visible-name'}], 'n': 3}, words)
-        self.assertEqual(masked, {'a': [f'x {rt.MASK} y', {'b': f'{rt.MASK} abc visible-name'}], 'n': 3})
+        given = {'opt': 'q"uoted-secret', 'list': ['listed-secret'], 'name': 'visible-name'}
+        words = rt.mask_words({'pw': 'generated-secret-1'}, given, [config])
+        self.assertEqual(set(words), {'generated-secret-1', 'listed-secret', 'q"uoted-secret', r'q\"uoted-secret'})
+        self.assertEqual(rt.mask_words({}, None, [config]), []); self.assertEqual(rt.mask('x', []), 'x')
+        masked = rt.mask({'a': ['x generated-secret-1 y', {'b': 'listed-secret abc visible-name'}], 'log': '{"pw": "q\\"uoted-secret"}', 'n': 3}, words)
+        self.assertEqual(masked, {'a': [f'x {rt.MASK} y', {'b': f'{rt.MASK} abc visible-name'}], 'log': f'{{"pw": "{rt.MASK}"}}', 'n': 3})
+        # The add-on's name and each version's image and version stay as they are.
+        result = {'name': 'my-secret-addon', 'reason': 'secret', 'phases': [{'image': 'img:secret', 'version': 'secret', 'detail': 'secret'}]}
+        self.assertEqual(rt.mask_result(result, ['secret']), {'name': 'my-secret-addon', 'reason': rt.MASK,
+            'phases': [{'image': 'img:secret', 'version': 'secret', 'detail': rt.MASK}]})
+    def test_weak_or_colliding_repo_passwords_are_warned_about_without_their_value(self):
+        config = {'name': 'Fake Addon', 'slug': 'fake', 'version': '1.0.0', 'schema': {'a': 'password', 'b': 'password?', 'c': 'password', 'd': 'str'}}
+        warnings = rt.option_warnings({'a': 'short', 'b': 'Addon-and-more'[:5], 'c': 'long-and-test-only', 'd': 'x'}, [config], ['local/fake:1'])
+        self.assertEqual(warnings, ['the password `a` is shorter than 8 characters; it is masked wherever it appears, so pick a longer, test-only value',
+            'the password `b` is shorter than 8 characters; it is masked wherever it appears, so pick a longer, test-only value'])
+        self.assertEqual(rt.option_warnings({'c': 'local/fake:1'}, [config], ['local/fake:1']),
+            ["the password `c` appears in the add-on's name, slug, image or version; it is masked wherever it appears, so pick a longer, test-only value"])
+        self.assertEqual(rt.option_warnings({'c': 'long-and-test-only'}, [config], ['img']), [])
 
 class ImageFault(unittest.TestCase):
     """#140: which failed `docker run` is the image's fault (the version did not start) and which the test's (a tool error)."""
@@ -551,6 +604,8 @@ class Report(unittest.TestCase):
         text = rt.report(self.result(options={'from_repo': ['a|b'], 'generated': ['db.pw']}))
         self.assertIn(r'Test options (測試用的 options): upgrade-check/options.yaml sets `a\|b`; random passwords for `db.pw` (the same on both versions).', text)
         self.assertIn('random passwords for `x`', rt.report(self.result(options={'from_repo': [], 'generated': ['x']})))
+        text = rt.report(self.result(options={'from_repo': ['a'], 'generated': [], 'warnings': ['the password `a` is short']}))
+        self.assertIn('- **Warning**: the password `a` is short.', text)
     def test_the_unmocked_table_lists_the_most_called_paths_per_version(self):
         r = self.result()
         r['phases'][0]['supervisor']['unmocked'] = [{'path': f'/p{i:02}', 'count': i, 'methods': ['GET']} for i in range(1, 36)]
