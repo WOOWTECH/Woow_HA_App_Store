@@ -326,6 +326,8 @@ def mounts(config, root):
 # [PROTO:option] https when that option is true.
 _URL=re.compile(r'^(https?|tcp|\[PROTO:(\w+)\])://\[HOST\]:(?:\[PORT:)?(\d+)\]?(.*)$')
 STARTUP_DEFAULTS={'startup_timeout':300,'stable_seconds':60}
+# settings.yaml keys of the data hooks (#138), read by upgrade_runtime.py: accepted here, not part of the probe.
+HOOK_SETTINGS={'hook_timeout':600}
 # Supervisor gives an ingress_port of 0 a free port in 62000-65500 at install and keeps it for the add-on
 # (supervisor/apps/app.py _check_ingress_port); the upgrade test assigns the first one, the same for both versions.
 ASSIGNED_INGRESS_PORT=62000
@@ -356,9 +358,9 @@ def startup_probe(config, settings=None):
     limits=dict(STARTUP_DEFAULTS)
     if settings is not None and not isinstance(settings,dict):raise ValueError('settings must be a mapping of setting: seconds')
     for key,value in (settings or {}).items():
-        if key not in limits:raise ValueError(f'unknown setting {key!r} (known: {", ".join(limits)})')
+        if key not in limits and key not in HOOK_SETTINGS:raise ValueError(f'unknown setting {key!r} (known: {", ".join([*limits,*HOOK_SETTINGS])})')
         if not isinstance(value,int) or isinstance(value,bool) or value<=0:raise ValueError(f'{key} must be a whole number of seconds above 0, not {value!r}')
-        limits[key]=value
+        if key in limits:limits[key]=value
     if limits['stable_seconds']>=limits['startup_timeout']:raise ValueError(f'stable_seconds ({limits["stable_seconds"]}) must be below startup_timeout ({limits["startup_timeout"]})')
     options=config.get('options') or {}
     if config.get('watchdog'):method,url,below='watchdog',_probe_url(config['watchdog'],options),300

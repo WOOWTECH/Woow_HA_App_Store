@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Upgrade test of one add-on, startup only (pipeline #137, category 2 of ADR-0005).
+"""Upgrade test of one add-on: startup (pipeline #137) and data (#138), category 2 of ADR-0005.
 
 Runs the comparison target's image, then the new image on the same data
 directories (/data and one per config.yaml `map` entry, at its `path`:
@@ -11,15 +11,43 @@ option defaults. Each version must start, judged as upgrade_check.startup_probe
 says from the Supervisor's address, and then stay up for stable_seconds; the
 add-on's upgrade-check/settings.yaml may override the time limits.
 
+Data check (#138): the add-on's upgrade-check/ (in the PR) may hold the hooks
+`seed` (run once on the comparison target after it started, to write data) and
+`verify` (run on the new version after it started, to read that data back).
+Both are optional executables (any language with a #! line). They run inside
+the mock Supervisor's container (python:3.12-alpine: python3 and busybox sh,
+wget, timeout), so they reach the add-on from the Supervisor's address, and
+never run docker themselves. Their environment:
+  ADDON_URL        the add-on from the Supervisor: its webui's scheme and port,
+                   else its ingress port, else http://ADDON_HOST (no path)
+  ADDON_HOST       the add-on's address (172.30.33.10)
+  ADDON_IMAGE, ADDON_VERSION   the version the hook runs against
+  PHASE            old (seed) or new (verify)
+  REPORT_DIR       where the hook may write <hook>.json (one directory per phase)
+  HOOK_STATE_DIR   kept from seed to verify (ids, keys), never mounted in the add-on
+  DATA_DIR_<TYPE>  each data directory as the hook sees it: DATA_DIR_DATA for
+                   /data, DATA_DIR_ADDON_CONFIG, DATA_DIR_SHARE... per `map` type
+  SUPERVISOR_URL, SUPERVISOR_TOKEN   the mock Supervisor (http://127.0.0.1 in
+                   its container, so its request log keeps the add-on's calls only)
+A hook passes when it exits 0 within hook_timeout (settings.yaml, default 600 s)
+and its report, if any, has no failing check. The report:
+  {"checks": [{"name": "...", "result": "pass|fail|skip", "detail": "..."}]}
+A failing seed or verify fails the upgrade test. Without verify, data is not
+checked and the report says so.
+
 Writes <report-dir>/<name>.json and <name>.md, appends the report to
 --summary and exits 1 when the upgrade test fails (::error with the reason),
-2 on a usage or tool error. Data is not checked yet: the report says so.
-Needs Docker; both images must be local or pullable.
+2 on a usage or tool error. Needs Docker; both images must be local or pullable.
+
+The result (<name>.json; compare reads it): {name, passed, reason, hooks (the
+hooks upgrade-check/ has), data_checked (verify ran), phases: [{phase, version,
+image, method, started, detail, answer, logs, hooks: [{hook, phase, passed,
+exit_code, detail, checks: [{name, result, detail}], output}]}]}.
 """
 from __future__ import annotations
-import argparse, json, pathlib, secrets, shutil, subprocess, sys, tempfile, time
+import argparse, json, pathlib, re, secrets, shutil, subprocess, sys, tempfile, time
 import yaml
-from upgrade_check import ingress_port, mounts, startup_probe
+from upgrade_check import HOOK_SETTINGS, _probe_url, ingress_port, mounts, startup_probe
 from addon_sync import markdown_cell, workflow_command
 
 # The mock Supervisor runs in this image; the fake add-ons of test_upgrade_runtime.py build on it too.
@@ -29,7 +57,13 @@ TOOLING = pathlib.Path(__file__).resolve().parent
 # How the mock Supervisor runs, and how long open() waits for it to answer (tests slow or break it).
 MOCK_COMMAND, MOCK_WAIT = ['python', '-u', '/tooling/mock_supervisor.py', 'serve'], 30
 STARTUP_ONLY = 'Startup only: data was not checked (只檢查啟動，沒有檢查資料).'
+DATA_CHECKED = 'Data checked: seed wrote data on the comparison target, verify read it back on the new version (已檢查資料).'
 PHASE_LABEL = {'old': 'the comparison target', 'new': 'the new version'}
+# The data hooks (#138) and the phase each runs in; smoke, in both phases, is category 3.
+HOOK_PHASE = {'seed': 'old', 'verify': 'new'}
+# Where the mock Supervisor's container sees the add-on's upgrade-check/, the data directories, the hooks' reports and state.
+IN_MOCK = {'hooks': '/upgrade-check', 'data': '/upgrade-data', 'reports': '/hook-reports', 'state': '/hook-state'}
+CHECK_RESULTS = ('pass', 'fail', 'skip')
 
 def docker(*args, check=True):
     r = subprocess.run(['docker', *args], capture_output=True, text=True, encoding='utf-8', errors='replace')
@@ -51,19 +85,38 @@ def addon_info(config, options):
         'repository': 'local', 'version_latest': config.get('version'), 'update_available': False, 'options': options,
         'ingress_url': f'/api/hassio_ingress/{secrets.token_hex(8)}/' if config.get('ingress') else None, 'network': config.get('ports')}
 
+def addon_url(config):
+    """ADDON_URL of the hooks: the webui's scheme and port, else the ingress port, else the bare address."""
+    if config.get('webui'):
+        scheme, port = re.match(r'^(\w+)://\[HOST\]:(\d+)', _probe_url(config['webui'], config.get('options'))).groups()
+        return f'{scheme}://{ADDON_IP}:{port}'
+    if config.get('ingress'):return f'http://{ADDON_IP}:{ingress_port(config)}'
+    return f'http://{ADDON_IP}'
+
+def hook_limits(settings):
+    """The hooks' time limits: HOOK_SETTINGS with upgrade-check/settings.yaml's values (startup_probe validates them)."""
+    return {k: settings.get(k, v) if isinstance(settings, dict) else v for k, v in HOOK_SETTINGS.items()}
+
 class UpgradeTestEnv:
-    """One upgrade test's network, mock Supervisor and data directories, removed by close()."""
-    def __init__(self, work):
-        self.work = pathlib.Path(work)
+    """One upgrade test's network, mock Supervisor and data directories, removed by close(). `hooks`: the add-on's
+    upgrade-check/ directory, mounted read-only in the mock Supervisor's container (None when it has none)."""
+    def __init__(self, work, hooks=None):
+        self.work, self.hooks = pathlib.Path(work), hooks
         self.prefix = f'upgrade-test-{secrets.token_hex(4)}'
         self.net, self.supervisor, self.token = self.prefix, f'{self.prefix}-supervisor', secrets.token_hex(24)
         self.state, self.data = self.work / 'supervisor', self.work / 'dirs'
-        self.state.mkdir(parents=True); self.data.mkdir()
+        self.reports, self.hook_state = self.work / 'hook-reports', self.work / 'hook-state'
+        for d in (self.state, self.data, self.reports, self.hook_state):d.mkdir(parents=True)
     def open(self):
         docker('network', 'create', '--subnet', SUBNET, '--gateway', GATEWAY, self.net)
+        binds = [(TOOLING, '/tooling', True), (self.state, '/state', False), (self.data, IN_MOCK['data'], False),
+            (self.reports, IN_MOCK['reports'], False), (self.hook_state, IN_MOCK['state'], False)]
+        if self.hooks:binds.append((self.hooks, IN_MOCK['hooks'], True))
+        args = []
+        for source, target, read_only in binds:
+            args += ['--mount', f'type=bind,source={source},target={target}' + (',readonly' if read_only else '')]
         docker('run', '-d', '--name', self.supervisor, '--network', self.net, '--ip', SUPERVISOR_IP, '-e', f'SUPERVISOR_TOKEN={self.token}',
-            '--mount', f'type=bind,source={TOOLING},target=/tooling,readonly', '--mount', f'type=bind,source={self.state},target=/state',
-            MOCK_IMAGE, *MOCK_COMMAND)
+            *args, MOCK_IMAGE, *MOCK_COMMAND)
         # Real Supervisor is up before any add-on starts, and add-ons ask it for their info at once (bashio reads
         # options at boot): return only when the mock answers. Any answer below HTTP 500 will do (401 without the
         # token). Asked from inside the mock (127.0.0.1), so its request log keeps only the add-on's calls.
@@ -100,6 +153,38 @@ class UpgradeTestEnv:
             '--add-host', f'supervisor:{SUPERVISOR_IP}', '--add-host', f'hassio:{SUPERVISOR_IP}',
             '-e', f'SUPERVISOR_TOKEN={self.token}', '-e', f'HASSIO_TOKEN={self.token}', '-e', 'TZ=UTC', *args, image)
         return container
+    def hook_env(self, phase, image, config):
+        """The environment of a hook run against this version (the module docstring lists it)."""
+        out = {'ADDON_URL': addon_url(config), 'ADDON_HOST': ADDON_IP, 'ADDON_IMAGE': image, 'ADDON_VERSION': str(config.get('version')),
+            'PHASE': phase, 'REPORT_DIR': f'{IN_MOCK["reports"]}/{phase}', 'HOOK_STATE_DIR': IN_MOCK['state'],
+            'SUPERVISOR_URL': 'http://127.0.0.1', 'SUPERVISOR_TOKEN': self.token}
+        for m in mounts(config, IN_MOCK['data']):
+            out['DATA_DIR_' + m['source'].rsplit('/', 1)[1].upper()] = m['source']
+        return out
+    def run_hook(self, hook, phase, image, config, timeout):
+        """Run upgrade-check/<hook> against the running version: {hook, phase, passed, exit_code, detail, checks, output}."""
+        (self.reports / phase).mkdir(exist_ok=True)
+        report = self.reports / phase / f'{hook}.json'
+        if report.exists():report.unlink()
+        envs = [a for k, v in self.hook_env(phase, image, config).items() for a in ('-e', f'{k}={v}')]
+        started = time.monotonic()
+        try:
+            r = subprocess.run(['docker', 'exec', '-w', IN_MOCK['hooks'], *envs, self.supervisor, 'timeout', str(timeout), f'{IN_MOCK["hooks"]}/{hook}'],
+                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding='utf-8', errors='replace', timeout=timeout + 60)
+            code, output = r.returncode, r.stdout
+        except subprocess.TimeoutExpired as e:
+            code, output = None, (e.stdout or '') if isinstance(e.stdout, str) else ''
+        elapsed = time.monotonic() - started
+        checks, problem = _read_checks(report)
+        failing = [c['name'] for c in checks if c['result'] == 'fail']
+        if code is None or (code and elapsed >= timeout):detail = f'did not finish within {timeout} s (hook_timeout)'
+        elif code == 126:detail = f'could not run (exit 126): is upgrade-check/{hook} executable (git update-index --chmod=+x) with a #! line?'
+        elif code:detail = f'exited with code {code}'
+        else:detail = 'exited 0'
+        if problem:detail += f'; {problem}'
+        elif failing:detail += '; failing checks: ' + ', '.join(failing)
+        return {'hook': hook, 'phase': phase, 'passed': code == 0 and not problem and not failing, 'exit_code': code, 'detail': detail,
+            'checks': checks, 'output': output[-4000:]}
     def stop(self, container, config):
         docker('stop', '-t', str(config.get('timeout', 10)), container, check=False)
         docker('rm', '-f', container, check=False)
@@ -108,6 +193,21 @@ class UpgradeTestEnv:
         docker('network', 'rm', self.net, check=False)
         # Containers write as root: remove what they left through a container, then the rest.
         docker('run', '--rm', '--mount', f'type=bind,source={self.work},target=/w', '--entrypoint', 'sh', MOCK_IMAGE, '-c', 'rm -rf /w/* /w/.[!.]*', check=False)
+
+def _read_checks(path):
+    """(checks, problem) from a hook's report: [] when it wrote none; problem is why the report cannot be used."""
+    if not path.exists():return [], ''
+    try:data = json.loads(path.read_text(encoding='utf-8'))
+    except (OSError, ValueError) as e:return [], f'its report {path.name} is not JSON: {e}'
+    checks = data.get('checks') if isinstance(data, dict) else None
+    if not isinstance(checks, list):return [], f'its report {path.name} has no "checks" list'
+    out = []
+    for c in checks:
+        if not isinstance(c, dict) or not isinstance(c.get('name'), str) or not c['name'] or c.get('result') not in CHECK_RESULTS:
+            return out, f'its report {path.name} has a check that is not {{"name": "...", "result": "pass|fail|skip"}}: {json.dumps(c)[:200]}'
+        if any(o['name'] == c['name'] for o in out):return out, f'its report {path.name} names two checks {c["name"]!r}'
+        out.append({'name': c['name'], 'result': c['result'], 'detail': str(c.get('detail', ''))})
+    return out, ''
 
 def _logs(container, tail):
     """The container's last `tail` log lines, stdout and stderr."""
@@ -159,35 +259,64 @@ def _down(container):
     return ''
 
 def upgrade_test(name, addon_dir, old_image, old_config, new_image, new_config, work):
-    """{'name', 'passed', 'reason', 'phases': [{phase, version, image, method, started, detail, answer, logs}]}."""
-    settings_path = pathlib.Path(addon_dir) / 'upgrade-check/settings.yaml'
+    """The result described in the module docstring."""
+    hooks_dir = pathlib.Path(addon_dir) / 'upgrade-check'
+    settings_path = hooks_dir / 'settings.yaml'
     settings = yaml.safe_load(settings_path.read_text(encoding='utf-8')) if settings_path.exists() else None
-    env = UpgradeTestEnv(work); phases = []; result = {'name': name, 'passed': False, 'reason': '', 'phases': phases}
+    startup_probe(new_config, settings)  # a bad settings.yaml is a tool error before any container starts
+    limits = hook_limits(settings)
+    present = [h for h in HOOK_PHASE if (hooks_dir / h).is_file()]
+    env = UpgradeTestEnv(work, hooks_dir.resolve() if hooks_dir.is_dir() else None); phases = []
+    result = {'name': name, 'passed': False, 'reason': '', 'hooks': present, 'data_checked': False, 'phases': phases}
     try:
         env.open()
         for phase, image, config in (('old', old_image, old_config), ('new', new_image, new_config)):
             probe = startup_probe(config, settings)
             container = env.start(phase, image, config)
             ok, detail, answer = wait_started(env, container, probe)
-            phases.append({'phase': phase, 'version': str(config.get('version')), 'image': image, 'method': probe['method'], 'started': ok,
-                'detail': detail, 'answer': answer, 'logs': _logs(container, 60)[-4000:]})
+            entry = {'phase': phase, 'version': str(config.get('version')), 'image': image, 'method': probe['method'], 'started': ok,
+                'detail': detail, 'answer': answer, 'logs': '', 'hooks': []}
+            phases.append(entry)
+            label = f'{PHASE_LABEL[phase]} ({config.get("version")})'
+            if not ok:result['reason'] = f'{label} did not start: {detail}'
+            for hook in (h for h in present if ok and HOOK_PHASE[h] == phase):
+                run = env.run_hook(hook, phase, image, config, limits['hook_timeout'])
+                entry['hooks'].append(run)
+                if hook == 'verify':result['data_checked'] = True
+                if not run['passed'] and not result['reason']:result['reason'] = f'{hook} failed on {label}: {run["detail"]}'
+            # After the hooks, so the log shows what the add-on did while they ran.
+            entry['logs'] = _logs(container, 60)[-4000:]
             env.stop(container, config)
-            if not ok:
-                result['reason'] = f'{PHASE_LABEL[phase]} ({config.get("version")}) did not start: {detail}'
-                return result
+            if result['reason']:return result
         result['passed'] = True
         return result
     finally:
         env.close()
 
 def report(result):
-    """The Markdown report of upgrade_test()'s result."""
-    r = [f'#### Upgrade test: {result["name"]}', '', ('**Passed**: the new version starts on the data of the comparison target.' if result['passed']
-        else f'**Failed**: {markdown_cell(result["reason"])}.'), '', STARTUP_ONLY, '', '| version | image | judged by | started | detail |', '|---|---|---|---|---|']
+    """The Markdown report of upgrade_test()'s result: the startup of each version, then every hook's checks."""
+    data = DATA_CHECKED if 'verify' in result.get('hooks', []) else STARTUP_ONLY
+    passed = ('**Passed**: the new version starts on the data of the comparison target' +
+        (', and verify finds the data seed wrote.' if 'verify' in result.get('hooks', []) else '.'))
+    r = [f'#### Upgrade test: {result["name"]}', '', passed if result['passed'] else f'**Failed**: {markdown_cell(result["reason"])}.', '', data, '',
+        '| version | image | judged by | started | detail |', '|---|---|---|---|---|']
     r += [f'| {PHASE_LABEL[p["phase"]]} {markdown_cell(p["version"])} | `{markdown_cell(p["image"])}` | {p["method"]} | {"yes" if p["started"] else "**no**"} | {markdown_cell(p["detail"])} |'
         for p in result['phases']]
+    if 'seed' in result.get('hooks', []) and 'verify' not in result.get('hooks', []):
+        r += ['', 'upgrade-check/ has seed but no verify: nothing reads the seeded data back.']
+    runs = [h for p in result['phases'] for h in p.get('hooks', [])]
+    if runs:
+        r += ['', '| version | hook | check | result | detail |', '|---|---|---|---|---|']
+        for h in runs:
+            version = f'{PHASE_LABEL[h["phase"]]} {markdown_cell(next(p["version"] for p in result["phases"] if p["phase"] == h["phase"]))}'
+            r.append(f'| {version} | {h["hook"]} | (the hook) | {"pass" if h["passed"] else "**fail**"} | {markdown_cell(h["detail"])} |')
+            r += [f'| {version} | {h["hook"]} | {markdown_cell(c["name"])} | {"**fail**" if c["result"] == "fail" else c["result"]} | {markdown_cell(c["detail"])} |'
+                for c in h['checks']]
     for p in result['phases']:
-        if not p['started']:
+        for h in p.get('hooks', []):
+            if not h['passed']:
+                r += ['', f'<details><summary>Output of {h["hook"]} on {PHASE_LABEL[p["phase"]]}</summary>', '', '```', h['output'].replace('```', "'''"), '```', '', '</details>']
+        if not p['started'] or any(not h['passed'] for h in p.get('hooks', [])):
             r += ['', f'<details><summary>Last log lines of {PHASE_LABEL[p["phase"]]}</summary>', '', '```', p['logs'].replace('```', "'''"), '```', '', '</details>']
     return '\n'.join(r) + '\n'
 
@@ -208,7 +337,8 @@ def main(argv=None):
     except (OSError, ValueError, TypeError, AttributeError, RuntimeError, yaml.YAMLError) as e:
         # compare reads the result file, so a tool error still leaves one with the reason.
         reason = f'the upgrade test could not run: {e}'
-        (out / f'{a.name}.json').write_text(json.dumps({'name': a.name, 'passed': False, 'reason': reason, 'phases': []}, indent=1), encoding='utf-8')
+        (out / f'{a.name}.json').write_text(json.dumps({'name': a.name, 'passed': False, 'reason': reason, 'hooks': [], 'data_checked': False,
+            'phases': []}, indent=1), encoding='utf-8')
         print(workflow_command('error', 'Upgrade test', f'{a.name}: {reason}')); return 2
     text = report(result)
     (out / f'{a.name}.json').write_text(json.dumps(result, indent=1), encoding='utf-8'); (out / f'{a.name}.md').write_text(text, encoding='utf-8')
