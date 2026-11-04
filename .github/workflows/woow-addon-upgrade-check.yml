@@ -450,6 +450,21 @@ jobs:
               echo "- ${id}: **failed**, ${scope}" >> "$GITHUB_STEP_SUMMARY";;
             *) echo "- ${id}: not run ($(jq -r '.note' "${result}"))" >> "$GITHUB_STEP_SUMMARY";;
           esac
+          # #141: the data-check deadline (registry upgrade_comparison.data_check_due, a UTC date) of an add-on whose upgrade
+          # test ran (passed or failed, plan.jsonl gives its directory). Without upgrade-check/verify in the PR it passes with
+          # the days left through the due date and fails from the day after; with verify, or with no due date, nothing. An
+          # add-on whose test did not run (no comparison target, approved skip, no image_artifact, built on the device
+          # before #144) has passed null and is not judged.
+          jq -e '.passed == true or .passed == false' "${result}" > /dev/null || continue
+          notes="$(jq -r --arg id "${id}" 'select(.id == $id) | .notes' plan.jsonl 2> /dev/null | head -n1)" || notes=""
+          [ -n "${notes}" ] || continue
+          rc=0; due="$(python3 tooling/.addon-sync/upgrade_check.py data-check-due --registry tooling/.addon-sync/registry.json --repo "${REPO}" \
+            --component "${id}" --addon-dir "source/$(dirname "${notes}")")" || rc=$?
+          case "${rc}" in
+            0) [ -z "${due}" ] || echo "- ${id}: ${due}" >> "$GITHUB_STEP_SUMMARY";;
+            1) fail "${id}: ${due}"; status=1; echo "- ${id}: **${due}**" >> "$GITHUB_STEP_SUMMARY";;
+            *) printf '%s\n' "${due}"; status=1;;
+          esac
         done
         # upgrade_runtime.py's report of each add-on: both versions' startup and every check of its hooks.
         for report in runtime-reports/*.md; do

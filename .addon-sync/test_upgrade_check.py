@@ -868,6 +868,67 @@ class UpgradeTestResult(StepHarness):
         self.assertEqual(code,1);self.assertIn('t: upgrade test failed: verify failed on the new version (1.1.0)',out)
         self.assertIn('- t: **failed**, data checked by seed and verify',summary);self.assertIn('| item kept | **fail** | HTTP 404 |',summary)
 
+class DataCheckDueStep(StepHarness):
+    """compare's 'Upgrade test result' applies the data-check deadline (#141) to each add-on whose upgrade test ran."""
+    def result(self,result,due='2026-11-17',verify=False,in_plan=True):
+        """result: t's runtime-reports/t.json. due: t's data_check_due in the registry (None: none). verify: the PR's
+        upgrade-check/ has verify. (exit code, stdout, step summary). Today is the real UTC date, so dates are relative to it."""
+        import os,subprocess
+        tmp=pathlib.Path(tempfile.mkdtemp());self.addCleanup(shutil.rmtree,tmp)
+        (tmp/'runtime-reports').mkdir();(tmp/'bin').mkdir();(tmp/'tooling/.addon-sync').mkdir(parents=True);(tmp/'source/addon/upgrade-check').mkdir(parents=True)
+        for f in (self.STORE/'.addon-sync').iterdir():
+            if f.suffix in ('.py','.sh'):shutil.copy(f,tmp/'tooling/.addon-sync'/f.name)
+        comp={'id':'t','source_path':'addon','config_file':'config.yaml'}
+        if due is not None:comp['upgrade_comparison']={'data_check_due':due}
+        (tmp/'tooling/.addon-sync/registry.json').write_text(json.dumps({'providers':{'o/r':{'ref_policy':'release','components':[comp]}}}))
+        if in_plan:(tmp/'plan.jsonl').write_text(json.dumps({'id':'t','notes':'addon/upgrade-notes.yaml'})+'\n')
+        if verify:(tmp/'source/addon/upgrade-check/verify').write_text('#!/bin/sh\nexit 0\n',newline='\n')
+        (tmp/'bin/gh').write_text('#!/bin/sh\nexit 0\n',newline='\n');(tmp/'bin/gh').chmod(0o755)
+        (tmp/'runtime-reports/t.json').write_text(json.dumps(result))
+        (tmp/'step.sh').write_text(self.step('Upgrade test result')['run'],newline='\n');(tmp/'summary.md').write_text('')
+        env=dict(os.environ,PATH=f"{tmp/'bin'}{os.pathsep}{os.environ['PATH']}",GITHUB_STEP_SUMMARY=str(tmp/'summary.md'),RUNNER_TEMP=str(tmp),
+            REPO='o/r',RUN_ID='1',RUN_ATTEMPT='1',RUNTIME_RESULT='success' if result.get('passed') is not False else 'failure')
+        r=subprocess.run(['bash',str(tmp/'step.sh')],cwd=tmp,env=env,capture_output=True,text=True)
+        return r.returncode,r.stdout,(tmp/'summary.md').read_text(encoding='utf-8')
+    PASSED={'name':'t','passed':True,'reason':'','hooks':[],'data_checked':False,'phases':[]}
+    def day(self,offset):return (datetime.datetime.now(datetime.timezone.utc).date()+datetime.timedelta(days=offset)).isoformat()
+    @needs_shell
+    def test_before_the_due_date_startup_only_passes_with_the_days_left(self):
+        due=self.day(3);code,out,summary=self.result(self.PASSED,due)
+        self.assertEqual(code,0,out);self.assertIn(f'- t: 資料檢查期限 {due}，剩 3 天',summary)
+    @needs_shell
+    def test_after_the_due_date_startup_only_fails_compare(self):
+        due=self.day(-1);code,out,summary=self.result(self.PASSED,due)
+        self.assertEqual(code,1);self.assertIn(f'::error title=Upgrade comparison failed::t: 資料檢查期限 {due} 已過，要補資料檢查',out)
+        self.assertIn(f'- t: **資料檢查期限 {due} 已過',summary)
+    @needs_shell
+    def test_with_verify_the_due_date_is_not_looked_at(self):
+        result=dict(self.PASSED,hooks=['seed','verify'],data_checked=True)
+        code,out,summary=self.result(result,self.day(-30),verify=True)
+        self.assertEqual(code,0,out);self.assertNotIn('資料檢查期限',summary+out)
+    @needs_shell
+    def test_target_that_failed_before_verify_ran_is_not_also_failed_for_the_deadline(self):
+        # target_failed (#140) writes hooks [] whatever upgrade-check/ has: verify is read from the PR's upgrade-check/.
+        failed={'name':'t','passed':False,'reason':"cannot pull the comparison target's image",'hooks':[],'data_checked':False,'phases':[]}
+        code,out,_=self.result(failed,self.day(-1),verify=True)
+        self.assertEqual(code,1);self.assertNotIn('資料檢查期限',out)
+        code,out,_=self.result(failed,self.day(-1))
+        self.assertEqual(code,1);self.assertIn('資料檢查期限',out)
+    @needs_shell
+    def test_add_on_whose_upgrade_test_did_not_run_is_not_judged(self):
+        # No comparison target, an approved skip (#140), no image_artifact (#143), built on the device before #144.
+        for note in ('no comparison target','built on the device; the upgrade test for these add-ons is #144'):
+            with self.subTest(note):
+                code,out,summary=self.result({'name':'t','passed':None,'note':note},self.day(-1))
+                self.assertEqual(code,0,out);self.assertNotIn('資料檢查期限',summary+out)
+    @needs_shell
+    def test_without_a_due_date_nothing_is_added(self):
+        code,out,summary=self.result(self.PASSED,None);self.assertEqual(code,0,out);self.assertNotIn('資料檢查期限',summary)
+    @needs_shell
+    def test_malformed_due_date_fails_with_the_reason(self):
+        code,out,_=self.result(self.PASSED,'2026-13-01')
+        self.assertEqual(code,1);self.assertIn("upgrade_comparison.data_check_due '2026-13-01'; it must be a date, YYYY-MM-DD (UTC)",out)
+
 class SkipVulnerabilityScan(StepHarness):
     """skip_vulnerability_scan: a caller whose category 4 cannot run (mcp_addons builds no PR image) opts out with a
     reason; category 1 still runs and the report says why.
