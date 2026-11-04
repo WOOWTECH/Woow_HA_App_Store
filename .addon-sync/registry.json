@@ -822,10 +822,7 @@
           "config_file": "config.yaml",
           "store_path": "omnigent",
           "channel": "stable",
-          "enabled": true,
-          "upgrade_comparison": {
-            "skip_upgrade_test": "#157: admin_password has no default, so with the option defaults the add-on refuses to start (comparison target and new version alike); remove this skip once #157 lets the repository give test options"
-          }
+          "enabled": true
         }
       ]
     },
