@@ -347,16 +347,18 @@ def mounts(config, root):
     """The data directories of an add-on: <root>/data at /data (or at the `path` of its `data` entry), then one per
     other `map` entry at its `path` (or Supervisor's default), from <root>/<MAP_SOURCES[type] or type>. The
     comparison target and the new version share the same set even when one of them moves or renames a type. As
-    in Supervisor, a repeated type keeps its last entry and ignored types are dropped (map_warnings lists them)."""
+    in Supervisor, a repeated type keeps its last entry and ignored types are dropped (map_warnings lists them).
+    Each is {type, source, target, read_only}; type is 'data' for the data mount, else the map type as config.yaml
+    writes it (addon_config stays addon_config), for naming per-directory settings such as the hooks' variables."""
     entries,_=_map_entries(config)
     data_path,_=entries.pop('data',(None,False))
-    out=[{'source':f'{root}/data','target':data_path or MAP_PATHS['data'],'read_only':False}]
+    out=[{'type':'data','source':f'{root}/data','target':data_path or MAP_PATHS['data'],'read_only':False}]
     for kind,(path,read_only) in entries.items():
         source=MAP_SOURCES.get(kind,kind)
         if '{slug}' in source:
             if not config.get('slug'):raise ValueError(f'map entry {kind!r} needs the add-on slug')
             source=source.format(slug=config['slug'])
-        out.append({'source':f'{root}/{source}','target':path or MAP_PATHS[kind],'read_only':read_only})
+        out.append({'type':kind,'source':f'{root}/{source}','target':path or MAP_PATHS[kind],'read_only':read_only})
     # Two entries at one path (a custom path onto another type's) cannot both be mounted.
     targets=[m['target'] for m in out]
     for t in targets:
@@ -499,7 +501,7 @@ def main(argv=None):
     v.add_argument('--as-written',action='store_true',help="the PR's version: fail unless it reads as its text does (unquoted 1.10 is 1.1)")
     k=sub.add_parser('components',help="print what the workflow needs from the repository's registry entry (JSON, see components())")
     k.add_argument('--registry',required=True,help='Store registry.json');k.add_argument('--repo',required=True,help='source repository, owner/name')
-    m=sub.add_parser('mounts',help="print the upgrade test's data directories as JSON [{source, target, read_only}] (mounts())")
+    m=sub.add_parser('mounts',help="print the upgrade test's data directories as JSON [{type, source, target, read_only}] (mounts())")
     m.add_argument('--config',required=True,help="the version's config.yaml");m.add_argument('--root',required=True,help='directory holding one directory per type')
     s=sub.add_parser('startup-probe',help='print how the upgrade test judges that a version starts, as JSON {method, url, below, timeout, stable_seconds} (startup_probe())')
     s.add_argument('--config',required=True,help="the version's config.yaml");s.add_argument('--settings',help='upgrade-check/settings.yaml of the add-on (may be absent)')

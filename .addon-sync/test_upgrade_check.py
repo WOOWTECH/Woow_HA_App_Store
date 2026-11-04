@@ -1384,6 +1384,16 @@ class RuntimeRulesCommand(unittest.TestCase):
         # (data), its config in /etc/headscale (addon_config).
         got=self.mounts(map=[{'type':'addon_config','path':'/etc/headscale','read_only':False},{'type':'data','path':'/var/lib/headscale'}])
         self.assertEqual(got,[('/w/data','/var/lib/headscale',False),('/w/all_app_configs/test','/etc/headscale',False)])
+    def test_each_mount_names_its_type_as_written(self):
+        # 'data' for the data mount wherever it is; otherwise the map type as config.yaml writes it.
+        def types(m):
+            code,out=self.run_cmd('mounts','--config',self.config(map=m),'--root','/w')
+            self.assertEqual(code,0,out);return [(x['type'],x['source'],x['target']) for x in json.loads(out)]
+        self.assertEqual(types([{'type':'addon_config','path':'/etc/headscale','read_only':False},{'type':'data','path':'/var/lib/headscale'}]),
+            [('data','/w/data','/var/lib/headscale'),('addon_config','/w/all_app_configs/test','/etc/headscale')])
+        self.assertEqual(types(['addon_config:rw','share']),
+            [('data','/w/data','/data'),('addon_config','/w/all_app_configs/test','/config'),('share','/w/share','/share')])
+        self.assertEqual([t for t,_,_ in types(['app_config','config:rw'])],['data','config'])
     def test_own_config_folder_is_inside_all_app_configs(self):
         # Supervisor's app_config is <app_configs>/<slug>, the folder all_app_configs shows as a whole.
         self.assertEqual(self.mounts(map=['app_config:rw','all_app_configs']),
