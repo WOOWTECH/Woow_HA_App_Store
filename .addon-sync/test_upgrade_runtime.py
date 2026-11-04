@@ -472,6 +472,23 @@ class TestOptions(unittest.TestCase):
         # A version that gets the password from the repository does not constrain the generated one.
         (o, n), generated = rt.build_test_options([{'schema': {'pw': 'password(,8)'}}, {'schema': {'pw': 'password(10,)'}}], {'pw': 'given-by-repo'})
         self.assertEqual((o['pw'], n['pw'], generated), ('given-by-repo', 'given-by-repo', {}))
+    def test_a_password_one_version_requires_reaches_every_version_that_keeps_the_option(self):
+        # A real upgrade keeps the user's value, so the version that has the option as password?, as another type,
+        # or with no schema gets the same value too (replacing its own default); one whose schema lacks it does not.
+        old = {'options': {'pw': '', 'n': {'pw': None}}, 'schema': {'pw': 'password', 'n': {'pw': 'password'}}}
+        for schema in ({'pw': 'password(,20)?', 'n': {'pw': 'password?'}}, {'pw': 'str', 'n': {'pw': 'str?'}}, False):
+            with self.subTest(schema):
+                new = {'options': {'pw': 'new-default'}, 'schema': schema}
+                (o, n), generated = rt.build_test_options([old, new], None)
+                self.assertEqual(sorted(generated), ['n.pw', 'pw'])
+                self.assertEqual((n['pw'], n['n']['pw']), (o['pw'], o['n']['pw'])); self.assertEqual(n['pw'], generated['pw'])
+                # The optional password's range binds the shared value too.
+                self.assertEqual(len(o['pw']), 20 if schema and schema['pw'].startswith('password(') else 32)
+        (o, n), generated = rt.build_test_options([old, {'options': {}, 'schema': {'other': 'str?', 'n': 'str?'}}], None)
+        self.assertEqual(n, {}); self.assertEqual(o['pw'], generated['pw'])
+        # The new version requires it and the comparison target has it as password?: the target gets it too.
+        (o, n), generated = rt.build_test_options([{'options': {}, 'schema': {'pw': 'password?'}}, {'options': {}, 'schema': {'pw': 'password'}}], None)
+        self.assertEqual(o, n); self.assertEqual(o, {'pw': generated['pw']})
     def test_a_repo_password_is_kept_and_nested_passwords_are_generated(self):
         config = {'options': {'pw': '', 'db': {'pw': None, 'host': 'h'}, 'users': [{'name': 'a'}]},
             'schema': {'pw': 'password', 'db': {'pw': 'password', 'host': 'str'}, 'users': [{'name': 'str', 'pw': 'password'}],

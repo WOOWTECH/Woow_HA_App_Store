@@ -27,8 +27,12 @@ every required password option of the schema (`password` or
 `password(min,max)`, no `?`; in nested mappings too, creating a required
 nested mapping that is missing; not in list items) that is still missing, null
 or '' gets a random value of letters and digits, generated once per test and
-the same for both versions: 32 characters, or the nearest length inside both
-versions' length ranges (ranges that do not overlap are a tool error). Hooks
+the same for both versions. When one version requires it, it is written into
+every version that keeps the option (its schema has the key, as `password?`
+or any other type, or it has no schema), replacing that version's default, as
+a real upgrade keeps the user's value. 32 characters, or the nearest length
+inside the password length ranges (`?` too) of the versions that receive it
+(ranges that do not overlap are a tool error). Hooks
 read it from $DATA_DIR_DATA/options.json. Other required options that are
 still null or empty are left as they are (null ones are left out of
 options.json; Supervisor would refuse to start the add-on then, the test lets
@@ -164,6 +168,8 @@ def image_fault(error):
 # optional length range, required unless it ends with '?'.
 TEST_OPTIONS = 'options.yaml'
 REQUIRED_PASSWORD = re.compile(r'^password(?:\((?P<min>\d+)?,(?P<max>\d+)?\))?$')
+# Any password type, optional ('?') or not: its length range also binds a generated value the version receives.
+PASSWORD_TYPE = re.compile(r'^password(?:\((?P<min>\d+)?,(?P<max>\d+)?\))?\??$')
 PASSWORD_LENGTH, PASSWORD_ALPHABET = 32, string.ascii_letters + string.digits
 # A repository password shorter than this gets a warning in the report: masking it would hide ordinary words in the logs.
 WEAK_PASSWORD_LENGTH, MASK = 8, '[password]'
@@ -253,10 +259,10 @@ def _missing_passwords(options, schema, path=()):
     return out
 
 def password_length(name, types):
-    """The length of the generated password `name` that every one of `types` (password or password(min,max), of the
-    versions that need it) accepts: PASSWORD_LENGTH, moved into the ranges' intersection. ValueError when they do
-    not overlap."""
-    ranges = [REQUIRED_PASSWORD.match(t) for t in types]
+    """The length of the generated password `name` that every one of `types` (password, password(min,max), either
+    with '?', of the versions that receive it) accepts: PASSWORD_LENGTH, moved into the ranges' intersection.
+    ValueError when they do not overlap."""
+    ranges = [PASSWORD_TYPE.match(t) for t in types]
     low = max([int(m['min']) for m in ranges if m['min']] or [0])
     highs = [int(m['max']) for m in ranges if m['max']]
     high = min(highs) if highs else None
@@ -269,30 +275,45 @@ def random_password(length):
     """`length` random letters and digits (so it survives shell, JSON and ini files unquoted)."""
     return ''.join(secrets.choice(PASSWORD_ALPHABET) for _ in range(length))
 
+def _schema_type(schema, path):
+    """(whether Supervisor keeps the option at `path` for a version with `schema`, its type there or None). A version
+    without a schema mapping (None) keeps every option; otherwise each key of `path` must be in the schema, and each
+    one before the last must be a nested mapping schema."""
+    if schema is None:return True, None
+    for key in path[:-1]:
+        schema = schema.get(key)
+        if not isinstance(schema, dict):return False, None
+    return (True, schema[path[-1]]) if path[-1] in schema else (False, None)
+
 def build_test_options(configs, given):
     """([/data/options.json of each of `configs`], {dotted name: generated password}) for the upgrade test (#157).
     Each version: its config.yaml option defaults, with upgrade-check/options.yaml (`given`, or None) laid over them
     as Supervisor merges user options (only the keys this version's schema has, nested too, when it has a schema),
-    then null values left out. Then every required password option of its schema that is still missing or empty
-    gets a random value: one per option name for both versions, of a length both versions' ranges accept
-    (password_length()), creating the nested mappings it sits in. Other required options that are still null or
-    empty stay as they are (a null one is left out)."""
+    then null values left out. Then every required password option that is still missing or empty in any version's
+    schema gets one random value, written into every version that keeps that option (_schema_type(): its schema has
+    it, as a password, password? or another type, or it has no schema), replacing that version's own default: a
+    real upgrade keeps the user's value, so both versions see the same one. Its length is one that every receiving
+    version's password range accepts (password_length()); the nested mappings it sits in are created. Other
+    required options that are still null or empty stay as they are (a null one is left out)."""
     built = []
     for config in configs:
         schema = _schema(config)
-        options = _drop_nulls(_merge(config.get('options') or {}, _known(given or {}, schema)))
-        built.append((options, _missing_passwords(options, schema) if schema else []))
-    types = {}
-    for _, missing in built:
-        for path, typ in missing:types.setdefault('.'.join(path), []).append(typ)
-    generated = {name: random_password(password_length(name, ts)) for name, ts in types.items()}
-    for options, missing in built:
-        for path, _ in missing:
+        built.append((_drop_nulls(_merge(config.get('options') or {}, _known(given or {}, schema))), schema))
+    paths = {}
+    for options, schema in built:
+        for path, _ in (_missing_passwords(options, schema) if schema else []):paths.setdefault('.'.join(path), path)
+    generated = {}
+    for name, path in paths.items():
+        kept = [_schema_type(schema, path) for _, schema in built]
+        types = [t for known, t in kept if known and isinstance(t, str) and PASSWORD_TYPE.match(t)]
+        generated[name] = random_password(password_length(name, types))
+        for (options, _), (known, _) in zip(built, kept):
+            if not known:continue
             node = options
             for key in path[:-1]:
                 if not isinstance(node.get(key), dict):node[key] = {}
                 node = node[key]
-            node[path[-1]] = generated['.'.join(path)]
+            node[path[-1]] = generated[name]
     return [options for options, _ in built], generated
 
 def secret_values(options, schema):
