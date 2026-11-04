@@ -2,7 +2,7 @@
 
 Each fake add-on asks the mock Supervisor for its own info with its token (a wrong answer exits), reads
 /data/options.json and counts its starts in /data. Needs a Docker daemon (GitHub runners have one)."""
-import contextlib, io, json, pathlib, re, shutil, subprocess, tempfile, unittest, uuid
+import contextlib, io, json, pathlib, re, shutil, subprocess, tempfile, traceback, unittest, uuid
 from unittest import mock
 import yaml
 import upgrade_runtime as rt
@@ -448,6 +448,12 @@ class TestOptions(unittest.TestCase):
         for given, name in (({'pw': 1234}, "'pw'"), ({'n': {'pw': True}}, "'n.pw'")):
             with self.subTest(given), self.assertRaisesRegex(ValueError, f'{name} is a password option, so its value must be a string, not a'):
                 rt.check_test_options(given, [config])
+        # A version without a schema accepts any key, but the other version's password type is still checked.
+        for configs in (({'schema': False}, config), (config, {})):
+            with self.subTest(configs):
+                rt.check_test_options({'anything': 1, 'n': {'pw': 'ok', 'extra': 2}}, configs)
+                with self.assertRaisesRegex(ValueError, "'n.pw' is a password option, so its value must be a string, not a int"):
+                    rt.check_test_options({'n': {'pw': 1234}}, configs)
     def test_required_passwords_left_empty_get_one_random_value_for_both_versions(self):
         # omnigent: admin_password ''; odoo and nextcloud: null; nextcloud's db_password is password? (optional).
         old = {'options': {'admin_password': '', 'admin_passwd': None, 'db_password': None, 'user': ''},
@@ -530,6 +536,27 @@ class TestOptions(unittest.TestCase):
         result = json.loads((d / 'reports/fake.json').read_text(encoding='utf-8'))
         self.assertIn('the upgrade test could not run: upgrade-check/options.yaml must be a mapping of option: value', result['reason'])
         self.assertIn('::error title=Upgrade test::fake: the upgrade test could not run: upgrade-check/options.yaml', out.getvalue())
+    def test_an_error_holding_a_password_is_masked_and_keeps_its_kind(self):
+        d = pathlib.Path(tempfile.mkdtemp()); self.addCleanup(shutil.rmtree, d, True)
+        (d / 'upgrade-check').mkdir(); (d / 'upgrade-check/options.yaml').write_text('pw: repo-secret-1\n', encoding='utf-8')
+        config = {'version': '1', 'schema': {'pw': 'password'}}
+        def run(error):
+            class Env:
+                def __init__(self, *a):pass
+                def open(self):raise error
+                def close(self):pass
+            with mock.patch.object(rt, 'UpgradeTestEnv', Env):rt.upgrade_test('fake', d, 'x', config, 'y', config, d / 'work')
+        # A tool error stays one (main(): could not run, exit 2), masked.
+        with self.assertRaises(RuntimeError) as caught:run(OSError('docker run failed: pw=repo-secret-1'))
+        self.assertEqual(str(caught.exception), 'docker run failed: pw=[password]')
+        # A bug is not turned into a tool error: it still crashes, masked, naming its type, with its traceback.
+        # (Not assertRaises: it drops the traceback.)
+        try:run(KeyError('repo-secret-1')); self.fail('no exception')
+        except rt.MaskedError as e:bug = e
+        self.assertNotIsInstance(bug, rt.TOOL_ERRORS); self.assertEqual(str(bug), "KeyError: '[password]'"); self.assertIsNone(bug.__cause__)
+        self.assertIn('open', [f.name for f in traceback.extract_tb(bug.__traceback__)])
+        # Without a password in it, an error is raised as it is.
+        with self.assertRaises(KeyError):run(KeyError('other'))
     def test_generated_and_repo_passwords_are_masked_but_not_defaults_or_names(self):
         config = {'schema': {'pw': 'password', 'opt': 'password?', 'list': ['password'], 'name': 'str'}}
         given = {'opt': 'q"uoted-secret', 'list': ['listed-secret'], 'name': 'visible-name'}

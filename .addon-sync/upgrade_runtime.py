@@ -210,14 +210,15 @@ def check_test_options(given, configs):
     """ValueError when upgrade-check/options.yaml (`given`) sets an option that no version's config.yaml schema lists,
     at any depth of a nested mapping schema: Supervisor drops options that are not in the schema (with a warning,
     apps/options.py), so such a key would never reach the add-on, a mistake the test reports. A version without a
-    schema mapping accepts every key. Also a ValueError: a password option (password or password?, in any version)
-    whose value is not a string or null, as Supervisor's password type takes strings only."""
+    schema mapping accepts every key, so then no key is unknown. Also a ValueError: a password option (password or
+    password?, in any version that has a schema) whose value is not a string or null, as Supervisor's password type
+    takes strings only; this is checked even when the other version has no schema."""
     schemas = [_schema(c) for c in configs]
-    if any(s is None for s in schemas):return
-    _check_level(given, schemas, '')
+    _check_level(given, [s for s in schemas if s is not None], '', any(s is None for s in schemas))
 
-def _check_level(given, schemas, prefix):
-    unknown = [prefix + k for k in given if not any(k in s for s in schemas)]
+def _check_level(given, schemas, prefix, any_key):
+    """check_test_options() at one level; `any_key`: a version without a schema keeps every key, at every depth."""
+    unknown = [] if any_key else [prefix + k for k in given if not any(k in s for s in schemas)]
     if unknown:
         raise ValueError(f'upgrade-check/{TEST_OPTIONS} sets {", ".join(map(repr, unknown))}, which no version\'s config.yaml schema has '
             '(Supervisor drops options that are not in the schema)')
@@ -226,7 +227,7 @@ def _check_level(given, schemas, prefix):
         if v is not None and any(_is_password(t) for t in types) and not isinstance(v, str):
             raise ValueError(f'upgrade-check/{TEST_OPTIONS}: {prefix + k!r} is a password option, so its value must be a string, not a {type(v).__name__}')
         nested = [t for t in types if isinstance(t, dict)]
-        if nested and isinstance(v, dict):_check_level(v, nested, prefix + k + '.')
+        if nested and isinstance(v, dict):_check_level(v, nested, prefix + k + '.', any_key)
 
 def _known(given, schema):
     """`given` without the keys `schema` (a mapping, or None: everything is known) lacks, nested mappings too."""
@@ -603,6 +604,12 @@ def _down(container):
     if restarts:return f'the container restarted {restarts} times'
     return ''
 
+# The exceptions main() reports as "the upgrade test could not run" (exit 2); any other one is a bug in this tool.
+TOOL_ERRORS = (OSError, ValueError, TypeError, AttributeError, RuntimeError, yaml.YAMLError)
+
+class MaskedError(Exception):
+    """A bug's exception (not a TOOL_ERRORS one) whose message held a password: its type name and masked message."""
+
 def upgrade_test(name, addon_dir, old_image, old_config, new_image, new_config, work):
     """The result described in the module docstring."""
     hooks_dir = pathlib.Path(addon_dir) / 'upgrade-check'
@@ -659,9 +666,12 @@ def upgrade_test(name, addon_dir, old_image, old_config, new_image, new_config, 
         result['passed'] = True
         return result
     except Exception as e:
-        # #157: a tool error's reason (main() writes and prints it) must not show a password either.
-        if mask(str(e), words) != str(e):raise RuntimeError(mask(str(e), words)) from None
-        raise
+        # #157: an error's message must not show a password either. A tool error (main() writes and prints its
+        # reason, exit 2) stays one; any other exception is a bug and still crashes with its type and traceback.
+        masked = mask(str(e), words)
+        if masked == str(e):raise
+        if isinstance(e, TOOL_ERRORS):raise RuntimeError(masked) from None
+        raise MaskedError(f'{type(e).__name__}: {masked}').with_traceback(e.__traceback__) from None
     finally:
         env.close()
         # #157: the report never shows a password (details, reasons); the returned dict is this one.
@@ -752,7 +762,7 @@ def main(argv=None):
         work = tempfile.mkdtemp(prefix='upgrade-test-')
         try:result = upgrade_test(a.name, a.addon_dir, a.old_image, old, a.new_image, new, work)
         finally:shutil.rmtree(work, ignore_errors=True)
-    except (OSError, ValueError, TypeError, AttributeError, RuntimeError, yaml.YAMLError) as e:
+    except TOOL_ERRORS as e:
         # compare reads the result file, so a tool error still leaves one with the reason.
         reason = f'the upgrade test could not run: {e}'
         (out / f'{a.name}.json').write_text(json.dumps({'name': a.name, 'passed': False, 'reason': reason, 'hooks': [], 'data_checked': False,
