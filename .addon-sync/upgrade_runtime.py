@@ -30,7 +30,10 @@ never run docker themselves. Their environment:
   SUPERVISOR_URL, SUPERVISOR_TOKEN   the mock Supervisor (http://127.0.0.1 in
                    its container, so its request log keeps the add-on's calls only)
 A hook passes when it exits 0 within hook_timeout (settings.yaml, default 600 s)
-and its report, if any, has no failing check. The report:
+and its report, if any, has no failing check. The time limit covers the whole
+docker exec; a hook must not leave background processes running (the mock's
+container outlives it until the test ends). A hook that is a symlink out of
+upgrade-check/ fails (only that directory is mounted). The report:
   {"checks": [{"name": "...", "result": "pass|fail|skip", "detail": "..."}]}
 A failing seed or verify fails the upgrade test. Without verify, data is not
 checked and the report says so.
@@ -42,12 +45,13 @@ Writes <report-dir>/<name>.json and <name>.md, appends the report to
 The result (<name>.json; compare reads it): {name, passed, reason, hooks (the
 hooks upgrade-check/ has), data_checked (verify ran), phases: [{phase, version,
 image, method, started, detail, answer, logs, hooks: [{hook, phase, passed,
-exit_code, detail, checks: [{name, result, detail}], output}]}]}.
+exit_code, detail, checks: [{name, result, detail}], output}]}]}. exit_code is
+None when the hook timed out or could not be started (a symlink out of upgrade-check/).
 """
 from __future__ import annotations
-import argparse, json, pathlib, re, secrets, shutil, subprocess, sys, tempfile, time
+import argparse, json, pathlib, secrets, shutil, subprocess, sys, tempfile, time
 import yaml
-from upgrade_check import HOOK_SETTINGS, _probe_url, ingress_port, mounts, startup_probe
+from upgrade_check import ingress_port, mounts, startup_probe, upgrade_settings, webui_endpoint
 from addon_sync import markdown_cell, workflow_command
 
 # The mock Supervisor runs in this image; the fake add-ons of test_upgrade_runtime.py build on it too.
@@ -58,6 +62,8 @@ TOOLING = pathlib.Path(__file__).resolve().parent
 MOCK_COMMAND, MOCK_WAIT = ['python', '-u', '/tooling/mock_supervisor.py', 'serve'], 30
 STARTUP_ONLY = 'Startup only: data was not checked (只檢查啟動，沒有檢查資料).'
 DATA_CHECKED = 'Data checked: seed wrote data on the comparison target, verify read it back on the new version (已檢查資料).'
+DATA_CHECKED_VERIFY_ONLY = 'Data checked by verify on the new version; there is no seed, so no data was written on the comparison target (已檢查資料).'
+NOT_CHECKED = 'Data was not checked: the test failed before verify ran (沒有檢查資料).'
 PHASE_LABEL = {'old': 'the comparison target', 'new': 'the new version'}
 # The data hooks (#138) and the phase each runs in; smoke, in both phases, is category 3.
 HOOK_PHASE = {'seed': 'old', 'verify': 'new'}
@@ -87,15 +93,18 @@ def addon_info(config, options):
 
 def addon_url(config):
     """ADDON_URL of the hooks: the webui's scheme and port, else the ingress port, else the bare address."""
-    if config.get('webui'):
-        scheme, port = re.match(r'^(\w+)://\[HOST\]:(\d+)', _probe_url(config['webui'], config.get('options'))).groups()
-        return f'{scheme}://{ADDON_IP}:{port}'
+    webui = webui_endpoint(config)
+    if webui:return f'{webui[0]}://{ADDON_IP}:{webui[1]}'
     if config.get('ingress'):return f'http://{ADDON_IP}:{ingress_port(config)}'
     return f'http://{ADDON_IP}'
 
-def hook_limits(settings):
-    """The hooks' time limits: HOOK_SETTINGS with upgrade-check/settings.yaml's values (startup_probe validates them)."""
-    return {k: settings.get(k, v) if isinstance(settings, dict) else v for k, v in HOOK_SETTINGS.items()}
+def hook_problem(hooks_dir, hook):
+    """Why upgrade-check/<hook> cannot run in the mock Supervisor's container, or '': only upgrade-check/ is mounted
+    there, so a symlink that leaves it would point at nothing (a silent exit 127)."""
+    path = hooks_dir / hook
+    if path.is_symlink() and not path.resolve().is_relative_to(hooks_dir.resolve()):
+        return f'upgrade-check/{hook} is a symlink to {path.resolve()}, outside upgrade-check/ (only that directory is mounted where hooks run)'
+    return ''
 
 class UpgradeTestEnv:
     """One upgrade test's network, mock Supervisor and data directories, removed by close(). `hooks`: the add-on's
@@ -166,19 +175,27 @@ class UpgradeTestEnv:
         (self.reports / phase).mkdir(exist_ok=True)
         report = self.reports / phase / f'{hook}.json'
         if report.exists():report.unlink()
+        unusable = hook_problem(self.hooks, hook)
+        if unusable:
+            return {'hook': hook, 'phase': phase, 'passed': False, 'exit_code': None, 'detail': f'could not run: {unusable}', 'checks': [], 'output': ''}
         envs = [a for k, v in self.hook_env(phase, image, config).items() for a in ('-e', f'{k}={v}')]
         started = time.monotonic()
         try:
+            # busybox timeout ends the hook inside the container; the subprocess timeout only guards a hung docker exec.
             r = subprocess.run(['docker', 'exec', '-w', IN_MOCK['hooks'], *envs, self.supervisor, 'timeout', str(timeout), f'{IN_MOCK["hooks"]}/{hook}'],
                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding='utf-8', errors='replace', timeout=timeout + 60)
             code, output = r.returncode, r.stdout
         except subprocess.TimeoutExpired as e:
-            code, output = None, (e.stdout or '') if isinstance(e.stdout, str) else ''
+            # On POSIX the partial output is bytes even with text=True.
+            out = e.stdout or ''
+            code, output = None, out.decode('utf-8', 'replace') if isinstance(out, bytes) else out
         elapsed = time.monotonic() - started
         checks, problem = _read_checks(report)
         failing = [c['name'] for c in checks if c['result'] == 'fail']
         if code is None or (code and elapsed >= timeout):detail = f'did not finish within {timeout} s (hook_timeout)'
         elif code == 126:detail = f'could not run (exit 126): is upgrade-check/{hook} executable (git update-index --chmod=+x) with a #! line?'
+        elif code == 127:detail = (f'could not run (exit 127): the interpreter on the #! line of upgrade-check/{hook} was not found; hooks run with '
+            'python3 and busybox sh only (no bash), and a CRLF line ending breaks the #! line')
         elif code:detail = f'exited with code {code}'
         else:detail = 'exited 0'
         if problem:detail += f'; {problem}'
@@ -263,8 +280,7 @@ def upgrade_test(name, addon_dir, old_image, old_config, new_image, new_config, 
     hooks_dir = pathlib.Path(addon_dir) / 'upgrade-check'
     settings_path = hooks_dir / 'settings.yaml'
     settings = yaml.safe_load(settings_path.read_text(encoding='utf-8')) if settings_path.exists() else None
-    startup_probe(new_config, settings)  # a bad settings.yaml is a tool error before any container starts
-    limits = hook_limits(settings)
+    limits = upgrade_settings(settings)  # a bad settings.yaml is a tool error before any container starts
     present = [h for h in HOOK_PHASE if (hooks_dir / h).is_file()]
     env = UpgradeTestEnv(work, hooks_dir.resolve() if hooks_dir.is_dir() else None); phases = []
     result = {'name': name, 'passed': False, 'reason': '', 'hooks': present, 'data_checked': False, 'phases': phases}
@@ -295,9 +311,14 @@ def upgrade_test(name, addon_dir, old_image, old_config, new_image, new_config, 
 
 def report(result):
     """The Markdown report of upgrade_test()'s result: the startup of each version, then every hook's checks."""
-    data = DATA_CHECKED if 'verify' in result.get('hooks', []) else STARTUP_ONLY
+    hooks, checked = result.get('hooks', []), result.get('data_checked', False)
+    # verify runs only after seed (when there is one) passed, so data_checked with seed means both ran.
+    if checked and 'seed' in hooks:data = DATA_CHECKED
+    elif checked:data = DATA_CHECKED_VERIFY_ONLY
+    elif 'verify' in hooks:data = NOT_CHECKED
+    else:data = STARTUP_ONLY
     passed = ('**Passed**: the new version starts on the data of the comparison target' +
-        (', and verify finds the data seed wrote.' if 'verify' in result.get('hooks', []) else '.'))
+        ((', and verify finds the data seed wrote.' if 'seed' in hooks else ', and verify passes on it.') if checked else '.'))
     r = [f'#### Upgrade test: {result["name"]}', '', passed if result['passed'] else f'**Failed**: {markdown_cell(result["reason"])}.', '', data, '',
         '| version | image | judged by | started | detail |', '|---|---|---|---|---|']
     r += [f'| {PHASE_LABEL[p["phase"]]} {markdown_cell(p["version"])} | `{markdown_cell(p["image"])}` | {p["method"]} | {"yes" if p["started"] else "**no**"} | {markdown_cell(p["detail"])} |'

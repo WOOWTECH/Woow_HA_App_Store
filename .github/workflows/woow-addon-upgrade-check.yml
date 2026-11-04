@@ -436,9 +436,13 @@ jobs:
           [ -e "${result}" ] || break
           # upgrade_runtime.py's result, the runtime job's note on why the test did not run, or why that job failed.
           id="$(jq -r '.name' "${result}")"
-          # #138: an add-on whose upgrade-check/ has verify had its data checked; the others only their startup.
-          if jq -e '(.hooks // []) | index("verify")' "${result}" > /dev/null; then
-            scope="data checked by seed and verify (已檢查資料)"
+          # #138: data was checked only when verify ran (data_checked; absent in results from before #138). verify runs
+          # only after seed, when there is one, passed. A test that failed before verify did not check data.
+          if jq -e '.data_checked == true' "${result}" > /dev/null; then
+            if jq -e '(.hooks // []) | index("seed")' "${result}" > /dev/null; then scope="data checked by seed and verify (已檢查資料)"
+            else scope="data checked by verify, no seed (已檢查資料)"; fi
+          elif jq -e '(.hooks // []) | index("verify")' "${result}" > /dev/null; then
+            scope="data was not checked: the test failed before verify ran (沒有檢查資料)"
           else scope="startup only: data was not checked (只檢查啟動，沒有檢查資料)"; fi
           case "$(jq -r '.passed' "${result}")" in
             true) echo "- ${id}: passed, ${scope}" >> "$GITHUB_STEP_SUMMARY";;

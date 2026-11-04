@@ -228,6 +228,20 @@ class Runtime(unittest.TestCase):
         self.assertEqual(code, 1); self.assertEqual(result['hooks'], ['verify'])
         self.assertIn('verify failed on the new version (1.1.0): exited with code 3', result['reason'])
         self.assertIn('the data is gone', result['phases'][1]['hooks'][0]['output'])
+        # verify ran without a seed: the report must not say seed wrote anything.
+        summary = (self.dir / 'summary.md').read_text(encoding='utf-8')
+        self.assertIn('Data checked by verify on the new version; there is no seed', summary); self.assertNotIn('seed wrote', summary)
+    def test_hook_whose_interpreter_is_missing_or_that_links_outside_fails_with_a_hint(self):
+        self.settings(stable_seconds=3); self.hook('verify', '#!/bin/bash\necho hi\n')
+        code, result, out = self.run_test('good', 'good')
+        self.assertEqual(code, 1); self.assertIn('could not run (exit 127): the interpreter on the #! line of upgrade-check/verify was not found', result['reason'])
+        outside = self.dir / 'outside-verify'; outside.write_text('#!/bin/sh\nexit 0\n', encoding='utf-8', newline='\n')
+        (self.dir / 'addon/upgrade-check/verify').unlink()
+        try:(self.dir / 'addon/upgrade-check/verify').symlink_to(outside)
+        except OSError:self.skipTest('this account cannot create symlinks (Windows without developer mode)')
+        code, result, out = self.run_test('good', 'good')
+        self.assertEqual(code, 1); self.assertIn('upgrade-check/verify is a symlink to', result['reason'])
+        self.assertIn('outside upgrade-check/', result['reason']); self.assertIsNone(result['phases'][1]['hooks'][0]['exit_code'])
     def test_verify_that_exits_0_with_a_failing_check_fails(self):
         self.settings(stable_seconds=3)
         self.hook('verify', '#!/bin/sh\necho \'{"checks":[{"name":"row kept","result":"fail","detail":"0 rows"}]}\' > "$REPORT_DIR/verify.json"\n')
@@ -238,6 +252,8 @@ class Runtime(unittest.TestCase):
         code, result, out = self.run_test('good', 'good')
         self.assertEqual(code, 1); self.assertEqual([p['phase'] for p in result['phases']], ['old'])
         self.assertIn('seed failed on the comparison target (1.0.0): exited with code 2', result['reason']); self.assertFalse(result['data_checked'])
+        summary = (self.dir / 'summary.md').read_text(encoding='utf-8')
+        self.assertIn('Data was not checked: the test failed before verify ran', summary); self.assertNotIn('已檢查資料', summary)
     def test_hook_past_its_time_limit_or_with_a_broken_report_fails(self):
         self.settings(stable_seconds=3, hook_timeout=3); self.hook('seed', '#!/bin/sh\necho "{" > "$REPORT_DIR/seed.json"\n')
         self.hook('verify', '#!/bin/sh\nsleep 30\n')
