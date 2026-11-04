@@ -1419,15 +1419,21 @@ class RuntimeRulesCommand(unittest.TestCase):
         self.assertEqual(u.map_warnings({'map':['addon_config','app_config']}),
             ["map entry 'addon_config' is ignored because 'app_config' is present (as Supervisor does)"])
         self.assertEqual(u.map_warnings({'map':['app_config:rw','share']}),[])
-    def test_unknown_map_type_fails_with_the_reason(self):
-        code,out=self.run_cmd('mounts','--config',self.config(map=['nope']),'--root','/w')
-        self.assertEqual(code,2);self.assertIn("unknown map entry 'nope'",out)
-        # Supervisor's schema: type[:rw|:ro], a boolean read_only (no coercion), a string path.
-        for entry in ['media:rx','media:','share:rw:ro',{'type':['share']},{'type':{'a':1}},{'path':'/x'},
-                {'type':'share','read_only':'false'},{'type':'share','read_only':0},{'type':'share','path':5},5]:
+    def test_entries_supervisor_skips_are_skipped_and_reported(self):
+        # apps/validate.py skips (and logs) a string that is not <known type>[:rw|:ro], a mapping without `type`,
+        # and anything else; the add-on still loads, so the upgrade test still runs it.
+        for entry in ['nope','media:rx','media:','share:rw:ro',{'path':'/x'},{'read_only':False},5,['share'],None]:
+            with self.subTest(entry=entry):
+                self.assertEqual(self.mounts(map=[entry,'share']),[('/w/data','/data',False),('/w/share','/share',True)])
+                self.assertEqual(len(u.map_warnings({'map':[entry,'share']})),1)
+                self.assertIn('is skipped because',u.map_warnings({'map':[entry]})[0])
+    def test_map_entries_supervisor_rejects_fail_with_the_reason(self):
+        # Supervisor's map schema: a known type, a boolean read_only (no coercion), a string path, no other key.
+        for entry in [{'type':'nope'},{'type':['share']},{'type':{'a':1}},{'type':5},{'type':'share','read_only':'false'},
+                {'type':'share','read_only':0},{'type':'share','path':5},{'type':'share','mode':'rw'}]:
             with self.subTest(entry=entry):
                 code,out=self.run_cmd('mounts','--config',self.config(map=[entry]),'--root','/w')
-                self.assertEqual(code,2,out);self.assertIn('unknown map entry',out)
+                self.assertEqual(code,2,out);self.assertIn('invalid map entry',out)
         self.assertEqual(self.mounts(map=['share:ro']),[('/w/data','/data',False),('/w/share','/share',True)])
         code,out=self.run_cmd('mounts','--config',self.config(map=['app_config:rw',{'type':'share','path':'/config'}]),'--root','/w')
         self.assertEqual(code,2);self.assertIn('two data directories are mounted at /config',out)

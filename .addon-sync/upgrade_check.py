@@ -321,18 +321,27 @@ MAP_IGNORED_BY={'config':('app_config','addon_config','homeassistant_config'),'a
 _MAP_STRING=re.compile(r'^(\w+)(?::(rw|ro))?$')
 
 def _map_entries(config):
-    """config.yaml's `map` as {type: (path, read_only)} after Supervisor drops the ignored entries, and a warning
-    for each dropped one. A string entry is type[:rw|:ro], read-only unless :rw; a mapping has `type`, a boolean
-    read_only (default true) and a string path (apps/validate.py RE_VOLUME and the map schema)."""
-    entries={}
+    """config.yaml's `map` as {type: (path, read_only)} after Supervisor drops the entries it skips or ignores, and
+    a warning for each dropped one. As in apps/validate.py (_migrate and the map schema): a string entry that is
+    not <type>[:rw|:ro] with a known type, a mapping without `type`, and an entry that is neither are skipped, so
+    the add-on still loads; a mapping with `type` must have a known type, a boolean read_only (default true) and
+    a string path, and no other key, or Supervisor does not load the add-on. A string is read-only unless :rw."""
+    entries,warnings={},[]
     for entry in config.get('map') or []:
-        kind=None
-        if isinstance(entry,str) and (m:=_MAP_STRING.match(entry)):kind,read_only,path=m[1],m[2]!='rw',None
-        elif isinstance(entry,dict) and isinstance(entry.get('read_only',True),bool) and isinstance(entry.get('path',''),str):
-            kind,read_only,path=entry.get('type'),entry.get('read_only',True),entry.get('path')
-        if not isinstance(kind,str) or kind not in MAP_PATHS:raise ValueError(f'unknown map entry {entry!r}')
+        if isinstance(entry,str):
+            if not ((m:=_MAP_STRING.match(entry)) and m[1] in MAP_PATHS):
+                warnings.append(f'map entry {entry!r} is skipped because it is not <type>[:rw|:ro] (as Supervisor does)');continue
+            kind,read_only,path=m[1],m[2]!='rw',None
+        elif isinstance(entry,dict):
+            if 'type' not in entry:
+                warnings.append(f"map entry {entry!r} is skipped because it has no 'type' (as Supervisor does)");continue
+            kind,read_only,path=entry['type'],entry.get('read_only',True),entry.get('path')
+            if not (isinstance(kind,str) and kind in MAP_PATHS and isinstance(read_only,bool)
+                    and isinstance(entry.get('path',''),str) and set(entry)<={'type','read_only','path'}):
+                raise ValueError(f'invalid map entry {entry!r}; Supervisor does not load an add-on with it')
+        else:
+            warnings.append(f'map entry {entry!r} is skipped because it is neither a string nor a mapping (as Supervisor does)');continue
         entries[kind]=(path,read_only)
-    warnings=[]
     for kind,ignored in MAP_IGNORED_BY.items():
         if kind in entries:
             for other in ignored:
@@ -347,7 +356,7 @@ def mounts(config, root):
     """The data directories of an add-on: <root>/data at /data (or at the `path` of its `data` entry), then one per
     other `map` entry at its `path` (or Supervisor's default), from <root>/<MAP_SOURCES[type] or type>. The
     comparison target and the new version share the same set even when one of them moves or renames a type. As
-    in Supervisor, a repeated type keeps its last entry and ignored types are dropped (map_warnings lists them).
+    in Supervisor, a repeated type keeps its last entry and skipped or ignored entries are dropped (map_warnings lists them).
     Each is {type, source, target, read_only}; type is 'data' for the data mount, else the map type as config.yaml
     writes it (addon_config stays addon_config), for naming per-directory settings such as the hooks' variables."""
     entries,_=_map_entries(config)
