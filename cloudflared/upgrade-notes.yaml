@@ -1,0 +1,28 @@
+# Declarations for the upgrade comparison (pipeline #89). Format and rules:
+# Store README, "升版比對與 upgrade-notes.yaml". Only versions after the latest
+# formal Release count, so the 1.1.0 section is on record only.
+#
+# 1.1.0 changed no config.yaml key. Both entries are runtime changes that the
+# configuration check does not detect; they are declared so the migration is
+# written down. Behaviour changes are in CHANGELOG.md. Rollback from 1.1.0:
+# stop/disconnect the connector and revoke its PaaS authorization first (a
+# filesystem restore does not release the remote binding), then restore the
+# 1.0.4 add-on backup and prior options. 1.0.4 cannot read the 1.1.0 PaaS
+# authorization state; never run two connectors with the same managed token.
+"1.1.0":
+  breaking:
+    - change: range-narrowed
+      key: run_parameters
+      migration: >-
+        The startup script now rejects --token, --token-file and --metrics even
+        if options bypassed the schema. Remove unsupported flags before
+        upgrading and put a manually managed Tunnel token in tunnel_token.
+        Supported flags, each as --flag=value: --edge-bind-address,
+        --edge-ip-version, --grace-period, --ha-connections, --logfile,
+        --loglevel, --pidfile, --protocol, --region, --retries, --tag.
+    - change: port-removed
+      key: 36500/tcp
+      migration: >-
+        The metrics listener binds 127.0.0.1:36500 inside the add-on, so a host
+        port mapping no longer exposes it. Use a collector inside the add-on
+        network namespace, or the GUI / PaaS status API.

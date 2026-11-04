@@ -88,11 +88,12 @@
               <p class="mt-2 text-xs text-gray-600">訂閱：{{ review.access.subscription?.plan_name || '尚未訂閱' }}（{{ subscriptionLabel(review.access.subscription?.state) }}） · 服務：{{ serviceLabel(review.access.state) }} · 綁定：{{ bindingLabel(review.access.binding_state) }}</p>
               <p v-if="review.access.subscription?.ac_max_access_seats != null" class="mt-2 text-xs text-gray-600">Access 席次：已使用 {{ review.access.subscription.ac_used_access_seats ?? '—' }} / {{ review.access.subscription.ac_max_access_seats }} 席。同一個 Email 用於多個網址只計 1 席。</p>
               <div v-for="route in review.access.routes" :key="route.hostname" class="mt-3 rounded-lg bg-white px-4 py-3 text-sm text-gray-700">
-                <span :class="route.protected ? 'text-emerald-700' : 'text-red-700'" class="font-bold">{{ route.protected ? '✓' : '!' }}</span>
+                <span :class="route.protected ? 'text-emerald-700' : route.awaiting_publication ? 'text-amber-700' : 'text-red-700'" class="font-bold">{{ route.protected ? '✓' : route.awaiting_publication ? '…' : '!' }}</span>
                 <span class="ml-2 font-medium">{{ route.hostname }}</span>
-                <span class="ml-2 text-xs text-gray-500">{{ route.protected ? '保護設定已確認' : '保護設定未完成' }}</span>
+                <span class="ml-2 text-xs text-gray-500">{{ route.protected ? '保護設定已確認' : route.awaiting_publication ? '保護已設定，等待 PaaS 發布' : '保護設定未完成' }}</span>
               </div>
               <ul v-if="review.issues.length" class="mt-4 list-inside list-disc space-y-1 text-sm text-amber-900"><li v-for="issue in review.issues" :key="issue">{{ issue }}</li></ul>
+              <p v-if="review.awaiting_publication" class="mt-4 rounded-lg bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900">PaaS 剛記下新的存取設定，要等這個 add-on 的 connector 上線後才會發布。發布前網址只會回 503，不會轉到 Home Assistant；連結並重新啟動後，可在下方「刷新連線狀態」看到發布完成。</p>
               <div class="mt-4 flex flex-wrap gap-3 text-sm font-semibold">
                 <a :href="review.portal_routes_url" target="_blank" rel="noopener noreferrer" class="text-cf-orange underline">設定應用路由 ↗</a>
                 <a :href="review.portal_access_url" target="_blank" rel="noopener noreferrer" class="text-cf-orange underline">設定 Access 保護 ↗</a>
@@ -123,7 +124,7 @@
           </div>
           <div v-if="connectionStatus?.connected" class="mt-4 grid gap-3 sm:grid-cols-3">
             <div class="rounded-xl border border-gray-200 bg-gray-50 p-4 text-sm"><p class="text-xs text-gray-500">訂閱</p><p class="mt-1 font-semibold text-gray-900">{{ subscriptionLabel(connectionStatus.subscription?.state) }}</p></div>
-            <div class="rounded-xl border border-gray-200 bg-gray-50 p-4 text-sm"><p class="text-xs text-gray-500">Access 保護</p><p class="mt-1 font-semibold" :class="connectionStatus.access_ready ? 'text-emerald-700' : 'text-red-700'">{{ connectionStatus.access_ready ? '設定已確認' : '需要修復' }}</p></div>
+            <div class="rounded-xl border border-gray-200 bg-gray-50 p-4 text-sm"><p class="text-xs text-gray-500">Access 保護</p><p class="mt-1 font-semibold" :class="!connectionStatus.access_ready ? 'text-red-700' : connectionStatus.awaiting_publication ? 'text-amber-700' : 'text-emerald-700'">{{ !connectionStatus.access_ready ? '需要修復' : connectionStatus.awaiting_publication ? '等待 PaaS 發布（網址暫回 503）' : '設定已確認' }}</p></div>
             <div class="rounded-xl border border-gray-200 bg-gray-50 p-4 text-sm"><p class="text-xs text-gray-500">Tunnel</p><p class="mt-1 font-semibold text-gray-900">{{ tunnelLabel(connectionStatus.tunnel_status) }}</p></div>
             <p class="sm:col-span-3 text-xs text-gray-500">檢查時間：{{ new Date(connectionStatus.checked_at * 1000).toLocaleString() }}。{{ connectionStatus.external.length ? '匿名外部探測只確認回應，不代表指定使用者登入成功。' : '外部網址尚未獨立測試；Tunnel 在線不等於公開網址可用。' }}</p>
             <div v-for="result in connectionStatus.external" :key="result.hostname" class="rounded-xl border border-gray-200 bg-white p-4 text-sm">
@@ -153,9 +154,9 @@ interface Connection { access_id: number; workspace_id: number; name: string }
 interface Bootstrap { authorized: boolean; portal_url: string; connection: Connection | null; release_pending: boolean }
 interface Workspace { id: number; name: string; portal_url: string }
 interface Access { id: number; name: string; state: string }
-interface Review { ready: boolean; issues: string[]; access: { id: number; name: string; state: string; binding_state: string; subscription: { state: string; plan_name: string; ac_max_access_seats?: number | null; ac_used_access_seats?: number | null } | null; routes: { hostname: string; protected: boolean }[] }; portal_access_url: string; portal_routes_url: string }
+interface Review { ready: boolean; issues: string[]; awaiting_publication: boolean; access: { id: number; name: string; state: string; binding_state: string; subscription: { state: string; plan_name: string; ac_max_access_seats?: number | null; ac_used_access_seats?: number | null } | null; routes: { hostname: string; protected: boolean; awaiting_publication: boolean }[] }; portal_access_url: string; portal_routes_url: string }
 interface Authorization { user_code: string; verification_url: string; interval: number }
-interface ConnectionStatus { connected: boolean; subscription: { state: string } | null; access_ready: boolean; issues: string[]; tunnel_status: string; checked_at: number; external: { hostname: string; status: string; http_status?: number }[] }
+interface ConnectionStatus { connected: boolean; subscription: { state: string } | null; access_ready: boolean; awaiting_publication: boolean; issues: string[]; tunnel_status: string; checked_at: number; external: { hostname: string; status: string; http_status?: number }[] }
 
 const steps = ['開通訂閱', '授權帳戶', '檢查保護', '連結啟用']
 const portalFallback = 'https://aiot.woowtech.io/woow#/workspaces'

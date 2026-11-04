@@ -31,7 +31,7 @@ ha store add https://github.com/WOOWTECH/Woow_HA_App_Store
 ### 🏢 WOOWTECH 自主開發
 | Slug | 名稱 | Ver | 安裝 | 用途 |
 |---|---|---|---|---|
-| `cloudflared` | Woow Cloudflared | 1.1.0 | 預建映像 | Cloudflare Tunnel 遠端存取（含 web GUI） |
+| `cloudflared` | Woow Cloudflared | 1.1.1 | 預建映像 | Cloudflare Tunnel 遠端存取（含 web GUI） |
 | `odoo18ce` | Woow Odoo 18 | 0.4.12 | 預建映像 | Odoo 18 社群版 + PostgreSQL 16 一站式 |
 | `woow-emqx` | Woow EMQX | 5.9.1 | 本機建置 | EMQX 5.x MQTT broker（企業級，內建 ngrok） |
 | `woow-headscale` | Woow Headscale VPN | 0.1.0 | 本機建置 | 自架 Headscale + Headplane GUI |

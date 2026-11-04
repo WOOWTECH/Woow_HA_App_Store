@@ -298,20 +298,39 @@ def _review(access: dict) -> dict:
         login_ready = route.get("login_google") is True or route.get("login_email_otp") is True
         if not login_ready:
             issues.append(f"{host}：尚未指定登入方式；請在 PaaS 勾選 Email OTP 或 Google")
-        protected = (
+        # Everything the route itself declares: a protected app, an explicit
+        # email allow-list, a login method, nothing broad, nothing lost.
+        declared = (
             bool(route.get("hostname")) and bool(route.get("service_url"))
             and route.get("is_protected") is True
-            and route.get("access_configuration_ready") is True
             and route.get("access_protection_lost") is False
-            and route.get("access_publish_pending") is False
             and not route.get("access_unresolved_idp_types")
             and login_ready
             and allow
             and not broad_access
         )
-        if not protected:
+        protected = (
+            declared
+            and route.get("access_configuration_ready") is True
+            and route.get("access_publish_pending") is False
+        )
+        # PaaS keeps a pending route's origin closed (it publishes
+        # http_status:503 to the tunnel) and only re-publishes it once a fresh
+        # sync confirmed Access. After an authorization change that sync needs
+        # a live connector (_access_recovery_tunnel_is_live), so a tunnel that
+        # has never been connected cannot leave pending by itself: refusing to
+        # connect here would wait forever. A pending route whose declared
+        # protection is complete therefore does not block the claim.
+        awaiting_publication = (
+            declared and not protected
+            and route.get("access_publish_pending") is True
+        )
+        if not protected and not awaiting_publication:
             issues.append(f"{host}：Access 保護或允許名單尚未確認，請到 PaaS 設定")
-        safe_routes.append({"hostname": route.get("hostname"), "service_url": route.get("service_url"), "protected": protected})
+        safe_routes.append({
+            "hostname": route.get("hostname"), "service_url": route.get("service_url"),
+            "protected": protected, "awaiting_publication": awaiting_publication,
+        })
     workspace_id = access.get("workspace_id")
     access_id = access.get("id")
     summary = {
@@ -325,6 +344,7 @@ def _review(access: dict) -> dict:
     return {
         "ready": not issues,
         "issues": issues,
+        "awaiting_publication": any(r["awaiting_publication"] for r in safe_routes),
         "access": summary,
         "portal_access_url": _portal_path(workspace_id, access_id, "access"),
         "portal_routes_url": _portal_path(workspace_id, access_id, "application"),
@@ -362,6 +382,7 @@ async def connection_status(probe: bool = Query(default=False)) -> dict:
         "connected": True,
         "subscription": reviewed["access"]["subscription"],
         "access_ready": reviewed["ready"],
+        "awaiting_publication": reviewed["awaiting_publication"],
         "issues": reviewed["issues"],
         "routes": reviewed["access"]["routes"],
         "tunnel_status": tunnel.status,

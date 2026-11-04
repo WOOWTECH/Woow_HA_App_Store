@@ -1,5 +1,28 @@
 # Changelog
 
+## 1.1.1
+
+### Fixed
+- The PaaS link could never connect a newly protected service. When protection is turned on
+  first and the login method and rules are added afterwards, which is the only order the
+  Portal allows, PaaS treats this as an authorization change. It revokes the Access tokens
+  and keeps the route `access_publish_pending`. PaaS clears the pending state only once the
+  tunnel has a live connector, but the GUI refused to start a connector while the route was
+  pending, so each side waited for the other indefinitely.
+  - A pending route whose own protection is complete no longer blocks the claim. Complete
+    means a named email or domain allow-list, a login method, no bypass or `everyone`-style
+    rule, protection not lost and no unresolved IdP. The route is shown as "等待 PaaS 發布"
+    instead.
+  - While pending, PaaS publishes the origin as `http_status:503`, so no request reaches
+    Home Assistant until Access has been re-confirmed.
+  - A pending route that is missing any part of that protection still blocks the claim.
+
+### Migration
+- No option, schema, port or image change. A service that was stuck on "Access 保護或允許名單尚未確認"
+  right after its protection was set up can now be linked. It answers 503 until PaaS
+  finishes publishing. PaaS's connector probe and Access resync both run every 15 minutes, so
+  this takes up to about 15 minutes after the connector comes up (7 minutes on SA61).
+
 ## 1.1.0 — 2026-10-24
 
 ### Release scope
@@ -58,7 +81,7 @@
   clears the managed token and local route options to prevent fallback to an
   unintended public Local tunnel. Save any Local settings you want to restore
   before disconnecting.
-- Review the repository's `upgrade-notes.yaml` before upgrading from 1.0.4.
+- Review `cloudflared/upgrade-notes.yaml` before upgrading from 1.0.4.
   Back up the add-on first. Only the documented run-parameter allow-list is
   accepted; remove unsupported flags and keep credentials in the token field.
 
