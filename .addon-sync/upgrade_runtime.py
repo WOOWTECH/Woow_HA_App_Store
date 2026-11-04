@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Upgrade test of one add-on, startup only (pipeline #137, category 2 of ADR-0005).
+"""Upgrade test of one add-on: startup (pipeline #137) and data (#138), category 2 of ADR-0005.
 
 Runs the comparison target's image, then the new image on the same data
 directories (/data and one per config.yaml `map` entry, at its `path`:
@@ -11,15 +11,73 @@ option defaults. Each version must start, judged as upgrade_check.startup_probe
 says from the Supervisor's address, and then stay up for stable_seconds; the
 add-on's upgrade-check/settings.yaml may override the time limits.
 
+Data directories: <root>/data at /data, or at the `path` of a `data` entry;
+each other `map` entry at its `path` or Supervisor's default, from
+<root>/<MAP_SOURCES[type] or type> (app_config/addon_config =
+all_app_configs/<slug>; legacy names share the new name's directory); entries
+Supervisor ignores are listed by upgrade_check.map_warnings().
+
+Data check (#138): the add-on's upgrade-check/ (in the PR) may hold the hooks
+`seed` (run once on the comparison target after it started, to write data) and
+`verify` (run on the new version after it started, to read that data back).
+Both are optional executables (any language with a #! line). They run inside
+the mock Supervisor's container (python:3.12-alpine: python3 and busybox sh,
+wget, timeout), so they reach the add-on from the Supervisor's address, and
+never run docker themselves. Their environment:
+  ADDON_URL        the add-on from the Supervisor: its webui's scheme and port,
+                   else its ingress port, else http://ADDON_HOST (no path)
+  ADDON_HOST       the add-on's address (172.30.33.10)
+  ADDON_IMAGE, ADDON_VERSION   the version the hook runs against
+  PHASE            old (seed) or new (verify)
+  REPORT_DIR       where the hook may write <hook>.json (one directory per phase)
+  HOOK_STATE_DIR   kept from seed to verify (ids, keys), never mounted in the add-on
+  DATA_DIR_<TYPE>  each data directory as the hook sees it: DATA_DIR_DATA for
+                   /data, DATA_DIR_ADDON_CONFIG, DATA_DIR_SHARE... per `map` type
+  SUPERVISOR_URL, SUPERVISOR_TOKEN   the mock Supervisor (http://127.0.0.1 in
+                   its container, so its request log keeps the add-on's calls only)
+A hook passes when it exits 0 within hook_timeout (settings.yaml, default 600 s)
+and its report, if any, has no failing check. The time limit covers the whole
+docker exec; a hook must not leave background processes running (the mock's
+container outlives it until the test ends). A hook that is a symlink out of
+upgrade-check/ fails (only that directory is mounted). The report:
+  {"checks": [{"name": "...", "result": "pass|fail|skip", "detail": "..."}]}
+A failing seed or verify fails the upgrade test. Without verify, data is not
+checked and the report says so.
+
+Supervisor fixtures (#142): the add-on's upgrade-check/supervisor/ may hold
+answers for Supervisor API paths, one JSON file per path (its `data`):
+/services/mqtt -> supervisor/services/mqtt.json (mock_supervisor.py
+documents the mapping). A fixture beats the mock's default answer, except that
+addons/self/info.json is laid over the info this runtime writes for each
+version (its keys only) and /supervisor/ping is never overridden. Paths with
+neither answer 404; the report lists them (the UNMOCKED_ROWS most called per
+version), and fixtures that cannot be used, per version, with their counts.
+Neither fails the test. upgrade-check/supervisor/ must not be, or hold, a
+symlink out of upgrade-check/ (only that directory is mounted): that is a tool
+error before any container starts.
+
 Writes <report-dir>/<name>.json and <name>.md, appends the report to
 --summary and exits 1 when the upgrade test fails (::error with the reason),
-2 on a usage or tool error. Data is not checked yet: the report says so.
-Needs Docker; both images must be local or pullable.
+2 on a usage or tool error. Needs Docker; both images must be local or pullable.
+
+The result (<name>.json; compare reads it): {name, passed, reason, hooks (the
+hooks upgrade-check/ has), data_checked (verify ran), phases: [{phase, version,
+image, method, started, detail, answer, logs, hooks: [{hook, phase, passed,
+exit_code, detail, checks: [{name, result, detail}], output}], supervisor:
+{unmocked: [{path, count, methods}], broken_fixtures: [same]}}], map_warnings:
+{old: [...], new: [...]}}. exit_code is None when the hook timed out or could
+not be started (a symlink out of upgrade-check/). supervisor lists the
+add-on's own Supervisor calls during that phase (start to stop) that answered
+404 (unmocked) or 500 (a fixture that is not valid JSON); calls of the hooks
+and of the runtime are not in it. map_warnings are upgrade_check.map_warnings()
+of each config.yaml: map entries Supervisor ignores (or why `map` could not be
+read). Both are informational.
 """
 from __future__ import annotations
-import argparse, json, pathlib, secrets, shutil, subprocess, sys, tempfile, time
+import argparse, json, os, pathlib, secrets, shutil, subprocess, sys, tempfile, time
 import yaml
-from upgrade_check import ingress_port, mounts, startup_probe
+import mock_supervisor
+from upgrade_check import ingress_port, map_warnings, mounts, startup_probe, upgrade_settings, webui_endpoint
 from addon_sync import markdown_cell, workflow_command
 
 # The mock Supervisor runs in this image; the fake add-ons of test_upgrade_runtime.py build on it too.
@@ -29,13 +87,41 @@ TOOLING = pathlib.Path(__file__).resolve().parent
 # How the mock Supervisor runs, and how long open() waits for it to answer (tests slow or break it).
 MOCK_COMMAND, MOCK_WAIT = ['python', '-u', '/tooling/mock_supervisor.py', 'serve'], 30
 STARTUP_ONLY = 'Startup only: data was not checked (只檢查啟動，沒有檢查資料).'
+DATA_CHECKED = 'Data checked: seed wrote data on the comparison target, verify read it back on the new version (已檢查資料).'
+DATA_CHECKED_VERIFY_ONLY = 'Data checked by verify on the new version; there is no seed, so no data was written on the comparison target (已檢查資料).'
+NOT_CHECKED = 'Data was not checked: the test failed before verify ran (沒有檢查資料).'
 PHASE_LABEL = {'old': 'the comparison target', 'new': 'the new version'}
+# The data hooks (#138) and the phase each runs in; smoke, in both phases, is category 3.
+HOOK_PHASE = {'seed': 'old', 'verify': 'new'}
+# Where the mock Supervisor's container sees the add-on's upgrade-check/, the data directories, the hooks' reports and state.
+IN_MOCK = {'hooks': '/upgrade-check', 'data': '/upgrade-data', 'reports': '/hook-reports', 'state': '/hook-state'}
+CHECK_RESULTS = ('pass', 'fail', 'skip')
+# How many unmocked paths the report lists per version, the most called first.
+UNMOCKED_ROWS = 30
+
+class DockerError(RuntimeError):
+    """A docker command that failed: its exit code and output."""
+    def __init__(self, message, returncode, output):
+        super().__init__(message); self.returncode, self.output = returncode, output
 
 def docker(*args, check=True):
     r = subprocess.run(['docker', *args], capture_output=True, text=True, encoding='utf-8', errors='replace')
     if check and r.returncode:
-        raise RuntimeError(f'docker {args[0]} failed ({r.returncode}): {(r.stderr or r.stdout).strip()[-1000:]}')
+        output = (r.stderr or r.stdout).strip()
+        raise DockerError(f'docker {args[0]} failed ({r.returncode}): {output[-1000:]}', r.returncode, output)
     return r.stdout
+
+# #140: what `docker run` says when the image, not the runner, is at fault: it cannot be found or pulled, or the
+# container was created but its entrypoint cannot run (docker run exits 126 or 127 then). Anything else (a name or
+# address in use, a bind mount, the daemon) is the test's own fault: a tool error, not the add-on's failure.
+IMAGE_FAULTS = ('unable to find image', 'pull access denied', 'manifest unknown', 'no matching manifest', 'repository does not exist',
+    'failed to resolve reference', 'invalid reference format', 'unable to start container process: exec', 'exec format error',
+    'executable file not found')
+
+def image_fault(error):
+    """Whether a failed `docker run` (DockerError) is the image's fault: exit 126 or 127 (created, but its entrypoint
+    cannot run), or a message in IMAGE_FAULTS."""
+    return error.returncode in (126, 127) or any(f in error.output.lower() for f in IMAGE_FAULTS)
 
 def default_options(config):
     """What Supervisor writes to /data/options.json for a fresh install: the option defaults (no null ones)."""
@@ -51,19 +137,61 @@ def addon_info(config, options):
         'repository': 'local', 'version_latest': config.get('version'), 'update_available': False, 'options': options,
         'ingress_url': f'/api/hassio_ingress/{secrets.token_hex(8)}/' if config.get('ingress') else None, 'network': config.get('ports')}
 
+def addon_url(config):
+    """ADDON_URL of the hooks: the webui's scheme and port, else the ingress port, else the bare address."""
+    webui = webui_endpoint(config)
+    if webui:return f'{webui[0]}://{ADDON_IP}:{webui[1]}'
+    if config.get('ingress'):return f'http://{ADDON_IP}:{ingress_port(config)}'
+    return f'http://{ADDON_IP}'
+
+def hook_problem(hooks_dir, hook):
+    """Why upgrade-check/<hook> cannot run in the mock Supervisor's container, or '': only upgrade-check/ is mounted
+    there, so a symlink that leaves it would point at nothing (a silent exit 127)."""
+    path = hooks_dir / hook
+    if path.is_symlink() and not path.resolve().is_relative_to(hooks_dir.resolve()):
+        return f'upgrade-check/{hook} is a symlink to {path.resolve()}, outside upgrade-check/ (only that directory is mounted where hooks run)'
+    return ''
+
+def fixtures_problem(hooks_dir):
+    """Why upgrade-check/supervisor/ cannot be used in the mock Supervisor's container, or '': only upgrade-check/
+    is mounted there, so it, or a file in it, that is a symlink out of upgrade-check/ would point at nothing."""
+    root, top = hooks_dir / 'supervisor', hooks_dir.resolve()
+    links = [root] if root.is_symlink() else []
+    if root.is_dir() and not root.is_symlink():
+        links += [pathlib.Path(d, n) for d, dirs, files in os.walk(root) for n in dirs + files if pathlib.Path(d, n).is_symlink()]
+    for link in links:
+        if not link.resolve().is_relative_to(top):
+            rel = link.relative_to(hooks_dir).as_posix()
+            return f'upgrade-check/{rel} is a symlink to {link.resolve()}, outside upgrade-check/ (only that directory is mounted for the mock Supervisor)'
+    return ''
+
+def _map_warnings(config):
+    """upgrade_check.map_warnings(), never raising: a `map` it cannot read is reported as one warning (mounts() fails on it later)."""
+    try:return map_warnings(config)
+    except (ValueError, TypeError, AttributeError) as e:return [f'map could not be read: {e}']
+
 class UpgradeTestEnv:
-    """One upgrade test's network, mock Supervisor and data directories, removed by close()."""
-    def __init__(self, work):
-        self.work = pathlib.Path(work)
+    """One upgrade test's network, mock Supervisor and data directories, removed by close(). `hooks`: the add-on's
+    upgrade-check/ directory, mounted read-only in the mock Supervisor's container (None when it has none)."""
+    def __init__(self, work, hooks=None):
+        self.work, self.hooks = pathlib.Path(work), hooks
         self.prefix = f'upgrade-test-{secrets.token_hex(4)}'
         self.net, self.supervisor, self.token = self.prefix, f'{self.prefix}-supervisor', secrets.token_hex(24)
         self.state, self.data = self.work / 'supervisor', self.work / 'dirs'
-        self.state.mkdir(parents=True); self.data.mkdir()
+        self.reports, self.hook_state = self.work / 'hook-reports', self.work / 'hook-state'
+        for d in (self.state, self.data, self.reports, self.hook_state):d.mkdir(parents=True)
     def open(self):
         docker('network', 'create', '--subnet', SUBNET, '--gateway', GATEWAY, self.net)
+        binds = [(TOOLING, '/tooling', True), (self.state, '/state', False), (self.data, IN_MOCK['data'], False),
+            (self.reports, IN_MOCK['reports'], False), (self.hook_state, IN_MOCK['state'], False)]
+        if self.hooks:binds.append((self.hooks, IN_MOCK['hooks'], True))
+        # The repo's Supervisor fixtures (#142) are in the upgrade-check/ mounted above.
+        fixtures = ['--fixtures', f'{IN_MOCK["hooks"]}/supervisor'] if self.hooks and (self.hooks / 'supervisor').is_dir() else []
+        args = []
+        for source, target, read_only in binds:
+            args += ['--mount', f'type=bind,source={source},target={target}' + (',readonly' if read_only else '')]
         docker('run', '-d', '--name', self.supervisor, '--network', self.net, '--ip', SUPERVISOR_IP, '-e', f'SUPERVISOR_TOKEN={self.token}',
-            '--mount', f'type=bind,source={TOOLING},target=/tooling,readonly', '--mount', f'type=bind,source={self.state},target=/state',
-            MOCK_IMAGE, *MOCK_COMMAND)
+            *args, MOCK_IMAGE, *MOCK_COMMAND, *fixtures)
         # Real Supervisor is up before any add-on starts, and add-ons ask it for their info at once (bashio reads
         # options at boot): return only when the mock answers. Any answer below HTTP 500 will do (401 without the
         # token). Asked from inside the mock (127.0.0.1), so its request log keeps only the add-on's calls.
@@ -87,6 +215,7 @@ class UpgradeTestEnv:
     def start(self, phase, image, config):
         """Start one version on the shared directories; its container name."""
         options = default_options(config)
+        self.log_start = mock_supervisor.log_size(self.state)
         (self.state / 'addon.json').write_text(json.dumps(addon_info(config, options)), encoding='utf-8')
         args = []
         for m in mounts(config, self.data.as_posix()):
@@ -100,6 +229,50 @@ class UpgradeTestEnv:
             '--add-host', f'supervisor:{SUPERVISOR_IP}', '--add-host', f'hassio:{SUPERVISOR_IP}',
             '-e', f'SUPERVISOR_TOKEN={self.token}', '-e', f'HASSIO_TOKEN={self.token}', '-e', 'TZ=UTC', *args, image)
         return container
+    def supervisor_calls(self):
+        """What the mock could not answer since the last start() (mock_supervisor.summary)."""
+        return mock_supervisor.summary(self.state, self.log_start)
+    def hook_env(self, phase, image, config):
+        """The environment of a hook run against this version (the module docstring lists it)."""
+        out = {'ADDON_URL': addon_url(config), 'ADDON_HOST': ADDON_IP, 'ADDON_IMAGE': image, 'ADDON_VERSION': str(config.get('version')),
+            'PHASE': phase, 'REPORT_DIR': f'{IN_MOCK["reports"]}/{phase}', 'HOOK_STATE_DIR': IN_MOCK['state'],
+            'SUPERVISOR_URL': 'http://127.0.0.1', 'SUPERVISOR_TOKEN': self.token}
+        for m in mounts(config, IN_MOCK['data']):
+            # Named by the type as config.yaml writes it (a renamed type shares its directory with the new name).
+            out['DATA_DIR_' + m['type'].upper()] = m['source']
+        return out
+    def run_hook(self, hook, phase, image, config, timeout):
+        """Run upgrade-check/<hook> against the running version: {hook, phase, passed, exit_code, detail, checks, output}."""
+        (self.reports / phase).mkdir(exist_ok=True)
+        report = self.reports / phase / f'{hook}.json'
+        if report.exists():report.unlink()
+        unusable = hook_problem(self.hooks, hook)
+        if unusable:
+            return {'hook': hook, 'phase': phase, 'passed': False, 'exit_code': None, 'detail': f'could not run: {unusable}', 'checks': [], 'output': ''}
+        envs = [a for k, v in self.hook_env(phase, image, config).items() for a in ('-e', f'{k}={v}')]
+        started = time.monotonic()
+        try:
+            # busybox timeout ends the hook inside the container; the subprocess timeout only guards a hung docker exec.
+            r = subprocess.run(['docker', 'exec', '-w', IN_MOCK['hooks'], *envs, self.supervisor, 'timeout', str(timeout), f'{IN_MOCK["hooks"]}/{hook}'],
+                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding='utf-8', errors='replace', timeout=timeout + 60)
+            code, output = r.returncode, r.stdout
+        except subprocess.TimeoutExpired as e:
+            # On POSIX the partial output is bytes even with text=True.
+            out = e.stdout or ''
+            code, output = None, out.decode('utf-8', 'replace') if isinstance(out, bytes) else out
+        elapsed = time.monotonic() - started
+        checks, problem = _read_checks(report)
+        failing = [c['name'] for c in checks if c['result'] == 'fail']
+        if code is None or (code and elapsed >= timeout):detail = f'did not finish within {timeout} s (hook_timeout)'
+        elif code == 126:detail = f'could not run (exit 126): is upgrade-check/{hook} executable (git update-index --chmod=+x) with a #! line?'
+        elif code == 127:detail = (f'could not run (exit 127): the interpreter on the #! line of upgrade-check/{hook} was not found; hooks run with '
+            'python3 and busybox sh only (no bash), and a CRLF line ending breaks the #! line')
+        elif code:detail = f'exited with code {code}'
+        else:detail = 'exited 0'
+        if problem:detail += f'; {problem}'
+        elif failing:detail += '; failing checks: ' + ', '.join(failing)
+        return {'hook': hook, 'phase': phase, 'passed': code == 0 and not problem and not failing, 'exit_code': code, 'detail': detail,
+            'checks': checks, 'output': output[-4000:]}
     def stop(self, container, config):
         docker('stop', '-t', str(config.get('timeout', 10)), container, check=False)
         docker('rm', '-f', container, check=False)
@@ -108,6 +281,21 @@ class UpgradeTestEnv:
         docker('network', 'rm', self.net, check=False)
         # Containers write as root: remove what they left through a container, then the rest.
         docker('run', '--rm', '--mount', f'type=bind,source={self.work},target=/w', '--entrypoint', 'sh', MOCK_IMAGE, '-c', 'rm -rf /w/* /w/.[!.]*', check=False)
+
+def _read_checks(path):
+    """(checks, problem) from a hook's report: [] when it wrote none; problem is why the report cannot be used."""
+    if not path.exists():return [], ''
+    try:data = json.loads(path.read_text(encoding='utf-8'))
+    except (OSError, ValueError) as e:return [], f'its report {path.name} is not JSON: {e}'
+    checks = data.get('checks') if isinstance(data, dict) else None
+    if not isinstance(checks, list):return [], f'its report {path.name} has no "checks" list'
+    out = []
+    for c in checks:
+        if not isinstance(c, dict) or not isinstance(c.get('name'), str) or not c['name'] or c.get('result') not in CHECK_RESULTS:
+            return out, f'its report {path.name} has a check that is not {{"name": "...", "result": "pass|fail|skip"}}: {json.dumps(c)[:200]}'
+        if any(o['name'] == c['name'] for o in out):return out, f'its report {path.name} names two checks {c["name"]!r}'
+        out.append({'name': c['name'], 'result': c['result'], 'detail': str(c.get('detail', ''))})
+    return out, ''
 
 def _logs(container, tail):
     """The container's last `tail` log lines, stdout and stderr."""
@@ -159,37 +347,116 @@ def _down(container):
     return ''
 
 def upgrade_test(name, addon_dir, old_image, old_config, new_image, new_config, work):
-    """{'name', 'passed', 'reason', 'phases': [{phase, version, image, method, started, detail, answer, logs}]}."""
-    settings_path = pathlib.Path(addon_dir) / 'upgrade-check/settings.yaml'
+    """The result described in the module docstring."""
+    hooks_dir = pathlib.Path(addon_dir) / 'upgrade-check'
+    settings_path = hooks_dir / 'settings.yaml'
     settings = yaml.safe_load(settings_path.read_text(encoding='utf-8')) if settings_path.exists() else None
-    env = UpgradeTestEnv(work); phases = []; result = {'name': name, 'passed': False, 'reason': '', 'phases': phases}
+    limits = upgrade_settings(settings)  # a bad settings.yaml is a tool error before any container starts
+    present = [h for h in HOOK_PHASE if (hooks_dir / h).is_file()]
+    unusable = fixtures_problem(hooks_dir) if hooks_dir.is_dir() else ''
+    if unusable:raise ValueError(unusable)  # like a bad settings.yaml: before any container starts
+    env = UpgradeTestEnv(work, hooks_dir.resolve() if hooks_dir.is_dir() else None); phases = []
+    result = {'name': name, 'passed': False, 'reason': '', 'hooks': present, 'data_checked': False, 'phases': phases,
+        'map_warnings': {'old': _map_warnings(old_config), 'new': _map_warnings(new_config)}}
     try:
         env.open()
         for phase, image, config in (('old', old_image, old_config), ('new', new_image, new_config)):
             probe = startup_probe(config, settings)
-            container = env.start(phase, image, config)
-            ok, detail, answer = wait_started(env, container, probe)
-            phases.append({'phase': phase, 'version': str(config.get('version')), 'image': image, 'method': probe['method'], 'started': ok,
-                'detail': detail, 'answer': answer, 'logs': _logs(container, 60)[-4000:]})
-            env.stop(container, config)
-            if not ok:
-                result['reason'] = f'{PHASE_LABEL[phase]} ({config.get("version")}) did not start: {detail}'
+            label = f'{PHASE_LABEL[phase]} ({config.get("version")})'
+            try:container = env.start(phase, image, config)
+            except DockerError as e:
+                # #140: a version whose image docker cannot run (not found or pulled, entrypoint missing...) did not start;
+                # for the comparison target that fails the upgrade comparison with the reason, as an exit does. Any
+                # other docker failure is the test's own: a tool error (main(), exit 2).
+                if not image_fault(e):raise
+                # Created but not started: what it logged, as for a version that exits.
+                created = f'{env.prefix}-{phase}'
+                logs = _logs(created, 60)[-4000:] if docker('ps', '-aq', '--filter', f'name=^{created}$', check=False).strip() else ''
+                # It never ran, so it made no Supervisor calls (#142's report section stays empty).
+                phases.append({'phase': phase, 'version': str(config.get('version')), 'image': image, 'method': probe['method'], 'started': False,
+                    'detail': str(e), 'answer': '', 'logs': logs, 'hooks': [], 'supervisor': {'unmocked': [], 'broken_fixtures': []}})
+                result['reason'] = f'{label} did not start: {e}'
                 return result
+            ok, detail, answer = wait_started(env, container, probe)
+            entry = {'phase': phase, 'version': str(config.get('version')), 'image': image, 'method': probe['method'], 'started': ok,
+                'detail': detail, 'answer': answer, 'logs': '', 'hooks': []}
+            phases.append(entry)
+            if not ok:result['reason'] = f'{label} did not start: {detail}'
+            for hook in (h for h in present if ok and HOOK_PHASE[h] == phase):
+                run = env.run_hook(hook, phase, image, config, limits['hook_timeout'])
+                entry['hooks'].append(run)
+                if hook == 'verify':result['data_checked'] = True
+                if not run['passed'] and not result['reason']:result['reason'] = f'{hook} failed on {label}: {run["detail"]}'
+            # After the hooks, so the log shows what the add-on did while they ran.
+            entry['logs'] = _logs(container, 60)[-4000:]
+            env.stop(container, config)
+            entry['supervisor'] = env.supervisor_calls()
+            if result['reason']:return result
         result['passed'] = True
         return result
     finally:
         env.close()
 
 def report(result):
-    """The Markdown report of upgrade_test()'s result."""
-    r = [f'#### Upgrade test: {result["name"]}', '', ('**Passed**: the new version starts on the data of the comparison target.' if result['passed']
-        else f'**Failed**: {markdown_cell(result["reason"])}.'), '', STARTUP_ONLY, '', '| version | image | judged by | started | detail |', '|---|---|---|---|---|']
+    """The Markdown report of upgrade_test()'s result: the startup of each version, then every hook's checks."""
+    hooks, checked = result.get('hooks', []), result.get('data_checked', False)
+    # verify runs only after seed (when there is one) passed, so data_checked with seed means both ran.
+    if checked and 'seed' in hooks:data = DATA_CHECKED
+    elif checked:data = DATA_CHECKED_VERIFY_ONLY
+    elif 'verify' in hooks:data = NOT_CHECKED
+    else:data = STARTUP_ONLY
+    passed = ('**Passed**: the new version starts on the data of the comparison target' +
+        ((', and verify finds the data seed wrote.' if 'seed' in hooks else ', and verify passes on it.') if checked else '.'))
+    r = [f'#### Upgrade test: {result["name"]}', '', passed if result['passed'] else f'**Failed**: {markdown_cell(result["reason"])}.', '', data, '',
+        '| version | image | judged by | started | detail |', '|---|---|---|---|---|']
     r += [f'| {PHASE_LABEL[p["phase"]]} {markdown_cell(p["version"])} | `{markdown_cell(p["image"])}` | {p["method"]} | {"yes" if p["started"] else "**no**"} | {markdown_cell(p["detail"])} |'
         for p in result['phases']]
+    if 'seed' in result.get('hooks', []) and 'verify' not in result.get('hooks', []):
+        r += ['', 'upgrade-check/ has seed but no verify: nothing reads the seeded data back.']
+    runs = [h for p in result['phases'] for h in p.get('hooks', [])]
+    if runs:
+        r += ['', '| version | hook | check | result | detail |', '|---|---|---|---|---|']
+        for h in runs:
+            version = f'{PHASE_LABEL[h["phase"]]} {markdown_cell(next(p["version"] for p in result["phases"] if p["phase"] == h["phase"]))}'
+            r.append(f'| {version} | {h["hook"]} | (the hook) | {"pass" if h["passed"] else "**fail**"} | {markdown_cell(h["detail"])} |')
+            r += [f'| {version} | {h["hook"]} | {markdown_cell(c["name"])} | {"**fail**" if c["result"] == "fail" else c["result"]} | {markdown_cell(c["detail"])} |'
+                for c in h['checks']]
+    r += _supervisor_sections(result)
     for p in result['phases']:
-        if not p['started']:
+        for h in p.get('hooks', []):
+            if not h['passed']:
+                r += ['', f'<details><summary>Output of {h["hook"]} on {PHASE_LABEL[p["phase"]]}</summary>', '', '```', h['output'].replace('```', "'''"), '```', '', '</details>']
+        if not p['started'] or any(not h['passed'] for h in p.get('hooks', [])):
             r += ['', f'<details><summary>Last log lines of {PHASE_LABEL[p["phase"]]}</summary>', '', '```', p['logs'].replace('```', "'''"), '```', '', '</details>']
     return '\n'.join(r) + '\n'
+
+def _supervisor_sections(result):
+    """Report lines for the unmocked Supervisor calls, broken fixtures and ignored map entries (informational)."""
+    r = []
+    # Paths come from the add-on: a backquote must not end the code span.
+    code = lambda v: markdown_cell(v).replace('`', "'")
+    for kind, title, hint in (('unmocked', 'Unmocked Supervisor calls (未模擬的 Supervisor 呼叫)',
+            'The mock Supervisor answered these with 404. If the add-on needs one, add its answer as upgrade-check/supervisor/<path>.json '
+            '(the `data` of the reply, e.g. supervisor/services/mqtt.json).'),
+        ('broken_fixtures', 'Supervisor fixtures that cannot be used',
+            'The mock Supervisor answered these with 500: upgrade-check/supervisor/<path>.json is not valid JSON '
+            '(or addons/self/info.json is not an object).')):
+        rows = []
+        for p in result['phases']:
+            calls = sorted(p.get('supervisor', {}).get(kind, []), key=lambda c: (-c['count'], c['path']))
+            label = f'{PHASE_LABEL[p["phase"]]} {markdown_cell(p["version"])}'
+            rows += [f'| {label} | `{code(c["path"])}` | {c["count"]} | {", ".join(c["methods"])} |' for c in calls[:UNMOCKED_ROWS]]
+            if len(calls) > UNMOCKED_ROWS:rows.append(f'| {label} | … and {len(calls) - UNMOCKED_ROWS} more paths | | |')
+        if rows:r += ['', f'**{title}**: {hint}', '', '| version | path | calls | methods |', '|---|---|---|---|', *rows]
+    warnings = result.get('map_warnings') or {}
+    old, new = warnings.get('old', []), warnings.get('new', [])
+    if old or new:
+        r += ['', '**Map entries Supervisor ignores** (config.yaml `map`; these directories are not mounted):', '']
+        if old == new:r += [f'- {markdown_cell(w)}' for w in new]
+        else:
+            r += [f'- {PHASE_LABEL["new"]}: {markdown_cell(w)}' for w in new]
+            r += [f'- {PHASE_LABEL["old"]}: {markdown_cell(w)}' for w in old]
+    return r
 
 def main(argv=None):
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
@@ -208,7 +475,8 @@ def main(argv=None):
     except (OSError, ValueError, TypeError, AttributeError, RuntimeError, yaml.YAMLError) as e:
         # compare reads the result file, so a tool error still leaves one with the reason.
         reason = f'the upgrade test could not run: {e}'
-        (out / f'{a.name}.json').write_text(json.dumps({'name': a.name, 'passed': False, 'reason': reason, 'phases': []}, indent=1), encoding='utf-8')
+        (out / f'{a.name}.json').write_text(json.dumps({'name': a.name, 'passed': False, 'reason': reason, 'hooks': [], 'data_checked': False,
+            'phases': []}, indent=1), encoding='utf-8')
         print(workflow_command('error', 'Upgrade test', f'{a.name}: {reason}')); return 2
     text = report(result)
     (out / f'{a.name}.json').write_text(json.dumps(result, indent=1), encoding='utf-8'); (out / f'{a.name}.md').write_text(text, encoding='utf-8')

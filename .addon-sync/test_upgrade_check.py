@@ -634,7 +634,8 @@ class ReusableWorkflow(unittest.TestCase):
         # Only add-ons built on the device are built here (#144): an add-on with a prebuilt image is never rebuilt.
         builds=[n for n,s in steps.items() if 'docker build' in s.get('run','')]
         self.assertEqual(builds,['Build the images of add-ons built on the device'])
-        self.assertIn("select(.old_src != \"\" or .new_src != \"\")",steps[builds[0]]['run'])
+        self.assertIn('[ "${test}" = true ] && [ -n "${old_src}" ]',steps[builds[0]]['run'])
+        self.assertIn('[ "${test}" = true ] && [ "${new_src}" = pr ]',steps[builds[0]]['run'])
         for name in ('Wait for the new images','Load the new images'):
             with self.subTest(name):self.assertEqual(steps[name]['if'],"steps.upgrade.outputs.wait == 'true'")
         self.assertIn('select(.test and .new_src == "")',steps['Wait for the new images']['run'])
@@ -851,7 +852,7 @@ class UpgradeTestPlan(StepHarness):
 class DeviceBuiltImages(StepHarness):
     """'Build the images of add-ons built on the device' (#144): both images built for amd64 as Supervisor builds them,
     the comparison target's from GitHub's archive of the target, the new one from the PR checkout."""
-    STEPS=('plan','upgrade','Build the images of add-ons built on the device')
+    STEPS=('plan','Skip the upgrade tests the registry approves','upgrade','Build the images of add-ons built on the device')
     DEVICE=dict(new={'image':None},old={'image':None},sbom='')
     BUILD='build_from:\n  amd64: ghcr.io/woowtech/base:{v}\nargs:\n  EXTRA: "{v}"\n'
     def build(self,**kw):
@@ -880,24 +881,44 @@ class DeviceBuiltImages(StepHarness):
         self.assertTrue(self.builds[0]['args'][-1].endswith('t.old-src/addon'));self.assertIn('BUILD_VERSION=2.0',self.build_args(self.builds[0]))
         self.assertNotIn('log_level',yaml.safe_load(self.builds[0]['files']['config.yaml']))  # c's tree, not the PR base b's
     @needs_shell
-    def test_a_comparison_target_that_cannot_be_rebuilt_fails_with_the_reason(self):
-        r=self.build(build_fail='upgrade-comparison/t:old')
-        self.assertEqual(r.returncode,1)
-        self.assertIn('t: the comparison target v1.0.0 could not be rebuilt for amd64',r.stdout)
+    def failed(self,r,reason):
+        """Like a pull (#140): the step goes on, the add-on leaves the test with its result, and "Run the upgrade tests"
+        fails the job for it (ComparisonTargetFailure)."""
+        self.assertEqual(r.returncode,0,r.stdout+r.stderr)
+        self.assertIn(f'::error title=Upgrade comparison failed::t: {reason}',r.stdout)
+        result=json.loads((self.tmp/'runtime-reports/t.json').read_text())
+        self.assertEqual(result,{'name':'t','passed':False,'reason':reason,'hooks':[],'data_checked':False,'phases':[]})
+        self.assertEqual([json.loads(l)['test'] for l in (self.tmp/'upgrade.jsonl').read_text().splitlines()],[False])
     @needs_shell
-    def test_a_target_whose_source_cannot_be_downloaded_fails_with_the_reason(self):
+    def test_a_comparison_target_that_cannot_be_rebuilt_is_a_target_failure(self):
+        r=self.build(build_fail='upgrade-comparison/t:old')
+        self.failed(r,'the comparison target v1.0.0 could not be rebuilt for amd64 (its build log is in the runtime job), so the upgrade cannot be tested')
+        self.assertEqual(len(self.builds),1)  # the new image is not built for an add-on that is not tested
+    @needs_shell
+    def test_a_target_whose_source_cannot_be_downloaded_is_a_target_failure(self):
         r=self.build(gh_fail='/tarball/')
-        self.assertEqual(r.returncode,1);self.assertIn('t: cannot download the source of the comparison target v1.0.0',r.stdout)
+        self.failed(r,'cannot download the source of the comparison target v1.0.0 to rebuild its image, so the upgrade cannot be tested; re-run the check')
         self.assertEqual(self.builds,[])
     @needs_shell
     def test_a_pr_that_cannot_be_built_fails_as_the_prs_fault(self):
         r=self.build(build_fail='upgrade-comparison/t:new')
-        self.assertEqual(r.returncode,1);self.assertIn('t: the new version could not be built for amd64 from this PR',r.stdout)
+        self.failed(r,'the new version could not be built for amd64 from this PR (its build log is in the runtime job); fix the build')
     @needs_shell
     def test_a_target_without_a_dockerfile_cannot_be_rebuilt(self):
         r=self.build(tarball={})
-        self.assertEqual(r.returncode,1);self.assertIn('no Dockerfile (or Dockerfile.amd64)',r.stdout)
-        self.assertIn('t: the comparison target v1.0.0 could not be rebuilt',r.stdout)
+        self.assertIn('no Dockerfile (or Dockerfile.amd64)',r.stdout)
+        self.failed(r,'the comparison target v1.0.0 could not be rebuilt for amd64 (its build log is in the runtime job), so the upgrade cannot be tested')
+    @needs_shell
+    def test_an_approved_skip_is_not_built_or_tested(self):
+        # woow_lan_gateway (#158): built on the device and approved; it is "not run" with the registry's reason, not failing.
+        extra={'components':[{'id':'t','source_path':'addon','config_file':'config.yaml','upgrade_comparison':{'skip_upgrade_test':'#158: needs a physical enp2s0'}}]}
+        r,_,out=self.run_step(self.STEPS[:3],extra=extra,**self.DEVICE)
+        self.assertEqual(r.returncode,0,r.stdout+r.stderr)
+        for output in ('run=false','build=false'):
+            with self.subTest(output):self.assertIn(output,out)
+        self.assertEqual(json.loads((self.tmp/'runtime-reports/t.json').read_text())['note'],
+            'categories 2 and 3 skipped as approved in the Store registry: #158: needs a physical enp2s0')
+        self.assertEqual(self.builds,[])
 
 class BuildArgs(unittest.TestCase):
     """upgrade_check.build_args (#144): how Supervisor builds an add-on built on the device (supervisor/addons/build.py)."""
@@ -954,6 +975,54 @@ class RuntimeFailureRecord(StepHarness):
         self.assertEqual(self.record()['runtime-job.json']['reason'],"a step failed without a reason; the runtime job's log has it")
         passed={'name':'t','passed':True,'reason':'','phases':[]}
         self.assertEqual(self.record(results=(passed,))['runtime-job.json']['passed'],False)
+
+class UpgradeTestResult(StepHarness):
+    """compare's 'Upgrade test result' (#138): each add-on's verdict, whether its data was checked, and its report with every check."""
+    def result(self,results,reports=None,runtime='success'):
+        """results: the runtime-reports/*.json; reports: name -> the .md upgrade_runtime.py wrote. (exit code, stdout, step summary)."""
+        import os,subprocess
+        tmp=pathlib.Path(tempfile.mkdtemp());self.addCleanup(shutil.rmtree,tmp)
+        (tmp/'runtime-reports').mkdir();(tmp/'bin').mkdir();(tmp/'tooling/.addon-sync').mkdir(parents=True)
+        shutil.copy(self.STORE/'.addon-sync/log.sh',tmp/'tooling/.addon-sync/log.sh')
+        # No artifact to download: the results are already in runtime-reports/.
+        (tmp/'bin/gh').write_text('#!/bin/sh\nexit 0\n',newline='\n');(tmp/'bin/gh').chmod(0o755)
+        for r in results:(tmp/'runtime-reports'/f"{r['name']}.json").write_text(json.dumps(r))
+        for name,text in (reports or {}).items():(tmp/'runtime-reports'/f'{name}.md').write_text(text,encoding='utf-8')
+        (tmp/'step.sh').write_text(self.step('Upgrade test result')['run'],newline='\n');(tmp/'summary.md').write_text('')
+        env=dict(os.environ,PATH=f"{tmp/'bin'}{os.pathsep}{os.environ['PATH']}",GITHUB_STEP_SUMMARY=str(tmp/'summary.md'),RUNNER_TEMP=str(tmp),
+            REPO='o/r',RUN_ID='1',RUN_ATTEMPT='1',RUNTIME_RESULT=runtime)
+        r=subprocess.run(['bash',str(tmp/'step.sh')],cwd=tmp,env=env,capture_output=True,text=True)
+        return r.returncode,r.stdout,(tmp/'summary.md').read_text(encoding='utf-8')
+    @needs_shell
+    def test_add_on_with_verify_is_reported_as_data_checked_with_its_checks(self):
+        code,out,summary=self.result([{'name':'t','passed':True,'reason':'','hooks':['seed','verify'],'data_checked':True,'phases':[]}],
+            {'t':'#### Upgrade test: t\n\n| the new version 1.1.0 | verify | item kept | pass | hello |\n'})
+        self.assertEqual(code,0,out);self.assertIn('- t: passed, data checked by seed and verify (已檢查資料)',summary)
+        self.assertIn('| verify | item kept | pass | hello |',summary)
+    @needs_shell
+    def test_add_on_without_verify_is_reported_as_startup_only(self):
+        # Also a result written before #138 (no hooks field).
+        for r in ({'name':'t','passed':True,'reason':'','hooks':['seed'],'phases':[]},{'name':'t','passed':True,'reason':'','phases':[]}):
+            with self.subTest(r):
+                code,out,summary=self.result([r])
+                self.assertEqual(code,0,out);self.assertIn('- t: passed, startup only: data was not checked (只檢查啟動，沒有檢查資料)',summary)
+    @needs_shell
+    def test_data_counts_as_checked_only_when_verify_ran(self):
+        # A failing seed (or comparison target) stops the test before verify: an add-on that has verify was not checked.
+        failed={'name':'t','passed':False,'reason':'seed failed on the comparison target (1.0.0): exited with code 2',
+            'hooks':['seed','verify'],'data_checked':False,'phases':[]}
+        code,out,summary=self.result([failed],runtime='failure')
+        self.assertEqual(code,1);self.assertIn('- t: **failed**, data was not checked: the test failed before verify ran (沒有檢查資料)',summary)
+        self.assertNotIn('已檢查資料',summary)
+        code,out,summary=self.result([{'name':'t','passed':True,'reason':'','hooks':['verify'],'data_checked':True,'phases':[]}])
+        self.assertEqual(code,0,out);self.assertIn('- t: passed, data checked by verify, no seed (已檢查資料)',summary)
+    @needs_shell
+    def test_failed_verify_fails_compare_with_the_reason(self):
+        failed={'name':'t','passed':False,'reason':'verify failed on the new version (1.1.0): exited with code 1; failing checks: item kept',
+            'hooks':['seed','verify'],'data_checked':True,'phases':[]}
+        code,out,summary=self.result([failed],{'t':'#### Upgrade test: t\n\n| the new version 1.1.0 | verify | item kept | **fail** | HTTP 404 |\n'},runtime='failure')
+        self.assertEqual(code,1);self.assertIn('t: upgrade test failed: verify failed on the new version (1.1.0)',out)
+        self.assertIn('- t: **failed**, data checked by seed and verify',summary);self.assertIn('| item kept | **fail** | HTTP 404 |',summary)
 
 class SkipVulnerabilityScan(StepHarness):
     """skip_vulnerability_scan: a caller whose category 4 cannot run (mcp_addons builds no PR image) opts out with a
@@ -1489,18 +1558,88 @@ class RuntimeRulesCommand(unittest.TestCase):
     def test_map_entries_mount_at_supervisor_default_paths(self):
         # n8n's map: its data is in /config (addon_config); a dict entry is read-only unless read_only: false.
         got=self.mounts(map=[{'type':'addon_config','read_only':False},{'type':'share'},'media:rw','ssl','homeassistant_config'])
-        self.assertEqual(got,[('/w/data','/data',False),('/w/addon_config','/config',False),('/w/share','/share',True),
+        self.assertEqual(got,[('/w/data','/data',False),('/w/all_app_configs/test','/config',False),('/w/share','/share',True),
             ('/w/media','/media',False),('/w/ssl','/ssl',True),('/w/homeassistant_config','/homeassistant',True)])
+    def test_every_supervisor_type_has_its_default_path(self):
+        # home-assistant/supervisor@bde7fb7 docker/const.py PATH_*; aliases share their new name's directory.
+        expected={'config':('homeassistant_config','/config'),'homeassistant_config':('homeassistant_config','/homeassistant'),
+            'app_config':('all_app_configs/test','/config'),'addon_config':('all_app_configs/test','/config'),
+            'all_app_configs':('all_app_configs','/app_configs'),'all_addon_configs':('all_app_configs','/addon_configs'),
+            'local_apps':('local_apps','/local_apps'),'addons':('local_apps','/addons'),'ssl':('ssl','/ssl'),
+            'backup':('backup','/backup'),'share':('share','/share'),'media':('media','/media')}
+        self.assertEqual(set(expected)|{'data'},set(u.MAP_PATHS))
+        for kind,(source,target) in expected.items():
+            with self.subTest(kind):
+                self.assertEqual(self.mounts(map=[kind]),[('/w/data','/data',False),(f'/w/{source}',target,True)])
+                self.assertEqual(self.mounts(map=[{'type':kind,'path':'/custom','read_only':False}]),
+                    [('/w/data','/data',False),(f'/w/{source}','/custom',False)])
+    def test_odoo_app_config_shares_the_addon_config_directory(self):
+        # odoo #330 renames addon_config:rw to app_config:rw; both versions see the same directory at /config.
+        self.assertEqual(self.mounts(map=['app_config:rw']),self.mounts(map=['addon_config:rw']))
+        self.assertEqual(self.mounts(map=['app_config:rw']),[('/w/data','/data',False),('/w/all_app_configs/test','/config',False)])
+    def test_data_entry_is_the_one_data_directory(self):
+        # nextcloud #12 lists data itself; Supervisor mounts the add-on's data once, read-write, at its path or /data.
+        self.assertEqual(self.mounts(map=[{'type':'data','read_only':False}]),[('/w/data','/data',False)])
+        self.assertEqual(self.mounts(map=['data']),[('/w/data','/data',False)])
+        self.assertEqual(self.mounts(map=[{'type':'data','path':'/var/lib/app'},'share']),
+            [('/w/data','/var/lib/app',False),('/w/share','/share',True)])
     def test_custom_path_is_where_the_directory_is_mounted(self):
-        # headscale keeps its database in /var/lib/headscale.
-        got=self.mounts(map=[{'type':'addon_config','path':'/var/lib/headscale','read_only':False}])
-        self.assertEqual(got,[('/w/data','/data',False),('/w/addon_config','/var/lib/headscale',False)])
+        # headscale's map (Woow_ha_vpn_headscale_package headscale/config.yaml): its database in /var/lib/headscale
+        # (data), its config in /etc/headscale (addon_config).
+        got=self.mounts(map=[{'type':'addon_config','path':'/etc/headscale','read_only':False},{'type':'data','path':'/var/lib/headscale'}])
+        self.assertEqual(got,[('/w/data','/var/lib/headscale',False),('/w/all_app_configs/test','/etc/headscale',False)])
+    def test_each_mount_names_its_type_as_written(self):
+        # 'data' for the data mount wherever it is; otherwise the map type as config.yaml writes it.
+        def types(m):
+            code,out=self.run_cmd('mounts','--config',self.config(map=m),'--root','/w')
+            self.assertEqual(code,0,out);return [(x['type'],x['source'],x['target']) for x in json.loads(out)]
+        self.assertEqual(types([{'type':'addon_config','path':'/etc/headscale','read_only':False},{'type':'data','path':'/var/lib/headscale'}]),
+            [('data','/w/data','/var/lib/headscale'),('addon_config','/w/all_app_configs/test','/etc/headscale')])
+        self.assertEqual(types(['addon_config:rw','share']),
+            [('data','/w/data','/data'),('addon_config','/w/all_app_configs/test','/config'),('share','/w/share','/share')])
+        self.assertEqual([t for t,_,_ in types(['app_config','config:rw'])],['data','config'])
+    def test_own_config_folder_is_inside_all_app_configs(self):
+        # Supervisor's app_config is <app_configs>/<slug>, the folder all_app_configs shows as a whole.
+        self.assertEqual(self.mounts(map=['app_config:rw','all_app_configs']),
+            [('/w/data','/data',False),('/w/all_app_configs/test','/config',False),('/w/all_app_configs','/app_configs',True)])
+        code,out=self.run_cmd('mounts','--config',self.config(slug='',map=['app_config']),'--root','/w')
+        self.assertEqual(code,2);self.assertIn("map entry 'app_config' needs the add-on slug",out)
     def test_legacy_config_is_home_assistant_config_at_config(self):
-        self.assertEqual(self.mounts(map=['config:rw']),[('/w/data','/data',False),('/w/config','/config',False)])
-    def test_unknown_map_type_fails_with_the_reason(self):
-        code,out=self.run_cmd('mounts','--config',self.config(map=['nope']),'--root','/w')
-        self.assertEqual(code,2);self.assertIn("unknown map entry 'nope'",out)
-        code,out=self.run_cmd('mounts','--config',self.config(map=['config:rw','addon_config:rw']),'--root','/w')
+        self.assertEqual(self.mounts(map=['config:rw']),[('/w/data','/data',False),('/w/homeassistant_config','/config',False)])
+    def test_superseded_types_are_dropped_as_supervisor_does(self):
+        # config drops app_config/addon_config/homeassistant_config; a new name drops its legacy one, in either order.
+        self.assertEqual(self.mounts(map=['config:rw','addon_config:rw','homeassistant_config']),
+            [('/w/data','/data',False),('/w/homeassistant_config','/config',False)])
+        self.assertEqual(self.mounts(map=['addon_config','app_config:rw','addons','local_apps','all_addon_configs','all_app_configs']),
+            [('/w/data','/data',False),('/w/all_app_configs/test','/config',False),('/w/local_apps','/local_apps',True),('/w/all_app_configs','/app_configs',True)])
+        self.assertEqual(self.mounts(map=['app_config:rw','addon_config','local_apps','addons','all_app_configs','all_addon_configs']),
+            [('/w/data','/data',False),('/w/all_app_configs/test','/config',False),('/w/local_apps','/local_apps',True),('/w/all_app_configs','/app_configs',True)])
+        # A repeated type keeps its last entry.
+        self.assertEqual(self.mounts(map=['share','share:rw']),[('/w/data','/data',False),('/w/share','/share',False)])
+    def test_ignored_entries_are_reported(self):
+        self.assertEqual(u.map_warnings({'map':['config:rw','addon_config','homeassistant_config']}),
+            ["map entry 'addon_config' is ignored because 'config' is present (as Supervisor does)",
+             "map entry 'homeassistant_config' is ignored because 'config' is present (as Supervisor does)"])
+        self.assertEqual(u.map_warnings({'map':['addon_config','app_config']}),
+            ["map entry 'addon_config' is ignored because 'app_config' is present (as Supervisor does)"])
+        self.assertEqual(u.map_warnings({'map':['app_config:rw','share']}),[])
+    def test_entries_supervisor_skips_are_skipped_and_reported(self):
+        # apps/validate.py skips (and logs) a string that is not <known type>[:rw|:ro], a mapping without `type`,
+        # and anything else; the add-on still loads, so the upgrade test still runs it.
+        for entry in ['nope','media:rx','media:','share:rw:ro',{'path':'/x'},{'read_only':False},5,['share'],None]:
+            with self.subTest(entry=entry):
+                self.assertEqual(self.mounts(map=[entry,'share']),[('/w/data','/data',False),('/w/share','/share',True)])
+                self.assertEqual(len(u.map_warnings({'map':[entry,'share']})),1)
+                self.assertIn('is skipped because',u.map_warnings({'map':[entry]})[0])
+    def test_map_entries_supervisor_rejects_fail_with_the_reason(self):
+        # Supervisor's map schema: a known type, a boolean read_only (no coercion), a string path, no other key.
+        for entry in [{'type':'nope'},{'type':['share']},{'type':{'a':1}},{'type':5},{'type':'share','read_only':'false'},
+                {'type':'share','read_only':0},{'type':'share','path':5},{'type':'share','mode':'rw'}]:
+            with self.subTest(entry=entry):
+                code,out=self.run_cmd('mounts','--config',self.config(map=[entry]),'--root','/w')
+                self.assertEqual(code,2,out);self.assertIn('invalid map entry',out)
+        self.assertEqual(self.mounts(map=['share:ro']),[('/w/data','/data',False),('/w/share','/share',True)])
+        code,out=self.run_cmd('mounts','--config',self.config(map=['app_config:rw',{'type':'share','path':'/config'}]),'--root','/w')
         self.assertEqual(code,2);self.assertIn('two data directories are mounted at /config',out)
     def probe(self,settings=None,**cfg):
         args=['startup-probe','--config',self.config(**cfg)]
@@ -1531,9 +1670,23 @@ class RuntimeRulesCommand(unittest.TestCase):
         self.assertEqual((p['timeout'],p['stable_seconds']),(300,60))
         p=self.probe({'startup_timeout':900,'stable_seconds':90},watchdog='tcp://[HOST]:[PORT:1]')
         self.assertEqual((p['timeout'],p['stable_seconds']),(900,90))
+    def test_the_hooks_time_limit_is_a_known_setting_but_not_part_of_the_probe(self):
+        # hook_timeout (#138) is upgrade_runtime.py's; the same settings.yaml holds it.
+        p=self.probe({'hook_timeout':1200},watchdog='tcp://[HOST]:[PORT:1]')
+        self.assertEqual((p['timeout'],p['stable_seconds'],'hook_timeout' in p),(300,60,False))
+        # One loader validates every setting, the hooks' too.
+        self.assertEqual(u.upgrade_settings(None),{'startup_timeout':300,'stable_seconds':60,'hook_timeout':600})
+        self.assertEqual(u.upgrade_settings({'hook_timeout':1200})['hook_timeout'],1200)
+    def test_webui_endpoint_is_its_scheme_and_port_as_supervisor_reads_it(self):
+        self.assertEqual(u.webui_endpoint({'webui':'http://[HOST]:[PORT:5678]'}),('http',5678))
+        self.assertEqual(u.webui_endpoint({'webui':'[PROTO:ssl]://[HOST]:[PORT:8443]/admin','options':{'ssl':True}}),('https',8443))
+        self.assertEqual(u.webui_endpoint({'webui':'[PROTO:ssl]://[HOST]:[PORT:8443]/','options':{'ssl':False}}),('http',8443))
+        self.assertIsNone(u.webui_endpoint({'ingress':True}))
+        with self.assertRaisesRegex(ValueError,'as Supervisor does'):u.webui_endpoint({'webui':'http://localhost:1'})
     def test_bad_settings_fail_with_the_reason(self):
         path=self.dir/'settings.yaml'
         for text,reason in [('startup_timeout: 0\n','startup_timeout'),('startup_timeout: soon\n','startup_timeout'),('wait: 5\n',"unknown setting 'wait'"),
+                ('hook_timeout: 0\n','hook_timeout must be a whole number of seconds above 0'),
                 ('- 5\n','settings must be a mapping'),('stable_seconds: 300\n','stable_seconds (300) must be below startup_timeout (300)')]:
             with self.subTest(text):
                 path.write_text(text,encoding='utf-8')
@@ -1542,5 +1695,170 @@ class RuntimeRulesCommand(unittest.TestCase):
     def test_absent_settings_file_uses_the_defaults(self):
         code,out=self.run_cmd('startup-probe','--config',self.config(),'--settings',str(self.dir/'absent.yaml'))
         self.assertEqual((code,json.loads(out)['timeout']),(0,300))
+    def test_skip_upgrade_test_in_settings_is_not_a_time_limit(self):
+        # #140: upgrade-test-skip judges it; the time limits ignore it.
+        self.assertEqual(u.upgrade_settings({'skip_upgrade_test':'please','hook_timeout':5})['hook_timeout'],5)
+
+class UpgradeTestSkipCommand(unittest.TestCase):
+    """#140: skipping the upgrade test (categories 2 and 3) is approved per add-on in the Store registry
+    (upgrade_comparison.skip_upgrade_test, the reason and its ticket), like skip_vulnerability_scan per provider."""
+    REASON='#158: needs a physical enp2s0'
+    def setUp(self):
+        self.dir=pathlib.Path(tempfile.mkdtemp());self.addCleanup(shutil.rmtree,self.dir)
+    def main(self,approval=None,settings=None,component='a',given=None):
+        # given: the whole upgrade_comparison value, for a malformed one.
+        comp={'id':'a','source_path':'.','config_file':'config.yaml'}
+        if approval is not None:comp['upgrade_comparison']={'skip_upgrade_test':approval}
+        if given is not None:comp['upgrade_comparison']=given
+        (self.dir/'registry.json').write_text(json.dumps({'providers':{'WOOWTECH/r':{'ref_policy':'release','components':[comp,{'id':'b','source_path':'b','config_file':'config.yaml'}]}}}))
+        args=['upgrade-test-skip','--registry',str(self.dir/'registry.json'),'--repo','WOOWTECH/r','--component',component,'--settings',str(self.dir/'settings.yaml')]
+        if settings is not None:(self.dir/'settings.yaml').write_text(settings,encoding='utf-8')
+        with contextlib.redirect_stdout(io.StringIO()) as out:code=u.main(args)
+        return code,out.getvalue()
+    def test_approved_add_on_prints_the_registry_reason(self):
+        self.assertEqual(self.main(self.REASON),(0,self.REASON+'\n'))
+    def test_approval_is_per_add_on(self):
+        self.assertEqual(self.main(self.REASON,component='b'),(0,'\n'))
+    def test_without_approval_nothing_is_skipped(self):
+        self.assertEqual(self.main(),(0,'\n'));self.assertEqual(self.main(settings='hook_timeout: 5\n'),(0,'\n'))
+    def test_asking_for_the_skip_without_approval_fails_and_says_to_get_it_approved(self):
+        code,out=self.main(settings='skip_upgrade_test: "my add-on cannot start on a runner"\n')
+        self.assertEqual(code,2)
+        self.assertIn('::error title=Upgrade comparison failed::a: upgrade-check/settings.yaml asks for skip_upgrade_test, but skipping the upgrade test is not approved for a',out)
+        self.assertIn('needs upgrade_comparison.skip_upgrade_test with the reason',out);self.assertIn('get the skip approved in the registry',out)
+    def test_with_approval_the_report_gives_the_registrys_reason_not_the_repositorys(self):
+        self.assertEqual(self.main(self.REASON,settings='skip_upgrade_test: "my text"\n'),(0,self.REASON+'\n'))
+    def test_malformed_registry_entry_fails_with_a_clear_reason(self):
+        for value in ('',' ',True,['#1: why'],{'why':1}):
+            with self.subTest(value):
+                code,out=self.main(value);self.assertEqual(code,2)
+                self.assertIn('the Store registry entry for a is malformed: upgrade_comparison.skip_upgrade_test must be the approved reason and its ticket',out)
+        for given in (['skip_upgrade_test'],'#158: why',3):
+            with self.subTest(given):
+                code,out=self.main(given=given);self.assertEqual(code,2)
+                self.assertIn('the Store registry entry for a is malformed: upgrade_comparison must be a mapping',out);self.assertNotIn('Traceback',out)
+        self.assertEqual(self.main(given={}),(0,'\n'))
+    def test_only_a_non_empty_string_in_settings_asks_for_the_skip(self):
+        for text in ('skip_upgrade_test: false\n','skip_upgrade_test: null\n','skip_upgrade_test: ""\n','skip_upgrade_test: "  "\n',
+                'skip_upgrade_test: 1\n','- skip_upgrade_test\n'):
+            with self.subTest(text):self.assertEqual(self.main(settings=text),(0,'\n'))
+    def test_with_approval_a_malformed_settings_file_is_not_read(self):
+        # The registry decides; the repository's text is ignored, even when it is not YAML.
+        self.assertEqual(self.main(self.REASON,settings='skip_upgrade_test: [unclosed\n'),(0,self.REASON+'\n'))
+        code,out=self.main(settings='skip_upgrade_test: [unclosed\n');self.assertEqual(code,2)
+    def test_unknown_add_on_fails(self):
+        code,out=self.main(component='zz');self.assertEqual(code,2);self.assertIn('zz',out)
+    def test_registry_approves_exactly_the_add_ons_the_owner_did(self):
+        # Owner, 2026-11-04 (pipeline #140): each skip names the ticket that adds what the runtime lacks; drop it when that lands.
+        registry=json.loads((StepHarness.STORE/'.addon-sync/registry.json').read_text(encoding='utf-8'))
+        approved={(repo,c['id']):u.upgrade_test_skip(c) for repo,p in registry['providers'].items() for c in p['components'] if u.upgrade_test_skip(c)}
+        self.assertEqual({k:re.match(r'#\d+',v).group() for k,v in approved.items()},{('WOOWTECH/woow-lan-gateway','woow_lan_gateway'):'#158',
+            ('WOOWTECH/Woow_ha_omnigent_addon','woow-omnigent'):'#157',('WOOWTECH/Woow_ha_pi_agent_add_on','woow_ha_pi_agent'):'#158'})
+        for p in registry['providers'].values():
+            with self.subTest('provider level'):self.assertNotIn('skip_upgrade_test',p.get('upgrade_comparison') or {})
+
+class UpgradeTestSkipStep(StepHarness):
+    """The runtime job's 'Skip the upgrade tests the registry approves' (#140): an approved add-on gets a result with the
+    registry's reason and leaves the job's plan; asking for the skip without the approval fails the job, so compare fails."""
+    STEP='Skip the upgrade tests the registry approves'
+    def approved(self,reason='#158: needs a physical enp2s0'):
+        return {'components':[{'id':'t','source_path':'addon','config_file':'config.yaml','upgrade_comparison':{'skip_upgrade_test':reason}}]}
+    def plan(self,**kw):
+        kw.setdefault('sbom','upgrade-comparison-sbom-*');kw.setdefault('image_artifact','upgrade-comparison-image-*')
+        return self.run_step(('plan',self.STEP,'upgrade'),**kw)
+    def test_no_caller_input(self):
+        # The registry alone decides: a caller cannot ask for the skip, and a caller of a repository that has one need not change.
+        self.assertNotIn('skip_upgrade_test',self.wf['on']['workflow_call']['inputs'])
+        names=[s.get('name') for s in self.wf['jobs']['runtime']['steps']]
+        self.assertEqual(names.index(self.STEP),names.index('Find the comparison targets')+1)
+        self.assertEqual(names.index('Plan the upgrade tests'),names.index(self.STEP)+1)
+        self.assertNotIn(self.STEP,[s.get('name') for s in self.wf['jobs']['compare']['steps']])
+    @needs_shell
+    def test_approved_add_on_is_skipped_with_the_registrys_reason(self):
+        r,_,out=self.plan(extra=self.approved(),files={'addon/upgrade-check/settings.yaml':'skip_upgrade_test: "my text"\n'})
+        self.assertEqual(r.returncode,0,r.stdout+r.stderr);self.assertIn('run=false',out)
+        self.assertEqual(self.plans,[]);self.assertEqual((self.tmp/'upgrade.jsonl').read_text(),'')
+        note='categories 2 and 3 skipped as approved in the Store registry: #158: needs a physical enp2s0'
+        self.assertEqual(json.loads((self.tmp/'runtime-reports/t.json').read_text()),{'name':'t','passed':None,'skipped':True,'note':note})
+        self.assertIn(f'- t: upgrade test not run ({note})',(self.tmp/'summary').read_text())
+    @needs_shell
+    def test_add_on_without_approval_is_tested(self):
+        r,_,out=self.plan()
+        self.assertEqual(r.returncode,0,r.stdout+r.stderr);self.assertIn('run=true',out);self.assertEqual([p['id'] for p in self.plans],['t'])
+        self.assertFalse((self.tmp/'runtime-reports/t.json').exists())
+    @needs_shell
+    def test_asking_for_the_skip_without_approval_fails(self):
+        r,_,_=self.plan(files={'addon/upgrade-check/settings.yaml':'skip_upgrade_test: "cannot start on a runner"\n'})
+        self.assertEqual(r.returncode,1)
+        self.assertIn('skipping the upgrade test is not approved for t',r.stdout);self.assertIn('get the skip approved in the registry',r.stdout)
+        self.assertFalse((self.tmp/'upgrade.jsonl').exists())
+    @needs_shell
+    def test_skipped_add_on_is_reported_with_the_reason_by_compare(self):
+        note='categories 2 and 3 skipped as approved in the Store registry: #157: admin_password has no default'
+        code,out,summary=UpgradeTestResult.result(self,[{'name':'t','passed':None,'skipped':True,'note':note}])
+        self.assertEqual(code,0,out);self.assertIn(f'- t: not run ({note})',summary)
+
+class ComparisonTargetFailure(StepHarness):
+    """#140: a comparison target that cannot be tested fails the upgrade comparison for that add-on, with the reason.
+    Pulling its image is the workflow's (target_failed, log.sh; #144 also calls it when a rebuild fails); a target that
+    does not start or whose seed fails is upgrade_runtime.py's (test_upgrade_runtime.py)."""
+    @needs_shell
+    def test_image_that_cannot_be_pulled_is_the_add_ons_failure_with_the_reason(self):
+        r,_,_=self.run_step(('plan','upgrade',"Pull the comparison targets' images"),sbom='upgrade-comparison-sbom-*',image_artifact='upgrade-comparison-image-*')
+        # The step goes on (other add-ons are still tested); the add-on leaves the test and "Run the upgrade tests" fails the job.
+        self.assertEqual(r.returncode,0,r.stdout+r.stderr)
+        self.assertEqual([json.loads(l)['test'] for l in (self.tmp/'upgrade.jsonl').read_text().splitlines()],[False])
+        reason="cannot pull the comparison target's image ghcr.io/da-anda/addon-amd64:1.0.0 from the registry, so the upgrade cannot be tested; re-run, or check that the image exists"
+        self.assertIn(f'::error title=Upgrade comparison failed::t: {reason}',r.stdout)
+        result=json.loads((self.tmp/'runtime-reports/t.json').read_text())
+        self.assertEqual(result,{'name':'t','passed':False,'reason':reason,'hooks':[],'data_checked':False,'phases':[]})
+        # It is the only reason compare gets (no reason-less runtime-job entry next to it), and compare fails with it.
+        self.assertEqual(RuntimeFailureRecord.record(self,results=(result,)),{'t.json':result})
+        code,out,summary=UpgradeTestResult.result(self,[result],runtime='failure')
+        self.assertEqual(code,1);self.assertIn(f't: upgrade test failed: {reason}',out);self.assertIn('- t: **failed**',summary)
+    @needs_shell
+    def test_one_unpullable_target_does_not_stop_the_others(self):
+        import os,subprocess
+        tmp=pathlib.Path(tempfile.mkdtemp());self.addCleanup(shutil.rmtree,tmp)
+        (tmp/'tooling/.addon-sync').mkdir(parents=True);(tmp/'bin').mkdir();(tmp/'runtime-reports').mkdir()
+        for name in ('log.sh','fields.sh'):shutil.copy(self.STORE/'.addon-sync'/name,tmp/'tooling/.addon-sync'/name)
+        # Stands in for upgrade_runtime.py: a passing result naming the image it was given.
+        (tmp/'tooling/.addon-sync/upgrade_runtime.py').write_text('import argparse,json,pathlib\np=argparse.ArgumentParser()\n'
+            "for o in ('--name','--addon-dir','--old-image','--old-config','--new-image','--new-config','--report-dir','--summary'):p.add_argument(o)\n"
+            "a=p.parse_args();pathlib.Path(a.report_dir,a.name+'.json').write_text(json.dumps({'name':a.name,'passed':True,'old_image':a.old_image}))\n")
+        (tmp/'bin/docker').write_text(DOCKER_STUB);(tmp/'bin/docker').chmod(0o755)
+        rows=[{'id':i,'addon_dir':f'source/{i}','new':f'{i}.yaml','old_ref':f'ghcr.io/o/{i}-amd64:1.0.0','artifact':'x','test':True} for i in ('a','b','c')]
+        (tmp/'upgrade.jsonl').write_text(''.join(json.dumps(r)+'\n' for r in rows))
+        env=dict(os.environ,PATH=f"{tmp/'bin'}{os.pathsep}{os.environ['PATH']}",IMAGES='ghcr.io/o/a-amd64:1.0.0\nghcr.io/o/c-amd64:1.0.0',
+            RUNNER_TEMP=str(tmp),GITHUB_STEP_SUMMARY=str(tmp/'summary'))
+        codes=[]
+        for step in ("Pull the comparison targets' images",'Run the upgrade tests'):
+            (tmp/'step.sh').write_text(self.step(step)['run'],newline='\n')
+            r=subprocess.run(['bash',str(tmp/'step.sh')],cwd=tmp,env=env,capture_output=True,text=True);codes.append(r.returncode)
+        # b fails with its reason, a and c are still tested, and the job fails at the end.
+        self.assertEqual(codes,[0,1],r.stdout+r.stderr)
+        results={p.stem:json.loads(p.read_text()) for p in (tmp/'runtime-reports').iterdir()}
+        self.assertEqual({k:v['passed'] for k,v in results.items()},{'a':True,'b':False,'c':True})
+        self.assertIn("cannot pull the comparison target's image ghcr.io/o/b-amd64:1.0.0",results['b']['reason'])
+        self.assertEqual(results['c']['old_image'],'ghcr.io/o/c-amd64:1.0.0')
+    @needs_shell
+    def test_run_step_passes_when_nothing_failed(self):
+        import os,subprocess
+        tmp=pathlib.Path(tempfile.mkdtemp());self.addCleanup(shutil.rmtree,tmp)
+        (tmp/'tooling/.addon-sync').mkdir(parents=True);(tmp/'runtime-reports').mkdir()
+        shutil.copy(self.STORE/'.addon-sync/fields.sh',tmp/'tooling/.addon-sync');shutil.copy(self.STORE/'.addon-sync/log.sh',tmp/'tooling/.addon-sync')
+        (tmp/'upgrade.jsonl').write_text(json.dumps({'id':'t','old_ref':'','test':False})+'\n')
+        (tmp/'runtime-reports/t.json').write_text(json.dumps({'name':'t','passed':None,'note':'n'}))
+        (tmp/'step.sh').write_text(self.step('Run the upgrade tests')['run'],newline='\n')
+        r=subprocess.run(['bash',str(tmp/'step.sh')],cwd=tmp,env=dict(os.environ,GITHUB_STEP_SUMMARY=str(tmp/'summary')),capture_output=True,text=True)
+        self.assertEqual(r.returncode,0,r.stdout+r.stderr)
+    @needs_shell
+    def test_target_failed_escapes_and_leaves_fail_log_alone(self):
+        import os,subprocess
+        tmp=pathlib.Path(tempfile.mkdtemp());self.addCleanup(shutil.rmtree,tmp)
+        script=f'source "{(self.STORE/".addon-sync/log.sh").as_posix()}"\ntarget_failed t "$1"\n'
+        r=subprocess.run(['bash','-c',script,'bash','bad\n::error::x'],cwd=tmp,env=dict(os.environ,FAIL_LOG=str(tmp/'fail.txt')),capture_output=True,text=True)
+        self.assertEqual(r.returncode,0,r.stderr);self.assertEqual(r.stdout,'::error title=Upgrade comparison failed::t: bad%0A::error::x\n')
+        self.assertFalse((tmp/'fail.txt').exists());self.assertEqual(json.loads((tmp/'runtime-reports/t.json').read_text())['reason'],'bad\n::error::x')
 
 if __name__=='__main__':unittest.main()

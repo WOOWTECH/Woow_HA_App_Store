@@ -10,6 +10,17 @@ fail() {
   printf '::error title=Upgrade comparison failed::%s\n' "$(esc "$1")"
   if [ -n "${FAIL_LOG:-}" ]; then printf '%s\n' "$1" >> "${FAIL_LOG}"; fi
 }
+# target_failed <id> <reason>: the comparison target of add-on <id> cannot be tested (its image cannot be pulled, or,
+# for an add-on built on the device, rebuilt; #140, #144). Prints the check's ::error line and writes <id>'s upgrade
+# test result (runtime-reports/<id>.json, passed false, as upgrade_runtime.py writes one), so compare fails for that
+# add-on with <reason> instead of a reason-less runtime job; FAIL_LOG is left alone so the reason is not given twice.
+# The caller then leaves the add-on out of the test (old_ref "") and goes on with the others; "Run the upgrade tests"
+# fails the job for every passed-false result. A target that starts badly or whose seed fails is judged by upgrade_runtime.py.
+target_failed() {
+  printf '::error title=Upgrade comparison failed::%s\n' "$(esc "$1: $2")"
+  mkdir -p runtime-reports
+  jq -n --arg name "$1" --arg reason "$2" '{name: $name, passed: false, reason: $reason, hooks: [], data_checked: false, phases: []}' > "runtime-reports/$1.json"
+}
 # no_cntrl <value> <message>: fail <message> and returns 1 when <value> has a control character (newline, tab...), so a
 # value from the PR or its Releases is refused before use; returns 0 otherwise.
 no_cntrl() {

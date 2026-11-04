@@ -37,21 +37,30 @@
 # may pass it, and the report gives that approved reason, not the caller's
 # text; any other caller that passes it fails.
 #
-# Category 2, the upgrade test (#137; startup only until #138 adds data checks),
-# runs in the runtime job for add-ons with a prebuilt image when the caller
-# passes image_artifact: the caller's amd64 build hands over the new image
-# through the Store action .github/actions/addon-image (docker save; nothing is
-# pushed to GHCR or rebuilt), the comparison target's image is pulled from GHCR,
-# and .addon-sync/upgrade_runtime.py starts both, one after the other, on the
-# same data directories under a mock Supervisor. compare needs runtime and
-# fails, with the reason, when the upgrade test fails. Callers that pass no
+# Category 2, the upgrade test (#137 startup, #138 data checks), runs in the
+# runtime job for add-ons with a prebuilt image when the caller passes
+# image_artifact: the caller's amd64 build hands over the new image through the
+# Store action .github/actions/addon-image (docker save; nothing is pushed to
+# GHCR or rebuilt), the comparison target's image is pulled from GHCR, and
+# .addon-sync/upgrade_runtime.py starts both, one after the other, on the same
+# data directories under a mock Supervisor. The add-on's upgrade-check/ (in the
+# PR) may hold the hooks seed (run on the comparison target) and verify (run on
+# the new version); the repository never runs docker itself (hook interface:
+# upgrade_runtime.py's docstring). Without verify the data is not checked and
+# the summary says so. compare needs runtime, lists each add-on's report with
+# every check, and fails, with the reason, when the upgrade test fails. A comparison
+# target that cannot be tested (its image cannot be pulled, it does not start,
+# its seed fails) fails it too (#140), unless the add-on's Store registry entry
+# has upgrade_comparison.skip_upgrade_test (the approved reason and ticket):
+# then categories 2 and 3 are skipped and the report gives that reason. The
+# registry alone decides; there is no caller input. Callers that pass no
 # image_artifact are reported as not run yet (rolled out in #143). Add-ons built
 # on the device (#144) have no image to pull or hand over, so the runtime job
 # builds both for amd64 as Supervisor does (upgrade_check.py build-args): the
 # new one from the PR checkout, the comparison target's from its source at the
 # target (its Release tag, or for ref_policy main the commit on the PR base
-# where its version first appeared); they need no image_artifact. A comparison
-# target that cannot be rebuilt fails the check, with the reason.
+# where its version first appeared); they need no image_artifact. A target that
+# cannot be downloaded or rebuilt is a comparison-target failure, as a pull is.
 #
 # Caller (in a workflow that also runs on push to the default branch, so
 # addon_sync's ci_gate keeps seeing a successful non-PR run; no path filter,
@@ -437,18 +446,32 @@ jobs:
           [ -e "${result}" ] || break
           # upgrade_runtime.py's result, the runtime job's note on why the test did not run, or why that job failed.
           id="$(jq -r '.name' "${result}")"
+          # #138: data was checked only when verify ran (data_checked; absent in results from before #138). verify runs
+          # only after seed, when there is one, passed. A test that failed before verify did not check data.
+          if jq -e '.data_checked == true' "${result}" > /dev/null; then
+            if jq -e '(.hooks // []) | index("seed")' "${result}" > /dev/null; then scope="data checked by seed and verify (已檢查資料)"
+            else scope="data checked by verify, no seed (已檢查資料)"; fi
+          elif jq -e '(.hooks // []) | index("verify")' "${result}" > /dev/null; then
+            scope="data was not checked: the test failed before verify ran (沒有檢查資料)"
+          else scope="startup only: data was not checked (只檢查啟動，沒有檢查資料)"; fi
           case "$(jq -r '.passed' "${result}")" in
-            true) echo "- ${id}: passed, startup only: data was not checked (只檢查啟動，沒有檢查資料)" >> "$GITHUB_STEP_SUMMARY";;
-            false) fail "${id}: upgrade test failed: $(jq -r '.reason' "${result}") (the runtime job's summary has the report)"; status=1
-              echo "- ${id}: **failed**, startup only: data was not checked (只檢查啟動，沒有檢查資料)" >> "$GITHUB_STEP_SUMMARY";;
+            true) echo "- ${id}: passed, ${scope}" >> "$GITHUB_STEP_SUMMARY";;
+            false) fail "${id}: upgrade test failed: $(jq -r '.reason' "${result}") (the report below and the runtime job's summary have the details)"; status=1
+              echo "- ${id}: **failed**, ${scope}" >> "$GITHUB_STEP_SUMMARY";;
             *) echo "- ${id}: not run ($(jq -r '.note' "${result}"))" >> "$GITHUB_STEP_SUMMARY";;
           esac
+        done
+        # upgrade_runtime.py's report of each add-on: both versions' startup and every check of its hooks.
+        for report in runtime-reports/*.md; do
+          [ -e "${report}" ] || break
+          { echo; cat "${report}"; } >> "$GITHUB_STEP_SUMMARY"
         done
         if [ "${RUNTIME_RESULT}" != success ] && [ "${status}" = 0 ]; then
           fail "the runtime job (upgrade test) ended ${RUNTIME_RESULT} with no failing add-on result; its log has the reason"; status=1
         fi
         exit "${status}"
-  # Category 2 (#137): the upgrade test of each add-on whose version changed, startup only.
+  # Category 2: the upgrade test of each add-on whose version changed: startup (#137), the seed/verify data hooks (#138),
+  # the registry's approved skips and comparison-target failures (#140), add-ons built on the device rebuilt here (#144).
   runtime:
     name: runtime
     runs-on: ubuntu-latest
@@ -463,6 +486,29 @@ jobs:
     - *install
     - *detect
     - *plan
+    # #140: an add-on whose upgrade test cannot run (categories 2 and 3) is skipped only when its Store registry entry
+    # approves it (upgrade_comparison.skip_upgrade_test, the reason and its ticket); the report gives that reason. The
+    # registry alone decides, so there is no caller input; an upgrade-check/settings.yaml that asks for the skip without
+    # the approval fails. Skipped add-ons leave this job's plan.jsonl, so no later step of this job sees them.
+    - name: Skip the upgrade tests the registry approves
+      if: steps.detect.outputs.changed == 'true'
+      env:
+        REPO: ${{ github.repository }}
+      run: |
+        set -euo pipefail
+        source tooling/.addon-sync/log.sh
+        source tooling/.addon-sync/fields.sh
+        mkdir -p runtime-reports; : > plan.tested.jsonl
+        while IFS= read -r row; do
+          fields "${row}" id=id notes=notes
+          reason="$(python3 tooling/.addon-sync/upgrade_check.py upgrade-test-skip --registry tooling/.addon-sync/registry.json --repo "${REPO}" \
+            --component "${id}" --settings "source/$(dirname "${notes}")/upgrade-check/settings.yaml")" || fail_output "${reason}"
+          if [ -z "${reason}" ]; then printf '%s\n' "${row}" >> plan.tested.jsonl; continue; fi
+          note="categories 2 and 3 skipped as approved in the Store registry: ${reason}"
+          jq -n --arg name "${id}" --arg note "${note}" '{name: $name, passed: null, skipped: true, note: $note}' > "runtime-reports/${id}.json"
+          echo "- ${id}: upgrade test not run (${note})" >> "$GITHUB_STEP_SUMMARY"
+        done < plan.jsonl
+        mv plan.tested.jsonl plan.jsonl
     - name: Plan the upgrade tests
       id: upgrade
       if: steps.detect.outputs.changed == 'true'
@@ -473,9 +519,9 @@ jobs:
         set -euo pipefail
         source tooling/.addon-sync/log.sh
         source tooling/.addon-sync/fields.sh
-        # upgrade.jsonl, one object per add-on: id, addon_dir, new, test (whether it runs), artifact, old_ref (the comparison
-        # target's prebuilt image to pull; "" = rebuilt), old_src (the target's tag or commit to rebuild it from, #144) and
-        # new_src ("pr" = built from the PR checkout, #144; "" = the caller's addon-image artifact).
+        # upgrade.jsonl, one object per add-on: id, addon_dir, new, test (whether it is tested), artifact, old_ref (the
+        # comparison target's prebuilt image to pull; "" = rebuilt), old_src (the target's tag or commit to rebuild it from,
+        # #144) and new_src ("pr" = built from the PR checkout, #144; "" = the caller's addon-image artifact).
         mkdir -p runtime-reports; : > upgrade.jsonl; status=0
         while IFS= read -r row; do
           fields "${row}" id=id notes=notes new=new target=target
@@ -509,7 +555,7 @@ jobs:
             --arg artifact "${artifact}" --arg old_ref "${old_ref}" --arg old_src "${old_src}" --arg new_src "${new_src}" '$ARGS.named' >> upgrade.jsonl
         done < plan.jsonl
         if [ -n "$(jq -r 'select(.test) | .id' upgrade.jsonl)" ]; then echo "run=true" >> "$GITHUB_OUTPUT"; else echo "run=false" >> "$GITHUB_OUTPUT"; fi
-        if [ -n "$(jq -r 'select(.old_src != "" or .new_src != "") | .id' upgrade.jsonl)" ]; then echo "build=true" >> "$GITHUB_OUTPUT"; else echo "build=false" >> "$GITHUB_OUTPUT"; fi
+        if [ -n "$(jq -r 'select(.test and (.old_src != "" or .new_src != "")) | .id' upgrade.jsonl)" ]; then echo "build=true" >> "$GITHUB_OUTPUT"; else echo "build=false" >> "$GITHUB_OUTPUT"; fi
         if [ -n "$(jq -r 'select(.test and .new_src == "") | .id' upgrade.jsonl)" ]; then echo "wait=true" >> "$GITHUB_OUTPUT"; else echo "wait=false" >> "$GITHUB_OUTPUT"; fi
         exit "${status}"
     # While the caller's amd64 build is still running.
@@ -519,14 +565,22 @@ jobs:
         set -euo pipefail
         source tooling/.addon-sync/log.sh
         source tooling/.addon-sync/fields.sh
+        # #140: an add-on whose comparison target cannot be pulled fails with the reason (target_failed) and leaves the
+        # test (test false); the others are still tested, and "Run the upgrade tests" fails the job for it at the end.
+        : > pulled.jsonl
         while IFS= read -r row; do
           fields "${row}" id=id ref=old_ref
-          if ! docker pull --quiet --platform linux/amd64 "${ref}"; then
-            fail "${id}: cannot pull the comparison target's image ${ref} from the registry; re-run, or check that the image exists"; exit 1
+          if [ -n "${ref}" ] && ! docker pull --quiet --platform linux/amd64 "${ref}"; then
+            target_failed "${id}" "cannot pull the comparison target's image ${ref} from the registry, so the upgrade cannot be tested; re-run, or check that the image exists"
+            row="$(jq -c '.test = false' <<<"${row}")"
           fi
-        done < <(jq -c 'select(.old_ref != "")' upgrade.jsonl)
+          printf '%s\n' "${row}" >> pulled.jsonl
+        done < upgrade.jsonl
+        mv pulled.jsonl upgrade.jsonl
     # Add-ons built on the device (#144) have no image to pull or hand over: both are built here for amd64, as
     # Supervisor builds them (upgrade_check.py build-args), the comparison target's from its source at the target.
+    # Like a pull (#140), a target that cannot be downloaded or rebuilt fails that add-on (target_failed) and the others
+    # are still tested; a PR that cannot be built fails that add-on as the PR's fault.
     - name: Build the images of add-ons built on the device
       if: steps.upgrade.outputs.build == 'true'
       env:
@@ -544,32 +598,36 @@ jobs:
           while IFS= read -r arg; do args+=(--build-arg "${arg}"); done < <(jq -r '.args | to_entries[] | "\(.key)=\(.value)"' <<<"${spec}")
           docker build --platform linux/amd64 -f "$(jq -r '.dockerfile' <<<"${spec}")" "${args[@]}" -t "upgrade-comparison/$1:$2" "$3"
         }
-        status=0
+        : > built.jsonl
         while IFS= read -r row; do
-          fields "${row}" id=id addon_dir=addon_dir new=new old_src=old_src new_src=new_src
-          if [ -n "${old_src}" ]; then
+          fields "${row}" id=id addon_dir=addon_dir new=new old_src=old_src new_src=new_src test=test
+          if [ "${test}" = true ] && [ -n "${old_src}" ]; then
             fields "$(jq -c --arg id "${id}" '.components[] | select(.id == $id)' provider.json)" path=config previous=previous_config
             tree="$RUNNER_TEMP/${id}.old-src"; rm -rf "${tree}"; mkdir -p "${tree}"
             # The repository at the comparison target, as GitHub archives it (no clone of the history).
             if ! { gh api "repos/${REPO}/tarball/${old_src}" > "$RUNNER_TEMP/${id}.old-src.tar.gz" \
                 && tar -xzf "$RUNNER_TEMP/${id}.old-src.tar.gz" -C "${tree}" --strip-components=1; }; then
-              fail "${id}: cannot download the source of the comparison target ${old_src} to rebuild its image; re-run the check. A comparison target that cannot be rebuilt fails the upgrade test"
-              status=1; continue
-            fi
-            rm -f "$RUNNER_TEMP/${id}.old-src.tar.gz"
-            # The add-on's directory there: where the plan found the target's config (previous_config during a move).
-            dir="$(dirname "${path}")"; [ -e "${tree}/${path}" ] || [ -z "${previous}" ] || dir="$(dirname "${previous}")"
-            if ! build "${id}" old "${tree}/${dir}" "$RUNNER_TEMP/${id}.old.yaml"; then
-              fail "${id}: the comparison target ${old_src} could not be rebuilt for amd64 (its build log is above). A comparison target that cannot be rebuilt fails the upgrade test: users run it, so the upgrade from it cannot be shown"
-              status=1; continue
+              target_failed "${id}" "cannot download the source of the comparison target ${old_src} to rebuild its image, so the upgrade cannot be tested; re-run the check"
+              test=false
+            else
+              rm -f "$RUNNER_TEMP/${id}.old-src.tar.gz"
+              # The add-on's directory there: where the plan found the target's config (previous_config during a move).
+              dir="$(dirname "${path}")"; [ -e "${tree}/${path}" ] || [ -z "${previous}" ] || dir="$(dirname "${previous}")"
+              if ! build "${id}" old "${tree}/${dir}" "$RUNNER_TEMP/${id}.old.yaml"; then
+                target_failed "${id}" "the comparison target ${old_src} could not be rebuilt for amd64 (its build log is in the runtime job), so the upgrade cannot be tested"
+                test=false
+              fi
             fi
           fi
-          if [ "${new_src}" = pr ] && ! build "${id}" new "${addon_dir}" "${new}"; then
-            fail "${id}: the new version could not be built for amd64 from this PR (its build log is above); fix the build"
-            status=1
+          if [ "${test}" = true ] && [ "${new_src}" = pr ] && ! build "${id}" new "${addon_dir}" "${new}"; then
+            reason="the new version could not be built for amd64 from this PR (its build log is in the runtime job); fix the build"
+            printf '::error title=Upgrade comparison failed::%s\n' "$(esc "${id}: ${reason}")"
+            jq -n --arg name "${id}" --arg reason "${reason}" '{name: $name, passed: false, reason: $reason, hooks: [], data_checked: false, phases: []}' > "runtime-reports/${id}.json"
+            test=false
           fi
-        done < <(jq -c 'select(.old_src != "" or .new_src != "")' upgrade.jsonl)
-        exit "${status}"
+          jq -c --argjson test "${test}" '.test = $test' <<<"${row}" >> built.jsonl
+        done < upgrade.jsonl
+        mv built.jsonl upgrade.jsonl
     - name: Wait for the new images
       if: steps.upgrade.outputs.wait == 'true'
       env:
@@ -610,13 +668,15 @@ jobs:
         status=0
         while IFS= read -r row; do
           fields "${row}" id=id addon_dir=addon_dir new=new ref=old_ref
-          # A comparison target built on the device was rebuilt as upgrade-comparison/<id>:old.
+          # A comparison target built on the device was rebuilt as upgrade-comparison/<id>:old (a local image, never pulled).
           old_image="${ref:-upgrade-comparison/${id}:old}"
           rc=0; python3 tooling/.addon-sync/upgrade_runtime.py --name "${id}" --addon-dir "${addon_dir}" \
             --old-image "${old_image}" --old-config "$RUNNER_TEMP/${id}.old.yaml" --new-image "upgrade-comparison/${id}:new" --new-config "${new}" \
             --report-dir runtime-reports --summary "$GITHUB_STEP_SUMMARY" || rc=$?
           [ "${rc}" = 0 ] || status=1
         done < <(jq -c 'select(.test)' upgrade.jsonl)
+        # An add-on an earlier step could not test (target_failed, #140; a PR built on the device that does not build, #144) fails this job too.
+        if jq -e -s 'any(.[]; .passed == false)' runtime-reports/*.json > /dev/null 2>&1; then status=1; fi
         exit "${status}"
     # A step that failed before upgrade_runtime.py wrote a result (plan, pull, wait, load) leaves its reasons in
     # FAIL_LOG; compare quotes them instead of only saying that this job failed. When upgrade_runtime.py already

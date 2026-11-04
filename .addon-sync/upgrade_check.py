@@ -299,24 +299,76 @@ def components(registry, repo):
     return {'ref_policy':provider['ref_policy'],'skip_vulnerability_scan':skip,'scan_published_image':published,
         'components':[{'id':c['id'],**paths(c)} for c in provider['components'] if publishes_releases(c)]}
 
-# Upgrade test (#137, category 2). Where Supervisor mounts each `map` type when the entry gives no `path`
-# (supervisor/addons/validate.py; `config` is the legacy name for Home Assistant's config, at /config).
-MAP_PATHS={'config':'/config','homeassistant_config':'/homeassistant','addon_config':'/config','all_addon_configs':'/addon_configs',
-    'ssl':'/ssl','addons':'/addons','backup':'/backup','share':'/share','media':'/media'}
+# Upgrade test (#137, #156, category 2). Every `map` type Supervisor accepts and where it mounts it when the entry
+# gives no `path` (home-assistant/supervisor@bde7fb7: supervisor/apps/const.py MappingType, apps/validate.py
+# RE_VOLUME and _migrate_app_config, docker/app.py DockerApp.mounts, docker/const.py PATH_*). `data` is the
+# add-on's private data, always read-write, mounted once at its `path` or /data.
+MAP_PATHS={'data':'/data','config':'/config','homeassistant_config':'/homeassistant','app_config':'/config','addon_config':'/config',
+    'all_app_configs':'/app_configs','all_addon_configs':'/addon_configs','local_apps':'/local_apps','addons':'/addons',
+    'ssl':'/ssl','backup':'/backup','share':'/share','media':'/media'}
+# The host directory under <root> each type is mounted from, when it is not <root>/<type>. Supervisor mounts the
+# add-on → app renames (2026.07) and `config` (the legacy name for Home Assistant's config) from the same host
+# directory as the new name, so a version that renames one keeps its data. An add-on's own config folder is
+# <app_configs>/<slug>, the folder all_app_configs shows as a whole (apps/app.py path_extern_config,
+# config.py path_extern_app_configs).
+MAP_SOURCES={'app_config':'all_app_configs/{slug}','addon_config':'all_app_configs/{slug}','all_addon_configs':'all_app_configs',
+    'addons':'local_apps','config':'homeassistant_config'}
+# Entries Supervisor ignores when another type is present, whatever their order (docker/app.py DockerApp.mounts
+# keys entries by type and prefers the new name; validate.py _migrate_app_config logs it): `config` drops
+# app_config, addon_config and homeassistant_config; a new name drops its legacy one.
+MAP_IGNORED_BY={'config':('app_config','addon_config','homeassistant_config'),'app_config':('addon_config',),
+    'all_app_configs':('all_addon_configs',),'local_apps':('addons',)}
+_MAP_STRING=re.compile(r'^(\w+)(?::(rw|ro))?$')
+
+def _map_entries(config):
+    """config.yaml's `map` as {type: (path, read_only)} after Supervisor drops the entries it skips or ignores, and
+    a warning for each dropped one. As in apps/validate.py (_migrate and the map schema): a string entry that is
+    not <type>[:rw|:ro] with a known type, a mapping without `type`, and an entry that is neither are skipped, so
+    the add-on still loads; a mapping with `type` must have a known type, a boolean read_only (default true) and
+    a string path, and no other key, or Supervisor does not load the add-on. A string is read-only unless :rw."""
+    entries,warnings={},[]
+    for entry in config.get('map') or []:
+        if isinstance(entry,str):
+            if not ((m:=_MAP_STRING.match(entry)) and m[1] in MAP_PATHS):
+                warnings.append(f'map entry {entry!r} is skipped because it is not <type>[:rw|:ro] (as Supervisor does)');continue
+            kind,read_only,path=m[1],m[2]!='rw',None
+        elif isinstance(entry,dict):
+            if 'type' not in entry:
+                warnings.append(f"map entry {entry!r} is skipped because it has no 'type' (as Supervisor does)");continue
+            kind,read_only,path=entry['type'],entry.get('read_only',True),entry.get('path')
+            if not (isinstance(kind,str) and kind in MAP_PATHS and isinstance(read_only,bool)
+                    and isinstance(entry.get('path',''),str) and set(entry)<={'type','read_only','path'}):
+                raise ValueError(f'invalid map entry {entry!r}; Supervisor does not load an add-on with it')
+        else:
+            warnings.append(f'map entry {entry!r} is skipped because it is neither a string nor a mapping (as Supervisor does)');continue
+        entries[kind]=(path,read_only)
+    for kind,ignored in MAP_IGNORED_BY.items():
+        if kind in entries:
+            for other in ignored:
+                if entries.pop(other,None) is not None:warnings.append(f"map entry '{other}' is ignored because '{kind}' is present (as Supervisor does)")
+    return entries,warnings
+
+def map_warnings(config):
+    """The `map` entries Supervisor ignores for this config.yaml, one message each, for the upgrade test's report."""
+    return _map_entries(config)[1]
 
 def mounts(config, root):
-    """The data directories of an add-on: /data, then one per `map` entry at its `path` (or Supervisor's default).
-    Each is the directory <root>/<type>, so the comparison target and the new version share the same set even when
-    one of them moves a type to another path. A string entry is read-only unless it ends in :rw; a mapping is
-    read-only unless read_only: false (Supervisor's defaults)."""
-    out=[{'source':f'{root}/data','target':'/data','read_only':False}]
-    for entry in config.get('map') or []:
-        if isinstance(entry,str):kind,_,mode=entry.partition(':');read_only=mode!='rw';path=None
-        elif isinstance(entry,dict):kind,read_only,path=entry.get('type'),entry.get('read_only',True) is not False,entry.get('path')
-        else:kind=None
-        if kind not in MAP_PATHS:raise ValueError(f'unknown map entry {entry!r}')
-        out.append({'source':f'{root}/{kind}','target':path or MAP_PATHS[kind],'read_only':read_only})
-    # Two entries at one path (config and addon_config both default to /config) cannot both be mounted.
+    """The data directories of an add-on: <root>/data at /data (or at the `path` of its `data` entry), then one per
+    other `map` entry at its `path` (or Supervisor's default), from <root>/<MAP_SOURCES[type] or type>. The
+    comparison target and the new version share the same set even when one of them moves or renames a type. As
+    in Supervisor, a repeated type keeps its last entry and skipped or ignored entries are dropped (map_warnings lists them).
+    Each is {type, source, target, read_only}; type is 'data' for the data mount, else the map type as config.yaml
+    writes it (addon_config stays addon_config), for naming per-directory settings such as the hooks' variables."""
+    entries,_=_map_entries(config)
+    data_path,_=entries.pop('data',(None,False))
+    out=[{'type':'data','source':f'{root}/data','target':data_path or MAP_PATHS['data'],'read_only':False}]
+    for kind,(path,read_only) in entries.items():
+        source=MAP_SOURCES.get(kind,kind)
+        if '{slug}' in source:
+            if not config.get('slug'):raise ValueError(f'map entry {kind!r} needs the add-on slug')
+            source=source.format(slug=config['slug'])
+        out.append({'type':kind,'source':f'{root}/{source}','target':path or MAP_PATHS[kind],'read_only':read_only})
+    # Two entries at one path (a custom path onto another type's) cannot both be mounted.
     targets=[m['target'] for m in out]
     for t in targets:
         if targets.count(t)>1:raise ValueError(f'two data directories are mounted at {t}; give one of the map entries a path')
@@ -325,7 +377,8 @@ def mounts(config, root):
 # watchdog and webui as Supervisor writes them: [HOST] is the add-on's address, [PORT:n] its container port n,
 # [PROTO:option] https when that option is true.
 _URL=re.compile(r'^(https?|tcp|\[PROTO:(\w+)\])://\[HOST\]:(?:\[PORT:)?(\d+)\]?(.*)$')
-STARTUP_DEFAULTS={'startup_timeout':300,'stable_seconds':60}
+# upgrade-check/settings.yaml: the startup limits (startup_probe) and the data hooks' limit (#138, upgrade_runtime.py).
+SETTINGS_DEFAULTS={'startup_timeout':300,'stable_seconds':60,'hook_timeout':600}
 # Supervisor gives an ingress_port of 0 a free port in 62000-65500 at install and keeps it for the add-on
 # (supervisor/apps/app.py _check_ingress_port); the upgrade test assigns the first one, the same for both versions.
 ASSIGNED_INGRESS_PORT=62000
@@ -344,6 +397,26 @@ def _probe_url(text, options):
     if option:scheme='https' if (options or {}).get(option) else 'http'
     return f'{scheme}://[HOST]:{port}{path}'
 
+def webui_endpoint(config):
+    """(scheme, port) of config.yaml's webui as Supervisor reads it ([PROTO:option] resolved from the option
+    defaults), or None without a webui."""
+    if not config.get('webui'):return None
+    scheme,rest=_probe_url(config['webui'],config.get('options')).split('://',1)
+    return scheme,int(rest.split(':',1)[1].split('/',1)[0])
+
+def upgrade_settings(settings):
+    """The time limits of the upgrade test: SETTINGS_DEFAULTS, overridden by upgrade-check/settings.yaml (parsed, or
+    None). Each value is a whole number of seconds above 0, and stable_seconds stays below startup_timeout."""
+    limits=dict(SETTINGS_DEFAULTS)
+    if settings is not None and not isinstance(settings,dict):raise ValueError('settings must be a mapping of setting: seconds')
+    for key,value in (settings or {}).items():
+        if key==SKIP_KEY:continue  # not a time limit: upgrade_test_skip() refuses it unless the registry approves the skip
+        if key not in limits:raise ValueError(f'unknown setting {key!r} (known: {", ".join(limits)})')
+        if not isinstance(value,int) or isinstance(value,bool) or value<=0:raise ValueError(f'{key} must be a whole number of seconds above 0, not {value!r}')
+        limits[key]=value
+    if limits['stable_seconds']>=limits['startup_timeout']:raise ValueError(f'stable_seconds ({limits["stable_seconds"]}) must be below startup_timeout ({limits["startup_timeout"]})')
+    return limits
+
 def startup_probe(config, settings=None):
     """How the upgrade test judges that a version starts. One probe, the first config.yaml declares, in Supervisor's
     order (no fallback to the next when it does not answer): the watchdog answers with success (HTTP below 300, or
@@ -353,13 +426,7 @@ def startup_probe(config, settings=None):
     override startup_timeout and stable_seconds. The url keeps [HOST] for the runtime to fill in; `below` is the HTTP
     status an answer must stay under (None for tcp and stays-up). An ingress_port of 0 (a port Supervisor picks) is
     still ingress, probed at the port the upgrade test assigns (ingress_port())."""
-    limits=dict(STARTUP_DEFAULTS)
-    if settings is not None and not isinstance(settings,dict):raise ValueError('settings must be a mapping of setting: seconds')
-    for key,value in (settings or {}).items():
-        if key not in limits:raise ValueError(f'unknown setting {key!r} (known: {", ".join(limits)})')
-        if not isinstance(value,int) or isinstance(value,bool) or value<=0:raise ValueError(f'{key} must be a whole number of seconds above 0, not {value!r}')
-        limits[key]=value
-    if limits['stable_seconds']>=limits['startup_timeout']:raise ValueError(f'stable_seconds ({limits["stable_seconds"]}) must be below startup_timeout ({limits["startup_timeout"]})')
+    limits=upgrade_settings(settings)
     options=config.get('options') or {}
     if config.get('watchdog'):method,url,below='watchdog',_probe_url(config['watchdog'],options),300
     elif config.get('ingress'):method,url,below='ingress',f'http://[HOST]:{ingress_port(config)}/',500
@@ -397,6 +464,38 @@ def build_args(addon_dir, version, arch='amd64'):
     if not dockerfile.is_file():dockerfile=root/'Dockerfile'
     if not dockerfile.is_file():raise ValueError(f'no Dockerfile (or Dockerfile.{arch}) in {root.as_posix()}')
     return {'dockerfile':dockerfile.as_posix(),'args':args}
+
+SKIP_KEY='skip_upgrade_test'
+
+def approved_upgrade_test_skip(component):
+    """The reason the Store registry approves for skipping the upgrade test (categories 2 and 3) of `component` (its
+    registry entry), or '' when none is approved (#140, pipeline #90). Approved per add-on, like
+    skip_vulnerability_scan per provider: upgrade_comparison.skip_upgrade_test holds the reason and its ticket; the
+    report gives that reason. A malformed entry (upgrade_comparison not a mapping, the reason not a non-empty
+    string) is a ValueError naming the add-on, never an empty reason."""
+    given=component.get('upgrade_comparison',{})
+    if given is None:given={}
+    if not isinstance(given,dict):
+        raise ValueError(f'the Store registry entry for {component.get("id")} is malformed: upgrade_comparison must be a mapping, not {given!r}')
+    approved=given.get(SKIP_KEY,'')
+    if SKIP_KEY in given and (not isinstance(approved,str) or not approved.strip()):
+        raise ValueError(f'the Store registry entry for {component.get("id")} is malformed: upgrade_comparison.{SKIP_KEY} must be the approved reason '
+            f'and its ticket (a non-empty string), not {approved!r}')
+    return approved.strip()
+
+def upgrade_test_skip(component, settings=None):
+    """approved_upgrade_test_skip(component). The registry alone decides, so a source repository cannot skip by
+    itself: `settings` (the add-on's upgrade-check/settings.yaml, parsed, or None) that asks for the skip without the
+    approval is a ValueError saying to get it approved in the registry. Only a non-empty string skip_upgrade_test
+    asks (the reason, as in the registry); false, null, "" or any other value is no request. With the approval the
+    settings are not looked at (_upgrade_test_skip does not even read them)."""
+    approved=approved_upgrade_test_skip(component)
+    if approved:return approved
+    asked=settings.get(SKIP_KEY) if isinstance(settings,dict) else None
+    if isinstance(asked,str) and asked.strip():
+        raise ValueError(f'upgrade-check/settings.yaml asks for {SKIP_KEY}, but skipping the upgrade test is not approved for {component.get("id")}: '
+            f'the Store registry entry of this add-on needs upgrade_comparison.{SKIP_KEY} with the reason. Remove it from settings.yaml or get the skip approved in the registry.')
+    return ''
 
 class _Failed(Exception):
     """A command's expected failure: main() reports it as an ::error (title, message) and exits 2."""
@@ -463,7 +562,15 @@ def _build_args(a):
     with _failing((ValueError,OSError,yaml.YAMLError,json.JSONDecodeError,AttributeError),f'{a.name}: {a.addon_dir}: '):print(json.dumps(build_args(a.addon_dir,a.version)))
     return 0
 
-COMMANDS={'build-args':_build_args,'mounts':_mounts,'startup-probe':_startup_probe,'components':_components,'comparison-target':_comparison_target,'version':_version_command,'check-target':_check_target,'release-notes':_release_notes,'compare':_compare}
+def _upgrade_test_skip(a):
+    with _failing((ValueError,KeyError,TypeError,OSError)):_,comp=find_component(_load(a.registry,'json'),a.repo,a.component)  # names the repository and add-on
+    with _failing((ValueError,OSError,yaml.YAMLError),f'{a.component}: '):
+        # Approved: the registry decides, so the repository's settings.yaml is not read (a malformed one cannot fail it).
+        approved=approved_upgrade_test_skip(comp)
+        print(approved or upgrade_test_skip(comp,_load(a.settings,'yaml',optional=True)))
+    return 0
+
+COMMANDS={'build-args':_build_args,'upgrade-test-skip':_upgrade_test_skip,'mounts':_mounts,'startup-probe':_startup_probe,'components':_components,'comparison-target':_comparison_target,'version':_version_command,'check-target':_check_target,'release-notes':_release_notes,'compare':_compare}
 
 def main(argv=None):
     p=argparse.ArgumentParser(description=__doc__.splitlines()[0]);sub=p.add_subparsers(dest='command',required=True)
@@ -492,13 +599,16 @@ def main(argv=None):
     v.add_argument('--as-written',action='store_true',help="the PR's version: fail unless it reads as its text does (unquoted 1.10 is 1.1)")
     k=sub.add_parser('components',help="print what the workflow needs from the repository's registry entry (JSON, see components())")
     k.add_argument('--registry',required=True,help='Store registry.json');k.add_argument('--repo',required=True,help='source repository, owner/name')
-    m=sub.add_parser('mounts',help="print the upgrade test's data directories as JSON [{source, target, read_only}] (mounts())")
+    m=sub.add_parser('mounts',help="print the upgrade test's data directories as JSON [{type, source, target, read_only}] (mounts())")
     m.add_argument('--config',required=True,help="the version's config.yaml");m.add_argument('--root',required=True,help='directory holding one directory per type')
     s=sub.add_parser('startup-probe',help='print how the upgrade test judges that a version starts, as JSON {method, url, below, timeout, stable_seconds} (startup_probe())')
     s.add_argument('--config',required=True,help="the version's config.yaml");s.add_argument('--settings',help='upgrade-check/settings.yaml of the add-on (may be absent)')
     b=sub.add_parser('build-args',help="print how Supervisor builds an add-on built on the device for amd64, as JSON {dockerfile, args} (build_args())")
     b.add_argument('--addon-dir',required=True,help="the add-on's directory (config.yaml, build.yaml, Dockerfile)");b.add_argument('--version',required=True,help='its version (BUILD_VERSION)')
     b.add_argument('--name',required=True,help='add-on id, for the error')
+    x=sub.add_parser('upgrade-test-skip',help="print the reason the Store registry approves for skipping the add-on's upgrade test (categories 2 and 3); nothing when none (upgrade_test_skip())")
+    x.add_argument('--registry',required=True,help='Store registry.json');x.add_argument('--repo',required=True,help='source repository, owner/name')
+    x.add_argument('--component',required=True,help='add-on id in the registry');x.add_argument('--settings',help='upgrade-check/settings.yaml of the add-on (may be absent)')
     a=p.parse_args(argv)
     try:return COMMANDS[a.command](a)
     except _Failed as e:
