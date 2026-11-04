@@ -299,24 +299,42 @@ def components(registry, repo):
     return {'ref_policy':provider['ref_policy'],'skip_vulnerability_scan':skip,'scan_published_image':published,
         'components':[{'id':c['id'],**paths(c)} for c in provider['components'] if publishes_releases(c)]}
 
-# Upgrade test (#137, category 2). Where Supervisor mounts each `map` type when the entry gives no `path`
-# (supervisor/addons/validate.py; `config` is the legacy name for Home Assistant's config, at /config).
-MAP_PATHS={'config':'/config','homeassistant_config':'/homeassistant','addon_config':'/config','all_addon_configs':'/addon_configs',
-    'ssl':'/ssl','addons':'/addons','backup':'/backup','share':'/share','media':'/media'}
+# Upgrade test (#137, #156, category 2). Every `map` type Supervisor accepts and where it mounts it when the entry
+# gives no `path` (home-assistant/supervisor@bde7fb7: supervisor/apps/const.py MappingType, apps/validate.py
+# RE_VOLUME and _migrate_app_config, docker/app.py DockerApp.mounts, docker/const.py PATH_*). `data` is the
+# add-on's private data, always read-write, mounted once at its `path` or /data.
+MAP_PATHS={'data':'/data','config':'/config','homeassistant_config':'/homeassistant','app_config':'/config','addon_config':'/config',
+    'all_app_configs':'/app_configs','all_addon_configs':'/addon_configs','local_apps':'/local_apps','addons':'/addons',
+    'ssl':'/ssl','backup':'/backup','share':'/share','media':'/media'}
+# Names Supervisor mounts from the same host directory: the add-on → app renames (2026.07) and `config`, the
+# legacy name for Home Assistant's config. They share <root>/<the name on the right>, so a version that renames
+# one keeps its data.
+MAP_SOURCES={'addon_config':'app_config','all_addon_configs':'all_app_configs','addons':'local_apps','config':'homeassistant_config'}
+# Entries Supervisor ignores when another type is present (validate.py _migrate_app_config, docker/app.py):
+# `config` drops app_config, addon_config and homeassistant_config; a new name drops its legacy one.
+MAP_IGNORED_BY={'config':('app_config','addon_config','homeassistant_config'),'app_config':('addon_config',),
+    'all_app_configs':('all_addon_configs',),'local_apps':('addons',)}
 
 def mounts(config, root):
-    """The data directories of an add-on: /data, then one per `map` entry at its `path` (or Supervisor's default).
-    Each is the directory <root>/<type>, so the comparison target and the new version share the same set even when
-    one of them moves a type to another path. A string entry is read-only unless it ends in :rw; a mapping is
-    read-only unless read_only: false (Supervisor's defaults)."""
-    out=[{'source':f'{root}/data','target':'/data','read_only':False}]
+    """The data directories of an add-on: /data (or the `path` of its `data` entry), then one per other `map`
+    entry at its `path` (or Supervisor's default). Each is the directory <root>/<type>, aliases sharing one, so the
+    comparison target and the new version share the same set even when one of them moves or renames a type. A
+    string entry is read-only unless it ends in :rw; a mapping is read-only unless read_only: false (Supervisor's
+    defaults). As in Supervisor, a repeated type keeps its last entry and superseded types are dropped."""
+    entries={}
     for entry in config.get('map') or []:
         if isinstance(entry,str):kind,_,mode=entry.partition(':');read_only=mode!='rw';path=None
         elif isinstance(entry,dict):kind,read_only,path=entry.get('type'),entry.get('read_only',True) is not False,entry.get('path')
         else:kind=None
         if kind not in MAP_PATHS:raise ValueError(f'unknown map entry {entry!r}')
-        out.append({'source':f'{root}/{kind}','target':path or MAP_PATHS[kind],'read_only':read_only})
-    # Two entries at one path (config and addon_config both default to /config) cannot both be mounted.
+        entries[kind]=(path,read_only)
+    for kind,ignored in MAP_IGNORED_BY.items():
+        if kind in entries:
+            for other in ignored:entries.pop(other,None)
+    out=[{'source':f'{root}/data','target':(entries.pop('data',None) or (None,))[0] or '/data','read_only':False}]
+    for kind,(path,read_only) in entries.items():
+        out.append({'source':f'{root}/{MAP_SOURCES.get(kind,kind)}','target':path or MAP_PATHS[kind],'read_only':read_only})
+    # Two entries at one path (a custom path onto another type's) cannot both be mounted.
     targets=[m['target'] for m in out]
     for t in targets:
         if targets.count(t)>1:raise ValueError(f'two data directories are mounted at {t}; give one of the map entries a path')
