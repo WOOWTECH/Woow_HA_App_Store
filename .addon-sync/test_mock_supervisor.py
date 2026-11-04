@@ -101,6 +101,19 @@ class Tests(unittest.TestCase):
         self.assertEqual((mock.state / 'requests.log').read_text(encoding='utf-8').splitlines(),
             ['GET /services/mysql 404', 'GET /services/mysql/ 404', 'GET /services/mysql?x=1 404', 'POST /hardware/info 404'])
 
+    def test_summary_after_a_log_size_covers_the_later_calls_only(self):
+        # The runtime keeps one requests.log for both versions and summarizes each from where its phase began.
+        mock = self.mock()
+        mock.call('/services/mysql'); start = m.log_size(mock.state)
+        mock.call('/services/mysql'); mock.call('/hardware/info')
+        self.assertEqual(m.summary(mock.state, start)['unmocked'], [{'path': '/hardware/info', 'count': 1, 'methods': ['GET']},
+            {'path': '/services/mysql', 'count': 1, 'methods': ['GET']}])
+        out = subprocess.run([sys.executable, str(TOOL), 'summary', '--state', str(mock.state), '--start', str(start)],
+            capture_output=True, text=True, check=True).stdout
+        self.assertEqual(json.loads(out), m.summary(mock.state, start))
+        self.assertEqual(m.summary(mock.state)['unmocked'][1]['count'], 2)
+        self.assertEqual(m.log_size(mock.state / 'nowhere'), 0)
+
     def test_a_broken_fixture_is_500_and_summarized(self):
         mock = self.mock({'services/mqtt.json': '{not json'})
         status, body = mock.call('/services/mqtt')

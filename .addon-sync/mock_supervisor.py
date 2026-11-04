@@ -12,8 +12,10 @@ upgrade_runtime.py runs this in a container at the Supervisor's address
                        127.0.0.1 (the runtime's readiness check). Every call needs
                        the add-on's token. --fixtures is the source repo's
                        upgrade-check/supervisor/ (see Fixtures).
-  summary --state DIR  print, as JSON, the Supervisor calls the mock could not
-                       answer (summary() below; pipeline #142).
+  summary --state DIR [--start BYTES]
+                       print, as JSON, the Supervisor calls the mock could not
+                       answer (summary() below; pipeline #142), after byte --start
+                       of requests.log (log_size() before a phase).
   probe --url URL      one check from the Supervisor's address: exit 0 when an
                        http(s) URL answers below --below (upgrade_check.startup_probe
                        sets it) or a tcp://host:port accepts a connection.
@@ -128,14 +130,21 @@ class Handler(http.server.BaseHTTPRequestHandler):
     def log_message(self, *args):
         pass
 
-def summary(state):
-    """What the mock could not answer, from `state`/requests.log (no log: nothing):
+def log_size(state):
+    """The size of `state`/requests.log now (0 without one): summary(state, start=...) then covers later calls only."""
+    log = pathlib.Path(state) / 'requests.log'
+    return log.stat().st_size if log.is_file() else 0
+
+def summary(state, start=0):
+    """What the mock could not answer, from `state`/requests.log after byte `start` (log_size; no log: nothing):
     {'unmocked': [{'path', 'count', 'methods'}], 'broken_fixtures': [same]}; paths normalized, sorted by path.
     The log already leaves out the runtime's own checks from 127.0.0.1."""
     log = pathlib.Path(state) / 'requests.log'
     seen = {404: collections.defaultdict(list), 500: collections.defaultdict(list)}
     if log.is_file():
-        for line in log.read_text(encoding='utf-8', errors='replace').splitlines():
+        with open(log, 'rb') as f:
+            f.seek(start); text = f.read().decode('utf-8', errors='replace')
+        for line in text.splitlines():
             parts = line.split(' ')
             if len(parts) < 3 or not parts[-1].isdigit() or int(parts[-1]) not in seen:
                 continue
@@ -165,14 +174,14 @@ def main(argv=None):
     sub = p.add_subparsers(dest='command', required=True)
     s = sub.add_parser('serve'); s.add_argument('--state', default='/state')
     s.add_argument('--fixtures', help="the repo's Supervisor fixtures directory"); s.add_argument('--port', type=int, default=80)
-    m = sub.add_parser('summary'); m.add_argument('--state', default='/state')
+    m = sub.add_parser('summary'); m.add_argument('--state', default='/state'); m.add_argument('--start', type=int, default=0)
     c = sub.add_parser('probe'); c.add_argument('--url', required=True)
     c.add_argument('--below', type=int, default=300); c.add_argument('--timeout', type=float, default=5)
     a = p.parse_args(argv)
     if a.command == 'probe':
         return 0 if probe(a.url, a.below, a.timeout) else 1
     if a.command == 'summary':
-        print(json.dumps(summary(a.state), indent=1)); return 0
+        print(json.dumps(summary(a.state, a.start), indent=1)); return 0
     global STATE, FIXTURES
     STATE = pathlib.Path(a.state)
     FIXTURES = pathlib.Path(a.fixtures) if a.fixtures else None
