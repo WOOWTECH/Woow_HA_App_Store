@@ -6,8 +6,8 @@ directories (/data and one per config.yaml `map` entry, at its `path`:
 upgrade_check.mounts), each under a mock Home Assistant Supervisor
 (mock_supervisor.py): the hassio bridge network 172.30.32.0/23, the
 Supervisor at 172.30.32.2 (also as host `supervisor`), a fake
-SUPERVISOR_TOKEN/HASSIO_TOKEN and /data/options.json from config.yaml's
-option defaults. Each version must start, judged as upgrade_check.startup_probe
+SUPERVISOR_TOKEN/HASSIO_TOKEN and /data/options.json (test options, below).
+Each version must start, judged as upgrade_check.startup_probe
 says from the Supervisor's address, and then stay up for stable_seconds; the
 add-on's upgrade-check/settings.yaml may override the time limits.
 
@@ -16,6 +16,29 @@ each other `map` entry at its `path` or Supervisor's default, from
 <root>/<MAP_SOURCES[type] or type> (app_config/addon_config =
 all_app_configs/<slug>; legacy names share the new name's directory); entries
 Supervisor ignores are listed by upgrade_check.map_warnings().
+
+Test options (#157): /data/options.json (and the options in the mock's
+/addons/self/info) of each version is phase_options(): its config.yaml option
+defaults, with the add-on's upgrade-check/options.yaml (in the PR, the same
+file for both versions) laid over them the way Supervisor merges user options
+(mappings key by key, any other value replaces the default; only keys the
+version's schema has), and null values left out. Then every required password
+option of the schema (`password` or `password(min,max)`, no `?`; in nested
+mappings too, not in list items) that is still missing, null or '' gets a
+random value (32 letters and digits, inside its length range), generated once
+per test and the same for both versions, so hooks read it from
+$DATA_DIR_DATA/options.json. Other required options that are still null or
+empty are left as they are (null ones are left out of options.json; Supervisor
+would refuse to start the add-on then, the test lets the add-on decide): give
+them a value in options.yaml. options.yaml must be a mapping of option: value
+(an empty file is no options); invalid YAML, any other shape, or a key that no
+version's config.yaml schema has (Supervisor drops such keys with a warning,
+so it would never reach the add-on) is a tool error before any container
+starts. Values are not checked against the schema. The result and report
+never show a password: every generated one, and every password option value
+of at least MASK_MIN_LENGTH characters, is replaced by MASK in hook output,
+logs and details; the report names the options.yaml keys and the generated
+options only.
 
 Data check (#138): the add-on's upgrade-check/ (in the PR) may hold the hooks
 `seed` (run once on the comparison target after it started, to write data) and
@@ -65,7 +88,8 @@ hooks upgrade-check/ has), data_checked (verify ran), phases: [{phase, version,
 image, method, started, detail, answer, logs, hooks: [{hook, phase, passed,
 exit_code, detail, checks: [{name, result, detail}], output}], supervisor:
 {unmocked: [{path, count, methods}], broken_fixtures: [same]}}], map_warnings:
-{old: [...], new: [...]}}. exit_code is None when the hook timed out or could
+{old: [...], new: [...]}, options: {from_repo: [options.yaml keys], generated:
+[dotted names of the generated passwords]}}. exit_code is None when the hook timed out or could
 not be started (a symlink out of upgrade-check/). supervisor lists the
 add-on's own Supervisor calls during that phase (start to stop) that answered
 404 (unmocked) or 500 (a fixture that is not valid JSON); calls of the hooks
@@ -74,7 +98,7 @@ of each config.yaml: map entries Supervisor ignores (or why `map` could not be
 read). Both are informational.
 """
 from __future__ import annotations
-import argparse, json, os, pathlib, secrets, shutil, subprocess, sys, tempfile, time
+import argparse, json, os, pathlib, re, secrets, shutil, string, subprocess, sys, tempfile, time
 import yaml
 import mock_supervisor
 from upgrade_check import ingress_port, map_warnings, mounts, startup_probe, upgrade_settings, webui_endpoint
@@ -126,6 +150,105 @@ def image_fault(error):
 def default_options(config):
     """What Supervisor writes to /data/options.json for a fresh install: the option defaults (no null ones)."""
     return {k: v for k, v in (config.get('options') or {}).items() if v is not None}
+
+# #157: test options. Supervisor's option types (supervisor/apps/options.py RE_SCHEMA_ELEMENT): a password, with an
+# optional length range, required unless it ends with '?'.
+TEST_OPTIONS = 'options.yaml'
+REQUIRED_PASSWORD = re.compile(r'^password(?:\((?P<min>\d+)?,(?P<max>\d+)?\))?$')
+PASSWORD_LENGTH, PASSWORD_ALPHABET = 32, string.ascii_letters + string.digits
+# Password values shorter than this are not masked in the report (they would mask ordinary words in the logs).
+MASK_MIN_LENGTH, MASK = 6, '[password]'
+
+def read_test_options(hooks_dir):
+    """The add-on's upgrade-check/options.yaml (in the PR), parsed: a mapping of option: value, or None when there is
+    none. An empty file is {}. Anything else is a ValueError naming the file (the test could not run)."""
+    path = pathlib.Path(hooks_dir) / TEST_OPTIONS
+    if not path.is_file():return None
+    try:given = yaml.safe_load(path.read_text(encoding='utf-8'))
+    except yaml.YAMLError as e:raise ValueError(f'upgrade-check/{TEST_OPTIONS} is not valid YAML: {e}') from None
+    if given is None:return {}
+    if not isinstance(given, dict) or not all(isinstance(k, str) and k for k in given):
+        raise ValueError(f'upgrade-check/{TEST_OPTIONS} must be a mapping of option: value (as in config.yaml options), not {json.dumps(given, default=str)[:200]}')
+    return given
+
+def _schema(config):
+    """config.yaml's schema as a mapping, or None when it has none to check against (schema: false or absent)."""
+    schema = config.get('schema')
+    return schema if isinstance(schema, dict) else None
+
+def check_test_options(given, configs):
+    """ValueError when upgrade-check/options.yaml sets an option that no version's config.yaml schema lists: Supervisor
+    drops options that are not in the schema (with a warning), so such a key would never reach the add-on, a mistake
+    the test reports. A version without a schema mapping accepts every key."""
+    schemas = [_schema(c) for c in configs]
+    if any(s is None for s in schemas):return
+    unknown = [k for k in given if not any(k in s for s in schemas)]
+    if unknown:
+        raise ValueError(f'upgrade-check/{TEST_OPTIONS} sets {", ".join(map(repr, unknown))}, which no version\'s config.yaml schema has '
+            '(Supervisor drops options that are not in the schema)')
+
+def _merge(defaults, given):
+    """Supervisor's merge of the defaults with the user's options (apps/app.py _OPTIONS_MERGER): mappings merge key by
+    key, any other value replaces the default."""
+    out = dict(defaults)
+    for k, v in given.items():
+        out[k] = _merge(out[k], v) if isinstance(out.get(k), dict) and isinstance(v, dict) else v
+    return out
+
+def _drop_nulls(options):
+    """The options without null values (nested mappings too): a null default means "not set"."""
+    return {k: _drop_nulls(v) if isinstance(v, dict) else v for k, v in options.items() if v is not None}
+
+def random_password(typ):
+    """A random password for the schema type `typ` (password or password(min,max)): PASSWORD_LENGTH letters and digits,
+    inside the type's length range (letters and digits only, so it survives shell, JSON and ini files unquoted)."""
+    m = REQUIRED_PASSWORD.match(typ); length = PASSWORD_LENGTH
+    if m and m['max']:length = min(length, int(m['max']))
+    if m and m['min']:length = max(length, int(m['min']))
+    return ''.join(secrets.choice(PASSWORD_ALPHABET) for _ in range(length))
+
+def _fill_passwords(options, schema, generated, prefix=''):
+    """Give every required password option of `schema` that is missing or empty in `options` (null or '') a random
+    value, kept in `generated` by its dotted name so the other version gets the same one. Nested mappings are
+    followed when the options have them; list items are not (they have no defaults)."""
+    for key, typ in schema.items():
+        name = prefix + key
+        if isinstance(typ, dict) and isinstance(options.get(key), dict):
+            _fill_passwords(options[key], typ, generated, name + '.')
+        elif isinstance(typ, str) and REQUIRED_PASSWORD.match(typ) and options.get(key) in (None, ''):
+            options[key] = generated.setdefault(name, random_password(typ))
+
+def phase_options(config, given, generated):
+    """What the upgrade test writes to /data/options.json for one version (#157): config.yaml's option defaults, with
+    upgrade-check/options.yaml (`given`, or None) laid over them as Supervisor merges user options (only its keys that
+    this version's schema has, when it has one), then null values left out; then every required `password` option of
+    the schema that is still missing or empty gets a random value, the same for both versions (`generated`, shared by
+    the caller). Other required options that are still null or empty stay as they are (a null one is left out)."""
+    schema = _schema(config)
+    given = {k: v for k, v in (given or {}).items() if schema is None or k in schema}
+    options = _drop_nulls(_merge(config.get('options') or {}, given))
+    if schema:_fill_passwords(options, schema, generated)
+    return options
+
+def password_values(options, schema):
+    """The values of the password options (password or password?, nested mappings and lists followed) in `options`."""
+    out = []
+    for key, typ in (schema or {}).items():
+        value = options.get(key) if isinstance(options, dict) else None
+        if isinstance(typ, list) and typ and isinstance(value, list):
+            for item in value:out += password_values({key: item}, {key: typ[0]})
+        elif isinstance(typ, dict):out += password_values(value, typ)
+        elif isinstance(typ, str) and typ.startswith('password') and isinstance(value, str) and value:out.append(value)
+    return out
+
+def mask(value, words):
+    """`value` (a result: nested dicts, lists, strings) with each of `words` replaced by MASK, longest first."""
+    if isinstance(value, str):
+        for w in words:value = value.replace(w, MASK)
+        return value
+    if isinstance(value, dict):return {k: mask(v, words) for k, v in value.items()}
+    if isinstance(value, list):return [mask(v, words) for v in value]
+    return value
 
 def addon_info(config, options):
     """The mock Supervisor's /addons/self/info for this version."""
@@ -212,9 +335,10 @@ class UpgradeTestEnv:
         code = (f'import urllib.request,ssl;print(urllib.request.urlopen({url!r},timeout=5,context=ssl._create_unverified_context())'
             '.read()[:200].decode(errors="replace"))')
         return docker('exec', self.supervisor, 'python', '-c', code, check=False).strip()
-    def start(self, phase, image, config):
-        """Start one version on the shared directories; its container name."""
-        options = default_options(config)
+    def start(self, phase, image, config, options=None):
+        """Start one version on the shared directories with `options` as /data/options.json (phase_options(); the
+        option defaults when None); its container name."""
+        if options is None:options = default_options(config)
         self.log_start = mock_supervisor.log_size(self.state)
         (self.state / 'addon.json').write_text(json.dumps(addon_info(config, options)), encoding='utf-8')
         args = []
@@ -355,15 +479,21 @@ def upgrade_test(name, addon_dir, old_image, old_config, new_image, new_config, 
     present = [h for h in HOOK_PHASE if (hooks_dir / h).is_file()]
     unusable = fixtures_problem(hooks_dir) if hooks_dir.is_dir() else ''
     if unusable:raise ValueError(unusable)  # like a bad settings.yaml: before any container starts
+    # #157: the PR's upgrade-check/options.yaml for both versions; a bad one is a tool error before any container starts.
+    given = read_test_options(hooks_dir)
+    if given:check_test_options(given, (old_config, new_config))
+    generated = {}
+    options = {phase: phase_options(config, given, generated) for phase, config in (('old', old_config), ('new', new_config))}
     env = UpgradeTestEnv(work, hooks_dir.resolve() if hooks_dir.is_dir() else None); phases = []
     result = {'name': name, 'passed': False, 'reason': '', 'hooks': present, 'data_checked': False, 'phases': phases,
-        'map_warnings': {'old': _map_warnings(old_config), 'new': _map_warnings(new_config)}}
+        'map_warnings': {'old': _map_warnings(old_config), 'new': _map_warnings(new_config)},
+        'options': {'from_repo': sorted(given or {}), 'generated': sorted(generated)}}
     try:
         env.open()
         for phase, image, config in (('old', old_image, old_config), ('new', new_image, new_config)):
             probe = startup_probe(config, settings)
             label = f'{PHASE_LABEL[phase]} ({config.get("version")})'
-            try:container = env.start(phase, image, config)
+            try:container = env.start(phase, image, config, options[phase])
             except DockerError as e:
                 # #140: a version whose image docker cannot run (not found or pulled, entrypoint missing...) did not start;
                 # for the comparison target that fails the upgrade comparison with the reason, as an exit does. Any
@@ -396,6 +526,17 @@ def upgrade_test(name, addon_dir, old_image, old_config, new_image, new_config, 
         return result
     finally:
         env.close()
+        # #157: the report never shows a password (hook output, logs, details); the returned dict is this one.
+        result.update(mask(result, mask_words(generated, options.values(), (old_config, new_config))))
+
+def mask_words(generated, options, configs):
+    """The passwords the report must not show, longest first: every generated one, and every value of a password
+    option (password or password?) in either version's options (`options`, in the order of `configs`) at least
+    MASK_MIN_LENGTH long."""
+    words = set(generated.values())
+    for opts, config in zip(options, configs):
+        words.update(v for v in password_values(opts, _schema(config)) if len(v) >= MASK_MIN_LENGTH)
+    return sorted(words, key=len, reverse=True)
 
 def report(result):
     """The Markdown report of upgrade_test()'s result: the startup of each version, then every hook's checks."""
@@ -411,6 +552,7 @@ def report(result):
         '| version | image | judged by | started | detail |', '|---|---|---|---|---|']
     r += [f'| {PHASE_LABEL[p["phase"]]} {markdown_cell(p["version"])} | `{markdown_cell(p["image"])}` | {p["method"]} | {"yes" if p["started"] else "**no**"} | {markdown_cell(p["detail"])} |'
         for p in result['phases']]
+    r += _options_lines(result.get('options') or {})
     if 'seed' in result.get('hooks', []) and 'verify' not in result.get('hooks', []):
         r += ['', 'upgrade-check/ has seed but no verify: nothing reads the seeded data back.']
     runs = [h for p in result['phases'] for h in p.get('hooks', [])]
@@ -429,6 +571,14 @@ def report(result):
         if not p['started'] or any(not h['passed'] for h in p.get('hooks', [])):
             r += ['', f'<details><summary>Last log lines of {PHASE_LABEL[p["phase"]]}</summary>', '', '```', p['logs'].replace('```', "'''"), '```', '', '</details>']
     return '\n'.join(r) + '\n'
+
+def _options_lines(options):
+    """Report lines naming the options upgrade-check/options.yaml set and the passwords generated (#157); never values."""
+    names = lambda keys: ', '.join(f'`{markdown_cell(k)}`' for k in keys)
+    parts = []
+    if options.get('from_repo'):parts.append(f'upgrade-check/{TEST_OPTIONS} sets {names(options["from_repo"])}')
+    if options.get('generated'):parts.append(f'random passwords for {names(options["generated"])} (the same on both versions)')
+    return ['', f'Test options (測試用的 options): {"; ".join(parts)}.'] if parts else []
 
 def _supervisor_sections(result):
     """Report lines for the unmocked Supervisor calls, broken fixtures and ignored map entries (informational)."""

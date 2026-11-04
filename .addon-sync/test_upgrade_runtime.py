@@ -104,6 +104,28 @@ json.dump({'checks': [{'name': n, 'result': 'pass' if ok else 'fail', 'detail': 
 sys.exit(0 if all(ok for _, ok, _ in checks) else 1)
 '''
 
+# #157: seed keeps the options the comparison target booted with and prints its password; verify finds the
+# repository's value and the same generated password on the new version (and prints it: the report must mask it).
+SEED_OPTIONS = r'''#!/usr/bin/env python3
+import json, os, shutil
+shutil.copy(os.environ['DATA_DIR_DATA'] + '/options.json', os.environ['HOOK_STATE_DIR'] + '/old-options.json')
+print('pw=' + json.load(open(os.environ['DATA_DIR_DATA'] + '/options.json'))['pw'])
+'''
+VERIFY_OPTIONS = r'''#!/usr/bin/env python3
+import json, os, re, sys
+old = json.load(open(os.environ['HOOK_STATE_DIR'] + '/old-options.json'))
+new = json.load(open(os.environ['DATA_DIR_DATA'] + '/options.json'))
+print('pw=' + new['pw'])
+checks = [('repo value', old['token'] == new['token'] == 'repo-token-value', ''),
+    ('repo value beats the default', new['greeting'] == 'hi' and new['level'] == 3, str(new['level'])),
+    ('generated password', bool(re.fullmatch('[A-Za-z0-9]{32}', new['pw'])), str(len(new['pw']))),
+    ('same password on both versions', old['pw'] == new['pw'], ''),
+    ('optional password not generated', 'spare' not in new, ''),
+    ('key only the new schema has', ('extra' in old, new.get('extra')) == (False, 'new only'), '')]
+json.dump({'checks': [{'name': n, 'result': 'pass' if ok else 'fail', 'detail': d} for n, ok, d in checks]}, open(os.environ['REPORT_DIR'] + '/verify.json', 'w'))
+sys.exit(0 if all(ok for _, ok, _ in checks) else 1)
+'''
+
 def docker_ok():
     try:return subprocess.run(['docker', 'info'], capture_output=True).returncode == 0
     except OSError:return False
@@ -144,9 +166,11 @@ class Runtime(unittest.TestCase):
     def hook(self, name, text):
         (self.dir / 'addon/upgrade-check').mkdir(exist_ok=True)
         path = self.dir / f'addon/upgrade-check/{name}'; path.write_text(text, encoding='utf-8', newline='\n'); path.chmod(0o755)
-    def run_test(self, old, new, **cfg):
+    def run_test(self, old, new, sides=None, **cfg):
+        # sides: config.yaml keys of one version only ({'old': {...}, 'new': {...}}).
+        side = lambda s: self.config(s, **{**cfg, **(sides or {}).get(s, {})})
         args = ['--name', 'fake', '--addon-dir', str(self.dir / 'addon'), '--report-dir', str(self.reports), '--summary', str(self.dir / 'summary.md'),
-            '--old-image', self.images[old], '--old-config', self.config('old', **cfg), '--new-image', self.images[new], '--new-config', self.config('new', **cfg)]
+            '--old-image', self.images[old], '--old-config', side('old'), '--new-image', self.images[new], '--new-config', side('new')]
         with contextlib.redirect_stdout(io.StringIO()) as out:code = rt.main(args)
         return code, json.loads((self.reports / 'fake.json').read_text(encoding='utf-8')), out.getvalue()
     def test_new_version_that_starts_on_the_old_data_passes(self):
@@ -361,6 +385,101 @@ class Runtime(unittest.TestCase):
         code, result, out = self.run_test('good', 'good')
         self.assertEqual(code, 1); self.assertIn('verify failed on the new version (1.1.0): did not finish within 3 s (hook_timeout)', result['reason'])
         self.assertEqual(leftovers(), [])
+    # #157: upgrade-check/options.yaml over the defaults, random required passwords, the same on both versions.
+    OPTIONS_SCHEMA = {'greeting': 'str', 'pw': 'password', 'token': 'password', 'level': 'int', 'spare': 'password?'}
+    def options_yaml(self, text):
+        (self.dir / 'addon/upgrade-check').mkdir(exist_ok=True)
+        (self.dir / 'addon/upgrade-check/options.yaml').write_text(text, encoding='utf-8')
+    def test_repo_options_and_a_generated_password_reach_both_versions(self):
+        self.settings(stable_seconds=3); self.hook('seed', SEED_OPTIONS); self.hook('verify', VERIFY_OPTIONS)
+        self.options_yaml('token: repo-token-value\nlevel: 3\nextra: new only\n')
+        code, result, out = self.run_test('good', 'good', options={'greeting': 'hi', 'pw': '', 'token': None, 'level': 1, 'spare': None},
+            schema=self.OPTIONS_SCHEMA, sides={'new': {'schema': {**self.OPTIONS_SCHEMA, 'extra': 'str?'}}})
+        self.assertEqual(code, 0, out + json.dumps(result, indent=1)); self.assertTrue(result['passed'])
+        self.assertEqual([c['result'] for c in result['phases'][1]['hooks'][0]['checks']], ['pass'] * 6)
+        self.assertEqual(result['options'], {'from_repo': ['extra', 'level', 'token'], 'generated': ['pw']})
+        # Both hooks printed the password: the result and the report show the mask instead.
+        for p in result['phases']:self.assertIn(f'pw={rt.MASK}', p['hooks'][0]['output'])
+        summary = (self.dir / 'summary.md').read_text(encoding='utf-8')
+        self.assertIn('Test options (測試用的 options): upgrade-check/options.yaml sets `extra`, `level`, `token`; random passwords for `pw`', summary)
+        self.assertNotIn('repo-token-value', json.dumps(result) + summary + out)
+    def test_options_yaml_with_a_key_no_schema_has_fails_before_any_container(self):
+        self.options_yaml('greting: typo\n')
+        code, result, out = self.run_test('good', 'good')
+        self.assertEqual(code, 2); self.assertEqual(result['phases'], [])
+        self.assertIn("could not run: upgrade-check/options.yaml sets 'greting', which no version's config.yaml schema has", result['reason'])
+        self.assertEqual(leftovers(), [])
+
+class TestOptions(unittest.TestCase):
+    """#157: what /data/options.json holds for each version, without Docker."""
+    def build(self, config, given=None, generated=None):
+        generated = {} if generated is None else generated
+        return rt.phase_options(config, given, generated), generated
+    def test_without_options_yaml_or_passwords_the_defaults_stay(self):
+        config = {'options': {'a': 1, 'b': None, 'c': ''}, 'schema': {'a': 'int', 'b': 'str?', 'c': 'str'}}
+        self.assertEqual(self.build(config), ({'a': 1, 'c': ''}, {}))
+        self.assertEqual(self.build(config)[0], rt.default_options(config))
+    def test_repo_values_win_as_supervisor_merges_them(self):
+        config = {'options': {'a': 1, 'nested': {'x': 1, 'y': 2}, 'items': [1, 2], 'gone': 'default'},
+            'schema': {'a': 'int', 'nested': {'x': 'int', 'y': 'int'}, 'items': ['int'], 'gone': 'str?', 'new': 'str?'}}
+        options, _ = self.build(config, {'a': 5, 'nested': {'y': 9}, 'items': [3], 'gone': None, 'new': 'n'})
+        self.assertEqual(options, {'a': 5, 'nested': {'x': 1, 'y': 9}, 'items': [3], 'new': 'n'})
+    def test_a_key_one_schema_lacks_is_left_out_for_that_version(self):
+        old, new = {'options': {}, 'schema': {'a': 'str'}}, {'options': {}, 'schema': {'a': 'str', 'b': 'str?'}}
+        rt.check_test_options({'b': 'x'}, (old, new))
+        self.assertEqual(self.build(old, {'a': 'x', 'b': 'x'})[0], {'a': 'x'}); self.assertEqual(self.build(new, {'b': 'x'})[0], {'b': 'x'})
+        with self.assertRaisesRegex(ValueError, r"sets 'c', which no version's config.yaml schema has \(Supervisor drops"):
+            rt.check_test_options({'a': 'x', 'c': 'x'}, (old, new))
+        # Without a schema mapping nothing is checked or left out.
+        rt.check_test_options({'c': 'x'}, (old, {'options': {}, 'schema': False}))
+        self.assertEqual(self.build({'options': {}}, {'c': 'x'})[0], {'c': 'x'})
+    def test_required_passwords_left_empty_get_one_random_value_for_both_versions(self):
+        # omnigent: admin_password ''; odoo and nextcloud: null; nextcloud's db_password is password? (optional).
+        old = {'options': {'admin_password': '', 'admin_passwd': None, 'db_password': None, 'user': ''},
+            'schema': {'admin_password': 'password', 'admin_passwd': 'password', 'db_password': 'password?', 'user': 'str', 'smtp': 'password?'}}
+        new = {**old, 'schema': {**old['schema'], 'short': 'password(4,12)', 'long': 'password(40,)'}}
+        first, generated = self.build(old); second, _ = self.build(new, generated=generated)
+        self.assertEqual(sorted(generated), ['admin_passwd', 'admin_password', 'long', 'short'])
+        for options in (first, second):
+            self.assertRegex(options['admin_password'], r'^[A-Za-z0-9]{32}$'); self.assertRegex(options['admin_passwd'], r'^[A-Za-z0-9]{32}$')
+            # Other required options that are empty stay so; optional passwords are not generated.
+            self.assertEqual(options['user'], ''); self.assertNotIn('db_password', options); self.assertNotIn('smtp', options)
+        self.assertEqual([first[k] for k in ('admin_password', 'admin_passwd')], [second[k] for k in ('admin_password', 'admin_passwd')])
+        self.assertNotEqual(first['admin_password'], first['admin_passwd'])
+        self.assertEqual((len(second['short']), len(second['long'])), (12, 40))
+    def test_a_repo_password_is_kept_and_nested_passwords_are_generated(self):
+        config = {'options': {'pw': '', 'db': {'pw': None, 'host': 'h'}, 'users': [{'name': 'a'}]},
+            'schema': {'pw': 'password', 'db': {'pw': 'password', 'host': 'str'}, 'users': [{'name': 'str', 'pw': 'password'}]}}
+        options, generated = self.build(config, {'pw': 'from-repo'})
+        self.assertEqual(options['pw'], 'from-repo'); self.assertEqual(sorted(generated), ['db.pw'])
+        self.assertEqual(options['db']['pw'], generated['db.pw']); self.assertEqual(options['users'], [{'name': 'a'}])
+    def test_options_yaml_is_read_and_must_be_a_mapping(self):
+        d = pathlib.Path(tempfile.mkdtemp()); self.addCleanup(shutil.rmtree, d, True)
+        self.assertIsNone(rt.read_test_options(d))
+        for text, expected in (('', {}), ('a: 1\nb: [x]\n', {'a': 1, 'b': ['x']})):
+            (d / 'options.yaml').write_text(text, encoding='utf-8'); self.assertEqual(rt.read_test_options(d), expected)
+        for text, message in (('- a\n', 'must be a mapping of option: value'), ('a: [unclosed\n', 'is not valid YAML'),
+                ('1: x\n', 'must be a mapping of option: value'), ('just text\n', 'must be a mapping')):
+            (d / 'options.yaml').write_text(text, encoding='utf-8')
+            with self.subTest(text), self.assertRaisesRegex(ValueError, 'upgrade-check/options.yaml ' + message):rt.read_test_options(d)
+    def test_a_malformed_options_yaml_is_a_tool_error_before_docker(self):
+        d = pathlib.Path(tempfile.mkdtemp()); self.addCleanup(shutil.rmtree, d, True)
+        (d / 'addon/upgrade-check').mkdir(parents=True); (d / 'addon/upgrade-check/options.yaml').write_text('- a\n', encoding='utf-8')
+        cfg = d / 'config.yaml'; cfg.write_text('slug: fake\nversion: 1.0.0\n', encoding='utf-8')
+        args = ['--name', 'fake', '--addon-dir', str(d / 'addon'), '--report-dir', str(d / 'reports'),
+            '--old-image', 'x', '--old-config', str(cfg), '--new-image', 'y', '--new-config', str(cfg)]
+        with mock.patch.object(rt, 'docker', side_effect=AssertionError('docker was called')), contextlib.redirect_stdout(io.StringIO()) as out:
+            self.assertEqual(rt.main(args), 2)
+        result = json.loads((d / 'reports/fake.json').read_text(encoding='utf-8'))
+        self.assertIn('the upgrade test could not run: upgrade-check/options.yaml must be a mapping of option: value', result['reason'])
+        self.assertIn('::error title=Upgrade test::fake: the upgrade test could not run: upgrade-check/options.yaml', out.getvalue())
+    def test_passwords_are_masked_but_short_ones_and_other_values_are_not(self):
+        config = {'schema': {'pw': 'password', 'opt': 'password?', 'list': ['password'], 'name': 'str'}}
+        options = {'pw': 'generated-secret-1', 'opt': 'abc', 'list': ['listed-secret'], 'name': 'visible-name'}
+        words = rt.mask_words({'pw': 'generated-secret-1'}, [options], [config])
+        self.assertEqual(words, ['generated-secret-1', 'listed-secret'])
+        masked = rt.mask({'a': ['x generated-secret-1 y', {'b': 'listed-secret abc visible-name'}], 'n': 3}, words)
+        self.assertEqual(masked, {'a': [f'x {rt.MASK} y', {'b': f'{rt.MASK} abc visible-name'}], 'n': 3})
 
 class ImageFault(unittest.TestCase):
     """#140: which failed `docker run` is the image's fault (the version did not start) and which the test's (a tool error)."""
@@ -427,7 +546,11 @@ class Report(unittest.TestCase):
     def test_a_result_without_the_new_keys_still_reports(self):
         # A tool error's result, or one from before #142, has no supervisor or map_warnings.
         r = self.result(); [p.pop('supervisor') for p in r['phases']]
-        self.assertNotIn('Unmocked', rt.report(r)); self.assertNotIn('Map entries', rt.report(r))
+        self.assertNotIn('Unmocked', rt.report(r)); self.assertNotIn('Map entries', rt.report(r)); self.assertNotIn('Test options', rt.report(r))
+    def test_test_options_are_named_without_values(self):
+        text = rt.report(self.result(options={'from_repo': ['a|b'], 'generated': ['db.pw']}))
+        self.assertIn(r'Test options (測試用的 options): upgrade-check/options.yaml sets `a\|b`; random passwords for `db.pw` (the same on both versions).', text)
+        self.assertIn('random passwords for `x`', rt.report(self.result(options={'from_repo': [], 'generated': ['x']})))
     def test_the_unmocked_table_lists_the_most_called_paths_per_version(self):
         r = self.result()
         r['phases'][0]['supervisor']['unmocked'] = [{'path': f'/p{i:02}', 'count': i, 'methods': ['GET']} for i in range(1, 36)]
