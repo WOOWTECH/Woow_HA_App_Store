@@ -519,6 +519,13 @@ class TestOptions(unittest.TestCase):
         words = rt.mask_words({'pw': 'generated-secret-1'}, given, [config])
         self.assertEqual(set(words), {'generated-secret-1', 'listed-secret', 'q"uoted-secret', r'q\"uoted-secret'})
         self.assertEqual(rt.mask_words({}, None, [config]), []); self.assertEqual(rt.mask('x', []), 'x')
+        # A secret under an option typed str, but named like one, is masked too; other str values and non-strings are not.
+        named = {'schema': {'api_token': 'str', 'db': {'db_password': 'str?', 'host': 'str'}, 'use_auth_token': 'bool', 'name': 'str'}}
+        given = {'api_token': 'token-under-str', 'db': {'db_password': 'nested-db-secret', 'host': 'db.local'}, 'use_auth_token': True, 'name': 'shown'}
+        self.assertEqual(set(rt.mask_words({}, given, [named])), {'token-under-str', 'nested-db-secret'})
+        # A version without a schema has no types: names alone decide, so its options.yaml secrets are masked as well.
+        self.assertEqual(set(rt.mask_words({}, {'admin_password': 'no-schema-secret', 'level': 'info'}, [{'schema': False}])),
+            {'no-schema-secret'})
         masked = rt.mask({'a': ['x generated-secret-1 y', {'b': 'listed-secret abc visible-name'}], 'log': '{"pw": "q\\"uoted-secret"}', 'n': 3}, words)
         self.assertEqual(masked, {'a': [f'x {rt.MASK} y', {'b': f'{rt.MASK} abc visible-name'}], 'log': f'{{"pw": "{rt.MASK}"}}', 'n': 3})
         # The add-on's name and each version's image and version stay as they are.
@@ -533,6 +540,9 @@ class TestOptions(unittest.TestCase):
         self.assertEqual(rt.option_warnings({'c': 'local/fake:1'}, [config], ['local/fake:1']),
             ["the password `c` appears in the add-on's name, slug, image or version; it is masked wherever it appears, so pick a longer, test-only value"])
         self.assertEqual(rt.option_warnings({'c': 'long-and-test-only'}, [config], ['img']), [])
+        named = {'name': 'Fake Addon', 'slug': 'fake', 'version': '1.0.0', 'schema': {'api_key': 'str'}}
+        self.assertEqual(rt.option_warnings({'api_key': 'short'}, [named], ['img']),
+            ['the password `api_key` is shorter than 8 characters; it is masked wherever it appears, so pick a longer, test-only value'])
 
 class ImageFault(unittest.TestCase):
     """#140: which failed `docker run` is the image's fault (the version did not start) and which the test's (a tool error)."""

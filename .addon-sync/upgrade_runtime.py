@@ -102,7 +102,7 @@ image, method, started, detail, answer, logs, hooks: [{hook, phase, passed,
 exit_code, detail, checks: [{name, result, detail}], output}], supervisor:
 {unmocked: [{path, count, methods}], broken_fixtures: [same]}}], map_warnings:
 {old: [...], new: [...]}, options: {from_repo: [options.yaml keys], generated:
-[dotted names of the generated passwords]}}. exit_code is None when the hook timed out or could
+[dotted names of the generated passwords], warnings: [option_warnings()]}}. exit_code is None when the hook timed out or could
 not be started (a symlink out of upgrade-check/). supervisor lists the
 add-on's own Supervisor calls during that phase (start to stop) that answered
 404 (unmocked) or 500 (a fixture that is not valid JSON); calls of the hooks
@@ -167,6 +167,9 @@ REQUIRED_PASSWORD = re.compile(r'^password(?:\((?P<min>\d+)?,(?P<max>\d+)?\))?$'
 PASSWORD_LENGTH, PASSWORD_ALPHABET = 32, string.ascii_letters + string.digits
 # A repository password shorter than this gets a warning in the report: masking it would hide ordinary words in the logs.
 WEAK_PASSWORD_LENGTH, MASK = 8, '[password]'
+# An option whose name looks like this holds a secret, whatever its type (a token in a `str` option): its options.yaml
+# string values are masked as passwords are.
+SECRET_NAME = re.compile(r'pass|secret|token|api_?key|private_?key|credential', re.IGNORECASE)
 
 def read_test_options(hooks_dir):
     """The add-on's upgrade-check/options.yaml (in the PR), parsed: a mapping of option: value, or None when there is
@@ -292,25 +295,33 @@ def build_test_options(configs, given):
             node[path[-1]] = generated['.'.join(path)]
     return [options for options, _ in built], generated
 
-def password_values(options, schema):
-    """The values of the password options (password or password?, nested mappings and lists followed) in `options`,
-    as strings (str() of a value that is not one)."""
+def secret_values(options, schema):
+    """The values in `options` that hold a secret, as strings: those of password options (password or password?, by
+    `schema`; str() of a value that is not a string) and the string values of options whose name matches SECRET_NAME,
+    whatever their type. Nested mappings and lists are followed; with no schema (None) only names count."""
     out = []
-    for key, typ in (schema or {}).items():
-        value = options.get(key) if isinstance(options, dict) else None
-        if isinstance(typ, list) and typ and isinstance(value, list):
-            for item in value:out += password_values({key: item}, {key: typ[0]})
-        elif isinstance(typ, dict):out += password_values(value, typ)
-        elif _is_password(typ) and value not in (None, ''):out.append(value if isinstance(value, str) else str(value))
+    if not isinstance(options, dict):return out
+    for key, value in options.items():
+        out += _secret_value(key, value, schema.get(key) if isinstance(schema, dict) else None)
     return out
 
+def _secret_value(key, value, typ):
+    if isinstance(value, dict):return secret_values(value, typ if isinstance(typ, dict) else None)
+    if isinstance(value, list):
+        item = typ[0] if isinstance(typ, list) and typ else None
+        return [v for each in value for v in _secret_value(key, each, item)]
+    if value in (None, ''):return []
+    if _is_password(typ):return [value if isinstance(value, str) else str(value)]
+    return [value] if isinstance(value, str) and SECRET_NAME.search(key) else []
+
 def repo_passwords(given, configs):
-    """The password values upgrade-check/options.yaml (`given`) gives, per the schema of any of `configs`."""
-    return sorted({v for c in configs for v in password_values(_known(given or {}, _schema(c)), _schema(c))})
+    """The secret values (secret_values()) upgrade-check/options.yaml (`given`) gives, per the schema of any of `configs`."""
+    return sorted({v for c in configs for v in secret_values(_known(given or {}, _schema(c)), _schema(c))})
 
 def mask_words(generated, given, configs):
     """What the report must not show, longest first: every generated password and every password options.yaml
-    gives, each as written and JSON-escaped (as it appears in a JSON log line). Password defaults in config.yaml
+    gives (a password option's value, or a string under an option named like a secret: secret_values()), each as
+    written and JSON-escaped (as it appears in a JSON log line). Password defaults in config.yaml
     are public and not masked."""
     words = set(generated.values()) | set(repo_passwords(given, configs))
     words |= {json.dumps(w)[1:-1] for w in words}
@@ -343,7 +354,7 @@ def option_warnings(given, configs, images):
     for c in configs:
         schema = _schema(c)
         for key in sorted(_known(given or {}, schema)):
-            for v in password_values({key: (given or {})[key]}, {key: schema[key]} if schema else {}):
+            for v in secret_values({key: (given or {})[key]}, {key: schema[key]} if schema else None):
                 if len(v) < WEAK_PASSWORD_LENGTH:warning = f'the password `{key}` is shorter than {WEAK_PASSWORD_LENGTH} characters'
                 elif any(v in p for p in plain):warning = f'the password `{key}` appears in the add-on\'s name, slug, image or version'
                 else:continue
