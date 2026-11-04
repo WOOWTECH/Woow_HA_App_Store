@@ -44,6 +44,18 @@ upgrade-check/ fails (only that directory is mounted). The report:
 A failing seed or verify fails the upgrade test. Without verify, data is not
 checked and the report says so.
 
+Regression comparison (#139, category 3): upgrade-check/ may also hold `smoke`,
+run the same way on the comparison target (after seed, and only when seed
+passed) and on the new version (after verify, also when verify failed), so
+both runs see the data seed wrote; smoke must not change what verify reads
+back. Its environment is the hooks' (PHASE old or new); its report is
+$REPORT_DIR/smoke.json. A failing smoke is not itself a failure:
+upgrade_check.regression compares the two runs check by check (a check that
+passes on the comparison target must pass on the new version; one that fails
+there is only reported; one only in the new version must pass; without a
+report, the exit codes), and a regression fails the upgrade comparison.
+Without smoke, category 3 compares only that both versions start.
+
 Writes <report-dir>/<name>.json and <name>.md, appends the report to
 --summary and exits 1 when the upgrade test fails (::error with the reason),
 2 on a usage or tool error. Needs Docker; both images must be local or pullable.
@@ -53,12 +65,18 @@ hooks upgrade-check/ has), data_checked (verify ran), phases: [{phase, version,
 image, method, started, detail, answer, logs, hooks: [{hook, phase, passed,
 exit_code, detail, checks: [{name, result, detail}], output}]}]}. exit_code is
 None when the hook timed out or could not be started (a symlink out of upgrade-check/).
+Since #139 each hook run also has report_error (why its report cannot be
+used, or ''), hooks may list smoke (phases[].hooks then has a smoke run after
+the data hook), and the result has regression: upgrade_check.regression() of
+it, {smoke, passed, rows, reason}; passed is false, with that reason, when
+category 2 passed but category 3 found a regression.
 """
 from __future__ import annotations
 import argparse, json, pathlib, secrets, shutil, subprocess, sys, tempfile, time
 import yaml
 from upgrade_check import ingress_port, mounts, startup_probe, upgrade_settings, webui_endpoint
 from addon_sync import markdown_cell, workflow_command
+from upgrade_check import HOOK_ROW, STARTS_ROW, regression  # category 3 (#139)
 
 # The mock Supervisor runs in this image; the fake add-ons of test_upgrade_runtime.py build on it too.
 MOCK_IMAGE = 'python:3.12-alpine@sha256:e6dae589c1c05976188fd3bd019afd091445fc533ed2ea29001beddc7368a9c8'
@@ -72,7 +90,7 @@ DATA_CHECKED_VERIFY_ONLY = 'Data checked by verify on the new version; there is 
 NOT_CHECKED = 'Data was not checked: the test failed before verify ran (沒有檢查資料).'
 PHASE_LABEL = {'old': 'the comparison target', 'new': 'the new version'}
 # The data hooks (#138) and the phase each runs in; smoke, in both phases, is category 3.
-HOOK_PHASE = {'seed': 'old', 'verify': 'new'}
+HOOK_PHASE = {'seed': 'old', 'verify': 'new', 'smoke': 'both'}
 # Where the mock Supervisor's container sees the add-on's upgrade-check/, the data directories, the hooks' reports and state.
 IN_MOCK = {'hooks': '/upgrade-check', 'data': '/upgrade-data', 'reports': '/hook-reports', 'state': '/hook-state'}
 CHECK_RESULTS = ('pass', 'fail', 'skip')
@@ -184,7 +202,8 @@ class UpgradeTestEnv:
         if report.exists():report.unlink()
         unusable = hook_problem(self.hooks, hook)
         if unusable:
-            return {'hook': hook, 'phase': phase, 'passed': False, 'exit_code': None, 'detail': f'could not run: {unusable}', 'checks': [], 'output': ''}
+            return {'hook': hook, 'phase': phase, 'passed': False, 'exit_code': None, 'detail': f'could not run: {unusable}', 'checks': [], 'output': '',
+                'report_error': ''}
         envs = [a for k, v in self.hook_env(phase, image, config).items() for a in ('-e', f'{k}={v}')]
         started = time.monotonic()
         try:
@@ -208,7 +227,7 @@ class UpgradeTestEnv:
         if problem:detail += f'; {problem}'
         elif failing:detail += '; failing checks: ' + ', '.join(failing)
         return {'hook': hook, 'phase': phase, 'passed': code == 0 and not problem and not failing, 'exit_code': code, 'detail': detail,
-            'checks': checks, 'output': output[-4000:]}
+            'checks': checks, 'output': output[-4000:], 'report_error': problem}
     def stop(self, container, config):
         docker('stop', '-t', str(config.get('timeout', 10)), container, check=False)
         docker('rm', '-f', container, check=False)
@@ -307,6 +326,10 @@ def upgrade_test(name, addon_dir, old_image, old_config, new_image, new_config, 
                 entry['hooks'].append(run)
                 if hook == 'verify':result['data_checked'] = True
                 if not run['passed'] and not result['reason']:result['reason'] = f'{hook} failed on {label}: {run["detail"]}'
+            # Category 3 (#139): smoke after the data hook, on the data seed wrote; compared by compare_smoke(), so a
+            # failing run sets no reason. On the comparison target only when seed passed (else the test ends here).
+            if ok and 'smoke' in present and (phase == 'new' or not result['reason']):
+                entry['hooks'].append(env.run_hook('smoke', phase, image, config, limits['hook_timeout']))
             # After the hooks, so the log shows what the add-on did while they ran.
             entry['logs'] = _logs(container, 60)[-4000:]
             env.stop(container, config)
@@ -315,6 +338,39 @@ def upgrade_test(name, addon_dir, old_image, old_config, new_image, new_config, 
         return result
     finally:
         env.close()
+
+def compare_smoke(result):
+    """Add category 3 (#139) to upgrade_test()'s result: result['regression'] (upgrade_check.regression), and a
+    regression fails a result that passed category 2, with its reason. A result that already failed keeps its reason."""
+    result['regression'] = regression(result)
+    if result['passed'] and not result['regression']['passed']:
+        result['passed'], result['reason'] = False, result['regression']['reason']
+    return result
+
+# How the report shows a row's verdict (upgrade_check.regression) and a version's result.
+VERDICT_LABEL = {'pass': 'no regression', 'fail': '**regression**', 'not compared': 'not compared: not passing on the comparison target (未比對, report only)'}
+
+def _regression_section(result):
+    """Report lines for category 3: each smoke check (or, without smoke, the startup) on both versions."""
+    reg = result.get('regression')
+    if reg is None:return []
+    versions = {p['phase']: markdown_cell(p['version']) for p in result['phases']}
+    if not reg['smoke']:
+        lead = ('**Regression comparison** (category 3): upgrade-check/ has no smoke, so only startup is compared '
+            '(沒有 smoke，只比對能啟動).')
+    elif reg['passed']:lead = '**Regression comparison** (category 3): no smoke check that passes on the comparison target fails on the new version.'
+    else:lead = f'**Regression comparison** (category 3) **failed**: {markdown_cell(reg["reason"])}.'
+    r = ['', lead, '', f'| check | {PHASE_LABEL["old"]} {versions.get("old", "")} | {PHASE_LABEL["new"]} {versions.get("new", "")} | comparison |', '|---|---|---|---|']
+    for row in reg['rows']:
+        def cell(side):
+            value = row[side]
+            if value is None:return 'not run' if row['name'] in (HOOK_ROW, STARTS_ROW) else 'absent'
+            return '**fail**' if value == 'fail' else value
+        if row['old'] is None and row['verdict'] != 'not compared':
+            verdict = 'only in the new version, passes' if row['verdict'] == 'pass' else 'only in the new version: **must pass**'
+        else:verdict = VERDICT_LABEL[row['verdict']]
+        r.append(f'| {markdown_cell(row["name"])} | {cell("old")} | {cell("new")} | {verdict} |')
+    return r
 
 def report(result):
     """The Markdown report of upgrade_test()'s result: the startup of each version, then every hook's checks."""
@@ -332,6 +388,7 @@ def report(result):
         for p in result['phases']]
     if 'seed' in result.get('hooks', []) and 'verify' not in result.get('hooks', []):
         r += ['', 'upgrade-check/ has seed but no verify: nothing reads the seeded data back.']
+    r += _regression_section(result)
     runs = [h for p in result['phases'] for h in p.get('hooks', [])]
     if runs:
         r += ['', '| version | hook | check | result | detail |', '|---|---|---|---|---|']
@@ -360,7 +417,7 @@ def main(argv=None):
     try:
         old, new = (yaml.safe_load(pathlib.Path(f).read_text(encoding='utf-8')) or {} for f in (a.old_config, a.new_config))
         work = tempfile.mkdtemp(prefix='upgrade-test-')
-        try:result = upgrade_test(a.name, a.addon_dir, a.old_image, old, a.new_image, new, work)
+        try:result = compare_smoke(upgrade_test(a.name, a.addon_dir, a.old_image, old, a.new_image, new, work))
         finally:shutil.rmtree(work, ignore_errors=True)
     except (OSError, ValueError, TypeError, AttributeError, RuntimeError, yaml.YAMLError) as e:
         # compare reads the result file, so a tool error still leaves one with the reason.

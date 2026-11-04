@@ -52,6 +52,14 @@
 # image_artifact are reported as not run yet (rolled out in #143); add-ons built
 # on the device are #144.
 #
+# Category 3, the regression comparison (#139), runs in the same upgrade test:
+# upgrade-check/smoke (optional) runs on the comparison target and on the new
+# version, and its checks are compared by name (upgrade_check.py regression):
+# a check that passes on the comparison target and not on the new version, or
+# one only the new version has that does not pass, fails the upgrade test;
+# one that already fails on the comparison target is only reported. Without
+# smoke, only startup is compared. The report lists every check on both versions.
+#
 # Caller (in a workflow that also runs on push to the default branch, so
 # addon_sync's ci_gate keeps seeing a successful non-PR run; no path filter,
 # no needs: on the build):

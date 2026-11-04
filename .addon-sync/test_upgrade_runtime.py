@@ -33,7 +33,9 @@ class H(http.server.BaseHTTPRequestHandler):
         item = D + '/items/' + self.path[7:] if self.path.startswith('/items/') else ''
         if item and os.path.exists(item):
             self.send_response(200); self.end_headers(); self.wfile.write(open(item, 'rb').read()); return
-        self.send_response(200 if self.path == '/health' else 404); self.end_headers(); self.wfile.write(str(starts).encode())
+        # /feature is what the smoke hook (#139) checks; a version in MODE regress has lost it.
+        works = self.path == '/health' or (self.path == '/feature' and os.environ['MODE'] != 'regress')
+        self.send_response(200 if works else 404); self.end_headers(); self.wfile.write(str(starts).encode())
     def do_PUT(self):
         open(D + '/items/' + self.path[7:], 'wb').write(self.rfile.read(int(self.headers['Content-Length'])))
         self.send_response(204); self.end_headers()
@@ -96,6 +98,18 @@ json.dump({'checks': [{'name': n, 'result': 'pass' if ok else 'fail', 'detail': 
     + [{'name': 'not applicable', 'result': 'skip', 'detail': ''}]}, open(env['REPORT_DIR'] + '/verify.json', 'w'))
 sys.exit(0 if all(ok for _, ok, _ in checks) else 1)
 '''
+# The smoke hook (#139) runs the same checks on both versions, after seed on the comparison target (it finds the
+# item seed stored); the new version reports one more check. It exits 1 when a check fails.
+SMOKE = r'''#!/usr/bin/env python3
+import json, os, sys, urllib.error, urllib.request
+def status(path):
+    try:return urllib.request.urlopen(os.environ['ADDON_URL'] + path, timeout=10).status
+    except urllib.error.HTTPError as e:return e.code
+checks = [('seeded item readable', status('/items/greeting') == 200), ('feature works', status('/feature') == 200)]
+if os.environ['PHASE'] == 'new':checks.append(('new check', status('/health') == 200))
+json.dump({'checks': [{'name': n, 'result': 'pass' if ok else 'fail', 'detail': os.environ['PHASE']} for n, ok in checks]}, open(os.environ['REPORT_DIR'] + '/smoke.json', 'w'))
+sys.exit(0 if all(ok for _, ok in checks) else 1)
+'''
 
 def docker_ok():
     try:return subprocess.run(['docker', 'info'], capture_output=True).returncode == 0
@@ -106,6 +120,31 @@ def leftovers():
     names = subprocess.run(['docker', 'ps', '-a', '--filter', 'name=upgrade-test-', '--format', '{{.Names}}'], capture_output=True, text=True).stdout.split()
     return names + subprocess.run(['docker', 'network', 'ls', '--filter', 'name=upgrade-test-', '--format', '{{.Name}}'], capture_output=True, text=True).stdout.split()
 
+class RegressionReport(unittest.TestCase):
+    """compare_smoke() and the report's category 3 section (#139), on a result as upgrade_test() returns it; no Docker."""
+    def result(self, old, new, passed=True, reason=''):
+        def run(phase, code, checks):
+            return {'hook': 'smoke', 'phase': phase, 'passed': code == 0, 'exit_code': code, 'detail': f'exited with code {code}',
+                'checks': [{'name': n, 'result': r, 'detail': ''} for n, r in checks.items()], 'output': '', 'report_error': ''}
+        return {'name': 'fake', 'passed': passed, 'reason': reason, 'hooks': ['smoke'], 'data_checked': False, 'phases': [
+            {'phase': p, 'version': v, 'image': 'i', 'method': 'stays-up', 'started': True, 'detail': 'd', 'answer': '', 'logs': '', 'hooks': [run(p, *r)]}
+            for p, v, r in (('old', '1.0.0', old), ('new', '1.1.0', new))]}
+    def test_regression_fails_a_passing_upgrade_test_and_every_check_is_in_the_report(self):
+        result = rt.compare_smoke(self.result((0, {'api': 'pass', 'old bug': 'fail'}), (1, {'api': 'fail', 'old bug': 'fail', 'new | check': 'pass'})))
+        self.assertFalse(result['passed']); self.assertEqual(result['reason'], result['regression']['reason'])
+        text = rt.report(result)
+        self.assertIn('**Failed**: regression (category 3): (the hook) passes on the comparison target but is fail on the new version; api passes', text)
+        self.assertIn('| check | the comparison target 1.0.0 | the new version 1.1.0 | comparison |', text)
+        for row in ('| (the hook) | pass | **fail** | **regression** |', '| api | pass | **fail** | **regression** |',
+                '| old bug | **fail** | **fail** | not compared: not passing on the comparison target (未比對, report only) |',
+                '| new \\| check | absent | pass | only in the new version, passes |'):
+            self.assertIn(row, text)
+    def test_a_failed_upgrade_test_keeps_its_reason(self):
+        result = rt.compare_smoke(self.result((0, {'api': 'pass'}), (0, {'api': 'fail'}), passed=False, reason='verify failed'))
+        self.assertEqual((result['passed'], result['reason']), (False, 'verify failed')); self.assertFalse(result['regression']['passed'])
+        result = rt.compare_smoke(self.result((0, {'api': 'pass'}), (0, {'api': 'pass', 'new': 'skip'})))
+        self.assertFalse(result['passed']); self.assertIn('| new | absent | skip | only in the new version: **must pass** |', rt.report(result))
+
 @unittest.skipUnless(docker_ok(), 'needs a Docker daemon (present on GitHub runners)')
 class Runtime(unittest.TestCase):
     @classmethod
@@ -114,7 +153,7 @@ class Runtime(unittest.TestCase):
         build = pathlib.Path(tempfile.mkdtemp())
         try:
             (build / 'run.py').write_text(FAKE, encoding='utf-8')
-            for mode in ('good', 'crash', 'answer-then-crash', 'forget'):
+            for mode in ('good', 'crash', 'answer-then-crash', 'forget', 'regress'):
                 (build / 'Dockerfile').write_text(f'FROM {rt.MOCK_IMAGE}\nENV MODE={mode}\nCOPY run.py /run.py\nCMD ["python", "-u", "/run.py"]\n')
                 tag = f'local/upgrade-test-fake-{mode}:{uuid.uuid4().hex[:8]}'
                 subprocess.run(['docker', 'build', '-q', '-t', tag, str(build)], check=True, capture_output=True)
@@ -235,6 +274,9 @@ class Runtime(unittest.TestCase):
         self.assertIn('Data checked', summary); self.assertNotIn('Startup only', summary)
         for row in ('| seed | item stored | pass | greeting=hello |', '| verify | item kept | pass | hello |', '| verify | not applicable | skip |'):
             self.assertIn(row, summary)
+        # No smoke: category 3 compares only that both versions start (#139).
+        self.assertEqual([(r['name'], r['verdict']) for r in result['regression']['rows']], [('starts', 'pass')])
+        self.assertIn('upgrade-check/ has no smoke, so only startup is compared (沒有 smoke，只比對能啟動)', summary)
     def test_hooks_get_each_data_directory_by_its_map_type(self):
         # #156: addon_config comes from all_app_configs/<slug>, and a `data` entry moves /data (headscale-style);
         # DATA_DIR_<TYPE> is named by the type config.yaml writes and is the directory the add-on wrote to.
@@ -252,6 +294,30 @@ class Runtime(unittest.TestCase):
         self.assertIn('::error title=Upgrade test::fake: verify failed on the new version', out)
         summary = (self.dir / 'summary.md').read_text(encoding='utf-8')
         self.assertIn('| verify | item kept | **fail** | HTTP 404 |', summary); self.assertIn('Output of verify on the new version', summary)
+    # The regression comparison (#139): smoke on both versions, compared check by check.
+    def test_smoke_check_that_passes_on_the_target_and_fails_on_the_new_version_fails(self):
+        self.settings(stable_seconds=3); self.hook('seed', SEED_ITEM); self.hook('smoke', SMOKE)
+        code, result, out = self.run_test('good', 'regress', **self.DATA_CONFIG)
+        self.assertEqual(code, 1, out + json.dumps(result, indent=1)); self.assertFalse(result['passed'])
+        # Category 2 passed: both started and seed passed; smoke failing on the new version is category 3 only.
+        self.assertEqual([p['started'] for p in result['phases']], [True, True]); self.assertEqual(result['hooks'], ['seed', 'smoke'])
+        self.assertEqual([[h['hook'] for h in p['hooks']] for p in result['phases']], [['seed', 'smoke'], ['smoke']])
+        self.assertTrue(result['reason'].startswith('regression (category 3): '), result['reason'])
+        self.assertIn('feature works passes on the comparison target but is fail on the new version', result['reason'])
+        self.assertIn('::error title=Upgrade test::fake: regression (category 3)', out)
+        summary = (self.dir / 'summary.md').read_text(encoding='utf-8')
+        for row in ('| feature works | pass | **fail** | **regression** |', '| seeded item readable | pass | pass | no regression |',
+                '| new check | absent | pass | only in the new version, passes |', '| (the hook) | pass | **fail** | **regression** |'):
+            self.assertIn(row, summary)
+    def test_smoke_check_that_already_fails_on_the_target_is_only_reported(self):
+        self.settings(stable_seconds=3); self.hook('seed', SEED_ITEM); self.hook('smoke', SMOKE)
+        code, result, out = self.run_test('regress', 'regress', **self.DATA_CONFIG)
+        self.assertEqual(code, 0, out + json.dumps(result, indent=1)); self.assertTrue(result['passed'])
+        self.assertEqual({r['name']: r['verdict'] for r in result['regression']['rows']},
+            {'(the hook)': 'not compared', 'seeded item readable': 'pass', 'feature works': 'not compared', 'new check': 'pass'})
+        summary = (self.dir / 'summary.md').read_text(encoding='utf-8')
+        self.assertIn('no smoke check that passes on the comparison target fails on the new version', summary)
+        self.assertIn('| feature works | **fail** | **fail** | not compared: not passing on the comparison target (未比對, report only) |', summary)
     def test_verify_that_exits_non_zero_fails(self):
         self.settings(stable_seconds=3); self.hook('verify', '#!/bin/sh\necho "the data is gone"\nexit 3\n')
         code, result, out = self.run_test('good', 'good')
