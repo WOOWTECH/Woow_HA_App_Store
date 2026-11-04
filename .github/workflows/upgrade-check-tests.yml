@@ -18,6 +18,7 @@ name: Upgrade comparison tests
     - .addon-sync/upgrade_runtime.py
     - .addon-sync/test_upgrade_runtime.py
     - .addon-sync/mock_supervisor.py
+    - .addon-sync/test_mock_supervisor.py
     - .addon-sync/registry.json
     - .github/workflows/woow-addon-upgrade-check.yml
     - .github/workflows/upgrade-check-tests.yml
@@ -38,6 +39,7 @@ name: Upgrade comparison tests
     - .addon-sync/upgrade_runtime.py
     - .addon-sync/test_upgrade_runtime.py
     - .addon-sync/mock_supervisor.py
+    - .addon-sync/test_mock_supervisor.py
     - .addon-sync/registry.json
     - .github/workflows/woow-addon-upgrade-check.yml
     - .github/workflows/upgrade-check-tests.yml
@@ -57,6 +59,9 @@ jobs:
       run: python3 -m pip install -r .addon-sync/requirements.txt
     - name: Test the upgrade comparison
       run: python3 .addon-sync/test_upgrade_check.py -v
+    # The mock Supervisor as a local server: repo fixtures and the record of unmocked calls (#142).
+    - name: Test the mock Supervisor
+      run: python3 .addon-sync/test_mock_supervisor.py -v
     # Fake add-ons on the runner's real Docker: the mock Supervisor, the shared data directories and the startup check (#137).
     - name: Test the upgrade test runtime
       run: python3 .addon-sync/test_upgrade_runtime.py -v

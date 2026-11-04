@@ -44,6 +44,18 @@ upgrade-check/ fails (only that directory is mounted). The report:
 A failing seed or verify fails the upgrade test. Without verify, data is not
 checked and the report says so.
 
+Supervisor fixtures (#142): the add-on's upgrade-check/supervisor/ may hold
+answers for Supervisor API paths, one JSON file per path (its `data`):
+/services/mqtt -> supervisor/services/mqtt.json (mock_supervisor.py
+documents the mapping). A fixture beats the mock's default answer, except that
+addons/self/info.json is laid over the info this runtime writes for each
+version (its keys only) and /supervisor/ping is never overridden. Paths with
+neither answer 404; the report lists them (the UNMOCKED_ROWS most called per
+version), and fixtures that cannot be used, per version, with their counts.
+Neither fails the test. upgrade-check/supervisor/ must not be, or hold, a
+symlink out of upgrade-check/ (only that directory is mounted): that is a tool
+error before any container starts.
+
 Writes <report-dir>/<name>.json and <name>.md, appends the report to
 --summary and exits 1 when the upgrade test fails (::error with the reason),
 2 on a usage or tool error. Needs Docker; both images must be local or pullable.
@@ -51,13 +63,21 @@ Writes <report-dir>/<name>.json and <name>.md, appends the report to
 The result (<name>.json; compare reads it): {name, passed, reason, hooks (the
 hooks upgrade-check/ has), data_checked (verify ran), phases: [{phase, version,
 image, method, started, detail, answer, logs, hooks: [{hook, phase, passed,
-exit_code, detail, checks: [{name, result, detail}], output}]}]}. exit_code is
-None when the hook timed out or could not be started (a symlink out of upgrade-check/).
+exit_code, detail, checks: [{name, result, detail}], output}], supervisor:
+{unmocked: [{path, count, methods}], broken_fixtures: [same]}}], map_warnings:
+{old: [...], new: [...]}}. exit_code is None when the hook timed out or could
+not be started (a symlink out of upgrade-check/). supervisor lists the
+add-on's own Supervisor calls during that phase (start to stop) that answered
+404 (unmocked) or 500 (a fixture that is not valid JSON); calls of the hooks
+and of the runtime are not in it. map_warnings are upgrade_check.map_warnings()
+of each config.yaml: map entries Supervisor ignores (or why `map` could not be
+read). Both are informational.
 """
 from __future__ import annotations
-import argparse, json, pathlib, secrets, shutil, subprocess, sys, tempfile, time
+import argparse, json, os, pathlib, secrets, shutil, subprocess, sys, tempfile, time
 import yaml
-from upgrade_check import ingress_port, mounts, startup_probe, upgrade_settings, webui_endpoint
+import mock_supervisor
+from upgrade_check import ingress_port, map_warnings, mounts, startup_probe, upgrade_settings, webui_endpoint
 from addon_sync import markdown_cell, workflow_command
 
 # The mock Supervisor runs in this image; the fake add-ons of test_upgrade_runtime.py build on it too.
@@ -76,6 +96,8 @@ HOOK_PHASE = {'seed': 'old', 'verify': 'new'}
 # Where the mock Supervisor's container sees the add-on's upgrade-check/, the data directories, the hooks' reports and state.
 IN_MOCK = {'hooks': '/upgrade-check', 'data': '/upgrade-data', 'reports': '/hook-reports', 'state': '/hook-state'}
 CHECK_RESULTS = ('pass', 'fail', 'skip')
+# How many unmocked paths the report lists per version, the most called first.
+UNMOCKED_ROWS = 30
 
 class DockerError(RuntimeError):
     """A docker command that failed: its exit code and output."""
@@ -130,6 +152,24 @@ def hook_problem(hooks_dir, hook):
         return f'upgrade-check/{hook} is a symlink to {path.resolve()}, outside upgrade-check/ (only that directory is mounted where hooks run)'
     return ''
 
+def fixtures_problem(hooks_dir):
+    """Why upgrade-check/supervisor/ cannot be used in the mock Supervisor's container, or '': only upgrade-check/
+    is mounted there, so it, or a file in it, that is a symlink out of upgrade-check/ would point at nothing."""
+    root, top = hooks_dir / 'supervisor', hooks_dir.resolve()
+    links = [root] if root.is_symlink() else []
+    if root.is_dir() and not root.is_symlink():
+        links += [pathlib.Path(d, n) for d, dirs, files in os.walk(root) for n in dirs + files if pathlib.Path(d, n).is_symlink()]
+    for link in links:
+        if not link.resolve().is_relative_to(top):
+            rel = link.relative_to(hooks_dir).as_posix()
+            return f'upgrade-check/{rel} is a symlink to {link.resolve()}, outside upgrade-check/ (only that directory is mounted for the mock Supervisor)'
+    return ''
+
+def _map_warnings(config):
+    """upgrade_check.map_warnings(), never raising: a `map` it cannot read is reported as one warning (mounts() fails on it later)."""
+    try:return map_warnings(config)
+    except (ValueError, TypeError, AttributeError) as e:return [f'map could not be read: {e}']
+
 class UpgradeTestEnv:
     """One upgrade test's network, mock Supervisor and data directories, removed by close(). `hooks`: the add-on's
     upgrade-check/ directory, mounted read-only in the mock Supervisor's container (None when it has none)."""
@@ -145,11 +185,13 @@ class UpgradeTestEnv:
         binds = [(TOOLING, '/tooling', True), (self.state, '/state', False), (self.data, IN_MOCK['data'], False),
             (self.reports, IN_MOCK['reports'], False), (self.hook_state, IN_MOCK['state'], False)]
         if self.hooks:binds.append((self.hooks, IN_MOCK['hooks'], True))
+        # The repo's Supervisor fixtures (#142) are in the upgrade-check/ mounted above.
+        fixtures = ['--fixtures', f'{IN_MOCK["hooks"]}/supervisor'] if self.hooks and (self.hooks / 'supervisor').is_dir() else []
         args = []
         for source, target, read_only in binds:
             args += ['--mount', f'type=bind,source={source},target={target}' + (',readonly' if read_only else '')]
         docker('run', '-d', '--name', self.supervisor, '--network', self.net, '--ip', SUPERVISOR_IP, '-e', f'SUPERVISOR_TOKEN={self.token}',
-            *args, MOCK_IMAGE, *MOCK_COMMAND)
+            *args, MOCK_IMAGE, *MOCK_COMMAND, *fixtures)
         # Real Supervisor is up before any add-on starts, and add-ons ask it for their info at once (bashio reads
         # options at boot): return only when the mock answers. Any answer below HTTP 500 will do (401 without the
         # token). Asked from inside the mock (127.0.0.1), so its request log keeps only the add-on's calls.
@@ -173,6 +215,7 @@ class UpgradeTestEnv:
     def start(self, phase, image, config):
         """Start one version on the shared directories; its container name."""
         options = default_options(config)
+        self.log_start = mock_supervisor.log_size(self.state)
         (self.state / 'addon.json').write_text(json.dumps(addon_info(config, options)), encoding='utf-8')
         args = []
         for m in mounts(config, self.data.as_posix()):
@@ -186,6 +229,9 @@ class UpgradeTestEnv:
             '--add-host', f'supervisor:{SUPERVISOR_IP}', '--add-host', f'hassio:{SUPERVISOR_IP}',
             '-e', f'SUPERVISOR_TOKEN={self.token}', '-e', f'HASSIO_TOKEN={self.token}', '-e', 'TZ=UTC', *args, image)
         return container
+    def supervisor_calls(self):
+        """What the mock could not answer since the last start() (mock_supervisor.summary)."""
+        return mock_supervisor.summary(self.state, self.log_start)
     def hook_env(self, phase, image, config):
         """The environment of a hook run against this version (the module docstring lists it)."""
         out = {'ADDON_URL': addon_url(config), 'ADDON_HOST': ADDON_IP, 'ADDON_IMAGE': image, 'ADDON_VERSION': str(config.get('version')),
@@ -307,8 +353,11 @@ def upgrade_test(name, addon_dir, old_image, old_config, new_image, new_config, 
     settings = yaml.safe_load(settings_path.read_text(encoding='utf-8')) if settings_path.exists() else None
     limits = upgrade_settings(settings)  # a bad settings.yaml is a tool error before any container starts
     present = [h for h in HOOK_PHASE if (hooks_dir / h).is_file()]
+    unusable = fixtures_problem(hooks_dir) if hooks_dir.is_dir() else ''
+    if unusable:raise ValueError(unusable)  # like a bad settings.yaml: before any container starts
     env = UpgradeTestEnv(work, hooks_dir.resolve() if hooks_dir.is_dir() else None); phases = []
-    result = {'name': name, 'passed': False, 'reason': '', 'hooks': present, 'data_checked': False, 'phases': phases}
+    result = {'name': name, 'passed': False, 'reason': '', 'hooks': present, 'data_checked': False, 'phases': phases,
+        'map_warnings': {'old': _map_warnings(old_config), 'new': _map_warnings(new_config)}}
     try:
         env.open()
         for phase, image, config in (('old', old_image, old_config), ('new', new_image, new_config)):
@@ -321,10 +370,11 @@ def upgrade_test(name, addon_dir, old_image, old_config, new_image, new_config, 
                 # other docker failure is the test's own: a tool error (main(), exit 2).
                 if not image_fault(e):raise
                 # Created but not started: what it logged, as for a version that exits.
-                name = f'{env.prefix}-{phase}'
-                logs = _logs(name, 60)[-4000:] if docker('ps', '-aq', '--filter', f'name=^{name}$', check=False).strip() else ''
+                created = f'{env.prefix}-{phase}'
+                logs = _logs(created, 60)[-4000:] if docker('ps', '-aq', '--filter', f'name=^{created}$', check=False).strip() else ''
+                # It never ran, so it made no Supervisor calls (#142's report section stays empty).
                 phases.append({'phase': phase, 'version': str(config.get('version')), 'image': image, 'method': probe['method'], 'started': False,
-                    'detail': str(e), 'answer': '', 'logs': logs, 'hooks': []})
+                    'detail': str(e), 'answer': '', 'logs': logs, 'hooks': [], 'supervisor': {'unmocked': [], 'broken_fixtures': []}})
                 result['reason'] = f'{label} did not start: {e}'
                 return result
             ok, detail, answer = wait_started(env, container, probe)
@@ -340,6 +390,7 @@ def upgrade_test(name, addon_dir, old_image, old_config, new_image, new_config, 
             # After the hooks, so the log shows what the add-on did while they ran.
             entry['logs'] = _logs(container, 60)[-4000:]
             env.stop(container, config)
+            entry['supervisor'] = env.supervisor_calls()
             if result['reason']:return result
         result['passed'] = True
         return result
@@ -370,6 +421,7 @@ def report(result):
             r.append(f'| {version} | {h["hook"]} | (the hook) | {"pass" if h["passed"] else "**fail**"} | {markdown_cell(h["detail"])} |')
             r += [f'| {version} | {h["hook"]} | {markdown_cell(c["name"])} | {"**fail**" if c["result"] == "fail" else c["result"]} | {markdown_cell(c["detail"])} |'
                 for c in h['checks']]
+    r += _supervisor_sections(result)
     for p in result['phases']:
         for h in p.get('hooks', []):
             if not h['passed']:
@@ -377,6 +429,34 @@ def report(result):
         if not p['started'] or any(not h['passed'] for h in p.get('hooks', [])):
             r += ['', f'<details><summary>Last log lines of {PHASE_LABEL[p["phase"]]}</summary>', '', '```', p['logs'].replace('```', "'''"), '```', '', '</details>']
     return '\n'.join(r) + '\n'
+
+def _supervisor_sections(result):
+    """Report lines for the unmocked Supervisor calls, broken fixtures and ignored map entries (informational)."""
+    r = []
+    # Paths come from the add-on: a backquote must not end the code span.
+    code = lambda v: markdown_cell(v).replace('`', "'")
+    for kind, title, hint in (('unmocked', 'Unmocked Supervisor calls (未模擬的 Supervisor 呼叫)',
+            'The mock Supervisor answered these with 404. If the add-on needs one, add its answer as upgrade-check/supervisor/<path>.json '
+            '(the `data` of the reply, e.g. supervisor/services/mqtt.json).'),
+        ('broken_fixtures', 'Supervisor fixtures that cannot be used',
+            'The mock Supervisor answered these with 500: upgrade-check/supervisor/<path>.json is not valid JSON '
+            '(or addons/self/info.json is not an object).')):
+        rows = []
+        for p in result['phases']:
+            calls = sorted(p.get('supervisor', {}).get(kind, []), key=lambda c: (-c['count'], c['path']))
+            label = f'{PHASE_LABEL[p["phase"]]} {markdown_cell(p["version"])}'
+            rows += [f'| {label} | `{code(c["path"])}` | {c["count"]} | {", ".join(c["methods"])} |' for c in calls[:UNMOCKED_ROWS]]
+            if len(calls) > UNMOCKED_ROWS:rows.append(f'| {label} | … and {len(calls) - UNMOCKED_ROWS} more paths | | |')
+        if rows:r += ['', f'**{title}**: {hint}', '', '| version | path | calls | methods |', '|---|---|---|---|', *rows]
+    warnings = result.get('map_warnings') or {}
+    old, new = warnings.get('old', []), warnings.get('new', [])
+    if old or new:
+        r += ['', '**Map entries Supervisor ignores** (config.yaml `map`; these directories are not mounted):', '']
+        if old == new:r += [f'- {markdown_cell(w)}' for w in new]
+        else:
+            r += [f'- {PHASE_LABEL["new"]}: {markdown_cell(w)}' for w in new]
+            r += [f'- {PHASE_LABEL["old"]}: {markdown_cell(w)}' for w in old]
+    return r
 
 def main(argv=None):
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])

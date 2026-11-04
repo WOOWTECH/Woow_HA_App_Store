@@ -9,7 +9,7 @@ import upgrade_runtime as rt
 from upgrade_check import ASSIGNED_INGRESS_PORT
 
 FAKE = r'''
-import json, os, sys, time, urllib.request, http.server
+import json, os, sys, time, urllib.error, urllib.request, http.server
 req = urllib.request.Request('http://supervisor/addons/self/info', headers={'Authorization': 'Bearer ' + os.environ['SUPERVISOR_TOKEN']})
 info = json.load(urllib.request.urlopen(req, timeout=10))['data']
 assert info['slug'] == 'fake', info
@@ -18,6 +18,13 @@ D = '/var/lib/fake' if os.path.exists('/var/lib/fake/options.json') else '/data'
 if os.path.isdir('/config'):open('/config/fake.conf', 'w').write('conf')
 options = json.load(open(D + '/options.json'))
 assert options['greeting'] == 'hi', options
+# Other Supervisor API calls the options ask for (#142): what each answered goes to the log.
+for path in options.get('calls', []):
+    try:
+        r = urllib.request.urlopen(urllib.request.Request('http://supervisor' + path, headers=req.headers), timeout=10)
+        print('answer', path, r.status, json.dumps(json.load(r)['data'], sort_keys=True), flush=True)
+    except urllib.error.HTTPError as e:
+        print('answer', path, e.code, flush=True)
 starts = int(open(D + '/starts').read()) + 1 if os.path.exists(D + '/starts') else 1
 open(D + '/starts', 'w').write(str(starts))
 print('started', starts, flush=True)
@@ -154,6 +161,40 @@ class Runtime(unittest.TestCase):
         self.assertIn('Startup only: data was not checked', summary); self.assertIn('只檢查啟動，沒有檢查資料', summary)
         # No hook: as before #138, startup only.
         self.assertEqual((result['hooks'], result['data_checked'], [p['hooks'] for p in result['phases']]), ([], False, [[], []]))
+        # Nothing unmocked, no map entry ignored: the report has no such section (#142).
+        self.assertEqual([p['supervisor'] for p in result['phases']], [{'unmocked': [], 'broken_fixtures': []}] * 2)
+        self.assertEqual(result['map_warnings'], {'old': [], 'new': []})
+        self.assertNotIn('Unmocked Supervisor calls', summary); self.assertNotIn('Map entries Supervisor ignores', summary)
+    def test_unmocked_supervisor_calls_are_reported_and_fixtures_answer(self):
+        # #142: a fixture in upgrade-check/supervisor/ answers its path; a path with neither a fixture nor a default
+        # answers 404 and is listed per version with its count; a broken fixture answers 500. None of it fails the test.
+        self.settings(stable_seconds=3)
+        fixtures = self.dir / 'addon/upgrade-check/supervisor'; (fixtures / 'services').mkdir(parents=True)
+        (fixtures / 'services/mqtt.json').write_text('{"host": "core-mosquitto", "port": 1883}', encoding='utf-8')
+        (fixtures / 'broken.json').write_text('{', encoding='utf-8')
+        # The info fixture is laid over the runtime's (the fake add-on exits unless its slug is still there), and a
+        # broken ping fixture does not break the runtime's readiness check.
+        (fixtures / 'addons/self').mkdir(parents=True); (fixtures / 'addons/self/info.json').write_text('{"hostname": "from-fixture"}', encoding='utf-8')
+        (fixtures / 'supervisor').mkdir(); (fixtures / 'supervisor/ping.json').write_text('{', encoding='utf-8')
+        calls = ['/services/mqtt', '/services/mysql', '/services/mysql/', '/broken', '/info']
+        code, result, out = self.run_test('good', 'good', options={'greeting': 'hi', 'calls': calls}, map=['config:rw', 'addon_config'])
+        self.assertEqual(code, 0, out + json.dumps(result, indent=1)); self.assertTrue(result['passed'])
+        for p in result['phases']:
+            self.assertIn('answer /services/mqtt 200 {"host": "core-mosquitto", "port": 1883}', p['logs'])
+            self.assertIn('answer /services/mysql 404', p['logs']); self.assertIn('answer /broken 500', p['logs'])
+            self.assertIn('answer /info 200', p['logs'])
+            # Each version's own calls only, though the mock keeps one log for both.
+            self.assertEqual(p['supervisor'], {'unmocked': [{'path': '/services/mysql', 'count': 2, 'methods': ['GET']}],
+                'broken_fixtures': [{'path': '/broken', 'count': 1, 'methods': ['GET']}]})
+        ignored = ["map entry 'addon_config' is ignored because 'config' is present (as Supervisor does)"]
+        self.assertEqual(result['map_warnings'], {'old': ignored, 'new': ignored})
+        summary = (self.dir / 'summary.md').read_text(encoding='utf-8')
+        self.assertIn('Unmocked Supervisor calls (未模擬的 Supervisor 呼叫)', summary)
+        for row in ('| the comparison target 1.0.0 | `/services/mysql` | 2 | GET |', '| the new version 1.1.0 | `/services/mysql` | 2 | GET |',
+                '| the new version 1.1.0 | `/broken` | 1 | GET |'):
+            self.assertIn(row, summary)
+        self.assertIn('Supervisor fixtures that cannot be used', summary)
+        self.assertIn("- map entry 'addon_config' is ignored because 'config' is present", summary)
     def test_ingress_port_0_is_probed_at_the_port_supervisor_would_assign(self):
         # The add-on reads its port from /addons/self/info: it must get a real one, the same for both versions.
         self.settings(stable_seconds=3)
@@ -336,6 +377,71 @@ class ImageFault(unittest.TestCase):
             (1, 'Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?', False)]
         for code, output, fault in cases:
             with self.subTest(output):self.assertEqual(rt.image_fault(rt.DockerError('docker run failed', code, output)), fault)
+
+class Fixtures(unittest.TestCase):
+    """upgrade-check/supervisor/ checks and map warnings that need no Docker (#142)."""
+    def setUp(self):
+        self.dir = pathlib.Path(tempfile.mkdtemp()); self.addCleanup(shutil.rmtree, self.dir, True)
+        self.hooks = self.dir / 'addon/upgrade-check'; self.hooks.mkdir(parents=True)
+    def link(self, path, target, **kw):
+        try:path.symlink_to(target, **kw)
+        except OSError:self.skipTest('this account cannot create symlinks (Windows without developer mode)')
+    def test_fixtures_inside_upgrade_check_are_fine(self):
+        self.assertEqual(rt.fixtures_problem(self.hooks), '')
+        (self.hooks / 'supervisor/services').mkdir(parents=True); (self.hooks / 'shared.json').write_text('{}', encoding='utf-8')
+        self.link(self.hooks / 'supervisor/services/mqtt.json', self.hooks / 'shared.json')
+        self.assertEqual(rt.fixtures_problem(self.hooks), '')
+    def test_a_fixtures_directory_linked_out_of_upgrade_check_is_a_tool_error_before_any_container(self):
+        outside = self.dir / 'elsewhere'; outside.mkdir()
+        self.link(self.hooks / 'supervisor', outside, target_is_directory=True)
+        self.assertIn('upgrade-check/supervisor is a symlink to', rt.fixtures_problem(self.hooks))
+        # main() reports it as a tool error and never reaches Docker.
+        cfg = self.dir / 'config.yaml'; cfg.write_text('slug: fake\nversion: 1.0.0\n', encoding='utf-8')
+        args = ['--name', 'fake', '--addon-dir', str(self.dir / 'addon'), '--report-dir', str(self.dir / 'reports'),
+            '--old-image', 'x', '--old-config', str(cfg), '--new-image', 'y', '--new-config', str(cfg)]
+        with mock.patch.object(rt, 'docker', side_effect=AssertionError('docker was called')), contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(rt.main(args), 2)
+        result = json.loads((self.dir / 'reports/fake.json').read_text(encoding='utf-8'))
+        self.assertIn('could not run: upgrade-check/supervisor is a symlink to', result['reason']); self.assertIn('outside upgrade-check/', result['reason'])
+    def test_a_fixture_file_linked_out_of_upgrade_check_is_named(self):
+        (self.hooks / 'supervisor').mkdir(); outside = self.dir / 'mqtt.json'; outside.write_text('{}', encoding='utf-8')
+        self.link(self.hooks / 'supervisor/mqtt.json', outside)
+        self.assertIn('upgrade-check/supervisor/mqtt.json is a symlink to', rt.fixtures_problem(self.hooks))
+    def test_map_warnings_never_raise(self):
+        self.assertEqual(rt._map_warnings({'map': ['config:rw', 'addon_config']}),
+            ["map entry 'addon_config' is ignored because 'config' is present (as Supervisor does)"])
+        with mock.patch.object(rt, 'map_warnings', side_effect=ValueError('bad map')):
+            self.assertEqual(rt._map_warnings({}), ['map could not be read: bad map'])
+
+class Report(unittest.TestCase):
+    """report()'s informational sections (#142), without Docker."""
+    def result(self, **extra):
+        phases = [{'phase': ph, 'version': v, 'image': 'img', 'method': 'stays-up', 'started': True, 'detail': 'ok', 'answer': '', 'logs': '',
+            'hooks': [], 'supervisor': {'unmocked': [], 'broken_fixtures': []}} for ph, v in (('old', '1.0.0'), ('new', '1.1.0'))]
+        return {'name': 'fake', 'passed': True, 'reason': '', 'hooks': [], 'data_checked': False, 'phases': phases, **extra}
+    def test_map_warnings_that_differ_name_the_version(self):
+        text = rt.report(self.result(map_warnings={'old': ['old one'], 'new': ['new one']}))
+        self.assertIn('- the new version: new one', text); self.assertIn('- the comparison target: old one', text)
+        text = rt.report(self.result(map_warnings={'old': [], 'new': ['new one']}))
+        self.assertIn('- the new version: new one', text); self.assertNotIn('comparison target:', text)
+    def test_a_result_without_the_new_keys_still_reports(self):
+        # A tool error's result, or one from before #142, has no supervisor or map_warnings.
+        r = self.result(); [p.pop('supervisor') for p in r['phases']]
+        self.assertNotIn('Unmocked', rt.report(r)); self.assertNotIn('Map entries', rt.report(r))
+    def test_the_unmocked_table_lists_the_most_called_paths_per_version(self):
+        r = self.result()
+        r['phases'][0]['supervisor']['unmocked'] = [{'path': f'/p{i:02}', 'count': i, 'methods': ['GET']} for i in range(1, 36)]
+        r['phases'][1]['supervisor']['unmocked'] = [{'path': '/only', 'count': 1, 'methods': ['GET']}]
+        text = rt.report(r)
+        self.assertIn('| the comparison target 1.0.0 | `/p35` | 35 | GET |', text); self.assertIn('| the comparison target 1.0.0 | `/p06` | 6 | GET |', text)
+        self.assertNotIn('`/p05`', text); self.assertIn('| the comparison target 1.0.0 | … and 5 more paths | | |', text)
+        self.assertIn('| the new version 1.1.0 | `/only` | 1 | GET |', text); self.assertEqual(text.count('more paths'), 1)
+        # The most called first.
+        self.assertLess(text.index('`/p35`'), text.index('`/p34`'))
+    def test_unmocked_calls_of_one_version_only(self):
+        r = self.result(); r['phases'][1]['supervisor']['unmocked'] = [{'path': '/a|b', 'count': 3, 'methods': ['GET', 'POST']}]
+        text = rt.report(r)
+        self.assertIn(r'| the new version 1.1.0 | `/a\|b` | 3 | GET, POST |', text); self.assertEqual(text.count('`/a'), 1)
 
 if __name__ == '__main__':
     unittest.main()
