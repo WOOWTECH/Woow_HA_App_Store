@@ -631,8 +631,15 @@ class ReusableWorkflow(unittest.TestCase):
         self.assertIn('wait_artifacts.sh wanted-images.tsv images.tsv',steps['Wait for the new images']['run'])
         self.assertIn('docker load -i',steps['Load the new images']['run'])
         self.assertIn('--new-image "upgrade-comparison/${id}:new"',steps['Run the upgrade tests']['run'])
+        # Only add-ons built on the device are built here (#144): an add-on with a prebuilt image is never rebuilt.
+        builds=[n for n,s in steps.items() if 'docker build' in s.get('run','')]
+        self.assertEqual(builds,['Build the images of add-ons built on the device'])
+        self.assertIn("select(.old_src != \"\" or .new_src != \"\")",steps[builds[0]]['run'])
+        for name in ('Wait for the new images','Load the new images'):
+            with self.subTest(name):self.assertEqual(steps[name]['if'],"steps.upgrade.outputs.wait == 'true'")
+        self.assertIn('select(.test and .new_src == "")',steps['Wait for the new images']['run'])
         runtime=yaml.safe_dump(self.wf['jobs']['runtime'])
-        for absent in ('docker build','docker push','buildx'):
+        for absent in ('docker push','buildx'):
             with self.subTest(absent):self.assertNotIn(absent,runtime)
         action=yaml.safe_load((pathlib.Path(__file__).resolve().parent.parent/'.github/actions/addon-image/action.yml').read_text(encoding='utf-8'))
         upload=next(s for s in action['runs']['steps'] if s.get('uses','').startswith('actions/upload-artifact@'))
@@ -640,8 +647,9 @@ class ReusableWorkflow(unittest.TestCase):
         save=action['runs']['steps'][0]['run'];self.assertIn('docker save',save);self.assertIn('upgrade-comparison/${COMPONENT}:new',save)
     def test_add_ons_without_a_test_yet_are_named_with_their_ticket(self):
         plan=next(s for s in self.wf['jobs']['runtime']['steps'] if s.get('name')=='Plan the upgrade tests')['run']
-        self.assertIn('built on the device; the upgrade test for these add-ons is #144',plan)
         self.assertIn('the caller passes no image_artifact; the upgrade test is being rolled out in #143',plan)
+        # Add-ons built on the device are tested (#144); only their vulnerability comparison still waits (#146).
+        self.assertNotIn('the upgrade test for these add-ons is #144',plan)
     def step(self,name):return next(s for s in self.wf['jobs']['compare']['steps'] if s.get('name')==name)['run']
     def step_env(self,name):return next(s for s in self.wf['jobs']['compare']['steps'] if s.get('name')==name)['env']
 SHELL_TOOLS=all(shutil.which(t) for t in ('bash','jq','yq'))
@@ -653,7 +661,8 @@ class StepHarness(unittest.TestCase):
     def setUp(self):self.wf=yaml.safe_load(self.WF.read_text(encoding='utf-8'))
     def step(self,ident):return next(s for j in ('compare','runtime') for s in self.wf['jobs'][j]['steps'] if ident in (s.get('id'),s.get('name')))
     def run_step(self,ident,*,policy='release',extra=None,releases=('v1.0.0',),old_config=True,new_config=True,skip='',sbom='',version='1.1.0',old=None,old_path='',
-            new_path='addon/config.yaml',new=None,files=None,raw_version=None,history=None,changed=1,gh_fail='',images=(),vulnerable='',image_artifact=''):
+            new_path='addon/config.yaml',new=None,files=None,raw_version=None,history=None,changed=1,gh_fail='',images=(),vulnerable='',image_artifact='',
+            tarball=None,build_fail=''):
         """ident: one step, or a tuple run in order until one fails. new_path: where the PR has the config; new: changes to it;
         files: more files of the PR checkout; raw_version: {'old'/'new': the version line's YAML as written, e.g. 1.10 unquoted}.
         history: the PR base's history, newest first, [(sha, {path: changes to the config, or None for no file})]; the first
@@ -663,6 +672,8 @@ class StepHarness(unittest.TestCase):
         {"source": "<what it scanned>"} as the SBOM. vulnerable: the image whose SBOM the stub Grype finds a High fixable
         vulnerability in (CVE-2026-0001 openssl, fixed in 3.0.9); every scan reports the same DB.
         image_artifact: the caller's image_artifact (the runtime job's plan, #137).
+        tarball: {path: text} in GitHub's archive of every ref besides its configs (#144); build_fail: the tag whose
+        `docker build` fails. self.builds is every `docker build` (DOCKER_STUB).
         self.tmp is the job's directory (also RUNNER_TEMP); self.plans is every line of plan.jsonl."""
         import os,subprocess
         tmp=self.tmp=pathlib.Path(tempfile.mkdtemp());self.addCleanup(shutil.rmtree,tmp)
@@ -696,13 +707,14 @@ class StepHarness(unittest.TestCase):
         env=dict(os.environ,PATH=f"{tmp/'bin'}{os.pathsep}{os.environ['PATH']}",OLD=str(tmp/'old.yaml'),OLD_PATH=old_path,RELEASES=releases,REPO='WOOWTECH/t',BASE_SHA='b',
             GH_TOKEN='x',DB_MAX_AGE_HOURS='120',IMAGES='\n'.join(images),VULNERABLE=vulnerable,SBOM_ARTIFACT=sbom,IMAGE_ARTIFACT=image_artifact,SKIP_VULNERABILITY_SCAN=skip,RUNNER_TEMP=str(tmp),RUN_ATTEMPT='1',
             GITHUB_OUTPUT=str(tmp/'out'),GITHUB_STEP_SUMMARY=str(tmp/'summary'),HISTORY=str(tmp/'history.json') if history is not None else '',GH_FAIL=gh_fail,
-            TMPDIR=str(tmp/'mktemp'))
+            TMPDIR=str(tmp/'mktemp'),TARBALL=json.dumps(tarball or {}),BUILD_FAIL=build_fail,DOCKER_LOG=str(tmp/'docker.log'))
         (tmp/'mktemp').mkdir(exist_ok=True)
         for one in (ident if isinstance(ident,tuple) else (ident,)):
             (tmp/'step.sh').write_text(self.step(one)['run'])
             r=subprocess.run(['bash',str(tmp/'step.sh')],cwd=tmp,env=env,capture_output=True,text=True)
             if r.returncode:break
         self.plans=[json.loads(l) for l in (tmp/'plan.jsonl').read_text().splitlines()] if (tmp/'plan.jsonl').exists() else []
+        self.builds=[json.loads(l) for l in (tmp/'docker.log').read_text().splitlines()] if (tmp/'docker.log').exists() else []
         return r,(self.plans[0] if self.plans else {}),(tmp/'out').read_text() if (tmp/'out').exists() else ''
 
 # The fake GitHub API of StepHarness: Releases, raw files at a ref and the commits that changed a path (with --jq through jq).
@@ -732,16 +744,34 @@ elif '/commits?' in url:
     start=next(i for i,c in enumerate(commits) if c['sha']==q['sha'])
     def changed(i):return commits[i]['files'].get(q['path'])!=(commits[i+1]['files'].get(q['path']) if i+1<len(commits) else None)
     out([{'sha':c['sha'],'commit':{'committer':{'date':c['date']}}} for i,c in enumerate(commits) if i>=start and changed(i)])
+elif '/tarball/' in url:
+    # The repository at a ref as GitHub archives it: one top directory, the configs at that ref and $TARBALL's files.
+    import io,tarfile
+    ref=url.split('/tarball/',1)[1]
+    files={c['sha']:c['files'] for c in history}.get(ref,{}) if history is not None else {old_path or 'addon/config.yaml':legacy(old_path or 'addon/config.yaml')}
+    files={**{p:t for p,t in files.items() if t is not None},**json.loads(os.environ.get('TARBALL') or '{}')}
+    buf=io.BytesIO()
+    with tarfile.open(fileobj=buf,mode='w:gz') as tar:
+        for path,text in files.items():
+            data=text.encode();info=tarfile.TarInfo(f'WOOWTECH-t-{ref}/{path}');info.size=len(data);tar.addfile(info,io.BytesIO(data))
+    sys.stdout.buffer.write(buf.getvalue())
 else:sys.exit(1)
 '''
 
 # StepHarness's image registry: `docker pull` succeeds only for a reference in $IMAGES; `docker image rm` always does.
+# `docker build` appends {args, files: the context's files and their text} to $DOCKER_LOG and fails for the tag $BUILD_FAIL.
 DOCKER_STUB=r'''#!/usr/bin/env python3
-import os,sys
+import json,os,pathlib,sys
 args=sys.argv[1:]
 if args[:1]==['pull']:
     if args[-1] in os.environ.get('IMAGES','').split('\n'):sys.exit(0)
     print(f'Error response from daemon: manifest unknown: {args[-1]}',file=sys.stderr);sys.exit(1)
+if args[:1]==['build']:
+    context=pathlib.Path(args[-1]);tag=args[args.index('-t')+1]
+    files={p.relative_to(context).as_posix():p.read_text() for p in context.rglob('*') if p.is_file()}
+    with open(os.environ['DOCKER_LOG'],'a') as f:f.write(json.dumps({'args':args,'files':files})+'\n')
+    if tag==os.environ.get('BUILD_FAIL'):print('ERROR: failed to solve: process "/bin/sh -c false" did not complete successfully',file=sys.stderr);sys.exit(1)
+    sys.exit(0)
 sys.exit(0 if args[:2]==['image','rm'] else 1)
 '''
 # Stub Syft: `syft scan <source> --config ... -o syft-json=<file>` writes {"source": <source>} to <file>.
@@ -785,13 +815,118 @@ class UpgradeTestPlan(StepHarness):
         self.assertEqual(r.returncode,0,r.stdout+r.stderr);self.assertIn('run=false',out);self.assertEqual(row['old_ref'],'')
         self.assertEqual(self.note(),{'name':'t','passed':None,'note':'the caller passes no image_artifact; the upgrade test is being rolled out in #143'})
     @needs_shell
-    def test_device_built_add_on_is_reported_as_144(self):
-        r,(row,),out=self.plan(image_artifact='upgrade-comparison-image-*',new={'image':None},old={'image':None},sbom='')
-        self.assertEqual(r.returncode,0,r.stdout+r.stderr);self.assertIn('#144',self.note()['note'])
+    def test_device_built_add_on_rebuilds_the_release_and_builds_the_pr_without_an_artifact(self):
+        # #144: no image to pull or hand over, so the caller needs no image_artifact; the old image is rebuilt from the Release tag.
+        r,(row,),out=self.plan(new={'image':None},old={'image':None},sbom='')
+        self.assertEqual(r.returncode,0,r.stdout+r.stderr)
+        self.assertEqual((row['test'],row['old_ref'],row['old_src'],row['new_src']),(True,'','v1.0.0','pr'))
+        for output in ('run=true','build=true','wait=false'):
+            with self.subTest(output):self.assertIn(output,out)
+        self.assertFalse((self.tmp/'runtime-reports/t.json').exists())
+    @needs_shell
+    def test_ref_policy_main_rebuilds_the_commit_where_the_base_version_first_appeared(self):
+        p='addon/config.yaml';history=[('b',{p:{'version':'2.0','image':None,'log_level':'warn'}}),('c',{p:{'version':'2.0','image':None}}),('o',{p:{'version':'1.9','image':None}})]
+        r,(row,),out=self.plan(policy='main',history=history,version='2.1',new={'image':None},sbom='')
+        self.assertEqual(r.returncode,0,r.stdout+r.stderr);self.assertEqual((row['old_src'],row['new_src']),('c','pr'))
+    @needs_shell
+    def test_a_move_between_prebuilt_and_built_on_the_device_takes_each_side_from_where_it_is(self):
+        # The comparison target was built on the device, the PR ships a prebuilt image: rebuild the old one, await the new one.
+        r,(row,),out=self.plan(old={'image':None},image_artifact='upgrade-comparison-image-*')
+        self.assertEqual(r.returncode,0,r.stdout+r.stderr)
+        self.assertEqual((row['old_ref'],row['old_src'],row['new_src']),('','v1.0.0',''));self.assertIn('wait=true',out)
+        # And back: the target's image is pulled, the PR's is built here.
+        r,(row,),out=self.plan(new={'image':None},sbom='')
+        self.assertEqual(r.returncode,0,r.stdout+r.stderr)
+        self.assertEqual((row['old_ref'],row['old_src'],row['new_src']),('ghcr.io/da-anda/addon-amd64:1.0.0','','pr'));self.assertIn('wait=false',out)
+    @needs_shell
+    def test_device_built_add_on_without_a_comparison_target_is_not_tested(self):
+        r,(row,),out=self.plan(new={'image':None},old={'image':None},sbom='',releases=())
+        self.assertEqual(r.returncode,0,r.stdout+r.stderr);self.assertFalse(row['test']);self.assertIn('run=false',out)
+        self.assertEqual(self.note()['note'],'no comparison target')
     @needs_shell
     def test_image_artifact_that_does_not_match_fails(self):
         r,rows,out=self.plan(image_artifact='other-*')
         self.assertNotEqual(r.returncode,0);self.assertIn("image_artifact 'other-*' does not match upgrade-comparison-image-t-attempt-1",r.stdout)
+
+class DeviceBuiltImages(StepHarness):
+    """'Build the images of add-ons built on the device' (#144): both images built for amd64 as Supervisor builds them,
+    the comparison target's from GitHub's archive of the target, the new one from the PR checkout."""
+    STEPS=('plan','upgrade','Build the images of add-ons built on the device')
+    DEVICE=dict(new={'image':None},old={'image':None},sbom='')
+    BUILD='build_from:\n  amd64: ghcr.io/woowtech/base:{v}\nargs:\n  EXTRA: "{v}"\n'
+    def build(self,**kw):
+        kw.setdefault('files',{'addon/Dockerfile':'FROM new','addon/build.yaml':self.BUILD.format(v='new')})
+        kw.setdefault('tarball',{'addon/Dockerfile':'FROM old','addon/build.yaml':self.BUILD.format(v='old')})
+        return self.run_step(self.STEPS,**{**self.DEVICE,**kw})[0]
+    @staticmethod
+    def build_args(b):return [a for i,a in enumerate(b['args']) if i and b['args'][i-1]=='--build-arg']
+    @needs_shell
+    def test_old_from_the_targets_source_and_new_from_the_pr_as_supervisor_builds_them(self):
+        r=self.build()
+        self.assertEqual(r.returncode,0,r.stdout+r.stderr);old,new=self.builds
+        for b,side,version in ((old,'old','1.0.0'),(new,'new','1.1.0')):
+            with self.subTest(side):
+                self.assertEqual(b['args'][b['args'].index('-t')+1],f'upgrade-comparison/t:{side}')
+                self.assertEqual(b['args'][b['args'].index('--platform')+1],'linux/amd64')
+                self.assertEqual(b['files']['Dockerfile'],f'FROM {side}')
+                self.assertEqual(self.build_args(b),[f'BUILD_FROM=ghcr.io/woowtech/base:{side}',f'BUILD_VERSION={version}','BUILD_ARCH=amd64',f'EXTRA={side}'])
+        # The target's tree comes from GitHub's archive of the Release tag; the PR's is the checkout.
+        self.assertTrue(old['args'][-1].endswith('t.old-src/addon'));self.assertEqual(new['args'][-1],'source/addon')
+    @needs_shell
+    def test_ref_policy_main_builds_the_commit_where_the_base_version_first_appeared(self):
+        p='addon/config.yaml';history=[('b',{p:{'version':'2.0','image':None,'log_level':'warn'}}),('c',{p:{'version':'2.0','image':None}}),('o',{p:{'version':'1.9','image':None}})]
+        r=self.build(policy='main',history=history,version='2.1')
+        self.assertEqual(r.returncode,0,r.stdout+r.stderr)
+        self.assertTrue(self.builds[0]['args'][-1].endswith('t.old-src/addon'));self.assertIn('BUILD_VERSION=2.0',self.build_args(self.builds[0]))
+        self.assertNotIn('log_level',yaml.safe_load(self.builds[0]['files']['config.yaml']))  # c's tree, not the PR base b's
+    @needs_shell
+    def test_a_comparison_target_that_cannot_be_rebuilt_fails_with_the_reason(self):
+        r=self.build(build_fail='upgrade-comparison/t:old')
+        self.assertEqual(r.returncode,1)
+        self.assertIn('t: the comparison target v1.0.0 could not be rebuilt for amd64',r.stdout)
+    @needs_shell
+    def test_a_target_whose_source_cannot_be_downloaded_fails_with_the_reason(self):
+        r=self.build(gh_fail='/tarball/')
+        self.assertEqual(r.returncode,1);self.assertIn('t: cannot download the source of the comparison target v1.0.0',r.stdout)
+        self.assertEqual(self.builds,[])
+    @needs_shell
+    def test_a_pr_that_cannot_be_built_fails_as_the_prs_fault(self):
+        r=self.build(build_fail='upgrade-comparison/t:new')
+        self.assertEqual(r.returncode,1);self.assertIn('t: the new version could not be built for amd64 from this PR',r.stdout)
+    @needs_shell
+    def test_a_target_without_a_dockerfile_cannot_be_rebuilt(self):
+        r=self.build(tarball={})
+        self.assertEqual(r.returncode,1);self.assertIn('no Dockerfile (or Dockerfile.amd64)',r.stdout)
+        self.assertIn('t: the comparison target v1.0.0 could not be rebuilt',r.stdout)
+
+class BuildArgs(unittest.TestCase):
+    """upgrade_check.build_args (#144): how Supervisor builds an add-on built on the device (supervisor/addons/build.py)."""
+    def addon(self,files):
+        d=pathlib.Path(tempfile.mkdtemp());self.addCleanup(shutil.rmtree,d)
+        for name,text in {'Dockerfile':'FROM x',**files}.items():
+            if text is not None:(d/name).write_text(text)
+        return d
+    def test_without_a_build_file_the_base_is_home_assistants(self):
+        d=self.addon({})
+        self.assertEqual(u.build_args(d,'1.2.3'),{'dockerfile':(d/'Dockerfile').as_posix(),
+            'args':{'BUILD_FROM':'ghcr.io/home-assistant/amd64-base:latest','BUILD_VERSION':'1.2.3','BUILD_ARCH':'amd64'}})
+    def test_build_from_per_arch_or_one_for_all_and_args(self):
+        for name,text in (('build.yaml','build_from:\n  amd64: a/b:1\n  aarch64: c/d:1\nargs:\n  X: 1\n'),('build.yml','build_from: a/b:1\nargs:\n  X: "1"\n'),
+                ('build.json','{"build_from": {"amd64": "a/b:1"}, "args": {"X": 1}}')):
+            with self.subTest(name):self.assertEqual(u.build_args(self.addon({name:text}),'2')['args'],{'BUILD_FROM':'a/b:1','BUILD_VERSION':'2','BUILD_ARCH':'amd64','X':'1'})
+    def test_arch_dockerfile_wins(self):
+        d=self.addon({'Dockerfile.amd64':'FROM y'});self.assertEqual(u.build_args(d,'1')['dockerfile'],(d/'Dockerfile.amd64').as_posix())
+    def test_what_supervisor_could_not_build_is_an_error(self):
+        for name,files,error in (('no amd64 base',{'build.yaml':'build_from:\n  aarch64: a/b:1\n'},'no base image for amd64'),
+                ('no Dockerfile',{'Dockerfile':None},'no Dockerfile'),('args not a mapping',{'build.yaml':'args: [1]\n'},'args is not a mapping'),
+                ('multi-line arg',{'build.yaml':'args:\n  X: "a\\nb"\n'},'must be one line'),('not a mapping',{'build.yaml':'- 1\n'},'is not a mapping')):
+            with self.subTest(name),self.assertRaisesRegex(ValueError,error):u.build_args(self.addon(files),'1')
+    def test_command_prints_json_and_names_the_add_on_on_error(self):
+        d=self.addon({})
+        with contextlib.redirect_stdout(io.StringIO()) as out:self.assertEqual(u.main(['build-args','--addon-dir',str(d),'--version','1','--name','t']),0)
+        self.assertEqual(json.loads(out.getvalue())['args']['BUILD_VERSION'],'1')
+        with contextlib.redirect_stdout(io.StringIO()) as out:self.assertEqual(u.main(['build-args','--addon-dir',str(d/'missing'),'--version','1','--name','t']),2)
+        self.assertIn('::error title=Upgrade comparison failed::t: ',out.getvalue())
 
 class RuntimeFailureRecord(StepHarness):
     """'Record why the runtime job failed': compare gets each reason once, and no reason-less entry next to a real one."""
