@@ -22,7 +22,10 @@ class SupervisorError(RuntimeError):
     """Raised when the Supervisor API returns an error result."""
 
     def __init__(self, message: str, status: int = 500):
-        super().__init__(message)
+        # Upstream bodies can echo option values, including credentials. Keep
+        # the status for diagnosis but never retain or render the raw message.
+        super().__init__(f"Supervisor request failed (HTTP {status}). "
+                         "Check Supervisor availability and addon configuration.")
         self.status = status
 
 

@@ -7,6 +7,9 @@
 # Started in parallel with the 'prepare' oneshot so the GUI is reachable
 # while 'cloudflared tunnel login' is still waiting for authorization.
 # ==============================================================================
+# Protect restored credentials before any config read, network call or UI.
+cloudflared-credential-guard || exit 1
+umask 077
 
 bashio::log.info "Starting Woow Cloudflared (ingress port 8099)..."
 

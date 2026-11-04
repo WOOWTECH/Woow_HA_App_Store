@@ -1,5 +1,35 @@
 # Changelog
 
+## 1.1.2
+
+### Security
+- Protect only `/data/cert.pem` and `/data/tunnel.json` before prepare, tunnel
+  and Web GUI startup and right after credential creation. Existing files are
+  normalized to the runtime owner and mode 0600 without reading their contents;
+  symlinks, hardlinks and non-regular files fail startup closed. Missing files
+  are allowed and new files are created under `umask 077`. Other stored files
+  are untouched. This mitigates credentials left root-owned and world-readable
+  by a native restore; it does not change Supervisor backup metadata handling.
+  Replace linked credential files with private regular copies before upgrading.
+- Bashio trace output in the startup scripts keeps only the static event label,
+  and the prepare step no longer prints `run_parameters` values or a custom
+  `--loglevel` value.
+- Supervisor API failures no longer return the upstream response body to the
+  GUI; the HTTP status is kept for diagnosis.
+- Disclosure regressions for startup logs, error responses and credential
+  permissions run in CI on amd64.
+
+### Migration
+- No option, schema, port or image change. Startup now refuses to run when
+  `/data/cert.pem` or `/data/tunnel.json` is a symlink, a hardlink or not a
+  regular file, and the log shows "Credential permission check failed". Before
+  upgrading, copy such a file to a new regular file and move it over the
+  original path. Regular files are only re-owned and set to 0600.
+- Supervisor API errors in the GUI now show the HTTP status only. Read the
+  Supervisor log for the upstream reason.
+- Rollback to 1.1.1 removes the guard. Files already set to 0600 stay that way,
+  but a later restore can again leave them world-readable.
+
 ## 1.1.1
 
 ### Fixed

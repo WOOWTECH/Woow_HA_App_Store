@@ -9,6 +9,11 @@
 # filesystem restore does not release the remote binding), then restore the
 # 1.0.4 add-on backup and prior options. 1.0.4 cannot read the 1.1.0 PaaS
 # authorization state; never run two connectors with the same managed token.
+#
+# 1.1.2 changes no config.yaml key, so it has no section. Its runtime change
+# (startup refuses a symlinked, hardlinked or non-regular /data/cert.pem or
+# /data/tunnel.json) has no matching `change` type; the migration is in the
+# 1.1.2 entry of CHANGELOG.md.
 "1.1.0":
   breaking:
     - change: range-narrowed

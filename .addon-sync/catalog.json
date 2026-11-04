@@ -860,22 +860,22 @@
     "cloudflared": {
       "id": "cloudflared",
       "name": "Woow Cloudflared",
-      "version": "1.1.1",
+      "version": "1.1.2",
       "repository": "WOOWTECH/Woow_ha_cloudflare_tunnel_webgui",
-      "source_sha": "dd834710cbadc7f28b596a88660e63c6a7bab534",
+      "source_sha": "ee79c5f22ec28ab0c1c122e1ab42ee9bb7d6864c",
       "source_path": "cloudflared",
       "config_file": "config.yaml",
-      "config_sha256": "sha256:88eee8f1e0fb379b479f2115d0acd5b761a4253f00f6140fc8e98b4b8fbdf6ab",
-      "archive_sha256": "sha256:103b7d29b74c71647ca438ba5b701e4a40f2e1a574358e300e9981e4f080d9c5",
-      "context_fingerprint": "sha256:21f14a860f0de487f4afe422e2efd202ad461e106a6839f56bbad5be58a28917",
-      "material_fingerprint": "sha256:f9a8af61122cefb2bf10061d95c90643ded69061536a4adbf2bd7c6fc3aa421d",
+      "config_sha256": "sha256:ff7745be8aacfe9337a8e936686805274624eff8965d6c2aa3c63b44fe82ad40",
+      "archive_sha256": "sha256:3b334b2bff37304b8133d08f01e9e5114fb5725f80f0067b835d9b0b049893a9",
+      "context_fingerprint": "sha256:32709b3c2d42e1dd2c84c62041e28caa731a5ac7c0f5bf03b415b3ca36be569c",
+      "material_fingerprint": "sha256:3a5858ca8b5cba7b9b9596a6328fb54e43ae72038a23cb3bbc8bc82ad67a8540",
       "architectures": [
         "aarch64",
         "amd64"
       ],
       "config": {
         "name": "Woow Cloudflared",
-        "version": "1.1.1",
+        "version": "1.1.2",
         "breaking_versions": [
           "5.3.7",
           "6.0.0"
@@ -931,21 +931,21 @@
       "source_build_supported": true,
       "images": {
         "aarch64": {
-          "reference": "ghcr.io/woowtech/aarch64-addon-cloudflared-webgui:1.1.1",
-          "index_digest": "sha256:cacce0b41a7e421215afb8eecf91fb335bba3db6c6be4e98042925fa60f1f6b8",
-          "digest": "sha256:9e22930cfed9e36c7142b402717a062f6e8ebf3f917bd5df8c59ac1ef6606671",
+          "reference": "ghcr.io/woowtech/aarch64-addon-cloudflared-webgui:1.1.2",
+          "index_digest": "sha256:cb6c743bbcaeda349c73049a01623ad0edbbabd52836379ed8a1715e67b6bdc5",
+          "digest": "sha256:c38cc56e18b69087aa553f222fd82ac7add074d3b8274e8a3796fb3bf96293aa",
           "source_revision": ""
         },
         "amd64": {
-          "reference": "ghcr.io/woowtech/amd64-addon-cloudflared-webgui:1.1.1",
-          "index_digest": "sha256:f5b308c231cb1dd684bbb940c47f4f39e297b9ad849ba7d26a6904d5a109a502",
-          "digest": "sha256:5180cd82b7f36f37dd84bee61cbbec0852bd740ccd887cfc20b5cae7e876adc5",
+          "reference": "ghcr.io/woowtech/amd64-addon-cloudflared-webgui:1.1.2",
+          "index_digest": "sha256:90fb8884763f5a4a423cd018fa3b5bf58b482be8f449c962d7c0a2f9b6b1dffe",
+          "digest": "sha256:551c7db9890d82606e35cc72a7273017fe7088872c1526fbb7fef59317bb28de",
           "source_revision": ""
         }
       },
       "delivery": "published-image",
       "validation": "manifest+architecture-images+configured-CI",
-      "publisher_run_id": "41816496940",
+      "publisher_run_id": "41817568412",
       "channel": "stable",
       "store_path": "cloudflared"
     },
@@ -3632,5 +3632,5 @@
       "store_path": "woow_mcp_nextcloud"
     }
   },
-  "catalog_id": "sha256:81f3b336a66c32514f0a6518aa5ff217103f7f76f23d9eb012320b1cc194df3c"
+  "catalog_id": "sha256:053eb84278a9ca4aac198a0d9cff468077e42b1436527c52a0f150debb547e44"
 }
