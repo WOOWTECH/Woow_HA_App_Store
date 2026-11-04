@@ -44,6 +44,10 @@ upgrade-check/ fails (only that directory is mounted). The report:
 A failing seed or verify fails the upgrade test. Without verify, data is not
 checked and the report says so.
 
+Writes <report-dir>/<name>.json and <name>.md, appends the report to
+--summary and exits 1 when the upgrade test fails (::error with the reason),
+2 on a usage or tool error. Needs Docker; both images must be local or pullable.
+
 Regression comparison (#139, category 3): upgrade-check/ may also hold `smoke`,
 run the same way on the comparison target (after seed, and only when seed
 passed) and on the new version (after verify, also when verify failed), so
@@ -55,21 +59,17 @@ passes on the comparison target must pass on the new version; one that fails
 there is only reported; one only in the new version must pass; without a
 report, the exit codes), and a regression fails the upgrade comparison.
 Without smoke, category 3 compares only that both versions start.
-
-Writes <report-dir>/<name>.json and <name>.md, appends the report to
---summary and exits 1 when the upgrade test fails (::error with the reason),
-2 on a usage or tool error. Needs Docker; both images must be local or pullable.
+The result below also has, since #139: report_error in each hook run (why its
+report cannot be used, or ''); smoke in hooks, and a smoke run after the data
+hook in phases[].hooks; regression, upgrade_check.regression() of the result,
+{smoke, passed, rows, reason}. passed is false, with that reason, when
+category 2 passed but category 3 found a regression.
 
 The result (<name>.json; compare reads it): {name, passed, reason, hooks (the
 hooks upgrade-check/ has), data_checked (verify ran), phases: [{phase, version,
 image, method, started, detail, answer, logs, hooks: [{hook, phase, passed,
 exit_code, detail, checks: [{name, result, detail}], output}]}]}. exit_code is
 None when the hook timed out or could not be started (a symlink out of upgrade-check/).
-Since #139 each hook run also has report_error (why its report cannot be
-used, or ''), hooks may list smoke (phases[].hooks then has a smoke run after
-the data hook), and the result has regression: upgrade_check.regression() of
-it, {smoke, passed, rows, reason}; passed is false, with that reason, when
-category 2 passed but category 3 found a regression.
 """
 from __future__ import annotations
 import argparse, json, pathlib, secrets, shutil, subprocess, sys, tempfile, time
