@@ -180,6 +180,13 @@ class Runtime(unittest.TestCase):
         code, result, out = self.run_test('crash', 'good')
         self.assertEqual(code, 1); self.assertEqual([p['phase'] for p in result['phases']], ['old'])
         self.assertIn('the comparison target (1.0.0) did not start', result['reason'])
+    def test_comparison_target_that_docker_cannot_run_fails_with_the_reason(self):
+        # #140: its image cannot be pulled, so docker run fails: the comparison target did not start, not a tool error.
+        self.images = {**self.images, 'missing': f'local/upgrade-test-fake-missing:{uuid.uuid4().hex[:8]}'}
+        code, result, out = self.run_test('missing', 'good')
+        self.assertEqual(code, 1); self.assertEqual([(p['phase'], p['started']) for p in result['phases']], [('old', False)])
+        self.assertIn('the comparison target (1.0.0) did not start: docker run failed', result['reason'])
+        self.assertIn('::error title=Upgrade test::fake: the comparison target (1.0.0) did not start', out); self.assertEqual(leftovers(), [])
     def test_no_answer_within_the_time_limit_fails(self):
         self.settings(startup_timeout=6, stable_seconds=3)
         code, result, out = self.run_test('good', 'good', watchdog='http://[HOST]:[PORT:9999]/health')

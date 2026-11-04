@@ -295,12 +295,19 @@ def upgrade_test(name, addon_dir, old_image, old_config, new_image, new_config, 
         env.open()
         for phase, image, config in (('old', old_image, old_config), ('new', new_image, new_config)):
             probe = startup_probe(config, settings)
-            container = env.start(phase, image, config)
+            label = f'{PHASE_LABEL[phase]} ({config.get("version")})'
+            try:container = env.start(phase, image, config)
+            except RuntimeError as e:
+                # #140: a version docker cannot run (its image cannot be pulled, its entrypoint is missing...) did not start;
+                # for the comparison target that fails the upgrade comparison with the reason, as an exit does.
+                phases.append({'phase': phase, 'version': str(config.get('version')), 'image': image, 'method': probe['method'], 'started': False,
+                    'detail': str(e), 'answer': '', 'logs': '', 'hooks': []})
+                result['reason'] = f'{label} did not start: {e}'
+                return result
             ok, detail, answer = wait_started(env, container, probe)
             entry = {'phase': phase, 'version': str(config.get('version')), 'image': image, 'method': probe['method'], 'started': ok,
                 'detail': detail, 'answer': answer, 'logs': '', 'hooks': []}
             phases.append(entry)
-            label = f'{PHASE_LABEL[phase]} ({config.get("version")})'
             if not ok:result['reason'] = f'{label} did not start: {detail}'
             for hook in (h for h in present if ok and HOOK_PHASE[h] == phase):
                 run = env.run_hook(hook, phase, image, config, limits['hook_timeout'])
