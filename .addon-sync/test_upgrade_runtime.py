@@ -187,6 +187,26 @@ class Runtime(unittest.TestCase):
         self.assertEqual(code, 1); self.assertEqual([(p['phase'], p['started']) for p in result['phases']], [('old', False)])
         self.assertIn('the comparison target (1.0.0) did not start: docker run failed', result['reason'])
         self.assertIn('::error title=Upgrade test::fake: the comparison target (1.0.0) did not start', out); self.assertEqual(leftovers(), [])
+    def test_comparison_target_whose_entrypoint_is_missing_did_not_start_with_its_logs(self):
+        # #140: docker run creates the container but cannot start it (exit 127): the image's fault, with what it logged.
+        build = pathlib.Path(tempfile.mkdtemp()); self.addCleanup(shutil.rmtree, build, True)
+        (build / 'Dockerfile').write_text(f'FROM {rt.MOCK_IMAGE}\nCMD ["/no-such-entrypoint"]\n')
+        tag = f'local/upgrade-test-fake-noentry:{uuid.uuid4().hex[:8]}'
+        subprocess.run(['docker', 'build', '-q', '-t', tag, str(build)], check=True, capture_output=True)
+        self.addCleanup(subprocess.run, ['docker', 'image', 'rm', '-f', tag], capture_output=True)
+        self.images = {**self.images, 'noentry': tag}
+        # init: false, as Supervisor does then: with docker's init, init itself starts and exits 127 (an ordinary exit).
+        code, result, out = self.run_test('noentry', 'good', init=False)
+        self.assertEqual(code, 1, out); self.assertEqual([(p['phase'], p['started']) for p in result['phases']], [('old', False)])
+        self.assertIn('the comparison target (1.0.0) did not start: docker run failed (127)', result['reason'])
+        self.assertIn('no-such-entrypoint', result['reason']); self.assertIsInstance(result['phases'][0]['logs'], str)
+        self.assertEqual(leftovers(), [])
+    def test_docker_run_failure_that_is_not_the_images_is_a_tool_error(self):
+        # #140: an address outside the hassio subnet stands for any runner fault (name or address in use, a bind
+        # mount, the daemon): the test could not run (exit 2), it is not the comparison target's failure.
+        with mock.patch.object(rt, 'ADDON_IP', '10.255.0.10'):code, result, out = self.run_test('good', 'good')
+        self.assertEqual(code, 2, out); self.assertIn('the upgrade test could not run: docker run failed', result['reason'])
+        self.assertNotIn('did not start', result['reason']); self.assertEqual(leftovers(), [])
     def test_no_answer_within_the_time_limit_fails(self):
         self.settings(startup_timeout=6, stable_seconds=3)
         code, result, out = self.run_test('good', 'good', watchdog='http://[HOST]:[PORT:9999]/health')
@@ -300,6 +320,22 @@ class Runtime(unittest.TestCase):
         code, result, out = self.run_test('good', 'good')
         self.assertEqual(code, 1); self.assertIn('verify failed on the new version (1.1.0): did not finish within 3 s (hook_timeout)', result['reason'])
         self.assertEqual(leftovers(), [])
+
+class ImageFault(unittest.TestCase):
+    """#140: which failed `docker run` is the image's fault (the version did not start) and which the test's (a tool error)."""
+    def test_classification(self):
+        cases = [(125, "Unable to find image 'local/x:1' locally\ndocker: Error response from daemon: pull access denied for local/x", True),
+            (125, 'docker: Error response from daemon: manifest unknown: manifest unknown', True),
+            (125, 'docker: Error response from daemon: failed to resolve reference "ghcr.io/o/x:1": not found', True),
+            (127, 'docker: Error response from daemon: failed to create task for container: ... exec: "/nope": stat /nope: no such file or directory', True),
+            (126, 'exec: "/run": permission denied', True),
+            (125, 'docker: Error response from daemon: Conflict. The container name "/upgrade-test-1-old" is already in use', False),
+            (125, 'docker: Error response from daemon: Address already in use', False),
+            (125, 'docker: Error response from daemon: invalid mount config for type "bind": bind source path does not exist: /w/x', False),
+            (125, 'docker: Error response from daemon: Invalid address 10.255.0.10: It does not belong to any of this network\'s subnets', False),
+            (1, 'Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?', False)]
+        for code, output, fault in cases:
+            with self.subTest(output):self.assertEqual(rt.image_fault(rt.DockerError('docker run failed', code, output)), fault)
 
 if __name__ == '__main__':
     unittest.main()

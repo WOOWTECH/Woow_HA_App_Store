@@ -14,7 +14,8 @@ fail() {
 # for an add-on built on the device, rebuilt; #140, #144). Prints the check's ::error line and writes <id>'s upgrade
 # test result (runtime-reports/<id>.json, passed false, as upgrade_runtime.py writes one), so compare fails for that
 # add-on with <reason> instead of a reason-less runtime job; FAIL_LOG is left alone so the reason is not given twice.
-# The caller then stops (exit 1) or skips the add-on. A target that starts badly or whose seed fails is judged by upgrade_runtime.py.
+# The caller then leaves the add-on out of the test (old_ref "") and goes on with the others; "Run the upgrade tests"
+# fails the job for every passed-false result. A target that starts badly or whose seed fails is judged by upgrade_runtime.py.
 target_failed() {
   printf '::error title=Upgrade comparison failed::%s\n' "$(esc "$1: $2")"
   mkdir -p runtime-reports

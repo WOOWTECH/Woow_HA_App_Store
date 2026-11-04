@@ -549,13 +549,18 @@ jobs:
         set -euo pipefail
         source tooling/.addon-sync/log.sh
         source tooling/.addon-sync/fields.sh
+        # #140: an add-on whose comparison target cannot be pulled fails with the reason (target_failed) and leaves the
+        # test (old_ref ""); the others are still tested, and "Run the upgrade tests" fails the job for it at the end.
+        : > pulled.jsonl
         while IFS= read -r row; do
           fields "${row}" id=id ref=old_ref
-          if ! docker pull --quiet --platform linux/amd64 "${ref}"; then
-            # #140: the comparison target cannot be tested, so the upgrade comparison fails for this add-on with the reason.
-            target_failed "${id}" "cannot pull the comparison target's image ${ref} from the registry, so the upgrade cannot be tested; re-run, or check that the image exists"; exit 1
+          if [ -n "${ref}" ] && ! docker pull --quiet --platform linux/amd64 "${ref}"; then
+            target_failed "${id}" "cannot pull the comparison target's image ${ref} from the registry, so the upgrade cannot be tested; re-run, or check that the image exists"
+            row="$(jq -c '.old_ref = ""' <<<"${row}")"
           fi
-        done < <(jq -c 'select(.old_ref != "")' upgrade.jsonl)
+          printf '%s\n' "${row}" >> pulled.jsonl
+        done < upgrade.jsonl
+        mv pulled.jsonl upgrade.jsonl
     - name: Wait for the new images
       if: steps.upgrade.outputs.run == 'true'
       env:
@@ -600,6 +605,8 @@ jobs:
             --report-dir runtime-reports --summary "$GITHUB_STEP_SUMMARY" || rc=$?
           [ "${rc}" = 0 ] || status=1
         done < <(jq -c 'select(.old_ref != "")' upgrade.jsonl)
+        # An add-on an earlier step could not test (target_failed, #140) fails this job too.
+        if jq -e -s 'any(.[]; .passed == false)' runtime-reports/*.json > /dev/null 2>&1; then status=1; fi
         exit "${status}"
     # A step that failed before upgrade_runtime.py wrote a result (plan, pull, wait, load) leaves its reasons in
     # FAIL_LOG; compare quotes them instead of only saying that this job failed. When upgrade_runtime.py already
