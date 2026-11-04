@@ -31,7 +31,7 @@ values, required made optional, added optional keys (not maps), added keys with 
 upgrade-notes.yaml format, version order and Release notes (#119): addon_sync, the comment above REBUILD.
 """
 from __future__ import annotations
-import argparse, contextlib, json, os, pathlib, re, secrets, sys
+import argparse, contextlib, datetime, json, os, pathlib, re, secrets, sys
 import yaml
 # addon_sync owns the Release rules (version order, upgrade-notes.yaml parsing, Release notes); it does not import this module.
 from addon_sync import Blocked, comparison_target, config_version, declaration_text, declarations, find_component, find_provider, locations, markdown_cell, publishes_releases, release_notes, release_tag, require_newer, source_file, stable_versions, version_cmp, workflow_command
@@ -299,6 +299,29 @@ def components(registry, repo):
     return {'ref_policy':provider['ref_policy'],'skip_vulnerability_scan':skip,'scan_published_image':published,
         'components':[{'id':c['id'],**paths(c)} for c in provider['components'] if publishes_releases(c)]}
 
+DUE_KEY='data_check_due'
+
+def data_check_due(component, has_verify, today):
+    """The data-check deadline of `component` (its Store registry entry; #141, pipeline #90): an add-on with a database
+    has until upgrade_comparison.data_check_due (YYYY-MM-DD, a UTC date) to add the verify hook to its upgrade-check/.
+    Returns None when the rule says nothing: no due date, or `has_verify` (the deadline is then ignored). Otherwise
+    (passed, message): through the due date itself (0 days left) an upgrade test without verify passes and the report
+    gives the days left; from the day after (`today` past the due date, both UTC dates) it fails. A due date that is not
+    a real YYYY-MM-DD date is a ValueError, also when the add-on has verify, so a broken registry entry never passes."""
+    given=component.get('upgrade_comparison') or {}
+    if DUE_KEY not in given:return None
+    due=given[DUE_KEY]
+    try:
+        if not isinstance(due,str) or not re.fullmatch(r'\d{4}-\d{2}-\d{2}',due):raise ValueError
+        day=datetime.date.fromisoformat(due)
+    except ValueError:
+        raise ValueError(f'the Store registry gives {component["id"]} upgrade_comparison.{DUE_KEY} {due!r}; it must be a date, YYYY-MM-DD (UTC)') from None
+    if has_verify:return None
+    left=(day-today).days
+    if left>=0:return True,f'資料檢查期限 {due}，剩 {left} 天 (data check due {due}, {left} days left; until then the upgrade test without verify passes)'
+    return False,(f'資料檢查期限 {due} 已過，要補資料檢查 (the data check was due {due}, {-left} days ago, and upgrade-check/ still has no verify): '
+        f'add the verify hook (with seed) to upgrade-check/ so the upgrade test checks the data, Store README category 2')
+
 # Upgrade test (#137, #156, category 2). Every `map` type Supervisor accepts and where it mounts it when the entry
 # gives no `path` (home-assistant/supervisor@bde7fb7: supervisor/apps/const.py MappingType, apps/validate.py
 # RE_VOLUME and _migrate_app_config, docker/app.py DockerApp.mounts, docker/const.py PATH_*). `data` is the
@@ -448,6 +471,16 @@ def _components(a):
     with _failing((ValueError,KeyError,TypeError,OSError,Blocked)):print(json.dumps(components(_load(a.registry,'json'),a.repo)))
     return 0
 
+def _data_check_due(a):
+    # Prints the verdict's message (nothing when the rule says nothing); exit 1 when the deadline has passed, the
+    # message printed plainly so the workflow gives it as the add-on's ::error. verify counts as upgrade_runtime.py does.
+    with _failing((ValueError,KeyError,TypeError,OSError)):_,comp=find_component(_load(a.registry,'json'),a.repo,a.component)  # names the repository and add-on
+    with _failing(ValueError,f'{a.component}: '):
+        today=datetime.date.fromisoformat(a.today) if a.today else datetime.datetime.now(datetime.timezone.utc).date()
+        verdict=data_check_due(comp,(pathlib.Path(a.addon_dir)/'upgrade-check'/'verify').is_file(),today)
+    if verdict is None:return 0
+    print(verdict[1]);return 0 if verdict[0] else 1
+
 def _comparison_target(a):
     # The registry lookup, Release filter, tag rule and order are addon_sync's, so the PR check and the Release notes agree.
     with _failing((ValueError,KeyError,TypeError,OSError)):provider,comp=find_component(_load(a.registry,'json'),a.repo,a.component)  # names the repository and add-on
@@ -497,6 +530,8 @@ def _startup_probe(a):
 
 COMMANDS={'mounts':_mounts,'startup-probe':_startup_probe,'components':_components,'comparison-target':_comparison_target,'version':_version_command,'check-target':_check_target,'release-notes':_release_notes,'compare':_compare}
 
+COMMANDS['data-check-due']=_data_check_due  # #141
+
 def main(argv=None):
     p=argparse.ArgumentParser(description=__doc__.splitlines()[0]);sub=p.add_subparsers(dest='command',required=True)
     c=sub.add_parser('compare',help='judge one add-on and write the report')
@@ -524,6 +559,12 @@ def main(argv=None):
     v.add_argument('--as-written',action='store_true',help="the PR's version: fail unless it reads as its text does (unquoted 1.10 is 1.1)")
     k=sub.add_parser('components',help="print what the workflow needs from the repository's registry entry (JSON, see components())")
     k.add_argument('--registry',required=True,help='Store registry.json');k.add_argument('--repo',required=True,help='source repository, owner/name')
+    d=sub.add_parser('data-check-due',help="judge the add-on's data-check deadline (upgrade_comparison.data_check_due, data_check_due()): print the days left, "
+        "or, exit 1, that it has passed without verify; nothing when it has no due date or has verify")
+    d.add_argument('--registry',required=True,help='Store registry.json');d.add_argument('--repo',required=True,help='source repository, owner/name')
+    d.add_argument('--component',required=True,help='add-on id in the registry')
+    d.add_argument('--addon-dir',required=True,help="the add-on's directory in the PR checkout; it has verify when upgrade-check/verify is a file")
+    d.add_argument('--today',help='YYYY-MM-DD; default: today, UTC')
     m=sub.add_parser('mounts',help="print the upgrade test's data directories as JSON [{type, source, target, read_only}] (mounts())")
     m.add_argument('--config',required=True,help="the version's config.yaml");m.add_argument('--root',required=True,help='directory holding one directory per type')
     s=sub.add_parser('startup-probe',help='print how the upgrade test judges that a version starts, as JSON {method, url, below, timeout, stable_seconds} (startup_probe())')

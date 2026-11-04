@@ -434,7 +434,10 @@
           "config_file": "config.yaml",
           "store_path": "woow-immich",
           "channel": "stable",
-          "enabled": true
+          "enabled": true,
+          "upgrade_comparison": {
+            "data_check_due": "2026-12-29"
+          }
         }
       ]
     },
@@ -705,7 +708,10 @@
           "config_file": "config.yaml",
           "store_path": "n8n",
           "channel": "stable",
-          "enabled": true
+          "enabled": true,
+          "upgrade_comparison": {
+            "data_check_due": "2026-11-17"
+          }
         }
       ]
     },
@@ -732,7 +738,10 @@
           "config_file": "config.yaml",
           "store_path": "woow-nextcloud-office",
           "channel": "stable",
-          "enabled": true
+          "enabled": true,
+          "upgrade_comparison": {
+            "data_check_due": "2026-12-08"
+          }
         }
       ]
     },
@@ -792,7 +801,10 @@
           "config_file": "config.yaml",
           "store_path": "odoo18ce",
           "channel": "stable",
-          "enabled": true
+          "enabled": true,
+          "upgrade_comparison": {
+            "data_check_due": "2026-12-08"
+          }
         }
       ]
     },
@@ -903,7 +915,10 @@
           "config_file": "config.yaml",
           "store_path": "headscale",
           "channel": "stable",
-          "enabled": true
+          "enabled": true,
+          "upgrade_comparison": {
+            "data_check_due": "2026-12-29"
+          }
         }
       ]
     },

@@ -1,4 +1,4 @@
-import contextlib,copy,io,json,pathlib,re,shutil,tempfile,unittest,unittest.mock
+import contextlib,copy,datetime,io,json,pathlib,re,shutil,tempfile,unittest,unittest.mock
 import yaml
 import upgrade_check as u
 
@@ -1349,6 +1349,67 @@ class LogEscaping(StepHarness):
                     with self.subTest(step=step.get('name'),value=name):self.assertNotIn('${'+name+'}',bare)
             if 'esc "' in run or 'fail "' in run:
                 with self.subTest(step=step.get('name')):self.assertIn('source tooling/.addon-sync/log.sh',run)
+
+class DataCheckDueCommand(unittest.TestCase):
+    """#141: an add-on with a database has until upgrade_comparison.data_check_due (a UTC date) to add verify. Through the
+    due date itself (0 days left) startup only passes with the days left; from the day after it fails."""
+    DUE='2026-11-17'
+    def setUp(self):
+        self.dir=pathlib.Path(tempfile.mkdtemp());self.addCleanup(shutil.rmtree,self.dir);(self.dir/'addon/upgrade-check').mkdir(parents=True)
+    def main(self,today,due=DUE,verify=False,component='a',when=None):
+        comp={'id':'a','source_path':'addon','config_file':'config.yaml'}
+        if due is not None:comp['upgrade_comparison']={'data_check_due':due}
+        (self.dir/'registry.json').write_text(json.dumps({'providers':{'WOOWTECH/r':{'ref_policy':'release','components':[comp,{'id':'b','source_path':'b','config_file':'config.yaml'}]}}}))
+        if verify:(self.dir/'addon/upgrade-check/verify').write_text('#!/bin/sh\n')
+        args=['data-check-due','--registry',str(self.dir/'registry.json'),'--repo','WOOWTECH/r','--component',component,'--addon-dir',str(self.dir/'addon')]
+        if today is not None:args+=['--today',today]
+        with contextlib.redirect_stdout(io.StringIO()) as out:code=u.main(args)
+        return code,out.getvalue()
+    def test_before_the_due_date_passes_with_the_days_left(self):
+        code,out=self.main('2026-11-04');self.assertEqual(code,0);self.assertTrue(out.startswith('資料檢查期限 2026-11-17，剩 13 天'),out)
+    def test_on_the_due_date_passes_with_0_days_left(self):
+        code,out=self.main('2026-11-17');self.assertEqual(code,0);self.assertTrue(out.startswith('資料檢查期限 2026-11-17，剩 0 天'),out)
+    def test_the_day_after_the_due_date_fails_and_says_to_add_the_data_check(self):
+        code,out=self.main('2026-11-18');self.assertEqual(code,1)
+        self.assertTrue(out.startswith('資料檢查期限 2026-11-17 已過，要補資料檢查'),out);self.assertIn('1 days ago, and upgrade-check/ still has no verify',out)
+        self.assertIn('add the verify hook',out);self.assertNotIn('::error',out)  # the workflow gives it as the add-on's ::error
+    def test_with_verify_the_due_date_is_ignored(self):
+        for today in ('2026-11-04','2026-11-17','2027-01-01'):
+            with self.subTest(today):self.assertEqual(self.main(today,verify=True),(0,''))
+    def test_verify_must_be_a_file(self):
+        (self.dir/'addon/upgrade-check/verify').mkdir();self.assertEqual(self.main('2026-11-18')[0],1)
+    def test_without_a_due_date_nothing_is_judged(self):
+        self.assertEqual(self.main('2030-01-01',due=None),(0,''));self.assertEqual(self.main('2030-01-01',component='b'),(0,''))
+    def test_malformed_due_date_is_a_clear_error(self):
+        with self.assertRaisesRegex(ValueError,'it must be a date'):u.data_check_due({'id':'a','upgrade_comparison':{'data_check_due':None}},True,datetime.date(2026,11,4))
+        for due in ('2026-11-31','17-11-2026','2026-1-7','',' 2026-11-17',20261117,True):
+            with self.subTest(due=due):
+                for verify in (False,True):
+                    code,out=self.main('2026-11-04',due=due,verify=verify);self.assertEqual(code,2)
+                    self.assertIn(f'::error title=Upgrade comparison failed::a: the Store registry gives a upgrade_comparison.data_check_due {due!r}; it must be a date, YYYY-MM-DD (UTC)',out)
+    def test_malformed_today_and_unknown_add_on_fail(self):
+        code,out=self.main('04/11/2026');self.assertEqual(code,2);self.assertIn('::error',out)
+        code,out=self.main('2026-11-04',component='zz');self.assertEqual(code,2);self.assertIn('zz',out)
+    def test_today_defaults_to_the_utc_date(self):
+        real=datetime.datetime
+        class Fixed(real):
+            @classmethod
+            def now(cls,tz=None):return real(2026,11,17,23,30,tzinfo=datetime.timezone.utc).astimezone(tz)
+        with unittest.mock.patch.object(u.datetime,'datetime',Fixed):code,out=self.main(None)
+        self.assertEqual(code,0);self.assertTrue(out.startswith('資料檢查期限 2026-11-17，剩 0 天'),out)
+    def test_pure_rule(self):
+        comp={'id':'a','upgrade_comparison':{'data_check_due':'2026-12-08'}}
+        self.assertEqual(u.data_check_due(comp,False,datetime.date(2026,12,7))[0],True)
+        self.assertEqual(u.data_check_due(comp,False,datetime.date(2026,12,9))[0],False)
+        self.assertIsNone(u.data_check_due(comp,True,datetime.date(2026,12,9)));self.assertIsNone(u.data_check_due({'id':'a'},False,datetime.date(2026,12,9)))
+    def test_registry_due_dates_are_the_owners(self):
+        # Owner, pipeline #90 (#141): the add-ons with a database and their deadlines; none at provider level.
+        registry=json.loads((StepHarness.STORE/'.addon-sync/registry.json').read_text(encoding='utf-8'))
+        due={c['id']:c['upgrade_comparison']['data_check_due'] for p in registry['providers'].values() for c in p['components'] if u.DUE_KEY in (c.get('upgrade_comparison') or {})}
+        self.assertEqual(due,{'woow-n8n':'2026-11-17','odoo18ce':'2026-12-08','woow-nextcloud-office':'2026-12-08','woow-immich':'2026-12-29','woow-headscale':'2026-12-29'})
+        for comp in (c for p in registry['providers'].values() for c in p['components']):
+            with self.subTest(comp['id']):u.data_check_due(comp,False,datetime.date(2026,11,4))  # every date parses
+        for p in registry['providers'].values():self.assertNotIn(u.DUE_KEY,p.get('upgrade_comparison') or {})
 
 class SbomAttempt(unittest.TestCase):
     """A re-run must judge the image its own build made, not an earlier attempt's SBOM."""
