@@ -11,6 +11,12 @@ option defaults. Each version must start, judged as upgrade_check.startup_probe
 says from the Supervisor's address, and then stay up for stable_seconds; the
 add-on's upgrade-check/settings.yaml may override the time limits.
 
+Data directories: <root>/data at /data, or at the `path` of a `data` entry;
+each other `map` entry at its `path` or Supervisor's default, from
+<root>/<MAP_SOURCES[type] or type> (app_config/addon_config =
+all_app_configs/<slug>; legacy names share the new name's directory); entries
+Supervisor ignores are listed by upgrade_check.map_warnings().
+
 Data check (#138): the add-on's upgrade-check/ (in the PR) may hold the hooks
 `seed` (run once on the comparison target after it started, to write data) and
 `verify` (run on the new version after it started, to read that data back).
@@ -168,7 +174,8 @@ class UpgradeTestEnv:
             'PHASE': phase, 'REPORT_DIR': f'{IN_MOCK["reports"]}/{phase}', 'HOOK_STATE_DIR': IN_MOCK['state'],
             'SUPERVISOR_URL': 'http://127.0.0.1', 'SUPERVISOR_TOKEN': self.token}
         for m in mounts(config, IN_MOCK['data']):
-            out['DATA_DIR_' + m['source'].rsplit('/', 1)[1].upper()] = m['source']
+            # Named by the type as config.yaml writes it (a renamed type shares its directory with the new name).
+            out['DATA_DIR_' + m['type'].upper()] = m['source']
         return out
     def run_hook(self, hook, phase, image, config, timeout):
         """Run upgrade-check/<hook> against the running version: {hook, phase, passed, exit_code, detail, checks, output}."""

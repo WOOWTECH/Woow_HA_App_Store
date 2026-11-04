@@ -13,26 +13,29 @@ import json, os, sys, time, urllib.request, http.server
 req = urllib.request.Request('http://supervisor/addons/self/info', headers={'Authorization': 'Bearer ' + os.environ['SUPERVISOR_TOKEN']})
 info = json.load(urllib.request.urlopen(req, timeout=10))['data']
 assert info['slug'] == 'fake', info
-options = json.load(open('/data/options.json'))
+# Like headscale, the add-on's private data may be mounted at the path of a `data` map entry.
+D = '/var/lib/fake' if os.path.exists('/var/lib/fake/options.json') else '/data'
+if os.path.isdir('/config'):open('/config/fake.conf', 'w').write('conf')
+options = json.load(open(D + '/options.json'))
 assert options['greeting'] == 'hi', options
-starts = int(open('/data/starts').read()) + 1 if os.path.exists('/data/starts') else 1
-open('/data/starts', 'w').write(str(starts))
+starts = int(open(D + '/starts').read()) + 1 if os.path.exists(D + '/starts') else 1
+open(D + '/starts', 'w').write(str(starts))
 print('started', starts, flush=True)
 if os.environ['MODE'] == 'crash':
     time.sleep(2); sys.exit(3)
 if os.environ['MODE'] == 'forget':
     # Starts, but loses what the comparison target stored: an upgrade that drops the data.
-    import shutil; shutil.rmtree('/data/items', ignore_errors=True)
-os.makedirs('/data/items', exist_ok=True)
+    import shutil; shutil.rmtree(D + '/items', ignore_errors=True)
+os.makedirs(D + '/items', exist_ok=True)
 class H(http.server.BaseHTTPRequestHandler):
     # The add-on's own API for the data hooks: PUT /items/<key> stores the body in /data, GET /items/<key> reads it.
     def do_GET(self):
-        item = '/data/items/' + self.path[7:] if self.path.startswith('/items/') else ''
+        item = D + '/items/' + self.path[7:] if self.path.startswith('/items/') else ''
         if item and os.path.exists(item):
             self.send_response(200); self.end_headers(); self.wfile.write(open(item, 'rb').read()); return
         self.send_response(200 if self.path == '/health' else 404); self.end_headers(); self.wfile.write(str(starts).encode())
     def do_PUT(self):
-        open('/data/items/' + self.path[7:], 'wb').write(self.rfile.read(int(self.headers['Content-Length'])))
+        open(D + '/items/' + self.path[7:], 'wb').write(self.rfile.read(int(self.headers['Content-Length'])))
         self.send_response(204); self.end_headers()
 # Like hamh and woow-tailscale (ingress_port: 0), serve on the ingress port Supervisor reports, if any.
 server = http.server.HTTPServer(('0.0.0.0', info.get('ingress_port') or 8080), H)
@@ -52,6 +55,24 @@ open(env['DATA_DIR_SHARE'] + '/seeded.txt', 'w').write('seeded')
 json.dump(env, open(env['HOOK_STATE_DIR'] + '/seed-env.json', 'w'))
 json.dump({'checks': [{'name': 'item stored', 'result': 'pass', 'detail': 'greeting=hello'}]}, open(env['REPORT_DIR'] + '/seed.json', 'w'))
 print('seeded')
+'''
+# For the map types test: seed stores an item through the API (in the add-on's data, wherever it is mounted);
+# verify finds it, and the add-on's own files, in the directories DATA_DIR_DATA and DATA_DIR_ADDON_CONFIG name.
+SEED_ITEM = r'''#!/usr/bin/env python3
+import os, urllib.request
+urllib.request.urlopen(urllib.request.Request(os.environ['ADDON_URL'] + '/items/greeting', data=b'hello', method='PUT'), timeout=10)
+'''
+VERIFY_DIRS = r'''#!/usr/bin/env python3
+import json, os, sys
+env = dict(os.environ); data, conf = env.get('DATA_DIR_DATA', ''), env.get('DATA_DIR_ADDON_CONFIG', '')
+def read(path):return open(path).read() if os.path.exists(path) else None
+checks = [('addon_config dir', conf == '/upgrade-data/all_app_configs/fake', conf),
+    ('addon_config holds the add-on /config', read(conf + '/fake.conf') == 'conf', conf),
+    ('data dir holds the item written at /var/lib/fake', read(data + '/items/greeting') == 'hello', data),
+    ('no other data dirs', sorted(k for k in env if k.startswith('DATA_DIR_')) == ['DATA_DIR_ADDON_CONFIG', 'DATA_DIR_DATA'],
+        ' '.join(sorted(k for k in env if k.startswith('DATA_DIR_'))))]
+json.dump({'checks': [{'name': n, 'result': 'pass' if ok else 'fail', 'detail': str(d)} for n, ok, d in checks]}, open(env['REPORT_DIR'] + '/verify.json', 'w'))
+sys.exit(0 if all(ok for _, ok, _ in checks) else 1)
 '''
 # verify reads them back, checks what the framework hands it, and fails when a check fails.
 VERIFY = r'''#!/usr/bin/env python3
@@ -214,6 +235,15 @@ class Runtime(unittest.TestCase):
         self.assertIn('Data checked', summary); self.assertNotIn('Startup only', summary)
         for row in ('| seed | item stored | pass | greeting=hello |', '| verify | item kept | pass | hello |', '| verify | not applicable | skip |'):
             self.assertIn(row, summary)
+    def test_hooks_get_each_data_directory_by_its_map_type(self):
+        # #156: addon_config comes from all_app_configs/<slug>, and a `data` entry moves /data (headscale-style);
+        # DATA_DIR_<TYPE> is named by the type config.yaml writes and is the directory the add-on wrote to.
+        self.settings(stable_seconds=3)
+        self.hook('seed', SEED_ITEM); self.hook('verify', VERIFY_DIRS)
+        code, result, out = self.run_test('good', 'good', **{**self.DATA_CONFIG,
+            'map': [{'type': 'data', 'path': '/var/lib/fake'}, {'type': 'addon_config', 'read_only': False}]})
+        self.assertEqual(code, 0, out + json.dumps(result, indent=1))
+        self.assertEqual([c['result'] for c in result['phases'][1]['hooks'][0]['checks']], ['pass'] * 4)
     def test_new_version_that_loses_the_data_fails_in_verify(self):
         self.settings(stable_seconds=3); self.hook('seed', SEED); self.hook('verify', VERIFY)
         code, result, out = self.run_test('good', 'forget', **self.DATA_CONFIG)
