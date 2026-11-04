@@ -48,7 +48,12 @@
 # the new version); the repository never runs docker itself (hook interface:
 # upgrade_runtime.py's docstring). Without verify the data is not checked and
 # the summary says so. compare needs runtime, lists each add-on's report with
-# every check, and fails, with the reason, when the upgrade test fails. Callers that pass no
+# every check, and fails, with the reason, when the upgrade test fails. A comparison
+# target that cannot be tested (its image cannot be pulled, it does not start,
+# its seed fails) fails it too (#140), unless the add-on's Store registry entry
+# has upgrade_comparison.skip_upgrade_test (the approved reason and ticket):
+# then categories 2 and 3 are skipped and the report gives that reason. The
+# registry alone decides; there is no caller input. Callers that pass no
 # image_artifact are reported as not run yet (rolled out in #143); add-ons built
 # on the device are #144.
 #
@@ -475,6 +480,29 @@ jobs:
     - *install
     - *detect
     - *plan
+    # #140: an add-on whose upgrade test cannot run (categories 2 and 3) is skipped only when its Store registry entry
+    # approves it (upgrade_comparison.skip_upgrade_test, the reason and its ticket); the report gives that reason. The
+    # registry alone decides, so there is no caller input; an upgrade-check/settings.yaml that asks for the skip without
+    # the approval fails. Skipped add-ons leave this job's plan.jsonl, so no later step of this job sees them.
+    - name: Skip the upgrade tests the registry approves
+      if: steps.detect.outputs.changed == 'true'
+      env:
+        REPO: ${{ github.repository }}
+      run: |
+        set -euo pipefail
+        source tooling/.addon-sync/log.sh
+        source tooling/.addon-sync/fields.sh
+        mkdir -p runtime-reports; : > plan.tested.jsonl
+        while IFS= read -r row; do
+          fields "${row}" id=id notes=notes
+          reason="$(python3 tooling/.addon-sync/upgrade_check.py upgrade-test-skip --registry tooling/.addon-sync/registry.json --repo "${REPO}" \
+            --component "${id}" --settings "source/$(dirname "${notes}")/upgrade-check/settings.yaml")" || fail_output "${reason}"
+          if [ -z "${reason}" ]; then printf '%s\n' "${row}" >> plan.tested.jsonl; continue; fi
+          note="categories 2 and 3 skipped as approved in the Store registry: ${reason}"
+          jq -n --arg name "${id}" --arg note "${note}" '{name: $name, passed: null, skipped: true, note: $note}' > "runtime-reports/${id}.json"
+          echo "- ${id}: upgrade test not run (${note})" >> "$GITHUB_STEP_SUMMARY"
+        done < plan.jsonl
+        mv plan.tested.jsonl plan.jsonl
     - name: Plan the upgrade tests
       id: upgrade
       if: steps.detect.outputs.changed == 'true'
@@ -524,7 +552,8 @@ jobs:
         while IFS= read -r row; do
           fields "${row}" id=id ref=old_ref
           if ! docker pull --quiet --platform linux/amd64 "${ref}"; then
-            fail "${id}: cannot pull the comparison target's image ${ref} from the registry; re-run, or check that the image exists"; exit 1
+            # #140: the comparison target cannot be tested, so the upgrade comparison fails for this add-on with the reason.
+            target_failed "${id}" "cannot pull the comparison target's image ${ref} from the registry, so the upgrade cannot be tested; re-run, or check that the image exists"; exit 1
           fi
         done < <(jq -c 'select(.old_ref != "")' upgrade.jsonl)
     - name: Wait for the new images

@@ -1539,5 +1539,116 @@ class RuntimeRulesCommand(unittest.TestCase):
     def test_absent_settings_file_uses_the_defaults(self):
         code,out=self.run_cmd('startup-probe','--config',self.config(),'--settings',str(self.dir/'absent.yaml'))
         self.assertEqual((code,json.loads(out)['timeout']),(0,300))
+    def test_skip_upgrade_test_in_settings_is_not_a_time_limit(self):
+        # #140: upgrade-test-skip judges it; the time limits ignore it.
+        self.assertEqual(u.upgrade_settings({'skip_upgrade_test':'please','hook_timeout':5})['hook_timeout'],5)
+
+class UpgradeTestSkipCommand(unittest.TestCase):
+    """#140: skipping the upgrade test (categories 2 and 3) is approved per add-on in the Store registry
+    (upgrade_comparison.skip_upgrade_test, the reason and its ticket), like skip_vulnerability_scan per provider."""
+    REASON='#158: needs a physical enp2s0'
+    def setUp(self):
+        self.dir=pathlib.Path(tempfile.mkdtemp());self.addCleanup(shutil.rmtree,self.dir)
+    def main(self,approval=None,settings=None,component='a'):
+        comp={'id':'a','source_path':'.','config_file':'config.yaml'}
+        if approval is not None:comp['upgrade_comparison']={'skip_upgrade_test':approval}
+        (self.dir/'registry.json').write_text(json.dumps({'providers':{'WOOWTECH/r':{'ref_policy':'release','components':[comp,{'id':'b','source_path':'b','config_file':'config.yaml'}]}}}))
+        args=['upgrade-test-skip','--registry',str(self.dir/'registry.json'),'--repo','WOOWTECH/r','--component',component,'--settings',str(self.dir/'settings.yaml')]
+        if settings is not None:(self.dir/'settings.yaml').write_text(settings,encoding='utf-8')
+        with contextlib.redirect_stdout(io.StringIO()) as out:code=u.main(args)
+        return code,out.getvalue()
+    def test_approved_add_on_prints_the_registry_reason(self):
+        self.assertEqual(self.main(self.REASON),(0,self.REASON+'\n'))
+    def test_approval_is_per_add_on(self):
+        self.assertEqual(self.main(self.REASON,component='b'),(0,'\n'))
+    def test_without_approval_nothing_is_skipped(self):
+        self.assertEqual(self.main(),(0,'\n'));self.assertEqual(self.main(settings='hook_timeout: 5\n'),(0,'\n'))
+    def test_asking_for_the_skip_without_approval_fails_and_says_to_get_it_approved(self):
+        code,out=self.main(settings='skip_upgrade_test: "my add-on cannot start on a runner"\n')
+        self.assertEqual(code,2)
+        self.assertIn('::error title=Upgrade comparison failed::a: upgrade-check/settings.yaml asks for skip_upgrade_test, but skipping the upgrade test is not approved for a',out)
+        self.assertIn('needs upgrade_comparison.skip_upgrade_test with the reason',out);self.assertIn('get the skip approved in the registry',out)
+    def test_with_approval_the_report_gives_the_registrys_reason_not_the_repositorys(self):
+        self.assertEqual(self.main(self.REASON,settings='skip_upgrade_test: "my text"\n'),(0,self.REASON+'\n'))
+    def test_approval_must_be_a_reason(self):
+        for value in ('',' ',True,['#1: why']):
+            with self.subTest(value):
+                code,out=self.main(value);self.assertEqual(code,2);self.assertIn('it must be the approved reason and its ticket',out)
+    def test_unknown_add_on_fails(self):
+        code,out=self.main(component='zz');self.assertEqual(code,2);self.assertIn('zz',out)
+    def test_registry_approves_exactly_the_add_ons_the_owner_did(self):
+        # Owner, 2026-11-04 (pipeline #140): each skip names the ticket that adds what the runtime lacks; drop it when that lands.
+        registry=json.loads((StepHarness.STORE/'.addon-sync/registry.json').read_text(encoding='utf-8'))
+        approved={(repo,c['id']):u.upgrade_test_skip(c) for repo,p in registry['providers'].items() for c in p['components'] if u.upgrade_test_skip(c)}
+        self.assertEqual({k:re.match(r'#\d+',v).group() for k,v in approved.items()},{('WOOWTECH/woow-lan-gateway','woow_lan_gateway'):'#158',
+            ('WOOWTECH/Woow_ha_omnigent_addon','woow-omnigent'):'#157',('WOOWTECH/Woow_ha_pi_agent_add_on','woow_ha_pi_agent'):'#158'})
+        for p in registry['providers'].values():
+            with self.subTest('provider level'):self.assertNotIn('skip_upgrade_test',p.get('upgrade_comparison') or {})
+
+class UpgradeTestSkipStep(StepHarness):
+    """The runtime job's 'Skip the upgrade tests the registry approves' (#140): an approved add-on gets a result with the
+    registry's reason and leaves the job's plan; asking for the skip without the approval fails the job, so compare fails."""
+    STEP='Skip the upgrade tests the registry approves'
+    def approved(self,reason='#158: needs a physical enp2s0'):
+        return {'components':[{'id':'t','source_path':'addon','config_file':'config.yaml','upgrade_comparison':{'skip_upgrade_test':reason}}]}
+    def plan(self,**kw):
+        kw.setdefault('sbom','upgrade-comparison-sbom-*');kw.setdefault('image_artifact','upgrade-comparison-image-*')
+        return self.run_step(('plan',self.STEP,'upgrade'),**kw)
+    def test_no_caller_input(self):
+        # The registry alone decides: a caller cannot ask for the skip, and a caller of a repository that has one need not change.
+        self.assertNotIn('skip_upgrade_test',self.wf['on']['workflow_call']['inputs'])
+        names=[s.get('name') for s in self.wf['jobs']['runtime']['steps']]
+        self.assertEqual(names.index(self.STEP),names.index('Find the comparison targets')+1)
+        self.assertEqual(names.index('Plan the upgrade tests'),names.index(self.STEP)+1)
+        self.assertNotIn(self.STEP,[s.get('name') for s in self.wf['jobs']['compare']['steps']])
+    @needs_shell
+    def test_approved_add_on_is_skipped_with_the_registrys_reason(self):
+        r,_,out=self.plan(extra=self.approved(),files={'addon/upgrade-check/settings.yaml':'skip_upgrade_test: "my text"\n'})
+        self.assertEqual(r.returncode,0,r.stdout+r.stderr);self.assertIn('run=false',out)
+        self.assertEqual(self.plans,[]);self.assertEqual((self.tmp/'upgrade.jsonl').read_text(),'')
+        note='categories 2 and 3 skipped as approved in the Store registry: #158: needs a physical enp2s0'
+        self.assertEqual(json.loads((self.tmp/'runtime-reports/t.json').read_text()),{'name':'t','passed':None,'skipped':True,'note':note})
+        self.assertIn(f'- t: upgrade test not run ({note})',(self.tmp/'summary').read_text())
+    @needs_shell
+    def test_add_on_without_approval_is_tested(self):
+        r,_,out=self.plan()
+        self.assertEqual(r.returncode,0,r.stdout+r.stderr);self.assertIn('run=true',out);self.assertEqual([p['id'] for p in self.plans],['t'])
+        self.assertFalse((self.tmp/'runtime-reports/t.json').exists())
+    @needs_shell
+    def test_asking_for_the_skip_without_approval_fails(self):
+        r,_,_=self.plan(files={'addon/upgrade-check/settings.yaml':'skip_upgrade_test: "cannot start on a runner"\n'})
+        self.assertEqual(r.returncode,1)
+        self.assertIn('skipping the upgrade test is not approved for t',r.stdout);self.assertIn('get the skip approved in the registry',r.stdout)
+        self.assertFalse((self.tmp/'upgrade.jsonl').exists())
+    @needs_shell
+    def test_skipped_add_on_is_reported_with_the_reason_by_compare(self):
+        note='categories 2 and 3 skipped as approved in the Store registry: #157: admin_password has no default'
+        code,out,summary=UpgradeTestResult.result(self,[{'name':'t','passed':None,'skipped':True,'note':note}])
+        self.assertEqual(code,0,out);self.assertIn(f'- t: not run ({note})',summary)
+
+class ComparisonTargetFailure(StepHarness):
+    """#140: a comparison target that cannot be tested fails the upgrade comparison for that add-on, with the reason.
+    Pulling its image is the workflow's (target_failed, log.sh; #144 also calls it when a rebuild fails); a target that
+    does not start or whose seed fails is upgrade_runtime.py's (test_upgrade_runtime.py)."""
+    @needs_shell
+    def test_image_that_cannot_be_pulled_is_the_add_ons_failure_with_the_reason(self):
+        r,_,_=self.run_step(('plan','upgrade',"Pull the comparison targets' images"),sbom='upgrade-comparison-sbom-*',image_artifact='upgrade-comparison-image-*')
+        self.assertEqual(r.returncode,1)
+        reason="cannot pull the comparison target's image ghcr.io/da-anda/addon-amd64:1.0.0 from the registry, so the upgrade cannot be tested; re-run, or check that the image exists"
+        self.assertIn(f'::error title=Upgrade comparison failed::t: {reason}',r.stdout)
+        result=json.loads((self.tmp/'runtime-reports/t.json').read_text())
+        self.assertEqual(result,{'name':'t','passed':False,'reason':reason,'hooks':[],'data_checked':False,'phases':[]})
+        # It is the only reason compare gets (no reason-less runtime-job entry next to it), and compare fails with it.
+        self.assertEqual(RuntimeFailureRecord.record(self,results=(result,)),{'t.json':result})
+        code,out,summary=UpgradeTestResult.result(self,[result],runtime='failure')
+        self.assertEqual(code,1);self.assertIn(f't: upgrade test failed: {reason}',out);self.assertIn('- t: **failed**',summary)
+    @needs_shell
+    def test_target_failed_escapes_and_leaves_fail_log_alone(self):
+        import os,subprocess
+        tmp=pathlib.Path(tempfile.mkdtemp());self.addCleanup(shutil.rmtree,tmp)
+        script=f'source "{(self.STORE/".addon-sync/log.sh").as_posix()}"\ntarget_failed t "$1"\n'
+        r=subprocess.run(['bash','-c',script,'bash','bad\n::error::x'],cwd=tmp,env=dict(os.environ,FAIL_LOG=str(tmp/'fail.txt')),capture_output=True,text=True)
+        self.assertEqual(r.returncode,0,r.stderr);self.assertEqual(r.stdout,'::error title=Upgrade comparison failed::t: bad%0A::error::x\n')
+        self.assertFalse((tmp/'fail.txt').exists());self.assertEqual(json.loads((tmp/'runtime-reports/t.json').read_text())['reason'],'bad\n::error::x')
 
 if __name__=='__main__':unittest.main()

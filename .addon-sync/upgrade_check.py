@@ -410,6 +410,7 @@ def upgrade_settings(settings):
     limits=dict(SETTINGS_DEFAULTS)
     if settings is not None and not isinstance(settings,dict):raise ValueError('settings must be a mapping of setting: seconds')
     for key,value in (settings or {}).items():
+        if key==SKIP_KEY:continue  # not a time limit: upgrade_test_skip() refuses it unless the registry approves the skip
         if key not in limits:raise ValueError(f'unknown setting {key!r} (known: {", ".join(limits)})')
         if not isinstance(value,int) or isinstance(value,bool) or value<=0:raise ValueError(f'{key} must be a whole number of seconds above 0, not {value!r}')
         limits[key]=value
@@ -433,6 +434,23 @@ def startup_probe(config, settings=None):
     else:method,url,below='stays-up','',None
     if url.startswith('tcp://'):below=None
     return {'method':method,'url':url,'below':below,'timeout':limits['startup_timeout'],'stable_seconds':limits['stable_seconds']}
+
+SKIP_KEY='skip_upgrade_test'
+
+def upgrade_test_skip(component, settings=None):
+    """The reason the Store registry approves for skipping the upgrade test (categories 2 and 3) of `component` (its
+    registry entry), or '' when none is approved (#140, pipeline #90). Approved per add-on, like
+    skip_vulnerability_scan per provider: upgrade_comparison.skip_upgrade_test holds the reason and its ticket; the
+    report gives that reason. The registry alone decides, so a source repository cannot skip by itself:
+    `settings` (the add-on's upgrade-check/settings.yaml, parsed, or None) that asks for skip_upgrade_test without
+    the approval is a ValueError saying to get it approved in the registry; with the approval its text is ignored."""
+    given=component.get('upgrade_comparison') or {};approved=given.get(SKIP_KEY,'')
+    if SKIP_KEY in given and (not isinstance(approved,str) or not approved.strip()):
+        raise ValueError(f'the Store registry gives {component["id"]} upgrade_comparison.{SKIP_KEY} {approved!r}; it must be the approved reason and its ticket')
+    if not approved and isinstance(settings,dict) and SKIP_KEY in settings:
+        raise ValueError(f'upgrade-check/settings.yaml asks for {SKIP_KEY}, but skipping the upgrade test is not approved for {component["id"]}: '
+            f'the Store registry entry of this add-on needs upgrade_comparison.{SKIP_KEY} with the reason. Remove it from settings.yaml or get the skip approved in the registry.')
+    return approved.strip()
 
 class _Failed(Exception):
     """A command's expected failure: main() reports it as an ::error (title, message) and exits 2."""
@@ -495,7 +513,12 @@ def _startup_probe(a):
         print(json.dumps(startup_probe(_load(a.config,'yaml') or {},_load(a.settings,'yaml',optional=True))))
     return 0
 
-COMMANDS={'mounts':_mounts,'startup-probe':_startup_probe,'components':_components,'comparison-target':_comparison_target,'version':_version_command,'check-target':_check_target,'release-notes':_release_notes,'compare':_compare}
+def _upgrade_test_skip(a):
+    with _failing((ValueError,KeyError,TypeError,OSError)):_,comp=find_component(_load(a.registry,'json'),a.repo,a.component)  # names the repository and add-on
+    with _failing((ValueError,OSError,yaml.YAMLError),f'{a.component}: '):print(upgrade_test_skip(comp,_load(a.settings,'yaml',optional=True)))
+    return 0
+
+COMMANDS={'upgrade-test-skip':_upgrade_test_skip,'mounts':_mounts,'startup-probe':_startup_probe,'components':_components,'comparison-target':_comparison_target,'version':_version_command,'check-target':_check_target,'release-notes':_release_notes,'compare':_compare}
 
 def main(argv=None):
     p=argparse.ArgumentParser(description=__doc__.splitlines()[0]);sub=p.add_subparsers(dest='command',required=True)
@@ -528,6 +551,9 @@ def main(argv=None):
     m.add_argument('--config',required=True,help="the version's config.yaml");m.add_argument('--root',required=True,help='directory holding one directory per type')
     s=sub.add_parser('startup-probe',help='print how the upgrade test judges that a version starts, as JSON {method, url, below, timeout, stable_seconds} (startup_probe())')
     s.add_argument('--config',required=True,help="the version's config.yaml");s.add_argument('--settings',help='upgrade-check/settings.yaml of the add-on (may be absent)')
+    x=sub.add_parser('upgrade-test-skip',help="print the reason the Store registry approves for skipping the add-on's upgrade test (categories 2 and 3); nothing when none (upgrade_test_skip())")
+    x.add_argument('--registry',required=True,help='Store registry.json');x.add_argument('--repo',required=True,help='source repository, owner/name')
+    x.add_argument('--component',required=True,help='add-on id in the registry');x.add_argument('--settings',help='upgrade-check/settings.yaml of the add-on (may be absent)')
     a=p.parse_args(argv)
     try:return COMMANDS[a.command](a)
     except _Failed as e:
