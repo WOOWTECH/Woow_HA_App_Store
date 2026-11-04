@@ -299,24 +299,76 @@ def components(registry, repo):
     return {'ref_policy':provider['ref_policy'],'skip_vulnerability_scan':skip,'scan_published_image':published,
         'components':[{'id':c['id'],**paths(c)} for c in provider['components'] if publishes_releases(c)]}
 
-# Upgrade test (#137, category 2). Where Supervisor mounts each `map` type when the entry gives no `path`
-# (supervisor/addons/validate.py; `config` is the legacy name for Home Assistant's config, at /config).
-MAP_PATHS={'config':'/config','homeassistant_config':'/homeassistant','addon_config':'/config','all_addon_configs':'/addon_configs',
-    'ssl':'/ssl','addons':'/addons','backup':'/backup','share':'/share','media':'/media'}
+# Upgrade test (#137, #156, category 2). Every `map` type Supervisor accepts and where it mounts it when the entry
+# gives no `path` (home-assistant/supervisor@bde7fb7: supervisor/apps/const.py MappingType, apps/validate.py
+# RE_VOLUME and _migrate_app_config, docker/app.py DockerApp.mounts, docker/const.py PATH_*). `data` is the
+# add-on's private data, always read-write, mounted once at its `path` or /data.
+MAP_PATHS={'data':'/data','config':'/config','homeassistant_config':'/homeassistant','app_config':'/config','addon_config':'/config',
+    'all_app_configs':'/app_configs','all_addon_configs':'/addon_configs','local_apps':'/local_apps','addons':'/addons',
+    'ssl':'/ssl','backup':'/backup','share':'/share','media':'/media'}
+# The host directory under <root> each type is mounted from, when it is not <root>/<type>. Supervisor mounts the
+# add-on → app renames (2026.07) and `config` (the legacy name for Home Assistant's config) from the same host
+# directory as the new name, so a version that renames one keeps its data. An add-on's own config folder is
+# <app_configs>/<slug>, the folder all_app_configs shows as a whole (apps/app.py path_extern_config,
+# config.py path_extern_app_configs).
+MAP_SOURCES={'app_config':'all_app_configs/{slug}','addon_config':'all_app_configs/{slug}','all_addon_configs':'all_app_configs',
+    'addons':'local_apps','config':'homeassistant_config'}
+# Entries Supervisor ignores when another type is present, whatever their order (docker/app.py DockerApp.mounts
+# keys entries by type and prefers the new name; validate.py _migrate_app_config logs it): `config` drops
+# app_config, addon_config and homeassistant_config; a new name drops its legacy one.
+MAP_IGNORED_BY={'config':('app_config','addon_config','homeassistant_config'),'app_config':('addon_config',),
+    'all_app_configs':('all_addon_configs',),'local_apps':('addons',)}
+_MAP_STRING=re.compile(r'^(\w+)(?::(rw|ro))?$')
+
+def _map_entries(config):
+    """config.yaml's `map` as {type: (path, read_only)} after Supervisor drops the entries it skips or ignores, and
+    a warning for each dropped one. As in apps/validate.py (_migrate and the map schema): a string entry that is
+    not <type>[:rw|:ro] with a known type, a mapping without `type`, and an entry that is neither are skipped, so
+    the add-on still loads; a mapping with `type` must have a known type, a boolean read_only (default true) and
+    a string path, and no other key, or Supervisor does not load the add-on. A string is read-only unless :rw."""
+    entries,warnings={},[]
+    for entry in config.get('map') or []:
+        if isinstance(entry,str):
+            if not ((m:=_MAP_STRING.match(entry)) and m[1] in MAP_PATHS):
+                warnings.append(f'map entry {entry!r} is skipped because it is not <type>[:rw|:ro] (as Supervisor does)');continue
+            kind,read_only,path=m[1],m[2]!='rw',None
+        elif isinstance(entry,dict):
+            if 'type' not in entry:
+                warnings.append(f"map entry {entry!r} is skipped because it has no 'type' (as Supervisor does)");continue
+            kind,read_only,path=entry['type'],entry.get('read_only',True),entry.get('path')
+            if not (isinstance(kind,str) and kind in MAP_PATHS and isinstance(read_only,bool)
+                    and isinstance(entry.get('path',''),str) and set(entry)<={'type','read_only','path'}):
+                raise ValueError(f'invalid map entry {entry!r}; Supervisor does not load an add-on with it')
+        else:
+            warnings.append(f'map entry {entry!r} is skipped because it is neither a string nor a mapping (as Supervisor does)');continue
+        entries[kind]=(path,read_only)
+    for kind,ignored in MAP_IGNORED_BY.items():
+        if kind in entries:
+            for other in ignored:
+                if entries.pop(other,None) is not None:warnings.append(f"map entry '{other}' is ignored because '{kind}' is present (as Supervisor does)")
+    return entries,warnings
+
+def map_warnings(config):
+    """The `map` entries Supervisor ignores for this config.yaml, one message each, for the upgrade test's report."""
+    return _map_entries(config)[1]
 
 def mounts(config, root):
-    """The data directories of an add-on: /data, then one per `map` entry at its `path` (or Supervisor's default).
-    Each is the directory <root>/<type>, so the comparison target and the new version share the same set even when
-    one of them moves a type to another path. A string entry is read-only unless it ends in :rw; a mapping is
-    read-only unless read_only: false (Supervisor's defaults)."""
-    out=[{'source':f'{root}/data','target':'/data','read_only':False}]
-    for entry in config.get('map') or []:
-        if isinstance(entry,str):kind,_,mode=entry.partition(':');read_only=mode!='rw';path=None
-        elif isinstance(entry,dict):kind,read_only,path=entry.get('type'),entry.get('read_only',True) is not False,entry.get('path')
-        else:kind=None
-        if kind not in MAP_PATHS:raise ValueError(f'unknown map entry {entry!r}')
-        out.append({'source':f'{root}/{kind}','target':path or MAP_PATHS[kind],'read_only':read_only})
-    # Two entries at one path (config and addon_config both default to /config) cannot both be mounted.
+    """The data directories of an add-on: <root>/data at /data (or at the `path` of its `data` entry), then one per
+    other `map` entry at its `path` (or Supervisor's default), from <root>/<MAP_SOURCES[type] or type>. The
+    comparison target and the new version share the same set even when one of them moves or renames a type. As
+    in Supervisor, a repeated type keeps its last entry and skipped or ignored entries are dropped (map_warnings lists them).
+    Each is {type, source, target, read_only}; type is 'data' for the data mount, else the map type as config.yaml
+    writes it (addon_config stays addon_config), for naming per-directory settings such as the hooks' variables."""
+    entries,_=_map_entries(config)
+    data_path,_=entries.pop('data',(None,False))
+    out=[{'type':'data','source':f'{root}/data','target':data_path or MAP_PATHS['data'],'read_only':False}]
+    for kind,(path,read_only) in entries.items():
+        source=MAP_SOURCES.get(kind,kind)
+        if '{slug}' in source:
+            if not config.get('slug'):raise ValueError(f'map entry {kind!r} needs the add-on slug')
+            source=source.format(slug=config['slug'])
+        out.append({'type':kind,'source':f'{root}/{source}','target':path or MAP_PATHS[kind],'read_only':read_only})
+    # Two entries at one path (a custom path onto another type's) cannot both be mounted.
     targets=[m['target'] for m in out]
     for t in targets:
         if targets.count(t)>1:raise ValueError(f'two data directories are mounted at {t}; give one of the map entries a path')
@@ -472,7 +524,7 @@ def main(argv=None):
     v.add_argument('--as-written',action='store_true',help="the PR's version: fail unless it reads as its text does (unquoted 1.10 is 1.1)")
     k=sub.add_parser('components',help="print what the workflow needs from the repository's registry entry (JSON, see components())")
     k.add_argument('--registry',required=True,help='Store registry.json');k.add_argument('--repo',required=True,help='source repository, owner/name')
-    m=sub.add_parser('mounts',help="print the upgrade test's data directories as JSON [{source, target, read_only}] (mounts())")
+    m=sub.add_parser('mounts',help="print the upgrade test's data directories as JSON [{type, source, target, read_only}] (mounts())")
     m.add_argument('--config',required=True,help="the version's config.yaml");m.add_argument('--root',required=True,help='directory holding one directory per type')
     s=sub.add_parser('startup-probe',help='print how the upgrade test judges that a version starts, as JSON {method, url, below, timeout, stable_seconds} (startup_probe())')
     s.add_argument('--config',required=True,help="the version's config.yaml");s.add_argument('--settings',help='upgrade-check/settings.yaml of the add-on (may be absent)')

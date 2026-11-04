@@ -1402,18 +1402,88 @@ class RuntimeRulesCommand(unittest.TestCase):
     def test_map_entries_mount_at_supervisor_default_paths(self):
         # n8n's map: its data is in /config (addon_config); a dict entry is read-only unless read_only: false.
         got=self.mounts(map=[{'type':'addon_config','read_only':False},{'type':'share'},'media:rw','ssl','homeassistant_config'])
-        self.assertEqual(got,[('/w/data','/data',False),('/w/addon_config','/config',False),('/w/share','/share',True),
+        self.assertEqual(got,[('/w/data','/data',False),('/w/all_app_configs/test','/config',False),('/w/share','/share',True),
             ('/w/media','/media',False),('/w/ssl','/ssl',True),('/w/homeassistant_config','/homeassistant',True)])
+    def test_every_supervisor_type_has_its_default_path(self):
+        # home-assistant/supervisor@bde7fb7 docker/const.py PATH_*; aliases share their new name's directory.
+        expected={'config':('homeassistant_config','/config'),'homeassistant_config':('homeassistant_config','/homeassistant'),
+            'app_config':('all_app_configs/test','/config'),'addon_config':('all_app_configs/test','/config'),
+            'all_app_configs':('all_app_configs','/app_configs'),'all_addon_configs':('all_app_configs','/addon_configs'),
+            'local_apps':('local_apps','/local_apps'),'addons':('local_apps','/addons'),'ssl':('ssl','/ssl'),
+            'backup':('backup','/backup'),'share':('share','/share'),'media':('media','/media')}
+        self.assertEqual(set(expected)|{'data'},set(u.MAP_PATHS))
+        for kind,(source,target) in expected.items():
+            with self.subTest(kind):
+                self.assertEqual(self.mounts(map=[kind]),[('/w/data','/data',False),(f'/w/{source}',target,True)])
+                self.assertEqual(self.mounts(map=[{'type':kind,'path':'/custom','read_only':False}]),
+                    [('/w/data','/data',False),(f'/w/{source}','/custom',False)])
+    def test_odoo_app_config_shares_the_addon_config_directory(self):
+        # odoo #330 renames addon_config:rw to app_config:rw; both versions see the same directory at /config.
+        self.assertEqual(self.mounts(map=['app_config:rw']),self.mounts(map=['addon_config:rw']))
+        self.assertEqual(self.mounts(map=['app_config:rw']),[('/w/data','/data',False),('/w/all_app_configs/test','/config',False)])
+    def test_data_entry_is_the_one_data_directory(self):
+        # nextcloud #12 lists data itself; Supervisor mounts the add-on's data once, read-write, at its path or /data.
+        self.assertEqual(self.mounts(map=[{'type':'data','read_only':False}]),[('/w/data','/data',False)])
+        self.assertEqual(self.mounts(map=['data']),[('/w/data','/data',False)])
+        self.assertEqual(self.mounts(map=[{'type':'data','path':'/var/lib/app'},'share']),
+            [('/w/data','/var/lib/app',False),('/w/share','/share',True)])
     def test_custom_path_is_where_the_directory_is_mounted(self):
-        # headscale keeps its database in /var/lib/headscale.
-        got=self.mounts(map=[{'type':'addon_config','path':'/var/lib/headscale','read_only':False}])
-        self.assertEqual(got,[('/w/data','/data',False),('/w/addon_config','/var/lib/headscale',False)])
+        # headscale's map (Woow_ha_vpn_headscale_package headscale/config.yaml): its database in /var/lib/headscale
+        # (data), its config in /etc/headscale (addon_config).
+        got=self.mounts(map=[{'type':'addon_config','path':'/etc/headscale','read_only':False},{'type':'data','path':'/var/lib/headscale'}])
+        self.assertEqual(got,[('/w/data','/var/lib/headscale',False),('/w/all_app_configs/test','/etc/headscale',False)])
+    def test_each_mount_names_its_type_as_written(self):
+        # 'data' for the data mount wherever it is; otherwise the map type as config.yaml writes it.
+        def types(m):
+            code,out=self.run_cmd('mounts','--config',self.config(map=m),'--root','/w')
+            self.assertEqual(code,0,out);return [(x['type'],x['source'],x['target']) for x in json.loads(out)]
+        self.assertEqual(types([{'type':'addon_config','path':'/etc/headscale','read_only':False},{'type':'data','path':'/var/lib/headscale'}]),
+            [('data','/w/data','/var/lib/headscale'),('addon_config','/w/all_app_configs/test','/etc/headscale')])
+        self.assertEqual(types(['addon_config:rw','share']),
+            [('data','/w/data','/data'),('addon_config','/w/all_app_configs/test','/config'),('share','/w/share','/share')])
+        self.assertEqual([t for t,_,_ in types(['app_config','config:rw'])],['data','config'])
+    def test_own_config_folder_is_inside_all_app_configs(self):
+        # Supervisor's app_config is <app_configs>/<slug>, the folder all_app_configs shows as a whole.
+        self.assertEqual(self.mounts(map=['app_config:rw','all_app_configs']),
+            [('/w/data','/data',False),('/w/all_app_configs/test','/config',False),('/w/all_app_configs','/app_configs',True)])
+        code,out=self.run_cmd('mounts','--config',self.config(slug='',map=['app_config']),'--root','/w')
+        self.assertEqual(code,2);self.assertIn("map entry 'app_config' needs the add-on slug",out)
     def test_legacy_config_is_home_assistant_config_at_config(self):
-        self.assertEqual(self.mounts(map=['config:rw']),[('/w/data','/data',False),('/w/config','/config',False)])
-    def test_unknown_map_type_fails_with_the_reason(self):
-        code,out=self.run_cmd('mounts','--config',self.config(map=['nope']),'--root','/w')
-        self.assertEqual(code,2);self.assertIn("unknown map entry 'nope'",out)
-        code,out=self.run_cmd('mounts','--config',self.config(map=['config:rw','addon_config:rw']),'--root','/w')
+        self.assertEqual(self.mounts(map=['config:rw']),[('/w/data','/data',False),('/w/homeassistant_config','/config',False)])
+    def test_superseded_types_are_dropped_as_supervisor_does(self):
+        # config drops app_config/addon_config/homeassistant_config; a new name drops its legacy one, in either order.
+        self.assertEqual(self.mounts(map=['config:rw','addon_config:rw','homeassistant_config']),
+            [('/w/data','/data',False),('/w/homeassistant_config','/config',False)])
+        self.assertEqual(self.mounts(map=['addon_config','app_config:rw','addons','local_apps','all_addon_configs','all_app_configs']),
+            [('/w/data','/data',False),('/w/all_app_configs/test','/config',False),('/w/local_apps','/local_apps',True),('/w/all_app_configs','/app_configs',True)])
+        self.assertEqual(self.mounts(map=['app_config:rw','addon_config','local_apps','addons','all_app_configs','all_addon_configs']),
+            [('/w/data','/data',False),('/w/all_app_configs/test','/config',False),('/w/local_apps','/local_apps',True),('/w/all_app_configs','/app_configs',True)])
+        # A repeated type keeps its last entry.
+        self.assertEqual(self.mounts(map=['share','share:rw']),[('/w/data','/data',False),('/w/share','/share',False)])
+    def test_ignored_entries_are_reported(self):
+        self.assertEqual(u.map_warnings({'map':['config:rw','addon_config','homeassistant_config']}),
+            ["map entry 'addon_config' is ignored because 'config' is present (as Supervisor does)",
+             "map entry 'homeassistant_config' is ignored because 'config' is present (as Supervisor does)"])
+        self.assertEqual(u.map_warnings({'map':['addon_config','app_config']}),
+            ["map entry 'addon_config' is ignored because 'app_config' is present (as Supervisor does)"])
+        self.assertEqual(u.map_warnings({'map':['app_config:rw','share']}),[])
+    def test_entries_supervisor_skips_are_skipped_and_reported(self):
+        # apps/validate.py skips (and logs) a string that is not <known type>[:rw|:ro], a mapping without `type`,
+        # and anything else; the add-on still loads, so the upgrade test still runs it.
+        for entry in ['nope','media:rx','media:','share:rw:ro',{'path':'/x'},{'read_only':False},5,['share'],None]:
+            with self.subTest(entry=entry):
+                self.assertEqual(self.mounts(map=[entry,'share']),[('/w/data','/data',False),('/w/share','/share',True)])
+                self.assertEqual(len(u.map_warnings({'map':[entry,'share']})),1)
+                self.assertIn('is skipped because',u.map_warnings({'map':[entry]})[0])
+    def test_map_entries_supervisor_rejects_fail_with_the_reason(self):
+        # Supervisor's map schema: a known type, a boolean read_only (no coercion), a string path, no other key.
+        for entry in [{'type':'nope'},{'type':['share']},{'type':{'a':1}},{'type':5},{'type':'share','read_only':'false'},
+                {'type':'share','read_only':0},{'type':'share','path':5},{'type':'share','mode':'rw'}]:
+            with self.subTest(entry=entry):
+                code,out=self.run_cmd('mounts','--config',self.config(map=[entry]),'--root','/w')
+                self.assertEqual(code,2,out);self.assertIn('invalid map entry',out)
+        self.assertEqual(self.mounts(map=['share:ro']),[('/w/data','/data',False),('/w/share','/share',True)])
+        code,out=self.run_cmd('mounts','--config',self.config(map=['app_config:rw',{'type':'share','path':'/config'}]),'--root','/w')
         self.assertEqual(code,2);self.assertIn('two data directories are mounted at /config',out)
     def probe(self,settings=None,**cfg):
         args=['startup-probe','--config',self.config(**cfg)]
