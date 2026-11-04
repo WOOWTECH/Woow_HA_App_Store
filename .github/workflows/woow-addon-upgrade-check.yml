@@ -454,16 +454,26 @@ jobs:
           # test ran (passed or failed, plan.jsonl gives its directory). Without upgrade-check/verify in the PR it passes with
           # the days left through the due date and fails from the day after; with verify, or with no due date, nothing. An
           # add-on whose test did not run (no comparison target, approved skip, no image_artifact, built on the device
-          # before #144) has passed null and is not judged.
+          # before #144) has passed null and is not judged, nor is the "runtime job" record (not an add-on). The due dates
+          # of every add-on are also checked on every PR (upgrade_check.py components, in "Find add-ons whose version
+          # changed"). DATA_CHECK_TODAY (YYYY-MM-DD) is only for the tests; the workflow judges the UTC date of the run.
+          # TODO(#140): target_failed (log.sh) writes hooks [] whatever upgrade-check/ has; verify is therefore read from
+          # the PR's upgrade-check/ here. Once target_failed records the hooks the add-on has, this can read the result.
           jq -e '.passed == true or .passed == false' "${result}" > /dev/null || continue
+          [ "${id}" != "runtime job" ] || continue
           notes="$(jq -r --arg id "${id}" 'select(.id == $id) | .notes' plan.jsonl 2> /dev/null | head -n1)" || notes=""
-          [ -n "${notes}" ] || continue
+          if [ -z "${notes}" ]; then
+            fail "${id}: the upgrade test has a result for this add-on, but this job's plan does not list it, so its data-check deadline cannot be judged; re-run all jobs"
+            status=1; echo "- ${id}: **data-check deadline not judged: not in this job's plan**" >> "$GITHUB_STEP_SUMMARY"; continue
+          fi
           rc=0; due="$(python3 tooling/.addon-sync/upgrade_check.py data-check-due --registry tooling/.addon-sync/registry.json --repo "${REPO}" \
-            --component "${id}" --addon-dir "source/$(dirname "${notes}")")" || rc=$?
+            --component "${id}" --addon-dir "source/$(dirname "${notes}")" ${DATA_CHECK_TODAY:+--today "${DATA_CHECK_TODAY}"})" || rc=$?
           case "${rc}" in
             0) [ -z "${due}" ] || echo "- ${id}: ${due}" >> "$GITHUB_STEP_SUMMARY";;
-            1) fail "${id}: ${due}"; status=1; echo "- ${id}: **${due}**" >> "$GITHUB_STEP_SUMMARY";;
-            *) printf '%s\n' "${due}"; status=1;;
+            3) fail "${id}: ${due}"; status=1; echo "- ${id}: **${due}**" >> "$GITHUB_STEP_SUMMARY";;
+            # 2: its ::error line, printed as is. Anything else (a crash) gets one, so it never passes silently.
+            *) if [ "${rc}" = 2 ]; then printf '%s\n' "${due}"; else fail "${id}: the data-check deadline could not be judged: upgrade_check.py data-check-due exited ${rc}"; fi
+              status=1; echo "- ${id}: **data-check deadline could not be judged (upgrade_check.py data-check-due exited ${rc}); the log has the error**" >> "$GITHUB_STEP_SUMMARY";;
           esac
         done
         # upgrade_runtime.py's report of each add-on: both versions' startup and every check of its hooks.

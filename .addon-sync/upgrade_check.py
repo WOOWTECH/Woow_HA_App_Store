@@ -296,28 +296,40 @@ def components(registry, repo):
     approved=provider.get('upgrade_comparison') or {}
     skip,published=approved.get('skip_vulnerability_scan',''),approved.get('scan_published_image','')
     if skip and published:raise ValueError(f'{repo}: the Store registry gives both skip_vulnerability_scan and scan_published_image; category 4 is either skipped or scans the published image, keep one')
+    # #141: every add-on's data-check deadline is checked on every PR of the repository, also one whose upgrade test does not run.
+    for c in provider['components']:due_date(c,f'{repo} ')
     return {'ref_policy':provider['ref_policy'],'skip_vulnerability_scan':skip,'scan_published_image':published,
         'components':[{'id':c['id'],**paths(c)} for c in provider['components'] if publishes_releases(c)]}
 
 DUE_KEY='data_check_due'
+
+def due_date(component, prefix=''):
+    """The data-check due date of `component` (its Store registry entry; #141): upgrade_comparison.data_check_due as a
+    date, or None when it has none. A ValueError, its message starting with `prefix`, when upgrade_comparison is not a
+    mapping or the due date is not a real YYYY-MM-DD date; components() checks every add-on with it on every PR."""
+    given=component.get('upgrade_comparison')
+    if given is None:return None
+    if not isinstance(given,dict):
+        raise ValueError(f'{prefix}{component.get("id")}: the Store registry gives upgrade_comparison {given!r}; upgrade_comparison must be a mapping')
+    if DUE_KEY not in given:return None
+    due=given[DUE_KEY]
+    try:
+        if not isinstance(due,str) or not re.fullmatch(r'\d{4}-\d{2}-\d{2}',due):raise ValueError
+        return datetime.date.fromisoformat(due)
+    except ValueError:
+        raise ValueError(f'{prefix}{component.get("id")}: the Store registry gives upgrade_comparison.{DUE_KEY} {due!r}; it must be a date, YYYY-MM-DD (UTC)') from None
 
 def data_check_due(component, has_verify, today):
     """The data-check deadline of `component` (its Store registry entry; #141, pipeline #90): an add-on with a database
     has until upgrade_comparison.data_check_due (YYYY-MM-DD, a UTC date) to add the verify hook to its upgrade-check/.
     Returns None when the rule says nothing: no due date, or `has_verify` (the deadline is then ignored). Otherwise
     (passed, message): through the due date itself (0 days left) an upgrade test without verify passes and the report
-    gives the days left; from the day after (`today` past the due date, both UTC dates) it fails. A due date that is not
-    a real YYYY-MM-DD date is a ValueError, also when the add-on has verify, so a broken registry entry never passes."""
-    given=component.get('upgrade_comparison') or {}
-    if DUE_KEY not in given:return None
-    due=given[DUE_KEY]
-    try:
-        if not isinstance(due,str) or not re.fullmatch(r'\d{4}-\d{2}-\d{2}',due):raise ValueError
-        day=datetime.date.fromisoformat(due)
-    except ValueError:
-        raise ValueError(f'the Store registry gives {component["id"]} upgrade_comparison.{DUE_KEY} {due!r}; it must be a date, YYYY-MM-DD (UTC)') from None
-    if has_verify:return None
-    left=(day-today).days
+    gives the days left; from the day after (`today` past the due date, both UTC dates) it fails. A malformed entry is
+    due_date()'s ValueError, also when the add-on has verify, so a broken registry entry never passes. The deadline is
+    judged when the check runs, not when the PR merges: a green run from before the deadline can still merge after it."""
+    day=due_date(component)
+    if day is None or has_verify:return None
+    due,left=day.isoformat(),(day-today).days
     if left>=0:return True,f'資料檢查期限 {due}，剩 {left} 天 (data check due {due}, {left} days left; until then the upgrade test without verify passes)'
     return False,(f'資料檢查期限 {due} 已過，要補資料檢查 (the data check was due {due}, {-left} days ago, and upgrade-check/ still has no verify): '
         f'add the verify hook (with seed) to upgrade-check/ so the upgrade test checks the data, Store README category 2')
@@ -471,15 +483,18 @@ def _components(a):
     with _failing((ValueError,KeyError,TypeError,OSError,Blocked)):print(json.dumps(components(_load(a.registry,'json'),a.repo)))
     return 0
 
+OVERDUE=3  # data-check-due's exit code for "the deadline has passed": not 1 (an uncaught exception) nor 2 (a tool error)
+
 def _data_check_due(a):
-    # Prints the verdict's message (nothing when the rule says nothing); exit 1 when the deadline has passed, the
+    # Prints the verdict's message (nothing when the rule says nothing); exits OVERDUE when the deadline has passed, the
     # message printed plainly so the workflow gives it as the add-on's ::error. verify counts as upgrade_runtime.py does.
-    with _failing((ValueError,KeyError,TypeError,OSError)):_,comp=find_component(_load(a.registry,'json'),a.repo,a.component)  # names the repository and add-on
-    with _failing(ValueError,f'{a.component}: '):
+    # Any other failure, an unexpected one included, is a tool error (::error, exit 2), never an overdue verdict.
+    with _failing(Exception):_,comp=find_component(_load(a.registry,'json'),a.repo,a.component)  # names the repository and add-on
+    with _failing(Exception,f'{a.component}: --today: '):
         today=datetime.date.fromisoformat(a.today) if a.today else datetime.datetime.now(datetime.timezone.utc).date()
-        verdict=data_check_due(comp,(pathlib.Path(a.addon_dir)/'upgrade-check'/'verify').is_file(),today)
+    with _failing(Exception):verdict=data_check_due(comp,(pathlib.Path(a.addon_dir)/'upgrade-check'/'verify').is_file(),today)
     if verdict is None:return 0
-    print(verdict[1]);return 0 if verdict[0] else 1
+    print(verdict[1]);return 0 if verdict[0] else OVERDUE
 
 def _comparison_target(a):
     # The registry lookup, Release filter, tag rule and order are addon_sync's, so the PR check and the Release notes agree.
@@ -528,9 +543,7 @@ def _startup_probe(a):
         print(json.dumps(startup_probe(_load(a.config,'yaml') or {},_load(a.settings,'yaml',optional=True))))
     return 0
 
-COMMANDS={'mounts':_mounts,'startup-probe':_startup_probe,'components':_components,'comparison-target':_comparison_target,'version':_version_command,'check-target':_check_target,'release-notes':_release_notes,'compare':_compare}
-
-COMMANDS['data-check-due']=_data_check_due  # #141
+COMMANDS={'mounts':_mounts,'startup-probe':_startup_probe,'components':_components,'comparison-target':_comparison_target,'version':_version_command,'check-target':_check_target,'release-notes':_release_notes,'compare':_compare,'data-check-due':_data_check_due}
 
 def main(argv=None):
     p=argparse.ArgumentParser(description=__doc__.splitlines()[0]);sub=p.add_subparsers(dest='command',required=True)
@@ -560,7 +573,7 @@ def main(argv=None):
     k=sub.add_parser('components',help="print what the workflow needs from the repository's registry entry (JSON, see components())")
     k.add_argument('--registry',required=True,help='Store registry.json');k.add_argument('--repo',required=True,help='source repository, owner/name')
     d=sub.add_parser('data-check-due',help="judge the add-on's data-check deadline (upgrade_comparison.data_check_due, data_check_due()): print the days left, "
-        "or, exit 1, that it has passed without verify; nothing when it has no due date or has verify")
+        "or, exit 3, that it has passed without verify; nothing when it has no due date or has verify")
     d.add_argument('--registry',required=True,help='Store registry.json');d.add_argument('--repo',required=True,help='source repository, owner/name')
     d.add_argument('--component',required=True,help='add-on id in the registry')
     d.add_argument('--addon-dir',required=True,help="the add-on's directory in the PR checkout; it has verify when upgrade-check/verify is a file")

@@ -828,6 +828,12 @@ class UpgradeTestResult(StepHarness):
         tmp=pathlib.Path(tempfile.mkdtemp());self.addCleanup(shutil.rmtree,tmp)
         (tmp/'runtime-reports').mkdir();(tmp/'bin').mkdir();(tmp/'tooling/.addon-sync').mkdir(parents=True)
         shutil.copy(self.STORE/'.addon-sync/log.sh',tmp/'tooling/.addon-sync/log.sh')
+        # #141: each add-on with a result is in this job's plan and the registry, with no data-check due date.
+        for f in (self.STORE/'.addon-sync').glob('*.py'):shutil.copy(f,tmp/'tooling/.addon-sync'/f.name)
+        names=[r['name'] for r in results if r['name']!='runtime job']
+        (tmp/'tooling/.addon-sync/registry.json').write_text(json.dumps({'providers':{'o/r':{'ref_policy':'release','components':[
+            {'id':n,'source_path':n,'config_file':'config.yaml'} for n in names]}}}))
+        (tmp/'plan.jsonl').write_text(''.join(json.dumps({'id':n,'notes':f'{n}/upgrade-notes.yaml'})+'\n' for n in names))
         # No artifact to download: the results are already in runtime-reports/.
         (tmp/'bin/gh').write_text('#!/bin/sh\nexit 0\n',newline='\n');(tmp/'bin/gh').chmod(0o755)
         for r in results:(tmp/'runtime-reports'/f"{r['name']}.json").write_text(json.dumps(r))
@@ -870,9 +876,10 @@ class UpgradeTestResult(StepHarness):
 
 class DataCheckDueStep(StepHarness):
     """compare's 'Upgrade test result' applies the data-check deadline (#141) to each add-on whose upgrade test ran."""
-    def result(self,result,due='2026-11-17',verify=False,in_plan=True):
+    TODAY='2026-11-10'  # DATA_CHECK_TODAY: fixed, so no test races UTC midnight
+    def result(self,result,due='2026-11-17',verify=False,in_plan=True,crash=False):
         """result: t's runtime-reports/t.json. due: t's data_check_due in the registry (None: none). verify: the PR's
-        upgrade-check/ has verify. (exit code, stdout, step summary). Today is the real UTC date, so dates are relative to it."""
+        upgrade-check/ has verify. crash: upgrade_check.py dies with exit 1 and no output. (exit code, stdout, step summary)."""
         import os,subprocess
         tmp=pathlib.Path(tempfile.mkdtemp());self.addCleanup(shutil.rmtree,tmp)
         (tmp/'runtime-reports').mkdir();(tmp/'bin').mkdir();(tmp/'tooling/.addon-sync').mkdir(parents=True);(tmp/'source/addon/upgrade-check').mkdir(parents=True)
@@ -883,19 +890,23 @@ class DataCheckDueStep(StepHarness):
         (tmp/'tooling/.addon-sync/registry.json').write_text(json.dumps({'providers':{'o/r':{'ref_policy':'release','components':[comp]}}}))
         if in_plan:(tmp/'plan.jsonl').write_text(json.dumps({'id':'t','notes':'addon/upgrade-notes.yaml'})+'\n')
         if verify:(tmp/'source/addon/upgrade-check/verify').write_text('#!/bin/sh\nexit 0\n',newline='\n')
+        if crash:(tmp/'tooling/.addon-sync/upgrade_check.py').write_text('import sys\nsys.exit(1)\n')
         (tmp/'bin/gh').write_text('#!/bin/sh\nexit 0\n',newline='\n');(tmp/'bin/gh').chmod(0o755)
         (tmp/'runtime-reports/t.json').write_text(json.dumps(result))
         (tmp/'step.sh').write_text(self.step('Upgrade test result')['run'],newline='\n');(tmp/'summary.md').write_text('')
         env=dict(os.environ,PATH=f"{tmp/'bin'}{os.pathsep}{os.environ['PATH']}",GITHUB_STEP_SUMMARY=str(tmp/'summary.md'),RUNNER_TEMP=str(tmp),
-            REPO='o/r',RUN_ID='1',RUN_ATTEMPT='1',RUNTIME_RESULT='success' if result.get('passed') is not False else 'failure')
+            REPO='o/r',RUN_ID='1',RUN_ATTEMPT='1',RUNTIME_RESULT='success' if result.get('passed') is not False else 'failure',DATA_CHECK_TODAY=self.TODAY)
         r=subprocess.run(['bash',str(tmp/'step.sh')],cwd=tmp,env=env,capture_output=True,text=True)
         return r.returncode,r.stdout,(tmp/'summary.md').read_text(encoding='utf-8')
     PASSED={'name':'t','passed':True,'reason':'','hooks':[],'data_checked':False,'phases':[]}
-    def day(self,offset):return (datetime.datetime.now(datetime.timezone.utc).date()+datetime.timedelta(days=offset)).isoformat()
+    def day(self,offset):return (datetime.date.fromisoformat(self.TODAY)+datetime.timedelta(days=offset)).isoformat()
     @needs_shell
     def test_before_the_due_date_startup_only_passes_with_the_days_left(self):
         due=self.day(3);code,out,summary=self.result(self.PASSED,due)
         self.assertEqual(code,0,out);self.assertIn(f'- t: 資料檢查期限 {due}，剩 3 天',summary)
+    @needs_shell
+    def test_on_the_due_date_passes_with_0_days_left(self):
+        code,out,summary=self.result(self.PASSED,self.TODAY);self.assertEqual(code,0,out);self.assertIn(f'- t: 資料檢查期限 {self.TODAY}，剩 0 天',summary)
     @needs_shell
     def test_after_the_due_date_startup_only_fails_compare(self):
         due=self.day(-1);code,out,summary=self.result(self.PASSED,due)
@@ -926,8 +937,24 @@ class DataCheckDueStep(StepHarness):
         code,out,summary=self.result(self.PASSED,None);self.assertEqual(code,0,out);self.assertNotIn('資料檢查期限',summary)
     @needs_shell
     def test_malformed_due_date_fails_with_the_reason(self):
-        code,out,_=self.result(self.PASSED,'2026-13-01')
+        code,out,summary=self.result(self.PASSED,'2026-13-01')
         self.assertEqual(code,1);self.assertIn("upgrade_comparison.data_check_due '2026-13-01'; it must be a date, YYYY-MM-DD (UTC)",out)
+        self.assertIn('- t: **data-check deadline could not be judged (upgrade_check.py data-check-due exited 2)',summary)
+    @needs_shell
+    def test_crash_is_never_read_as_an_overdue_check(self):
+        code,out,summary=self.result(self.PASSED,crash=True)
+        self.assertEqual(code,1);self.assertIn('::error title=Upgrade comparison failed::t: the data-check deadline could not be judged: upgrade_check.py data-check-due exited 1',out)
+        self.assertNotIn('已過',out+summary);self.assertIn('- t: **data-check deadline could not be judged',summary)
+    @needs_shell
+    def test_add_on_that_ran_but_is_not_in_the_plan_fails(self):
+        code,out,summary=self.result(self.PASSED,in_plan=False)
+        self.assertEqual(code,1);self.assertIn("t: the upgrade test has a result for this add-on, but this job's plan does not list it",out)
+        self.assertIn("- t: **data-check deadline not judged: not in this job's plan**",summary)
+    @needs_shell
+    def test_runtime_job_record_is_not_an_add_on(self):
+        code,out,summary=self.result({'name':'runtime job','passed':False,'reason':'a step failed'},in_plan=False)
+        self.assertEqual(code,1);self.assertIn('runtime job: upgrade test failed: a step failed',out)
+        self.assertNotIn('data-check',out+summary)
 
 class SkipVulnerabilityScan(StepHarness):
     """skip_vulnerability_scan: a caller whose category 4 cannot run (mcp_addons builds no PR image) opts out with a
@@ -1417,9 +1444,11 @@ class DataCheckDueCommand(unittest.TestCase):
     DUE='2026-11-17'
     def setUp(self):
         self.dir=pathlib.Path(tempfile.mkdtemp());self.addCleanup(shutil.rmtree,self.dir);(self.dir/'addon/upgrade-check').mkdir(parents=True)
-    def main(self,today,due=DUE,verify=False,component='a',when=None):
+    def main(self,today,due=DUE,verify=False,component='a',given=None):
+        """given: a's upgrade_comparison as written (default: {data_check_due: due}, none when due is None)."""
         comp={'id':'a','source_path':'addon','config_file':'config.yaml'}
         if due is not None:comp['upgrade_comparison']={'data_check_due':due}
+        if given is not None:comp['upgrade_comparison']=given
         (self.dir/'registry.json').write_text(json.dumps({'providers':{'WOOWTECH/r':{'ref_policy':'release','components':[comp,{'id':'b','source_path':'b','config_file':'config.yaml'}]}}}))
         if verify:(self.dir/'addon/upgrade-check/verify').write_text('#!/bin/sh\n')
         args=['data-check-due','--registry',str(self.dir/'registry.json'),'--repo','WOOWTECH/r','--component',component,'--addon-dir',str(self.dir/'addon')]
@@ -1431,14 +1460,14 @@ class DataCheckDueCommand(unittest.TestCase):
     def test_on_the_due_date_passes_with_0_days_left(self):
         code,out=self.main('2026-11-17');self.assertEqual(code,0);self.assertTrue(out.startswith('資料檢查期限 2026-11-17，剩 0 天'),out)
     def test_the_day_after_the_due_date_fails_and_says_to_add_the_data_check(self):
-        code,out=self.main('2026-11-18');self.assertEqual(code,1)
+        code,out=self.main('2026-11-18');self.assertEqual(code,u.OVERDUE);self.assertEqual(u.OVERDUE,3)  # not 1, Python's code for a crash
         self.assertTrue(out.startswith('資料檢查期限 2026-11-17 已過，要補資料檢查'),out);self.assertIn('1 days ago, and upgrade-check/ still has no verify',out)
         self.assertIn('add the verify hook',out);self.assertNotIn('::error',out)  # the workflow gives it as the add-on's ::error
     def test_with_verify_the_due_date_is_ignored(self):
         for today in ('2026-11-04','2026-11-17','2027-01-01'):
             with self.subTest(today):self.assertEqual(self.main(today,verify=True),(0,''))
     def test_verify_must_be_a_file(self):
-        (self.dir/'addon/upgrade-check/verify').mkdir();self.assertEqual(self.main('2026-11-18')[0],1)
+        (self.dir/'addon/upgrade-check/verify').mkdir();self.assertEqual(self.main('2026-11-18')[0],u.OVERDUE)
     def test_without_a_due_date_nothing_is_judged(self):
         self.assertEqual(self.main('2030-01-01',due=None),(0,''));self.assertEqual(self.main('2030-01-01',component='b'),(0,''))
     def test_malformed_due_date_is_a_clear_error(self):
@@ -1447,9 +1476,19 @@ class DataCheckDueCommand(unittest.TestCase):
             with self.subTest(due=due):
                 for verify in (False,True):
                     code,out=self.main('2026-11-04',due=due,verify=verify);self.assertEqual(code,2)
-                    self.assertIn(f'::error title=Upgrade comparison failed::a: the Store registry gives a upgrade_comparison.data_check_due {due!r}; it must be a date, YYYY-MM-DD (UTC)',out)
+                    self.assertIn(f'::error title=Upgrade comparison failed::a: the Store registry gives upgrade_comparison.data_check_due {due!r}; it must be a date, YYYY-MM-DD (UTC)',out)
+    def test_upgrade_comparison_must_be_a_mapping(self):
+        for given in ('2026-11-17',['data_check_due'],True):
+            with self.subTest(given=given):
+                for verify in (False,True):
+                    code,out=self.main('2026-11-04',verify=verify,given=given);self.assertEqual(code,2)
+                    self.assertIn(f'a: the Store registry gives upgrade_comparison {given!r}; upgrade_comparison must be a mapping',out)
+    def test_unexpected_error_is_a_tool_error_not_an_overdue_check(self):
+        with unittest.mock.patch.object(u,'data_check_due',side_effect=RuntimeError('boom')):code,out=self.main('2026-11-18')
+        self.assertEqual(code,2);self.assertIn('::error title=Upgrade comparison failed::boom',out)
+        with unittest.mock.patch.object(u,'find_component',side_effect=AttributeError('x')):self.assertEqual(self.main('2026-11-18')[0],2)
     def test_malformed_today_and_unknown_add_on_fail(self):
-        code,out=self.main('04/11/2026');self.assertEqual(code,2);self.assertIn('::error',out)
+        code,out=self.main('04/11/2026');self.assertEqual(code,2);self.assertIn('::error title=Upgrade comparison failed::a: --today: ',out)
         code,out=self.main('2026-11-04',component='zz');self.assertEqual(code,2);self.assertIn('zz',out)
     def test_today_defaults_to_the_utc_date(self):
         real=datetime.datetime
@@ -1471,6 +1510,19 @@ class DataCheckDueCommand(unittest.TestCase):
         for comp in (c for p in registry['providers'].values() for c in p['components']):
             with self.subTest(comp['id']):u.data_check_due(comp,False,datetime.date(2026,11,4))  # every date parses
         for p in registry['providers'].values():self.assertNotIn(u.DUE_KEY,p.get('upgrade_comparison') or {})
+    def test_components_checks_every_add_ons_due_date_on_every_pr(self):
+        # A bad date fails any PR of the repository, also for an add-on whose upgrade test does not run (or is retired).
+        def components(*comps):
+            reg={'providers':{'WOOWTECH/r':{'ref_policy':'release','components':[{'id':'a','source_path':'a','config_file':'config.yaml'},*comps]}}}
+            return u.components(reg,'WOOWTECH/r')
+        ok={'id':'b','source_path':'b','config_file':'config.yaml','upgrade_comparison':{'data_check_due':'2026-12-08'}}
+        self.assertEqual([c['id'] for c in components(ok)['components']],['a','b'])
+        for upgrade,message in (({'data_check_due':'2026-02-30'},"WOOWTECH/r b: the Store registry gives upgrade_comparison.data_check_due '2026-02-30'; it must be a date"),
+                ('soon',"WOOWTECH/r b: the Store registry gives upgrade_comparison 'soon'; upgrade_comparison must be a mapping")):
+            for extra in ({},{'enabled':False}):
+                with self.subTest(upgrade=upgrade,extra=extra):
+                    with self.assertRaises(ValueError) as e:components(dict(ok,upgrade_comparison=upgrade,**extra))
+                    self.assertIn(message,str(e.exception))
 
 class SbomAttempt(unittest.TestCase):
     """A re-run must judge the image its own build made, not an earlier attempt's SBOM."""
