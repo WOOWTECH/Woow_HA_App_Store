@@ -437,20 +437,35 @@ def startup_probe(config, settings=None):
 
 SKIP_KEY='skip_upgrade_test'
 
-def upgrade_test_skip(component, settings=None):
+def approved_upgrade_test_skip(component):
     """The reason the Store registry approves for skipping the upgrade test (categories 2 and 3) of `component` (its
     registry entry), or '' when none is approved (#140, pipeline #90). Approved per add-on, like
     skip_vulnerability_scan per provider: upgrade_comparison.skip_upgrade_test holds the reason and its ticket; the
-    report gives that reason. The registry alone decides, so a source repository cannot skip by itself:
-    `settings` (the add-on's upgrade-check/settings.yaml, parsed, or None) that asks for skip_upgrade_test without
-    the approval is a ValueError saying to get it approved in the registry; with the approval its text is ignored."""
-    given=component.get('upgrade_comparison') or {};approved=given.get(SKIP_KEY,'')
+    report gives that reason. A malformed entry (upgrade_comparison not a mapping, the reason not a non-empty
+    string) is a ValueError naming the add-on, never an empty reason."""
+    given=component.get('upgrade_comparison',{})
+    if given is None:given={}
+    if not isinstance(given,dict):
+        raise ValueError(f'the Store registry entry for {component.get("id")} is malformed: upgrade_comparison must be a mapping, not {given!r}')
+    approved=given.get(SKIP_KEY,'')
     if SKIP_KEY in given and (not isinstance(approved,str) or not approved.strip()):
-        raise ValueError(f'the Store registry gives {component["id"]} upgrade_comparison.{SKIP_KEY} {approved!r}; it must be the approved reason and its ticket')
-    if not approved and isinstance(settings,dict) and SKIP_KEY in settings:
-        raise ValueError(f'upgrade-check/settings.yaml asks for {SKIP_KEY}, but skipping the upgrade test is not approved for {component["id"]}: '
-            f'the Store registry entry of this add-on needs upgrade_comparison.{SKIP_KEY} with the reason. Remove it from settings.yaml or get the skip approved in the registry.')
+        raise ValueError(f'the Store registry entry for {component.get("id")} is malformed: upgrade_comparison.{SKIP_KEY} must be the approved reason '
+            f'and its ticket (a non-empty string), not {approved!r}')
     return approved.strip()
+
+def upgrade_test_skip(component, settings=None):
+    """approved_upgrade_test_skip(component). The registry alone decides, so a source repository cannot skip by
+    itself: `settings` (the add-on's upgrade-check/settings.yaml, parsed, or None) that asks for the skip without the
+    approval is a ValueError saying to get it approved in the registry. Only a non-empty string skip_upgrade_test
+    asks (the reason, as in the registry); false, null, "" or any other value is no request. With the approval the
+    settings are not looked at (_upgrade_test_skip does not even read them)."""
+    approved=approved_upgrade_test_skip(component)
+    if approved:return approved
+    asked=settings.get(SKIP_KEY) if isinstance(settings,dict) else None
+    if isinstance(asked,str) and asked.strip():
+        raise ValueError(f'upgrade-check/settings.yaml asks for {SKIP_KEY}, but skipping the upgrade test is not approved for {component.get("id")}: '
+            f'the Store registry entry of this add-on needs upgrade_comparison.{SKIP_KEY} with the reason. Remove it from settings.yaml or get the skip approved in the registry.')
+    return ''
 
 class _Failed(Exception):
     """A command's expected failure: main() reports it as an ::error (title, message) and exits 2."""
@@ -515,7 +530,10 @@ def _startup_probe(a):
 
 def _upgrade_test_skip(a):
     with _failing((ValueError,KeyError,TypeError,OSError)):_,comp=find_component(_load(a.registry,'json'),a.repo,a.component)  # names the repository and add-on
-    with _failing((ValueError,OSError,yaml.YAMLError),f'{a.component}: '):print(upgrade_test_skip(comp,_load(a.settings,'yaml',optional=True)))
+    with _failing((ValueError,OSError,yaml.YAMLError),f'{a.component}: '):
+        # Approved: the registry decides, so the repository's settings.yaml is not read (a malformed one cannot fail it).
+        approved=approved_upgrade_test_skip(comp)
+        print(approved or upgrade_test_skip(comp,_load(a.settings,'yaml',optional=True)))
     return 0
 
 COMMANDS={'upgrade-test-skip':_upgrade_test_skip,'mounts':_mounts,'startup-probe':_startup_probe,'components':_components,'comparison-target':_comparison_target,'version':_version_command,'check-target':_check_target,'release-notes':_release_notes,'compare':_compare}

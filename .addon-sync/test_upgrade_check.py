@@ -1549,9 +1549,11 @@ class UpgradeTestSkipCommand(unittest.TestCase):
     REASON='#158: needs a physical enp2s0'
     def setUp(self):
         self.dir=pathlib.Path(tempfile.mkdtemp());self.addCleanup(shutil.rmtree,self.dir)
-    def main(self,approval=None,settings=None,component='a'):
+    def main(self,approval=None,settings=None,component='a',given=None):
+        # given: the whole upgrade_comparison value, for a malformed one.
         comp={'id':'a','source_path':'.','config_file':'config.yaml'}
         if approval is not None:comp['upgrade_comparison']={'skip_upgrade_test':approval}
+        if given is not None:comp['upgrade_comparison']=given
         (self.dir/'registry.json').write_text(json.dumps({'providers':{'WOOWTECH/r':{'ref_policy':'release','components':[comp,{'id':'b','source_path':'b','config_file':'config.yaml'}]}}}))
         args=['upgrade-test-skip','--registry',str(self.dir/'registry.json'),'--repo','WOOWTECH/r','--component',component,'--settings',str(self.dir/'settings.yaml')]
         if settings is not None:(self.dir/'settings.yaml').write_text(settings,encoding='utf-8')
@@ -1570,10 +1572,24 @@ class UpgradeTestSkipCommand(unittest.TestCase):
         self.assertIn('needs upgrade_comparison.skip_upgrade_test with the reason',out);self.assertIn('get the skip approved in the registry',out)
     def test_with_approval_the_report_gives_the_registrys_reason_not_the_repositorys(self):
         self.assertEqual(self.main(self.REASON,settings='skip_upgrade_test: "my text"\n'),(0,self.REASON+'\n'))
-    def test_approval_must_be_a_reason(self):
-        for value in ('',' ',True,['#1: why']):
+    def test_malformed_registry_entry_fails_with_a_clear_reason(self):
+        for value in ('',' ',True,['#1: why'],{'why':1}):
             with self.subTest(value):
-                code,out=self.main(value);self.assertEqual(code,2);self.assertIn('it must be the approved reason and its ticket',out)
+                code,out=self.main(value);self.assertEqual(code,2)
+                self.assertIn('the Store registry entry for a is malformed: upgrade_comparison.skip_upgrade_test must be the approved reason and its ticket',out)
+        for given in (['skip_upgrade_test'],'#158: why',3):
+            with self.subTest(given):
+                code,out=self.main(given=given);self.assertEqual(code,2)
+                self.assertIn('the Store registry entry for a is malformed: upgrade_comparison must be a mapping',out);self.assertNotIn('Traceback',out)
+        self.assertEqual(self.main(given={}),(0,'\n'))
+    def test_only_a_non_empty_string_in_settings_asks_for_the_skip(self):
+        for text in ('skip_upgrade_test: false\n','skip_upgrade_test: null\n','skip_upgrade_test: ""\n','skip_upgrade_test: "  "\n',
+                'skip_upgrade_test: 1\n','- skip_upgrade_test\n'):
+            with self.subTest(text):self.assertEqual(self.main(settings=text),(0,'\n'))
+    def test_with_approval_a_malformed_settings_file_is_not_read(self):
+        # The registry decides; the repository's text is ignored, even when it is not YAML.
+        self.assertEqual(self.main(self.REASON,settings='skip_upgrade_test: [unclosed\n'),(0,self.REASON+'\n'))
+        code,out=self.main(settings='skip_upgrade_test: [unclosed\n');self.assertEqual(code,2)
     def test_unknown_add_on_fails(self):
         code,out=self.main(component='zz');self.assertEqual(code,2);self.assertIn('zz',out)
     def test_registry_approves_exactly_the_add_ons_the_owner_did(self):
@@ -1633,7 +1649,9 @@ class ComparisonTargetFailure(StepHarness):
     @needs_shell
     def test_image_that_cannot_be_pulled_is_the_add_ons_failure_with_the_reason(self):
         r,_,_=self.run_step(('plan','upgrade',"Pull the comparison targets' images"),sbom='upgrade-comparison-sbom-*',image_artifact='upgrade-comparison-image-*')
-        self.assertEqual(r.returncode,1)
+        # The step goes on (other add-ons are still tested); the add-on leaves the test and "Run the upgrade tests" fails the job.
+        self.assertEqual(r.returncode,0,r.stdout+r.stderr)
+        self.assertEqual([json.loads(l)['old_ref'] for l in (self.tmp/'upgrade.jsonl').read_text().splitlines()],[''])
         reason="cannot pull the comparison target's image ghcr.io/da-anda/addon-amd64:1.0.0 from the registry, so the upgrade cannot be tested; re-run, or check that the image exists"
         self.assertIn(f'::error title=Upgrade comparison failed::t: {reason}',r.stdout)
         result=json.loads((self.tmp/'runtime-reports/t.json').read_text())
@@ -1642,6 +1660,42 @@ class ComparisonTargetFailure(StepHarness):
         self.assertEqual(RuntimeFailureRecord.record(self,results=(result,)),{'t.json':result})
         code,out,summary=UpgradeTestResult.result(self,[result],runtime='failure')
         self.assertEqual(code,1);self.assertIn(f't: upgrade test failed: {reason}',out);self.assertIn('- t: **failed**',summary)
+    @needs_shell
+    def test_one_unpullable_target_does_not_stop_the_others(self):
+        import os,subprocess
+        tmp=pathlib.Path(tempfile.mkdtemp());self.addCleanup(shutil.rmtree,tmp)
+        (tmp/'tooling/.addon-sync').mkdir(parents=True);(tmp/'bin').mkdir();(tmp/'runtime-reports').mkdir()
+        for name in ('log.sh','fields.sh'):shutil.copy(self.STORE/'.addon-sync'/name,tmp/'tooling/.addon-sync'/name)
+        # Stands in for upgrade_runtime.py: a passing result naming the image it was given.
+        (tmp/'tooling/.addon-sync/upgrade_runtime.py').write_text('import argparse,json,pathlib\np=argparse.ArgumentParser()\n'
+            "for o in ('--name','--addon-dir','--old-image','--old-config','--new-image','--new-config','--report-dir','--summary'):p.add_argument(o)\n"
+            "a=p.parse_args();pathlib.Path(a.report_dir,a.name+'.json').write_text(json.dumps({'name':a.name,'passed':True,'old_image':a.old_image}))\n")
+        (tmp/'bin/docker').write_text(DOCKER_STUB);(tmp/'bin/docker').chmod(0o755)
+        rows=[{'id':i,'addon_dir':f'source/{i}','new':f'{i}.yaml','old_ref':f'ghcr.io/o/{i}-amd64:1.0.0','artifact':'x'} for i in ('a','b','c')]
+        (tmp/'upgrade.jsonl').write_text(''.join(json.dumps(r)+'\n' for r in rows))
+        env=dict(os.environ,PATH=f"{tmp/'bin'}{os.pathsep}{os.environ['PATH']}",IMAGES='ghcr.io/o/a-amd64:1.0.0\nghcr.io/o/c-amd64:1.0.0',
+            RUNNER_TEMP=str(tmp),GITHUB_STEP_SUMMARY=str(tmp/'summary'))
+        codes=[]
+        for step in ("Pull the comparison targets' images",'Run the upgrade tests'):
+            (tmp/'step.sh').write_text(self.step(step)['run'],newline='\n')
+            r=subprocess.run(['bash',str(tmp/'step.sh')],cwd=tmp,env=env,capture_output=True,text=True);codes.append(r.returncode)
+        # b fails with its reason, a and c are still tested, and the job fails at the end.
+        self.assertEqual(codes,[0,1],r.stdout+r.stderr)
+        results={p.stem:json.loads(p.read_text()) for p in (tmp/'runtime-reports').iterdir()}
+        self.assertEqual({k:v['passed'] for k,v in results.items()},{'a':True,'b':False,'c':True})
+        self.assertIn("cannot pull the comparison target's image ghcr.io/o/b-amd64:1.0.0",results['b']['reason'])
+        self.assertEqual(results['c']['old_image'],'ghcr.io/o/c-amd64:1.0.0')
+    @needs_shell
+    def test_run_step_passes_when_nothing_failed(self):
+        import os,subprocess
+        tmp=pathlib.Path(tempfile.mkdtemp());self.addCleanup(shutil.rmtree,tmp)
+        (tmp/'tooling/.addon-sync').mkdir(parents=True);(tmp/'runtime-reports').mkdir()
+        shutil.copy(self.STORE/'.addon-sync/fields.sh',tmp/'tooling/.addon-sync');shutil.copy(self.STORE/'.addon-sync/log.sh',tmp/'tooling/.addon-sync')
+        (tmp/'upgrade.jsonl').write_text(json.dumps({'id':'t','old_ref':''})+'\n')
+        (tmp/'runtime-reports/t.json').write_text(json.dumps({'name':'t','passed':None,'note':'n'}))
+        (tmp/'step.sh').write_text(self.step('Run the upgrade tests')['run'],newline='\n')
+        r=subprocess.run(['bash',str(tmp/'step.sh')],cwd=tmp,env=dict(os.environ,GITHUB_STEP_SUMMARY=str(tmp/'summary')),capture_output=True,text=True)
+        self.assertEqual(r.returncode,0,r.stdout+r.stderr)
     @needs_shell
     def test_target_failed_escapes_and_leaves_fail_log_alone(self):
         import os,subprocess
