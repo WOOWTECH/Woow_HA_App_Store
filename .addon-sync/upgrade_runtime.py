@@ -47,9 +47,14 @@ checked and the report says so.
 Supervisor fixtures (#142): the add-on's upgrade-check/supervisor/ may hold
 answers for Supervisor API paths, one JSON file per path (its `data`):
 /services/mqtt -> supervisor/services/mqtt.json (mock_supervisor.py
-documents the mapping). A fixture beats the mock's default answer. Paths with
-neither answer 404; the report lists them, and fixtures that are not valid
-JSON, per version, with their counts. Neither fails the test.
+documents the mapping). A fixture beats the mock's default answer, except that
+addons/self/info.json is laid over the info this runtime writes for each
+version (its keys only) and /supervisor/ping is never overridden. Paths with
+neither answer 404; the report lists them (the UNMOCKED_ROWS most called per
+version), and fixtures that cannot be used, per version, with their counts.
+Neither fails the test. upgrade-check/supervisor/ must not be, or hold, a
+symlink out of upgrade-check/ (only that directory is mounted): that is a tool
+error before any container starts.
 
 Writes <report-dir>/<name>.json and <name>.md, appends the report to
 --summary and exits 1 when the upgrade test fails (::error with the reason),
@@ -65,10 +70,11 @@ not be started (a symlink out of upgrade-check/). supervisor lists the
 add-on's own Supervisor calls during that phase (start to stop) that answered
 404 (unmocked) or 500 (a fixture that is not valid JSON); calls of the hooks
 and of the runtime are not in it. map_warnings are upgrade_check.map_warnings()
-of each config.yaml: map entries Supervisor ignores. Both are informational.
+of each config.yaml: map entries Supervisor ignores (or why `map` could not be
+read). Both are informational.
 """
 from __future__ import annotations
-import argparse, json, pathlib, secrets, shutil, subprocess, sys, tempfile, time
+import argparse, json, os, pathlib, secrets, shutil, subprocess, sys, tempfile, time
 import yaml
 import mock_supervisor
 from upgrade_check import ingress_port, map_warnings, mounts, startup_probe, upgrade_settings, webui_endpoint
@@ -90,6 +96,8 @@ HOOK_PHASE = {'seed': 'old', 'verify': 'new'}
 # Where the mock Supervisor's container sees the add-on's upgrade-check/, the data directories, the hooks' reports and state.
 IN_MOCK = {'hooks': '/upgrade-check', 'data': '/upgrade-data', 'reports': '/hook-reports', 'state': '/hook-state'}
 CHECK_RESULTS = ('pass', 'fail', 'skip')
+# How many unmocked paths the report lists per version, the most called first.
+UNMOCKED_ROWS = 30
 
 def docker(*args, check=True):
     r = subprocess.run(['docker', *args], capture_output=True, text=True, encoding='utf-8', errors='replace')
@@ -125,6 +133,24 @@ def hook_problem(hooks_dir, hook):
     if path.is_symlink() and not path.resolve().is_relative_to(hooks_dir.resolve()):
         return f'upgrade-check/{hook} is a symlink to {path.resolve()}, outside upgrade-check/ (only that directory is mounted where hooks run)'
     return ''
+
+def fixtures_problem(hooks_dir):
+    """Why upgrade-check/supervisor/ cannot be used in the mock Supervisor's container, or '': only upgrade-check/
+    is mounted there, so it, or a file in it, that is a symlink out of upgrade-check/ would point at nothing."""
+    root, top = hooks_dir / 'supervisor', hooks_dir.resolve()
+    links = [root] if root.is_symlink() else []
+    if root.is_dir() and not root.is_symlink():
+        links += [pathlib.Path(d, n) for d, dirs, files in os.walk(root) for n in dirs + files if pathlib.Path(d, n).is_symlink()]
+    for link in links:
+        if not link.resolve().is_relative_to(top):
+            rel = link.relative_to(hooks_dir).as_posix()
+            return f'upgrade-check/{rel} is a symlink to {link.resolve()}, outside upgrade-check/ (only that directory is mounted for the mock Supervisor)'
+    return ''
+
+def _map_warnings(config):
+    """upgrade_check.map_warnings(), never raising: a `map` it cannot read is reported as one warning (mounts() fails on it later)."""
+    try:return map_warnings(config)
+    except (ValueError, TypeError, AttributeError) as e:return [f'map could not be read: {e}']
 
 class UpgradeTestEnv:
     """One upgrade test's network, mock Supervisor and data directories, removed by close(). `hooks`: the add-on's
@@ -309,9 +335,11 @@ def upgrade_test(name, addon_dir, old_image, old_config, new_image, new_config, 
     settings = yaml.safe_load(settings_path.read_text(encoding='utf-8')) if settings_path.exists() else None
     limits = upgrade_settings(settings)  # a bad settings.yaml is a tool error before any container starts
     present = [h for h in HOOK_PHASE if (hooks_dir / h).is_file()]
+    unusable = fixtures_problem(hooks_dir) if hooks_dir.is_dir() else ''
+    if unusable:raise ValueError(unusable)  # like a bad settings.yaml: before any container starts
     env = UpgradeTestEnv(work, hooks_dir.resolve() if hooks_dir.is_dir() else None); phases = []
     result = {'name': name, 'passed': False, 'reason': '', 'hooks': present, 'data_checked': False, 'phases': phases,
-        'map_warnings': {'old': map_warnings(old_config), 'new': map_warnings(new_config)}}
+        'map_warnings': {'old': _map_warnings(old_config), 'new': _map_warnings(new_config)}}
     try:
         env.open()
         for phase, image, config in (('old', old_image, old_config), ('new', new_image, new_config)):
@@ -376,16 +404,19 @@ def _supervisor_sections(result):
     r = []
     # Paths come from the add-on: a backquote must not end the code span.
     code = lambda v: markdown_cell(v).replace('`', "'")
-    calls = {kind: [(p, c) for p in result['phases'] for c in p.get('supervisor', {}).get(kind, [])] for kind in ('unmocked', 'broken_fixtures')}
     for kind, title, hint in (('unmocked', 'Unmocked Supervisor calls (未模擬的 Supervisor 呼叫)',
             'The mock Supervisor answered these with 404. If the add-on needs one, add its answer as upgrade-check/supervisor/<path>.json '
             '(the `data` of the reply, e.g. supervisor/services/mqtt.json).'),
-        ('broken_fixtures', 'Supervisor fixtures that are not valid JSON',
-            'The mock Supervisor answered these with 500: fix the JSON of upgrade-check/supervisor/<path>.json.')):
-        if calls[kind]:
-            r += ['', f'**{title}**: {hint}', '', '| version | path | calls | methods |', '|---|---|---|---|']
-            r += [f'| {PHASE_LABEL[p["phase"]]} {markdown_cell(p["version"])} | `{code(c["path"])}` | {c["count"]} | {", ".join(c["methods"])} |'
-                for p, c in calls[kind]]
+        ('broken_fixtures', 'Supervisor fixtures that cannot be used',
+            'The mock Supervisor answered these with 500: upgrade-check/supervisor/<path>.json is not valid JSON '
+            '(or addons/self/info.json is not an object).')):
+        rows = []
+        for p in result['phases']:
+            calls = sorted(p.get('supervisor', {}).get(kind, []), key=lambda c: (-c['count'], c['path']))
+            label = f'{PHASE_LABEL[p["phase"]]} {markdown_cell(p["version"])}'
+            rows += [f'| {label} | `{code(c["path"])}` | {c["count"]} | {", ".join(c["methods"])} |' for c in calls[:UNMOCKED_ROWS]]
+            if len(calls) > UNMOCKED_ROWS:rows.append(f'| {label} | … and {len(calls) - UNMOCKED_ROWS} more paths | | |')
+        if rows:r += ['', f'**{title}**: {hint}', '', '| version | path | calls | methods |', '|---|---|---|---|', *rows]
     warnings = result.get('map_warnings') or {}
     old, new = warnings.get('old', []), warnings.get('new', [])
     if old or new:
