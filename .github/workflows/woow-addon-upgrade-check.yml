@@ -37,6 +37,17 @@
 # may pass it, and the report gives that approved reason, not the caller's
 # text; any other caller that passes it fails.
 #
+# Category 2, the upgrade test (#137; startup only until #138 adds data checks),
+# runs in the runtime job for add-ons with a prebuilt image when the caller
+# passes image_artifact: the caller's amd64 build hands over the new image
+# through the Store action .github/actions/addon-image (docker save; nothing is
+# pushed to GHCR or rebuilt), the comparison target's image is pulled from GHCR,
+# and .addon-sync/upgrade_runtime.py starts both, one after the other, on the
+# same data directories under a mock Supervisor. compare needs runtime and
+# fails, with the reason, when the upgrade test fails. Callers that pass no
+# image_artifact are reported as not run yet (rolled out in #143); add-ons built
+# on the device are #144.
+#
 # Caller (in a workflow that also runs on push to the default branch, so
 # addon_sync's ci_gate keeps seeing a successful non-PR run; no path filter,
 # no needs: on the build):
@@ -45,14 +56,15 @@
 #     name: Upgrade comparison
 #     permissions:
 #       contents: read
-#       actions: read                             # find and download this run's SBOM artifact
+#       actions: read                             # find and download this run's SBOM and image artifacts
 #     uses: WOOWTECH/Woow_HA_App_Store/.github/workflows/woow-addon-upgrade-check.yml@main
 #     with:
 #       sbom_artifact: upgrade-comparison-sbom-*  # omit only when no add-on has a prebuilt image, or with scan_published_image
+#       image_artifact: upgrade-comparison-image-*  # the upgrade test; omit until the repository is rolled out (#143)
 #       # skip_vulnerability_scan: "<reason>"      # instead of sbom_artifact, only when category 4 does not apply (quote it)
 #
 # GitHub names the check "<caller job> / <job>": "Upgrade comparison / compare".
-# On other events the job passes at once: the PR was already compared.
+# On other events both jobs pass at once: the PR was already compared.
 name: Upgrade comparison
 'on':
   workflow_call:
@@ -73,30 +85,46 @@ name: Upgrade comparison
         description: How long a version-change PR waits for the SBOM artifacts of the same run before it fails.
         type: number
         default: 40
+      image_artifact:
+        description: Name or glob of the artifacts the addon-image action uploads in the same run (upgrade-comparison-image-<component>-attempt-<run attempt>; pass upgrade-comparison-image-*); empty = the upgrade test is not run yet (#143).
+        type: string
+        default: ''
+      image_wait_minutes:
+        description: How long a version-change PR waits for the new-image artifacts of the same run before it fails.
+        type: number
+        default: 40
 permissions:
   contents: read
   actions: read
 jobs:
+  # The required check. It waits for runtime (category 2) and runs whatever runtime's result:
+  # a skipped required check counts as passed, so it must never be skipped.
   compare:
     name: compare
+    needs: runtime
+    if: ${{ always() }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
     env:
       # Grype refuses an older DB; the step after `grype db update` checks it too, with a clear reason.
       DB_MAX_AGE_HOURS: '120'
     steps:
-    - name: Not a pull request
+    # These steps up to the plan also run in the runtime job (YAML aliases), so both jobs judge the same add-ons and targets.
+    - &not-pr
+      name: Not a pull request
       if: github.event_name != 'pull_request'
       env:
         EVENT: ${{ github.event_name }}
       run: echo "Upgrade comparison runs on pull requests; nothing to compare on ${EVENT} (the PR was already compared)." >> "$GITHUB_STEP_SUMMARY"
-    - name: Check out the pull request
+    - &checkout-pr
+      name: Check out the pull request
       if: github.event_name == 'pull_request'
       uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
       with:
         path: source
         persist-credentials: false
-    - name: Check out Store tooling
+    - &checkout-tooling
+      name: Check out Store tooling
       if: github.event_name == 'pull_request'
       uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
       with:
@@ -108,10 +136,12 @@ jobs:
           .github/workflows
           .github/actions/addon-sbom
         persist-credentials: false
-    - name: Install dependencies
+    - &install
+      name: Install dependencies
       if: github.event_name == 'pull_request'
       run: python3 -m pip install -r tooling/.addon-sync/requirements.txt
-    - name: Find add-ons whose version changed
+    - &detect
+      name: Find add-ons whose version changed
       id: detect
       if: github.event_name == 'pull_request'
       env:
@@ -170,7 +200,8 @@ jobs:
         if [ -s changed.jsonl ]; then echo "changed=true" >> "$GITHUB_OUTPUT"; else
           echo "No add-on version changed; nothing to compare." >> "$GITHUB_STEP_SUMMARY"; echo "changed=false" >> "$GITHUB_OUTPUT"; fi
         exit "${status}"
-    - name: Find the comparison targets
+    - &plan
+      name: Find the comparison targets
       id: plan
       if: steps.detect.outputs.changed == 'true'
       env:
@@ -329,31 +360,10 @@ jobs:
         WAIT_MINUTES: ${{ inputs.sbom_wait_minutes }}
       run: |
         set -euo pipefail
-        source tooling/.addon-sync/log.sh
-        deadline=$(( $(date -u +%s) + WAIT_MINUTES * 60 )); idle=0; : > artifacts.tsv
-        while :; do
-          # Only this attempt's artifact (plan.jsonl names it -attempt-<N>): a re-run judges its own build.
-          arts="$(gh api --paginate "repos/${REPO}/actions/runs/${RUN_ID}/artifacts?per_page=100" \
-            --jq '.artifacts[] | select(.expired | not) | [.name, .created_at, (.id | tostring)] | @tsv' | sort -t$'\t' -k2,2)"
-          missing=""; : > artifacts.tsv
-          while IFS=$'\t' read -r id n; do
-            row="$(awk -F'\t' -v n="${n}" '$1 == n' <<<"${arts}" | tail -n1)"
-            if [ -n "${row}" ]; then printf '%s\t%s\n' "${id}" "$(cut -f3 <<<"${row}")" >> artifacts.tsv; else missing="${missing} ${id}"; fi
-          done < <(jq -r 'select(.ref != "" and .new_ref == "") | [.id, .artifact] | @tsv' plan.jsonl)
-          if [ -z "${missing}" ]; then echo "All SBOMs are uploaded."; break; fi
-          # Every other job of this attempt finished (only this one still open), twice in a row:
-          # the build ended without uploading the SBOM, so waiting longer cannot help.
-          open="$(gh api --paginate "repos/${REPO}/actions/runs/${RUN_ID}/attempts/${RUN_ATTEMPT}/jobs?per_page=100" \
-            --jq '.jobs[] | select(.status != "completed") | .name' | wc -l)"
-          if [ "${open}" -le 1 ]; then idle=$(( idle + 1 )); else idle=0; fi
-          if [ "${idle}" -ge 2 ]; then
-            fail "no SBOM of the new image for${missing}: every other job of attempt ${RUN_ATTEMPT} finished without uploading upgrade-comparison-sbom-<component>-attempt-${RUN_ATTEMPT}; check that the amd64 build passed and ran the addon-sbom action. On a re-run, use Re-run all jobs: an earlier attempt's SBOM is not used"; exit 1
-          fi
-          if [ "$(date -u +%s)" -ge "${deadline}" ]; then
-            fail "no SBOM of the new image for${missing} after ${WAIT_MINUTES} minutes; the amd64 build with the addon-sbom action did not finish in time, re-run the check"; exit 1
-          fi
-          echo "Waiting for the SBOM of${missing} (${open} jobs still open)..."; sleep 20
-        done
+        # Only this attempt's artifact (plan.jsonl names it -attempt-<N>): a re-run judges its own build.
+        # With scan_published_image (new_ref) the new image is pulled and scanned instead: no SBOM to wait for (#147).
+        jq -r 'select(.ref != "" and .new_ref == "") | [.id, .artifact] | @tsv' plan.jsonl > wanted-sboms.tsv
+        bash tooling/.addon-sync/wait_artifacts.sh wanted-sboms.tsv artifacts.tsv "SBOM of the new image" addon-sbom
     - name: Download the new images' SBOMs
       if: steps.plan.outputs.wait == 'true'
       env:
@@ -398,3 +408,171 @@ jobs:
           [ "${rc}" = 0 ] || status=1
         done < plan.jsonl
         exit "${status}"
+    # Category 2 (#137): the runtime job's verdict, whatever happened in the steps above.
+    - name: Upgrade test result
+      if: always() && github.event_name == 'pull_request'
+      env:
+        GH_TOKEN: ${{ github.token }}
+        REPO: ${{ github.repository }}
+        RUN_ID: ${{ github.run_id }}
+        RUN_ATTEMPT: ${{ github.run_attempt }}
+        RUNTIME_RESULT: ${{ needs.runtime.result }}
+      run: |
+        set -euo pipefail
+        source tooling/.addon-sync/log.sh
+        mkdir -p runtime-reports; status=0
+        artifact="$(gh api --paginate "repos/${REPO}/actions/runs/${RUN_ID}/artifacts?per_page=100" \
+          --jq ".artifacts[] | select(.name == \"upgrade-comparison-runtime-attempt-${RUN_ATTEMPT}\") | .id" | tail -n1)"
+        if [ -n "${artifact}" ] && ! { gh api "repos/${REPO}/actions/artifacts/${artifact}/zip" > "$RUNNER_TEMP/runtime-reports.zip" \
+            && unzip -o -q "$RUNNER_TEMP/runtime-reports.zip" -d runtime-reports; }; then
+          fail "cannot download the upgrade test results (artifact upgrade-comparison-runtime-attempt-${RUN_ATTEMPT}); re-run all jobs"; exit 1
+        fi
+        echo "## Upgrade test" >> "$GITHUB_STEP_SUMMARY"
+        for result in runtime-reports/*.json; do
+          [ -e "${result}" ] || break
+          # upgrade_runtime.py's result, the runtime job's note on why the test did not run, or why that job failed.
+          id="$(jq -r '.name' "${result}")"
+          case "$(jq -r '.passed' "${result}")" in
+            true) echo "- ${id}: passed, startup only: data was not checked (只檢查啟動，沒有檢查資料)" >> "$GITHUB_STEP_SUMMARY";;
+            false) fail "${id}: upgrade test failed: $(jq -r '.reason' "${result}") (the runtime job's summary has the report)"; status=1
+              echo "- ${id}: **failed**, startup only: data was not checked (只檢查啟動，沒有檢查資料)" >> "$GITHUB_STEP_SUMMARY";;
+            *) echo "- ${id}: not run ($(jq -r '.note' "${result}"))" >> "$GITHUB_STEP_SUMMARY";;
+          esac
+        done
+        if [ "${RUNTIME_RESULT}" != success ] && [ "${status}" = 0 ]; then
+          fail "the runtime job (upgrade test) ended ${RUNTIME_RESULT} with no failing add-on result; its log has the reason"; status=1
+        fi
+        exit "${status}"
+  # Category 2 (#137): the upgrade test of each add-on whose version changed, startup only.
+  runtime:
+    name: runtime
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      # Every fail (log.sh) of this job is also written here; "Record why the runtime job failed" hands it to compare.
+      FAIL_LOG: ${{ github.workspace }}/runtime-failures.txt
+    steps:
+    - *not-pr
+    - *checkout-pr
+    - *checkout-tooling
+    - *install
+    - *detect
+    - *plan
+    - name: Plan the upgrade tests
+      id: upgrade
+      if: steps.detect.outputs.changed == 'true'
+      env:
+        IMAGE_ARTIFACT: ${{ inputs.image_artifact }}
+        RUN_ATTEMPT: ${{ github.run_attempt }}
+      run: |
+        set -euo pipefail
+        source tooling/.addon-sync/log.sh
+        source tooling/.addon-sync/fields.sh
+        # upgrade.jsonl, one object per add-on: id, addon_dir, new, old_ref and artifact, or note (why there is no test).
+        mkdir -p runtime-reports; : > upgrade.jsonl; status=0
+        while IFS= read -r row; do
+          fields "${row}" id=id notes=notes new=new target=target
+          old="$RUNNER_TEMP/${id}.old.yaml"; image="$(yq -r '.image // ""' "${new}")"; note=""; old_ref=""
+          artifact="upgrade-comparison-image-${id}-attempt-${RUN_ATTEMPT}"
+          if [ ! -s "${old}" ]; then note="no comparison target"
+          elif [ -z "${image}" ]; then note="built on the device; the upgrade test for these add-ons is #144"
+          elif [ -z "$(yq -r '.image // ""' "${old}")" ]; then note="the comparison target ${target} has no prebuilt image"
+          elif [ -z "${IMAGE_ARTIFACT}" ]; then note="the caller passes no image_artifact; the upgrade test is being rolled out in #143"
+          # shellcheck disable=SC2053 # IMAGE_ARTIFACT is a glob on purpose
+          elif [[ "${artifact}" != ${IMAGE_ARTIFACT} ]]; then
+            fail "${id}: image_artifact '${IMAGE_ARTIFACT}' does not match ${artifact}, the artifact the addon-image action uploads for component ${id}"
+            status=1; continue
+          else
+            old_image="$(yq -r '.image' "${old}")"
+            old_version="$(python3 tooling/.addon-sync/upgrade_check.py version --file "${old}" --name "${id}")" || fail_output "${old_version}"
+            no_cntrl "${old_image}${old_version}" "${id}: the comparison target ${target} has a control character (newline, tab...) in its image or version" || exit 1
+            old_ref="${old_image//\{arch\}/amd64}:${old_version}"
+          fi
+          if [ -n "${note}" ]; then
+            jq -n --arg name "${id}" --arg note "${note}" '{name: $name, passed: null, note: $note}' > "runtime-reports/${id}.json"
+            echo "- ${id}: upgrade test not run (${note})" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          jq -nc --arg id "${id}" --arg addon_dir "source/$(dirname "${notes}")" --arg new "${new}" --arg old_ref "${old_ref}" \
+            --arg artifact "${artifact}" '$ARGS.named' >> upgrade.jsonl
+        done < plan.jsonl
+        if [ -n "$(jq -r 'select(.old_ref != "") | .id' upgrade.jsonl)" ]; then echo "run=true" >> "$GITHUB_OUTPUT"; else echo "run=false" >> "$GITHUB_OUTPUT"; fi
+        exit "${status}"
+    # While the caller's amd64 build is still running.
+    - name: Pull the comparison targets' images
+      if: steps.upgrade.outputs.run == 'true'
+      run: |
+        set -euo pipefail
+        source tooling/.addon-sync/log.sh
+        source tooling/.addon-sync/fields.sh
+        while IFS= read -r row; do
+          fields "${row}" id=id ref=old_ref
+          if ! docker pull --quiet --platform linux/amd64 "${ref}"; then
+            fail "${id}: cannot pull the comparison target's image ${ref} from the registry; re-run, or check that the image exists"; exit 1
+          fi
+        done < <(jq -c 'select(.old_ref != "")' upgrade.jsonl)
+    - name: Wait for the new images
+      if: steps.upgrade.outputs.run == 'true'
+      env:
+        GH_TOKEN: ${{ github.token }}
+        REPO: ${{ github.repository }}
+        RUN_ID: ${{ github.run_id }}
+        RUN_ATTEMPT: ${{ github.run_attempt }}
+        WAIT_MINUTES: ${{ inputs.image_wait_minutes }}
+      run: |
+        set -euo pipefail
+        jq -r 'select(.old_ref != "") | [.id, .artifact] | @tsv' upgrade.jsonl > wanted-images.tsv
+        bash tooling/.addon-sync/wait_artifacts.sh wanted-images.tsv images.tsv "new image" addon-image
+    - name: Load the new images
+      if: steps.upgrade.outputs.run == 'true'
+      env:
+        GH_TOKEN: ${{ github.token }}
+        REPO: ${{ github.repository }}
+      run: |
+        set -euo pipefail
+        source tooling/.addon-sync/log.sh
+        while IFS=$'\t' read -r id artifact_id; do
+          gh api "repos/${REPO}/actions/artifacts/${artifact_id}/zip" > "$RUNNER_TEMP/${id}.image.zip"
+          unzip -o -q "$RUNNER_TEMP/${id}.image.zip" "${id}.tar" -d "$RUNNER_TEMP/images"
+          rm -f "$RUNNER_TEMP/${id}.image.zip"
+          # The addon-image action saved it under this tag: what CI built in this attempt, not rebuilt here.
+          docker load -i "$RUNNER_TEMP/images/${id}.tar"
+          rm -f "$RUNNER_TEMP/images/${id}.tar"
+          if ! docker image inspect "upgrade-comparison/${id}:new" > /dev/null 2>&1; then
+            fail "${id}: the image artifact holds no upgrade-comparison/${id}:new; use the Store addon-image action"; exit 1
+          fi
+        done < images.tsv
+    - name: Run the upgrade tests
+      if: steps.upgrade.outputs.run == 'true'
+      run: |
+        set -euo pipefail
+        source tooling/.addon-sync/fields.sh
+        status=0
+        while IFS= read -r row; do
+          fields "${row}" id=id addon_dir=addon_dir new=new ref=old_ref
+          rc=0; python3 tooling/.addon-sync/upgrade_runtime.py --name "${id}" --addon-dir "${addon_dir}" \
+            --old-image "${ref}" --old-config "$RUNNER_TEMP/${id}.old.yaml" --new-image "upgrade-comparison/${id}:new" --new-config "${new}" \
+            --report-dir runtime-reports --summary "$GITHUB_STEP_SUMMARY" || rc=$?
+          [ "${rc}" = 0 ] || status=1
+        done < <(jq -c 'select(.old_ref != "")' upgrade.jsonl)
+        exit "${status}"
+    # A step that failed before upgrade_runtime.py wrote a result (plan, pull, wait, load) leaves its reasons in
+    # FAIL_LOG; compare quotes them instead of only saying that this job failed. When upgrade_runtime.py already
+    # wrote why an add-on failed, that is the reason: a second entry would only say that this job failed.
+    - name: Record why the runtime job failed
+      if: failure() && github.event_name == 'pull_request'
+      run: |
+        set -euo pipefail
+        mkdir -p runtime-reports
+        if [ -s "${FAIL_LOG}" ]; then reason="$(cat "${FAIL_LOG}")"
+        elif jq -e -s 'any(.[]; .passed == false)' runtime-reports/*.json > /dev/null 2>&1; then exit 0
+        else reason="a step failed without a reason; the runtime job's log has it"; fi
+        jq -n --arg reason "${reason}" '{name: "runtime job", passed: false, reason: $reason}' > runtime-reports/runtime-job.json
+    - name: Upload the upgrade test results
+      if: always() && github.event_name == 'pull_request'
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      with:
+        # compare reads this attempt's results; the run attempt keeps a re-run from reading an earlier one.
+        name: upgrade-comparison-runtime-attempt-${{ github.run_attempt }}
+        path: runtime-reports/
+        if-no-files-found: ignore
+        retention-days: 7
