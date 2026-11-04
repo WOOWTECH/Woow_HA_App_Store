@@ -1,3 +1,8 @@
+## 0.4.10 — images published and verified
+
+- Synchronize 0.4.10 release metadata with the merged Odoo read-error/result-size correction. EMQX source now bounds public broker errors, rejects redirects, and omits raw broker responses and request paths. The gateway/fallback advertise 39 exact reviewed EMQX output schemas. Tool names, inputs, permissions and dependency contracts remain unchanged.
+- Exact-source image `ghcr.io/woowtech/amd64-mcp-emqx@sha256:26202df1d2ebfef7ddc30759ccf97f50f160da597d8242f547ea134ff869ede5` passed P1–P5, anonymous verification and fresh remote layer/diffID checks. See ../../docs/provenance/release-0.4.10-images.json and ../../docs/operations/release-decision-0.4.10.md. Stable Release/Store distribution and actual HAOS acceptance remain separate evidence.
+
 ## 0.4.9 — images published and verified
 
 - Synchronize 0.4.9 release metadata with the Hermes session deletion correction; this product retains the reviewed 0.4.8 behavior and dependency pins.

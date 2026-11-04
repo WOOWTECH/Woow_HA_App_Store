@@ -1,3 +1,9 @@
+## 0.4.10 — images published and verified
+
+- Synchronize 0.4.10 release metadata with the merged Odoo read-error/result-size correction. The Hermes gateway and fallback advertise 11 reviewed output schemas matching the pinned child and PaaS runtime. Dashboard connection and missing-configuration errors now give bounded guidance without exposing credentials; tool names, inputs, settings, permission and dependency contracts remain unchanged.
+- Dashboard failures now use fixed public error categories; malformed, overly deep or non-object replies are rejected; an ambiguous cron creation sends exactly one POST and reports an unknown outcome (PR #57). Tool names, inputs and grants are unchanged.
+- Exact-source image `ghcr.io/woowtech/amd64-mcp-hermes@sha256:7c2e7f9dd5c1bb54d597247098731ebe90743c2752d7e2f49478e9bc869a46a5` passed P1–P5, anonymous verification and fresh remote layer/diffID checks. See ../../docs/provenance/release-0.4.10-images.json and ../../docs/operations/release-decision-0.4.10.md. Stable Release/Store distribution and actual HAOS acceptance remain separate evidence.
+
 ## 0.4.9 — images published and verified
 
 - Port fenced session deletion and bounded authentication retry behavior from reviewed PaaS source 052887fa68d5e67b86c622ef92f46dd7f75a08ca.
