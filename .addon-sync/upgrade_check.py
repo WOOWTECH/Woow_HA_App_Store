@@ -306,34 +306,57 @@ def components(registry, repo):
 MAP_PATHS={'data':'/data','config':'/config','homeassistant_config':'/homeassistant','app_config':'/config','addon_config':'/config',
     'all_app_configs':'/app_configs','all_addon_configs':'/addon_configs','local_apps':'/local_apps','addons':'/addons',
     'ssl':'/ssl','backup':'/backup','share':'/share','media':'/media'}
-# Names Supervisor mounts from the same host directory: the add-on → app renames (2026.07) and `config`, the
-# legacy name for Home Assistant's config. They share <root>/<the name on the right>, so a version that renames
-# one keeps its data.
-MAP_SOURCES={'addon_config':'app_config','all_addon_configs':'all_app_configs','addons':'local_apps','config':'homeassistant_config'}
-# Entries Supervisor ignores when another type is present (validate.py _migrate_app_config, docker/app.py):
-# `config` drops app_config, addon_config and homeassistant_config; a new name drops its legacy one.
+# The host directory under <root> each type is mounted from, when it is not <root>/<type>. Supervisor mounts the
+# add-on → app renames (2026.07) and `config` (the legacy name for Home Assistant's config) from the same host
+# directory as the new name, so a version that renames one keeps its data. An add-on's own config folder is
+# <app_configs>/<slug>, the folder all_app_configs shows as a whole (apps/app.py path_extern_config,
+# config.py path_extern_app_configs).
+MAP_SOURCES={'app_config':'all_app_configs/{slug}','addon_config':'all_app_configs/{slug}','all_addon_configs':'all_app_configs',
+    'addons':'local_apps','config':'homeassistant_config'}
+# Entries Supervisor ignores when another type is present, whatever their order (docker/app.py DockerApp.mounts
+# keys entries by type and prefers the new name; validate.py _migrate_app_config logs it): `config` drops
+# app_config, addon_config and homeassistant_config; a new name drops its legacy one.
 MAP_IGNORED_BY={'config':('app_config','addon_config','homeassistant_config'),'app_config':('addon_config',),
     'all_app_configs':('all_addon_configs',),'local_apps':('addons',)}
+_MAP_STRING=re.compile(r'^(\w+)(?::(rw|ro))?$')
 
-def mounts(config, root):
-    """The data directories of an add-on: /data (or the `path` of its `data` entry), then one per other `map`
-    entry at its `path` (or Supervisor's default). Each is the directory <root>/<type>, aliases sharing one, so the
-    comparison target and the new version share the same set even when one of them moves or renames a type. A
-    string entry is read-only unless it ends in :rw; a mapping is read-only unless read_only: false (Supervisor's
-    defaults). As in Supervisor, a repeated type keeps its last entry and superseded types are dropped."""
+def _map_entries(config):
+    """config.yaml's `map` as {type: (path, read_only)} after Supervisor drops the ignored entries, and a warning
+    for each dropped one. A string entry is type[:rw|:ro], read-only unless :rw; a mapping has `type`, a boolean
+    read_only (default true) and a string path (apps/validate.py RE_VOLUME and the map schema)."""
     entries={}
     for entry in config.get('map') or []:
-        if isinstance(entry,str):kind,_,mode=entry.partition(':');read_only=mode!='rw';path=None
-        elif isinstance(entry,dict):kind,read_only,path=entry.get('type'),entry.get('read_only',True) is not False,entry.get('path')
-        else:kind=None
-        if kind not in MAP_PATHS:raise ValueError(f'unknown map entry {entry!r}')
+        kind=None
+        if isinstance(entry,str) and (m:=_MAP_STRING.match(entry)):kind,read_only,path=m[1],m[2]!='rw',None
+        elif isinstance(entry,dict) and isinstance(entry.get('read_only',True),bool) and isinstance(entry.get('path',''),str):
+            kind,read_only,path=entry.get('type'),entry.get('read_only',True),entry.get('path')
+        if not isinstance(kind,str) or kind not in MAP_PATHS:raise ValueError(f'unknown map entry {entry!r}')
         entries[kind]=(path,read_only)
+    warnings=[]
     for kind,ignored in MAP_IGNORED_BY.items():
         if kind in entries:
-            for other in ignored:entries.pop(other,None)
-    out=[{'source':f'{root}/data','target':(entries.pop('data',None) or (None,))[0] or '/data','read_only':False}]
+            for other in ignored:
+                if entries.pop(other,None) is not None:warnings.append(f"map entry '{other}' is ignored because '{kind}' is present (as Supervisor does)")
+    return entries,warnings
+
+def map_warnings(config):
+    """The `map` entries Supervisor ignores for this config.yaml, one message each, for the upgrade test's report."""
+    return _map_entries(config)[1]
+
+def mounts(config, root):
+    """The data directories of an add-on: <root>/data at /data (or at the `path` of its `data` entry), then one per
+    other `map` entry at its `path` (or Supervisor's default), from <root>/<MAP_SOURCES[type] or type>. The
+    comparison target and the new version share the same set even when one of them moves or renames a type. As
+    in Supervisor, a repeated type keeps its last entry and ignored types are dropped (map_warnings lists them)."""
+    entries,_=_map_entries(config)
+    data_path,_=entries.pop('data',(None,False))
+    out=[{'source':f'{root}/data','target':data_path or MAP_PATHS['data'],'read_only':False}]
     for kind,(path,read_only) in entries.items():
-        out.append({'source':f'{root}/{MAP_SOURCES.get(kind,kind)}','target':path or MAP_PATHS[kind],'read_only':read_only})
+        source=MAP_SOURCES.get(kind,kind)
+        if '{slug}' in source:
+            if not config.get('slug'):raise ValueError(f'map entry {kind!r} needs the add-on slug')
+            source=source.format(slug=config['slug'])
+        out.append({'source':f'{root}/{source}','target':path or MAP_PATHS[kind],'read_only':read_only})
     # Two entries at one path (a custom path onto another type's) cannot both be mounted.
     targets=[m['target'] for m in out]
     for t in targets:
