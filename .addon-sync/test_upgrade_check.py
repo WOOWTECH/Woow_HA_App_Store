@@ -820,6 +820,54 @@ class RuntimeFailureRecord(StepHarness):
         passed={'name':'t','passed':True,'reason':'','phases':[]}
         self.assertEqual(self.record(results=(passed,))['runtime-job.json']['passed'],False)
 
+class UpgradeTestResult(StepHarness):
+    """compare's 'Upgrade test result' (#138): each add-on's verdict, whether its data was checked, and its report with every check."""
+    def result(self,results,reports=None,runtime='success'):
+        """results: the runtime-reports/*.json; reports: name -> the .md upgrade_runtime.py wrote. (exit code, stdout, step summary)."""
+        import os,subprocess
+        tmp=pathlib.Path(tempfile.mkdtemp());self.addCleanup(shutil.rmtree,tmp)
+        (tmp/'runtime-reports').mkdir();(tmp/'bin').mkdir();(tmp/'tooling/.addon-sync').mkdir(parents=True)
+        shutil.copy(self.STORE/'.addon-sync/log.sh',tmp/'tooling/.addon-sync/log.sh')
+        # No artifact to download: the results are already in runtime-reports/.
+        (tmp/'bin/gh').write_text('#!/bin/sh\nexit 0\n',newline='\n');(tmp/'bin/gh').chmod(0o755)
+        for r in results:(tmp/'runtime-reports'/f"{r['name']}.json").write_text(json.dumps(r))
+        for name,text in (reports or {}).items():(tmp/'runtime-reports'/f'{name}.md').write_text(text,encoding='utf-8')
+        (tmp/'step.sh').write_text(self.step('Upgrade test result')['run'],newline='\n');(tmp/'summary.md').write_text('')
+        env=dict(os.environ,PATH=f"{tmp/'bin'}{os.pathsep}{os.environ['PATH']}",GITHUB_STEP_SUMMARY=str(tmp/'summary.md'),RUNNER_TEMP=str(tmp),
+            REPO='o/r',RUN_ID='1',RUN_ATTEMPT='1',RUNTIME_RESULT=runtime)
+        r=subprocess.run(['bash',str(tmp/'step.sh')],cwd=tmp,env=env,capture_output=True,text=True)
+        return r.returncode,r.stdout,(tmp/'summary.md').read_text(encoding='utf-8')
+    @needs_shell
+    def test_add_on_with_verify_is_reported_as_data_checked_with_its_checks(self):
+        code,out,summary=self.result([{'name':'t','passed':True,'reason':'','hooks':['seed','verify'],'data_checked':True,'phases':[]}],
+            {'t':'#### Upgrade test: t\n\n| the new version 1.1.0 | verify | item kept | pass | hello |\n'})
+        self.assertEqual(code,0,out);self.assertIn('- t: passed, data checked by seed and verify (已檢查資料)',summary)
+        self.assertIn('| verify | item kept | pass | hello |',summary)
+    @needs_shell
+    def test_add_on_without_verify_is_reported_as_startup_only(self):
+        # Also a result written before #138 (no hooks field).
+        for r in ({'name':'t','passed':True,'reason':'','hooks':['seed'],'phases':[]},{'name':'t','passed':True,'reason':'','phases':[]}):
+            with self.subTest(r):
+                code,out,summary=self.result([r])
+                self.assertEqual(code,0,out);self.assertIn('- t: passed, startup only: data was not checked (只檢查啟動，沒有檢查資料)',summary)
+    @needs_shell
+    def test_data_counts_as_checked_only_when_verify_ran(self):
+        # A failing seed (or comparison target) stops the test before verify: an add-on that has verify was not checked.
+        failed={'name':'t','passed':False,'reason':'seed failed on the comparison target (1.0.0): exited with code 2',
+            'hooks':['seed','verify'],'data_checked':False,'phases':[]}
+        code,out,summary=self.result([failed],runtime='failure')
+        self.assertEqual(code,1);self.assertIn('- t: **failed**, data was not checked: the test failed before verify ran (沒有檢查資料)',summary)
+        self.assertNotIn('已檢查資料',summary)
+        code,out,summary=self.result([{'name':'t','passed':True,'reason':'','hooks':['verify'],'data_checked':True,'phases':[]}])
+        self.assertEqual(code,0,out);self.assertIn('- t: passed, data checked by verify, no seed (已檢查資料)',summary)
+    @needs_shell
+    def test_failed_verify_fails_compare_with_the_reason(self):
+        failed={'name':'t','passed':False,'reason':'verify failed on the new version (1.1.0): exited with code 1; failing checks: item kept',
+            'hooks':['seed','verify'],'data_checked':True,'phases':[]}
+        code,out,summary=self.result([failed],{'t':'#### Upgrade test: t\n\n| the new version 1.1.0 | verify | item kept | **fail** | HTTP 404 |\n'},runtime='failure')
+        self.assertEqual(code,1);self.assertIn('t: upgrade test failed: verify failed on the new version (1.1.0)',out)
+        self.assertIn('- t: **failed**, data checked by seed and verify',summary);self.assertIn('| item kept | **fail** | HTTP 404 |',summary)
+
 class SkipVulnerabilityScan(StepHarness):
     """skip_vulnerability_scan: a caller whose category 4 cannot run (mcp_addons builds no PR image) opts out with a
     reason; category 1 still runs and the report says why.
@@ -1466,9 +1514,23 @@ class RuntimeRulesCommand(unittest.TestCase):
         self.assertEqual((p['timeout'],p['stable_seconds']),(300,60))
         p=self.probe({'startup_timeout':900,'stable_seconds':90},watchdog='tcp://[HOST]:[PORT:1]')
         self.assertEqual((p['timeout'],p['stable_seconds']),(900,90))
+    def test_the_hooks_time_limit_is_a_known_setting_but_not_part_of_the_probe(self):
+        # hook_timeout (#138) is upgrade_runtime.py's; the same settings.yaml holds it.
+        p=self.probe({'hook_timeout':1200},watchdog='tcp://[HOST]:[PORT:1]')
+        self.assertEqual((p['timeout'],p['stable_seconds'],'hook_timeout' in p),(300,60,False))
+        # One loader validates every setting, the hooks' too.
+        self.assertEqual(u.upgrade_settings(None),{'startup_timeout':300,'stable_seconds':60,'hook_timeout':600})
+        self.assertEqual(u.upgrade_settings({'hook_timeout':1200})['hook_timeout'],1200)
+    def test_webui_endpoint_is_its_scheme_and_port_as_supervisor_reads_it(self):
+        self.assertEqual(u.webui_endpoint({'webui':'http://[HOST]:[PORT:5678]'}),('http',5678))
+        self.assertEqual(u.webui_endpoint({'webui':'[PROTO:ssl]://[HOST]:[PORT:8443]/admin','options':{'ssl':True}}),('https',8443))
+        self.assertEqual(u.webui_endpoint({'webui':'[PROTO:ssl]://[HOST]:[PORT:8443]/','options':{'ssl':False}}),('http',8443))
+        self.assertIsNone(u.webui_endpoint({'ingress':True}))
+        with self.assertRaisesRegex(ValueError,'as Supervisor does'):u.webui_endpoint({'webui':'http://localhost:1'})
     def test_bad_settings_fail_with_the_reason(self):
         path=self.dir/'settings.yaml'
         for text,reason in [('startup_timeout: 0\n','startup_timeout'),('startup_timeout: soon\n','startup_timeout'),('wait: 5\n',"unknown setting 'wait'"),
+                ('hook_timeout: 0\n','hook_timeout must be a whole number of seconds above 0'),
                 ('- 5\n','settings must be a mapping'),('stable_seconds: 300\n','stable_seconds (300) must be below startup_timeout (300)')]:
             with self.subTest(text):
                 path.write_text(text,encoding='utf-8')

@@ -377,7 +377,8 @@ def mounts(config, root):
 # watchdog and webui as Supervisor writes them: [HOST] is the add-on's address, [PORT:n] its container port n,
 # [PROTO:option] https when that option is true.
 _URL=re.compile(r'^(https?|tcp|\[PROTO:(\w+)\])://\[HOST\]:(?:\[PORT:)?(\d+)\]?(.*)$')
-STARTUP_DEFAULTS={'startup_timeout':300,'stable_seconds':60}
+# upgrade-check/settings.yaml: the startup limits (startup_probe) and the data hooks' limit (#138, upgrade_runtime.py).
+SETTINGS_DEFAULTS={'startup_timeout':300,'stable_seconds':60,'hook_timeout':600}
 # Supervisor gives an ingress_port of 0 a free port in 62000-65500 at install and keeps it for the add-on
 # (supervisor/apps/app.py _check_ingress_port); the upgrade test assigns the first one, the same for both versions.
 ASSIGNED_INGRESS_PORT=62000
@@ -396,6 +397,25 @@ def _probe_url(text, options):
     if option:scheme='https' if (options or {}).get(option) else 'http'
     return f'{scheme}://[HOST]:{port}{path}'
 
+def webui_endpoint(config):
+    """(scheme, port) of config.yaml's webui as Supervisor reads it ([PROTO:option] resolved from the option
+    defaults), or None without a webui."""
+    if not config.get('webui'):return None
+    scheme,rest=_probe_url(config['webui'],config.get('options')).split('://',1)
+    return scheme,int(rest.split(':',1)[1].split('/',1)[0])
+
+def upgrade_settings(settings):
+    """The time limits of the upgrade test: SETTINGS_DEFAULTS, overridden by upgrade-check/settings.yaml (parsed, or
+    None). Each value is a whole number of seconds above 0, and stable_seconds stays below startup_timeout."""
+    limits=dict(SETTINGS_DEFAULTS)
+    if settings is not None and not isinstance(settings,dict):raise ValueError('settings must be a mapping of setting: seconds')
+    for key,value in (settings or {}).items():
+        if key not in limits:raise ValueError(f'unknown setting {key!r} (known: {", ".join(limits)})')
+        if not isinstance(value,int) or isinstance(value,bool) or value<=0:raise ValueError(f'{key} must be a whole number of seconds above 0, not {value!r}')
+        limits[key]=value
+    if limits['stable_seconds']>=limits['startup_timeout']:raise ValueError(f'stable_seconds ({limits["stable_seconds"]}) must be below startup_timeout ({limits["startup_timeout"]})')
+    return limits
+
 def startup_probe(config, settings=None):
     """How the upgrade test judges that a version starts. One probe, the first config.yaml declares, in Supervisor's
     order (no fallback to the next when it does not answer): the watchdog answers with success (HTTP below 300, or
@@ -405,13 +425,7 @@ def startup_probe(config, settings=None):
     override startup_timeout and stable_seconds. The url keeps [HOST] for the runtime to fill in; `below` is the HTTP
     status an answer must stay under (None for tcp and stays-up). An ingress_port of 0 (a port Supervisor picks) is
     still ingress, probed at the port the upgrade test assigns (ingress_port())."""
-    limits=dict(STARTUP_DEFAULTS)
-    if settings is not None and not isinstance(settings,dict):raise ValueError('settings must be a mapping of setting: seconds')
-    for key,value in (settings or {}).items():
-        if key not in limits:raise ValueError(f'unknown setting {key!r} (known: {", ".join(limits)})')
-        if not isinstance(value,int) or isinstance(value,bool) or value<=0:raise ValueError(f'{key} must be a whole number of seconds above 0, not {value!r}')
-        limits[key]=value
-    if limits['stable_seconds']>=limits['startup_timeout']:raise ValueError(f'stable_seconds ({limits["stable_seconds"]}) must be below startup_timeout ({limits["startup_timeout"]})')
+    limits=upgrade_settings(settings)
     options=config.get('options') or {}
     if config.get('watchdog'):method,url,below='watchdog',_probe_url(config['watchdog'],options),300
     elif config.get('ingress'):method,url,below='ingress',f'http://[HOST]:{ingress_port(config)}/',500
