@@ -456,6 +456,9 @@ def build_args(addon_dir, version, arch='amd64'):
     extra=build.get('args') or {}
     if not isinstance(extra,dict):raise ValueError(f'{found[0].name} args is not a mapping')
     args={'BUILD_FROM':base,'BUILD_VERSION':version,'BUILD_ARCH':arch,**{str(k):v for k,v in extra.items()}}
+    for k in args:
+        # docker build --build-arg KEY=VALUE: a key that is empty or holds = or whitespace would become another argument.
+        if not k or re.search(r'[=\s]',k):raise ValueError(f'build argument name {k!r} must be non-empty, without = or whitespace')
     for k,v in args.items():
         if not isinstance(v,(str,int,float)) or isinstance(v,bool) or re.search(r'[\x00-\x1f\x7f]',f'{k}={v}'):
             raise ValueError(f'build argument {k} must be one line of text, not {v!r}')

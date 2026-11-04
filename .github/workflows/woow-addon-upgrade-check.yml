@@ -475,7 +475,10 @@ jobs:
   runtime:
     name: runtime
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    # Per add-on: up to two builds when built on the device (#144; an HA Core base is ~4 GB, pulled once per run), then
+    # each version's startup (startup_timeout 300 s + stable_seconds 60 s by default) and its hooks (hook_timeout 600 s).
+    # A repository like apporo bumps up to five add-ons in one PR, so 90 minutes could run out; GitHub allows 360.
+    timeout-minutes: 150
     env:
       # Every fail (log.sh) of this job is also written here; "Record why the runtime job failed" hands it to compare.
       FAIL_LOG: ${{ github.workspace }}/runtime-failures.txt
@@ -578,9 +581,10 @@ jobs:
         done < upgrade.jsonl
         mv pulled.jsonl upgrade.jsonl
     # Add-ons built on the device (#144) have no image to pull or hand over: both are built here for amd64, as
-    # Supervisor builds them (upgrade_check.py build-args), the comparison target's from its source at the target.
-    # Like a pull (#140), a target that cannot be downloaded or rebuilt fails that add-on (target_failed) and the others
-    # are still tested; a PR that cannot be built fails that add-on as the PR's fault.
+    # Supervisor builds them (upgrade_check.py build-args). The PR's image is built first, from the PR checkout, so a
+    # PR that does not build is reported as the PR's fault (addon_failed); then the comparison target's, from GitHub's
+    # archive of the target (downloaded once per target, removed at the end of this step). Like a pull (#140), a target
+    # that cannot be downloaded or rebuilt fails that add-on (target_failed); either way the others are still tested.
     - name: Build the images of add-ons built on the device
       if: steps.upgrade.outputs.build == 'true'
       env:
@@ -590,44 +594,60 @@ jobs:
         set -euo pipefail
         source tooling/.addon-sync/log.sh
         source tooling/.addon-sync/fields.sh
-        # build <id> <old|new> <add-on directory> <its config.yaml>: tags upgrade-comparison/<id>:<old|new>.
+        # build <id> <old|new> <add-on directory> <its config.yaml>: tags upgrade-comparison/<id>:<old|new>. On failure it
+        # returns 1 and leaves the reason in why: the tool's error (version, build-args) or docker build's exit code.
+        why=""
         build() {
-          local version spec args=()
-          version="$(python3 tooling/.addon-sync/upgrade_check.py version --file "$4" --name "$1")" || { printf '%s\n' "${version}"; return 1; }
-          spec="$(python3 tooling/.addon-sync/upgrade_check.py build-args --addon-dir "$3" --version "${version}" --name "$1")" || { printf '%s\n' "${spec}"; return 1; }
+          local version spec rc=0 args=()
+          if ! version="$(python3 tooling/.addon-sync/upgrade_check.py version --file "$4" --name "$1")"; then why="${version#::error title=*::}"; return 1; fi
+          if ! spec="$(python3 tooling/.addon-sync/upgrade_check.py build-args --addon-dir "$3" --version "${version}" --name "$1")"; then
+            why="${spec#::error title=*::}"; return 1
+          fi
           while IFS= read -r arg; do args+=(--build-arg "${arg}"); done < <(jq -r '.args | to_entries[] | "\(.key)=\(.value)"' <<<"${spec}")
-          docker build --platform linux/amd64 -f "$(jq -r '.dockerfile' <<<"${spec}")" "${args[@]}" -t "upgrade-comparison/$1:$2" "$3"
+          docker build --platform linux/amd64 -f "$(jq -r '.dockerfile' <<<"${spec}")" "${args[@]}" -t "upgrade-comparison/$1:$2" "$3" || rc=$?
+          if [ "${rc}" != 0 ]; then why="docker build exited with code ${rc}; its log is in the step 'Build the images of add-ons built on the device'"; return 1; fi
         }
+        # dir_of <tree> <config> <previous_config>: the add-on's directory in <tree>, where its config is (previous_config
+        # during a move), as the detect and plan steps found it with config_at.
+        dir_of() {
+          if [ -e "$1/$2" ] || [ -z "$3" ]; then printf '%s/%s' "$1" "$(dirname "$2")"; else printf '%s/%s' "$1" "$(dirname "$3")"; fi
+        }
+        # The extracted source of each comparison target, by its tag or commit: add-ons sharing one download it once.
+        declare -A trees=()
         : > built.jsonl
         while IFS= read -r row; do
-          fields "${row}" id=id addon_dir=addon_dir new=new old_src=old_src new_src=new_src test=test
+          fields "${row}" id=id new=new old_src=old_src new_src=new_src test=test
+          fields "$(jq -c --arg id "${id}" '.components[] | select(.id == $id)' provider.json)" path=config previous=previous_config
+          if [ "${test}" = true ] && [ "${new_src}" = pr ] && ! build "${id}" new "$(dir_of source "${path}" "${previous}")" "${new}"; then
+            addon_failed "${id}" "the new version could not be built for amd64 from this PR: ${why}"
+            test=false
+          fi
           if [ "${test}" = true ] && [ -n "${old_src}" ]; then
-            fields "$(jq -c --arg id "${id}" '.components[] | select(.id == $id)' provider.json)" path=config previous=previous_config
-            tree="$RUNNER_TEMP/${id}.old-src"; rm -rf "${tree}"; mkdir -p "${tree}"
-            # The repository at the comparison target, as GitHub archives it (no clone of the history).
-            if ! { gh api "repos/${REPO}/tarball/${old_src}" > "$RUNNER_TEMP/${id}.old-src.tar.gz" \
-                && tar -xzf "$RUNNER_TEMP/${id}.old-src.tar.gz" -C "${tree}" --strip-components=1; }; then
+            tree="${trees[${old_src}]:-}"
+            if [ -z "${tree}" ]; then
+              tree="$RUNNER_TEMP/old-src-${#trees[@]}"; archive="${tree}.tar.gz"; rm -rf "${tree}"; mkdir -p "${tree}"
+              # The tag or commit is a path segment of the API URL: percent-encoded (a tag may hold / or other reserved characters).
+              if gh api "repos/${REPO}/tarball/$(jq -rn --arg ref "${old_src}" '$ref | @uri')" > "${archive}" \
+                  && tar -xzf "${archive}" -C "${tree}" --strip-components=1; then
+                trees[${old_src}]="${tree}"
+              else
+                rm -rf "${tree}"; tree=""
+              fi
+              rm -f "${archive}"
+            fi
+            if [ -z "${tree}" ]; then
               target_failed "${id}" "cannot download the source of the comparison target ${old_src} to rebuild its image, so the upgrade cannot be tested; re-run the check"
               test=false
-            else
-              rm -f "$RUNNER_TEMP/${id}.old-src.tar.gz"
-              # The add-on's directory there: where the plan found the target's config (previous_config during a move).
-              dir="$(dirname "${path}")"; [ -e "${tree}/${path}" ] || [ -z "${previous}" ] || dir="$(dirname "${previous}")"
-              if ! build "${id}" old "${tree}/${dir}" "$RUNNER_TEMP/${id}.old.yaml"; then
-                target_failed "${id}" "the comparison target ${old_src} could not be rebuilt for amd64 (its build log is in the runtime job), so the upgrade cannot be tested"
-                test=false
-              fi
+            elif ! build "${id}" old "$(dir_of "${tree}" "${path}" "${previous}")" "$RUNNER_TEMP/${id}.old.yaml"; then
+              target_failed "${id}" "the comparison target ${old_src} could not be rebuilt for amd64, so the upgrade cannot be tested: ${why}"
+              test=false
             fi
-          fi
-          if [ "${test}" = true ] && [ "${new_src}" = pr ] && ! build "${id}" new "${addon_dir}" "${new}"; then
-            reason="the new version could not be built for amd64 from this PR (its build log is in the runtime job); fix the build"
-            printf '::error title=Upgrade comparison failed::%s\n' "$(esc "${id}: ${reason}")"
-            jq -n --arg name "${id}" --arg reason "${reason}" '{name: $name, passed: false, reason: $reason, hooks: [], data_checked: false, phases: []}' > "runtime-reports/${id}.json"
-            test=false
           fi
           jq -c --argjson test "${test}" '.test = $test' <<<"${row}" >> built.jsonl
         done < upgrade.jsonl
         mv built.jsonl upgrade.jsonl
+        # The images are built; their sources are no longer needed (an HA Core tree is tens of MB, its image GBs).
+        rm -rf "$RUNNER_TEMP"/old-src-*
     - name: Wait for the new images
       if: steps.upgrade.outputs.wait == 'true'
       env:
@@ -667,13 +687,17 @@ jobs:
         source tooling/.addon-sync/fields.sh
         status=0
         while IFS= read -r row; do
-          fields "${row}" id=id addon_dir=addon_dir new=new ref=old_ref
+          fields "${row}" id=id addon_dir=addon_dir new=new ref=old_ref old_src='old_src // ""' new_src='new_src // ""'
           # A comparison target built on the device was rebuilt as upgrade-comparison/<id>:old (a local image, never pulled).
           old_image="${ref:-upgrade-comparison/${id}:old}"
           rc=0; python3 tooling/.addon-sync/upgrade_runtime.py --name "${id}" --addon-dir "${addon_dir}" \
             --old-image "${old_image}" --old-config "$RUNNER_TEMP/${id}.old.yaml" --new-image "upgrade-comparison/${id}:new" --new-config "${new}" \
             --report-dir runtime-reports --summary "$GITHUB_STEP_SUMMARY" || rc=$?
           [ "${rc}" = 0 ] || status=1
+          # Images built on the device (#144) are removed once tested, so the next add-on's builds have the disk. The
+          # build cache is kept: add-ons of one repository share their base image (apporo: one HA Core for five).
+          if [ -n "${old_src}" ]; then docker image rm --force "upgrade-comparison/${id}:old" > /dev/null 2>&1 || true; fi
+          if [ "${new_src}" = pr ]; then docker image rm --force "upgrade-comparison/${id}:new" > /dev/null 2>&1 || true; fi
         done < <(jq -c 'select(.test)' upgrade.jsonl)
         # An add-on an earlier step could not test (target_failed, #140; a PR built on the device that does not build, #144) fails this job too.
         if jq -e -s 'any(.[]; .passed == false)' runtime-reports/*.json > /dev/null 2>&1; then status=1; fi

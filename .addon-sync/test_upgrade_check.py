@@ -674,7 +674,7 @@ class StepHarness(unittest.TestCase):
         vulnerability in (CVE-2026-0001 openssl, fixed in 3.0.9); every scan reports the same DB.
         image_artifact: the caller's image_artifact (the runtime job's plan, #137).
         tarball: {path: text} in GitHub's archive of every ref besides its configs (#144); build_fail: the tag whose
-        `docker build` fails. self.builds is every `docker build` (DOCKER_STUB).
+        `docker build` fails. self.builds is every `docker build` (DOCKER_STUB); gh.log in self.tmp has every tarball URL asked for.
         self.tmp is the job's directory (also RUNNER_TEMP); self.plans is every line of plan.jsonl."""
         import os,subprocess
         tmp=self.tmp=pathlib.Path(tempfile.mkdtemp());self.addCleanup(shutil.rmtree,tmp)
@@ -708,7 +708,7 @@ class StepHarness(unittest.TestCase):
         env=dict(os.environ,PATH=f"{tmp/'bin'}{os.pathsep}{os.environ['PATH']}",OLD=str(tmp/'old.yaml'),OLD_PATH=old_path,RELEASES=releases,REPO='WOOWTECH/t',BASE_SHA='b',
             GH_TOKEN='x',DB_MAX_AGE_HOURS='120',IMAGES='\n'.join(images),VULNERABLE=vulnerable,SBOM_ARTIFACT=sbom,IMAGE_ARTIFACT=image_artifact,SKIP_VULNERABILITY_SCAN=skip,RUNNER_TEMP=str(tmp),RUN_ATTEMPT='1',
             GITHUB_OUTPUT=str(tmp/'out'),GITHUB_STEP_SUMMARY=str(tmp/'summary'),HISTORY=str(tmp/'history.json') if history is not None else '',GH_FAIL=gh_fail,
-            TMPDIR=str(tmp/'mktemp'),TARBALL=json.dumps(tarball or {}),BUILD_FAIL=build_fail,DOCKER_LOG=str(tmp/'docker.log'))
+            TMPDIR=str(tmp/'mktemp'),TARBALL=json.dumps(tarball or {}),BUILD_FAIL=build_fail,DOCKER_LOG=str(tmp/'docker.log'),GH_LOG=str(tmp/'gh.log'))
         (tmp/'mktemp').mkdir(exist_ok=True)
         for one in (ident if isinstance(ident,tuple) else (ident,)):
             (tmp/'step.sh').write_text(self.step(one)['run'])
@@ -748,7 +748,8 @@ elif '/commits?' in url:
 elif '/tarball/' in url:
     # The repository at a ref as GitHub archives it: one top directory, the configs at that ref and $TARBALL's files.
     import io,tarfile
-    ref=url.split('/tarball/',1)[1]
+    ref=urllib.parse.unquote(url.split('/tarball/',1)[1])
+    with open(os.environ['GH_LOG'],'a') as f:f.write(url+'\n')
     files={c['sha']:c['files'] for c in history}.get(ref,{}) if history is not None else {old_path or 'addon/config.yaml':legacy(old_path or 'addon/config.yaml')}
     files={**{p:t for p,t in files.items() if t is not None},**json.loads(os.environ.get('TARBALL') or '{}')}
     buf=io.BytesIO()
@@ -864,7 +865,8 @@ class DeviceBuiltImages(StepHarness):
     @needs_shell
     def test_old_from_the_targets_source_and_new_from_the_pr_as_supervisor_builds_them(self):
         r=self.build()
-        self.assertEqual(r.returncode,0,r.stdout+r.stderr);old,new=self.builds
+        # The PR's image first, so a PR that does not build is the PR's fault whatever its target does.
+        self.assertEqual(r.returncode,0,r.stdout+r.stderr);new,old=self.builds
         for b,side,version in ((old,'old','1.0.0'),(new,'new','1.1.0')):
             with self.subTest(side):
                 self.assertEqual(b['args'][b['args'].index('-t')+1],f'upgrade-comparison/t:{side}')
@@ -872,42 +874,65 @@ class DeviceBuiltImages(StepHarness):
                 self.assertEqual(b['files']['Dockerfile'],f'FROM {side}')
                 self.assertEqual(self.build_args(b),[f'BUILD_FROM=ghcr.io/woowtech/base:{side}',f'BUILD_VERSION={version}','BUILD_ARCH=amd64',f'EXTRA={side}'])
         # The target's tree comes from GitHub's archive of the Release tag; the PR's is the checkout.
-        self.assertTrue(old['args'][-1].endswith('t.old-src/addon'));self.assertEqual(new['args'][-1],'source/addon')
+        self.assertTrue(old['args'][-1].endswith('old-src-0/addon'));self.assertEqual(new['args'][-1],'source/addon')
+        self.assertEqual((self.tmp/'gh.log').read_text(),'repos/WOOWTECH/t/tarball/v1.0.0\n')
+        # The archive and its tree are gone once the images are built.
+        self.assertEqual(list(self.tmp.glob('old-src-*')),[])
     @needs_shell
     def test_ref_policy_main_builds_the_commit_where_the_base_version_first_appeared(self):
         p='addon/config.yaml';history=[('b',{p:{'version':'2.0','image':None,'log_level':'warn'}}),('c',{p:{'version':'2.0','image':None}}),('o',{p:{'version':'1.9','image':None}})]
         r=self.build(policy='main',history=history,version='2.1')
-        self.assertEqual(r.returncode,0,r.stdout+r.stderr)
-        self.assertTrue(self.builds[0]['args'][-1].endswith('t.old-src/addon'));self.assertIn('BUILD_VERSION=2.0',self.build_args(self.builds[0]))
-        self.assertNotIn('log_level',yaml.safe_load(self.builds[0]['files']['config.yaml']))  # c's tree, not the PR base b's
+        self.assertEqual(r.returncode,0,r.stdout+r.stderr);old=self.builds[1]
+        self.assertTrue(old['args'][-1].endswith('old-src-0/addon'));self.assertIn('BUILD_VERSION=2.0',self.build_args(old))
+        self.assertNotIn('log_level',yaml.safe_load(old['files']['config.yaml']))  # c's tree, not the PR base b's
     @needs_shell
-    def failed(self,r,reason):
+    def test_add_ons_sharing_a_comparison_target_download_it_once(self):
+        # A multi-add-on repository under ref_policy main (apporo): each add-on's target is the same commit here.
+        comps=[{'id':i,'source_path':'addon','config_file':'config.yaml'} for i in ('t','u')]
+        p='addon/config.yaml';history=[('b',{p:{'version':'2.0','image':None}}),('o',{p:{'version':'1.9','image':None}})]
+        r=self.build(policy='main',history=history,version='2.1',extra={'components':comps},changed=2)
+        self.assertEqual(r.returncode,0,r.stdout+r.stderr)
+        self.assertEqual((self.tmp/'gh.log').read_text(),'repos/WOOWTECH/t/tarball/b\n')
+        self.assertEqual([b['args'][b['args'].index('-t')+1] for b in self.builds],
+            ['upgrade-comparison/t:new','upgrade-comparison/t:old','upgrade-comparison/u:new','upgrade-comparison/u:old'])
+    def test_the_tarball_ref_is_percent_encoded(self):
+        build=self.step('Build the images of add-ons built on the device')['run']
+        self.assertIn('''tarball/$(jq -rn --arg ref "${old_src}" '$ref | @uri')''',build)
+    @needs_shell
+    def failed(self,r,reason,exact=True):
         """Like a pull (#140): the step goes on, the add-on leaves the test with its result, and "Run the upgrade tests"
-        fails the job for it (ComparisonTargetFailure)."""
+        fails the job for it (ComparisonTargetFailure). exact False: `reason` is the start of the reason."""
         self.assertEqual(r.returncode,0,r.stdout+r.stderr)
         self.assertIn(f'::error title=Upgrade comparison failed::t: {reason}',r.stdout)
         result=json.loads((self.tmp/'runtime-reports/t.json').read_text())
+        if not exact:self.assertTrue(result['reason'].startswith(reason),result['reason']);reason=result['reason']
         self.assertEqual(result,{'name':'t','passed':False,'reason':reason,'hooks':[],'data_checked':False,'phases':[]})
         self.assertEqual([json.loads(l)['test'] for l in (self.tmp/'upgrade.jsonl').read_text().splitlines()],[False])
+        return reason
+    DOCKER_FAILED="docker build exited with code 1; its log is in the step 'Build the images of add-ons built on the device'"
     @needs_shell
     def test_a_comparison_target_that_cannot_be_rebuilt_is_a_target_failure(self):
         r=self.build(build_fail='upgrade-comparison/t:old')
-        self.failed(r,'the comparison target v1.0.0 could not be rebuilt for amd64 (its build log is in the runtime job), so the upgrade cannot be tested')
-        self.assertEqual(len(self.builds),1)  # the new image is not built for an add-on that is not tested
+        self.failed(r,f'the comparison target v1.0.0 could not be rebuilt for amd64, so the upgrade cannot be tested: {self.DOCKER_FAILED}')
+        self.assertEqual(len(self.builds),2)
     @needs_shell
     def test_a_target_whose_source_cannot_be_downloaded_is_a_target_failure(self):
         r=self.build(gh_fail='/tarball/')
         self.failed(r,'cannot download the source of the comparison target v1.0.0 to rebuild its image, so the upgrade cannot be tested; re-run the check')
-        self.assertEqual(self.builds,[])
+        self.assertEqual(len(self.builds),1)  # the PR's image was built first
     @needs_shell
-    def test_a_pr_that_cannot_be_built_fails_as_the_prs_fault(self):
-        r=self.build(build_fail='upgrade-comparison/t:new')
-        self.failed(r,'the new version could not be built for amd64 from this PR (its build log is in the runtime job); fix the build')
+    def test_a_pr_that_cannot_be_built_fails_as_the_prs_fault_before_its_target_is_built(self):
+        r=self.build(build_fail='upgrade-comparison/t:new',gh_fail='/tarball/')
+        self.failed(r,f'the new version could not be built for amd64 from this PR: {self.DOCKER_FAILED}')
+        self.assertFalse((self.tmp/'gh.log').exists())
     @needs_shell
-    def test_a_target_without_a_dockerfile_cannot_be_rebuilt(self):
-        r=self.build(tarball={})
-        self.assertIn('no Dockerfile (or Dockerfile.amd64)',r.stdout)
-        self.failed(r,'the comparison target v1.0.0 could not be rebuilt for amd64 (its build log is in the runtime job), so the upgrade cannot be tested')
+    def test_the_tools_error_is_the_reason(self):
+        # A target without a Dockerfile: build-args' own message is in the report, not only "see the log".
+        reason=self.failed(self.build(tarball={}),'the comparison target v1.0.0 could not be rebuilt for amd64, so the upgrade cannot be tested: t: ',exact=False)
+        self.assertIn('no Dockerfile (or Dockerfile.amd64)',reason)
+        reason=self.failed(self.build(files={'addon/Dockerfile':'FROM new','addon/build.yaml':'args:\n  "A B": x\n'}),
+            'the new version could not be built for amd64 from this PR: t: ',exact=False)
+        self.assertIn("build argument name 'A B' must be non-empty, without = or whitespace",reason)
     @needs_shell
     def test_an_approved_skip_is_not_built_or_tested(self):
         # woow_lan_gateway (#158): built on the device and approved; it is "not run" with the registry's reason, not failing.
@@ -940,7 +965,11 @@ class BuildArgs(unittest.TestCase):
     def test_what_supervisor_could_not_build_is_an_error(self):
         for name,files,error in (('no amd64 base',{'build.yaml':'build_from:\n  aarch64: a/b:1\n'},'no base image for amd64'),
                 ('no Dockerfile',{'Dockerfile':None},'no Dockerfile'),('args not a mapping',{'build.yaml':'args: [1]\n'},'args is not a mapping'),
-                ('multi-line arg',{'build.yaml':'args:\n  X: "a\\nb"\n'},'must be one line'),('not a mapping',{'build.yaml':'- 1\n'},'is not a mapping')):
+                ('multi-line arg',{'build.yaml':'args:\n  X: "a\\nb"\n'},'must be one line'),
+                ('empty arg name',{'build.yaml':'args:\n  "": x\n'},"build argument name '' must be non-empty, without = or whitespace"),
+                ('= in arg name',{'build.yaml':'args:\n  "A=B": x\n'},"build argument name 'A=B' must be non-empty"),
+                ('space in arg name',{'build.yaml':'args:\n  "A B": x\n'},"build argument name 'A B' must be non-empty"),
+                ('tab in arg name',{'build.yaml':'args:\n  "A\\tB": x\n'},'without = or whitespace'),('not a mapping',{'build.yaml':'- 1\n'},'is not a mapping')):
             with self.subTest(name),self.assertRaisesRegex(ValueError,error):u.build_args(self.addon(files),'1')
     def test_command_prints_json_and_names_the_add_on_on_error(self):
         d=self.addon({})
