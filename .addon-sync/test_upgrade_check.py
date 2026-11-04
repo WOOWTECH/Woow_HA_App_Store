@@ -1597,7 +1597,7 @@ class UpgradeTestSkipCommand(unittest.TestCase):
         registry=json.loads((StepHarness.STORE/'.addon-sync/registry.json').read_text(encoding='utf-8'))
         approved={(repo,c['id']):u.upgrade_test_skip(c) for repo,p in registry['providers'].items() for c in p['components'] if u.upgrade_test_skip(c)}
         self.assertEqual({k:re.match(r'#\d+',v).group() for k,v in approved.items()},{('WOOWTECH/woow-lan-gateway','woow_lan_gateway'):'#158',
-            ('WOOWTECH/Woow_ha_omnigent_addon','woow-omnigent'):'#157',('WOOWTECH/Woow_ha_pi_agent_add_on','woow_ha_pi_agent'):'#158'})
+            ('WOOWTECH/Woow_ha_pi_agent_add_on','woow_ha_pi_agent'):'#158'})
         for p in registry['providers'].values():
             with self.subTest('provider level'):self.assertNotIn('skip_upgrade_test',p.get('upgrade_comparison') or {})
 
