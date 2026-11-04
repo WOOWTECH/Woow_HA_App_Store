@@ -13,6 +13,10 @@ upgrade-notes.yaml with a reason. Already in the old image, no fixed version,
 or below High: counted in the report only. No network, no Docker: the reusable
 workflow woow-addon-upgrade-check.yml fetches the inputs and calls this.
 
+Category 3 (regression comparison, #139): the checks of the add-on's smoke hook
+on the comparison target and on the new version, compared by name in the
+upgrade test's result (regression(); upgrade_runtime.py runs the hook).
+
 Breaking changes (`change`, and the `key` it is reported under):
   option-removed      schema key that had an options default removed     schema path, e.g. database.port
   schema-removed      schema key without an options default removed      schema path
@@ -374,6 +378,65 @@ def mounts(config, root):
         if targets.count(t)>1:raise ValueError(f'two data directories are mounted at {t}; give one of the map entries a path')
     return out
 
+# Regression comparison (#139, category 3): the add-on's upgrade-check/smoke runs on the comparison target and on the
+# new version; regression() compares the two runs check by check. HOOK_ROW is the row of the hook's own outcome, the
+# only row when it writes no report; STARTS_ROW the only row without a smoke hook.
+HOOK_ROW,STARTS_ROW='(the hook)','starts'
+
+def _smoke_run(phase):
+    """The smoke run in a phase of upgrade_runtime.py's result, or None when smoke did not run there."""
+    return next((h for h in (phase or {}).get('hooks') or [] if h.get('hook')=='smoke'),None)
+
+def _verdict(old,new,only_new_counts):
+    """'pass', 'fail' or 'not compared' for one row: what passes on the comparison target must pass on the new
+    version; what fails or is skipped there is only reported; a check only the new version has (only_new_counts) must pass."""
+    if old=='pass' or (old is None and only_new_counts):return 'pass' if new=='pass' else 'fail'
+    return 'not compared'
+
+def regression(result):
+    """Category 3 of upgrade_runtime.py's result (pipeline #90, #139): {smoke, passed, rows, reason}.
+
+    With upgrade-check/smoke (result hooks has 'smoke'), rows are HOOK_ROW, then each check by name in the order
+    the comparison target's report, then the new version's, lists them. HOOK_ROW is 'pass' when the hook exited 0
+    and its report, if any, could be read; a hook that writes no report is judged by this row alone, by its exit
+    code. Each row is {name, old, new, verdict, old_detail, new_detail}: old/new are pass, fail, skip or None
+    (absent from that report, or smoke did not run there); verdict as _verdict: the comparison target pass and the
+    new version not pass is 'fail'; the comparison target fail, skip or None is 'not compared' (未比對, report only),
+    except that a check only in the new version's report must pass. Without smoke the only row is STARTS_ROW,
+    whether each version started. passed: no row is 'fail'; reason names the failing rows ('' when passed)."""
+    if not isinstance(result,dict) or not isinstance(result.get('phases'),list):raise ValueError('not an upgrade test result (no phases list)')
+    phases={p.get('phase'):p for p in result['phases'] if isinstance(p,dict)}
+    old,new=phases.get('old'),phases.get('new')
+    def row(name,o,n,only_new_counts=False,od='',nd=''):
+        return {'name':name,'old':o,'new':n,'verdict':_verdict(o,n,only_new_counts),'old_detail':od,'new_detail':nd}
+    smoke='smoke' in (result.get('hooks') or [])
+    if not smoke:
+        started=lambda p:None if p is None else 'pass' if p.get('started') else 'fail'
+        rows=[row(STARTS_ROW,started(old),started(new),od=(old or {}).get('detail',''),nd=(new or {}).get('detail',''))]
+        new_ran=False
+    else:
+        runs=_smoke_run(old),_smoke_run(new)
+        def outcome(run):
+            if run is None:return None
+            return 'pass' if run.get('exit_code')==0 and not run.get('report_error') else 'fail'
+        rows=[row(HOOK_ROW,*map(outcome,runs),od=(runs[0] or {}).get('detail',''),nd=(runs[1] or {}).get('detail',''))]
+        checks=[{c['name']:c for c in (r or {}).get('checks') or []} for r in runs]
+        # A comparison target whose smoke did not run, or whose report could not be read, has no checks to go by:
+        # then nothing is "only in the new version".
+        target_reported=runs[0] is not None and not runs[0].get('report_error')
+        new_ran=runs[1] is not None
+        for name in [*checks[0],*(n for n in checks[1] if n not in checks[0])]:
+            o,n=(c.get(name) or {} for c in checks)
+            rows.append(row(name,o.get('result'),n.get('result'),target_reported,o.get('detail',''),n.get('detail','')))
+    failed=[r for r in rows if r['verdict']=='fail']
+    def why(r):
+        # new_ran: a check missing from the new version's report is absent; a hook or version that did not run is not run.
+        new=r['new'] or ('absent from its report' if new_ran and r is not rows[0] else 'not run')
+        if r['old']=='pass':return f'{r["name"]} passes on the comparison target but is {new} on the new version'
+        return f'{r["name"]} is only in the new version and is {new}, not pass'
+    reason=('regression (category 3): '+'; '.join(why(r) for r in failed[:10])+(f'; and {len(failed)-10} more' if len(failed)>10 else '')) if failed else ''
+    return {'smoke':smoke,'passed':not failed,'rows':rows,'reason':reason}
+
 # watchdog and webui as Supervisor writes them: [HOST] is the add-on's address, [PORT:n] its container port n,
 # [PROTO:option] https when that option is true.
 _URL=re.compile(r'^(https?|tcp|\[PROTO:(\w+)\])://\[HOST\]:(?:\[PORT:)?(\d+)\]?(.*)$')
@@ -497,6 +560,11 @@ def _startup_probe(a):
 
 COMMANDS={'mounts':_mounts,'startup-probe':_startup_probe,'components':_components,'comparison-target':_comparison_target,'version':_version_command,'check-target':_check_target,'release-notes':_release_notes,'compare':_compare}
 
+def _regression(a):
+    with _failing((ValueError,KeyError,TypeError,AttributeError,OSError),f'{a.result}: '):r=regression(_load(a.result,'json'))
+    print(json.dumps(r));return 0 if r['passed'] else 1
+COMMANDS['regression']=_regression  # #139
+
 def main(argv=None):
     p=argparse.ArgumentParser(description=__doc__.splitlines()[0]);sub=p.add_subparsers(dest='command',required=True)
     c=sub.add_parser('compare',help='judge one add-on and write the report')
@@ -526,6 +594,8 @@ def main(argv=None):
     k.add_argument('--registry',required=True,help='Store registry.json');k.add_argument('--repo',required=True,help='source repository, owner/name')
     m=sub.add_parser('mounts',help="print the upgrade test's data directories as JSON [{type, source, target, read_only}] (mounts())")
     m.add_argument('--config',required=True,help="the version's config.yaml");m.add_argument('--root',required=True,help='directory holding one directory per type')
+    r=sub.add_parser('regression',help="compare the smoke checks of an upgrade test result (category 3): print {smoke, passed, rows, reason} as JSON (regression()); exits 1 on a regression")
+    r.add_argument('--result',required=True,help="upgrade_runtime.py's result, <name>.json")
     s=sub.add_parser('startup-probe',help='print how the upgrade test judges that a version starts, as JSON {method, url, below, timeout, stable_seconds} (startup_probe())')
     s.add_argument('--config',required=True,help="the version's config.yaml");s.add_argument('--settings',help='upgrade-check/settings.yaml of the add-on (may be absent)')
     a=p.parse_args(argv)
