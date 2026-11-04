@@ -99,11 +99,29 @@ CHECK_RESULTS = ('pass', 'fail', 'skip')
 # How many unmocked paths the report lists per version, the most called first.
 UNMOCKED_ROWS = 30
 
+class DockerError(RuntimeError):
+    """A docker command that failed: its exit code and output."""
+    def __init__(self, message, returncode, output):
+        super().__init__(message); self.returncode, self.output = returncode, output
+
 def docker(*args, check=True):
     r = subprocess.run(['docker', *args], capture_output=True, text=True, encoding='utf-8', errors='replace')
     if check and r.returncode:
-        raise RuntimeError(f'docker {args[0]} failed ({r.returncode}): {(r.stderr or r.stdout).strip()[-1000:]}')
+        output = (r.stderr or r.stdout).strip()
+        raise DockerError(f'docker {args[0]} failed ({r.returncode}): {output[-1000:]}', r.returncode, output)
     return r.stdout
+
+# #140: what `docker run` says when the image, not the runner, is at fault: it cannot be found or pulled, or the
+# container was created but its entrypoint cannot run (docker run exits 126 or 127 then). Anything else (a name or
+# address in use, a bind mount, the daemon) is the test's own fault: a tool error, not the add-on's failure.
+IMAGE_FAULTS = ('unable to find image', 'pull access denied', 'manifest unknown', 'no matching manifest', 'repository does not exist',
+    'failed to resolve reference', 'invalid reference format', 'unable to start container process: exec', 'exec format error',
+    'executable file not found')
+
+def image_fault(error):
+    """Whether a failed `docker run` (DockerError) is the image's fault: exit 126 or 127 (created, but its entrypoint
+    cannot run), or a message in IMAGE_FAULTS."""
+    return error.returncode in (126, 127) or any(f in error.output.lower() for f in IMAGE_FAULTS)
 
 def default_options(config):
     """What Supervisor writes to /data/options.json for a fresh install: the option defaults (no null ones)."""
@@ -344,12 +362,25 @@ def upgrade_test(name, addon_dir, old_image, old_config, new_image, new_config, 
         env.open()
         for phase, image, config in (('old', old_image, old_config), ('new', new_image, new_config)):
             probe = startup_probe(config, settings)
-            container = env.start(phase, image, config)
+            label = f'{PHASE_LABEL[phase]} ({config.get("version")})'
+            try:container = env.start(phase, image, config)
+            except DockerError as e:
+                # #140: a version whose image docker cannot run (not found or pulled, entrypoint missing...) did not start;
+                # for the comparison target that fails the upgrade comparison with the reason, as an exit does. Any
+                # other docker failure is the test's own: a tool error (main(), exit 2).
+                if not image_fault(e):raise
+                # Created but not started: what it logged, as for a version that exits.
+                created = f'{env.prefix}-{phase}'
+                logs = _logs(created, 60)[-4000:] if docker('ps', '-aq', '--filter', f'name=^{created}$', check=False).strip() else ''
+                # It never ran, so it made no Supervisor calls (#142's report section stays empty).
+                phases.append({'phase': phase, 'version': str(config.get('version')), 'image': image, 'method': probe['method'], 'started': False,
+                    'detail': str(e), 'answer': '', 'logs': logs, 'hooks': [], 'supervisor': {'unmocked': [], 'broken_fixtures': []}})
+                result['reason'] = f'{label} did not start: {e}'
+                return result
             ok, detail, answer = wait_started(env, container, probe)
             entry = {'phase': phase, 'version': str(config.get('version')), 'image': image, 'method': probe['method'], 'started': ok,
                 'detail': detail, 'answer': answer, 'logs': '', 'hooks': []}
             phases.append(entry)
-            label = f'{PHASE_LABEL[phase]} ({config.get("version")})'
             if not ok:result['reason'] = f'{label} did not start: {detail}'
             for hook in (h for h in present if ok and HOOK_PHASE[h] == phase):
                 run = env.run_hook(hook, phase, image, config, limits['hook_timeout'])
