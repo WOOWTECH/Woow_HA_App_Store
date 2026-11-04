@@ -37,14 +37,18 @@
 # may pass it, and the report gives that approved reason, not the caller's
 # text; any other caller that passes it fails.
 #
-# Category 2, the upgrade test (#137; startup only until #138 adds data checks),
-# runs in the runtime job for add-ons with a prebuilt image when the caller
-# passes image_artifact: the caller's amd64 build hands over the new image
-# through the Store action .github/actions/addon-image (docker save; nothing is
-# pushed to GHCR or rebuilt), the comparison target's image is pulled from GHCR,
-# and .addon-sync/upgrade_runtime.py starts both, one after the other, on the
-# same data directories under a mock Supervisor. compare needs runtime and
-# fails, with the reason, when the upgrade test fails. Callers that pass no
+# Category 2, the upgrade test (#137 startup, #138 data checks), runs in the
+# runtime job for add-ons with a prebuilt image when the caller passes
+# image_artifact: the caller's amd64 build hands over the new image through the
+# Store action .github/actions/addon-image (docker save; nothing is pushed to
+# GHCR or rebuilt), the comparison target's image is pulled from GHCR, and
+# .addon-sync/upgrade_runtime.py starts both, one after the other, on the same
+# data directories under a mock Supervisor. The add-on's upgrade-check/ (in the
+# PR) may hold the hooks seed (run on the comparison target) and verify (run on
+# the new version); the repository never runs docker itself (hook interface:
+# upgrade_runtime.py's docstring). Without verify the data is not checked and
+# the summary says so. compare needs runtime, lists each add-on's report with
+# every check, and fails, with the reason, when the upgrade test fails. Callers that pass no
 # image_artifact are reported as not run yet (rolled out in #143); add-ons built
 # on the device are #144.
 #
@@ -432,12 +436,25 @@ jobs:
           [ -e "${result}" ] || break
           # upgrade_runtime.py's result, the runtime job's note on why the test did not run, or why that job failed.
           id="$(jq -r '.name' "${result}")"
+          # #138: data was checked only when verify ran (data_checked; absent in results from before #138). verify runs
+          # only after seed, when there is one, passed. A test that failed before verify did not check data.
+          if jq -e '.data_checked == true' "${result}" > /dev/null; then
+            if jq -e '(.hooks // []) | index("seed")' "${result}" > /dev/null; then scope="data checked by seed and verify (已檢查資料)"
+            else scope="data checked by verify, no seed (已檢查資料)"; fi
+          elif jq -e '(.hooks // []) | index("verify")' "${result}" > /dev/null; then
+            scope="data was not checked: the test failed before verify ran (沒有檢查資料)"
+          else scope="startup only: data was not checked (只檢查啟動，沒有檢查資料)"; fi
           case "$(jq -r '.passed' "${result}")" in
-            true) echo "- ${id}: passed, startup only: data was not checked (只檢查啟動，沒有檢查資料)" >> "$GITHUB_STEP_SUMMARY";;
-            false) fail "${id}: upgrade test failed: $(jq -r '.reason' "${result}") (the runtime job's summary has the report)"; status=1
-              echo "- ${id}: **failed**, startup only: data was not checked (只檢查啟動，沒有檢查資料)" >> "$GITHUB_STEP_SUMMARY";;
+            true) echo "- ${id}: passed, ${scope}" >> "$GITHUB_STEP_SUMMARY";;
+            false) fail "${id}: upgrade test failed: $(jq -r '.reason' "${result}") (the report below and the runtime job's summary have the details)"; status=1
+              echo "- ${id}: **failed**, ${scope}" >> "$GITHUB_STEP_SUMMARY";;
             *) echo "- ${id}: not run ($(jq -r '.note' "${result}"))" >> "$GITHUB_STEP_SUMMARY";;
           esac
+        done
+        # upgrade_runtime.py's report of each add-on: both versions' startup and every check of its hooks.
+        for report in runtime-reports/*.md; do
+          [ -e "${report}" ] || break
+          { echo; cat "${report}"; } >> "$GITHUB_STEP_SUMMARY"
         done
         if [ "${RUNTIME_RESULT}" != success ] && [ "${status}" = 0 ]; then
           fail "the runtime job (upgrade test) ended ${RUNTIME_RESULT} with no failing add-on result; its log has the reason"; status=1

@@ -820,6 +820,54 @@ class RuntimeFailureRecord(StepHarness):
         passed={'name':'t','passed':True,'reason':'','phases':[]}
         self.assertEqual(self.record(results=(passed,))['runtime-job.json']['passed'],False)
 
+class UpgradeTestResult(StepHarness):
+    """compare's 'Upgrade test result' (#138): each add-on's verdict, whether its data was checked, and its report with every check."""
+    def result(self,results,reports=None,runtime='success'):
+        """results: the runtime-reports/*.json; reports: name -> the .md upgrade_runtime.py wrote. (exit code, stdout, step summary)."""
+        import os,subprocess
+        tmp=pathlib.Path(tempfile.mkdtemp());self.addCleanup(shutil.rmtree,tmp)
+        (tmp/'runtime-reports').mkdir();(tmp/'bin').mkdir();(tmp/'tooling/.addon-sync').mkdir(parents=True)
+        shutil.copy(self.STORE/'.addon-sync/log.sh',tmp/'tooling/.addon-sync/log.sh')
+        # No artifact to download: the results are already in runtime-reports/.
+        (tmp/'bin/gh').write_text('#!/bin/sh\nexit 0\n',newline='\n');(tmp/'bin/gh').chmod(0o755)
+        for r in results:(tmp/'runtime-reports'/f"{r['name']}.json").write_text(json.dumps(r))
+        for name,text in (reports or {}).items():(tmp/'runtime-reports'/f'{name}.md').write_text(text,encoding='utf-8')
+        (tmp/'step.sh').write_text(self.step('Upgrade test result')['run'],newline='\n');(tmp/'summary.md').write_text('')
+        env=dict(os.environ,PATH=f"{tmp/'bin'}{os.pathsep}{os.environ['PATH']}",GITHUB_STEP_SUMMARY=str(tmp/'summary.md'),RUNNER_TEMP=str(tmp),
+            REPO='o/r',RUN_ID='1',RUN_ATTEMPT='1',RUNTIME_RESULT=runtime)
+        r=subprocess.run(['bash',str(tmp/'step.sh')],cwd=tmp,env=env,capture_output=True,text=True)
+        return r.returncode,r.stdout,(tmp/'summary.md').read_text(encoding='utf-8')
+    @needs_shell
+    def test_add_on_with_verify_is_reported_as_data_checked_with_its_checks(self):
+        code,out,summary=self.result([{'name':'t','passed':True,'reason':'','hooks':['seed','verify'],'data_checked':True,'phases':[]}],
+            {'t':'#### Upgrade test: t\n\n| the new version 1.1.0 | verify | item kept | pass | hello |\n'})
+        self.assertEqual(code,0,out);self.assertIn('- t: passed, data checked by seed and verify (已檢查資料)',summary)
+        self.assertIn('| verify | item kept | pass | hello |',summary)
+    @needs_shell
+    def test_add_on_without_verify_is_reported_as_startup_only(self):
+        # Also a result written before #138 (no hooks field).
+        for r in ({'name':'t','passed':True,'reason':'','hooks':['seed'],'phases':[]},{'name':'t','passed':True,'reason':'','phases':[]}):
+            with self.subTest(r):
+                code,out,summary=self.result([r])
+                self.assertEqual(code,0,out);self.assertIn('- t: passed, startup only: data was not checked (只檢查啟動，沒有檢查資料)',summary)
+    @needs_shell
+    def test_data_counts_as_checked_only_when_verify_ran(self):
+        # A failing seed (or comparison target) stops the test before verify: an add-on that has verify was not checked.
+        failed={'name':'t','passed':False,'reason':'seed failed on the comparison target (1.0.0): exited with code 2',
+            'hooks':['seed','verify'],'data_checked':False,'phases':[]}
+        code,out,summary=self.result([failed],runtime='failure')
+        self.assertEqual(code,1);self.assertIn('- t: **failed**, data was not checked: the test failed before verify ran (沒有檢查資料)',summary)
+        self.assertNotIn('已檢查資料',summary)
+        code,out,summary=self.result([{'name':'t','passed':True,'reason':'','hooks':['verify'],'data_checked':True,'phases':[]}])
+        self.assertEqual(code,0,out);self.assertIn('- t: passed, data checked by verify, no seed (已檢查資料)',summary)
+    @needs_shell
+    def test_failed_verify_fails_compare_with_the_reason(self):
+        failed={'name':'t','passed':False,'reason':'verify failed on the new version (1.1.0): exited with code 1; failing checks: item kept',
+            'hooks':['seed','verify'],'data_checked':True,'phases':[]}
+        code,out,summary=self.result([failed],{'t':'#### Upgrade test: t\n\n| the new version 1.1.0 | verify | item kept | **fail** | HTTP 404 |\n'},runtime='failure')
+        self.assertEqual(code,1);self.assertIn('t: upgrade test failed: verify failed on the new version (1.1.0)',out)
+        self.assertIn('- t: **failed**, data checked by seed and verify',summary);self.assertIn('| item kept | **fail** | HTTP 404 |',summary)
+
 class SkipVulnerabilityScan(StepHarness):
     """skip_vulnerability_scan: a caller whose category 4 cannot run (mcp_addons builds no PR image) opts out with a
     reason; category 1 still runs and the report says why.
@@ -1354,18 +1402,88 @@ class RuntimeRulesCommand(unittest.TestCase):
     def test_map_entries_mount_at_supervisor_default_paths(self):
         # n8n's map: its data is in /config (addon_config); a dict entry is read-only unless read_only: false.
         got=self.mounts(map=[{'type':'addon_config','read_only':False},{'type':'share'},'media:rw','ssl','homeassistant_config'])
-        self.assertEqual(got,[('/w/data','/data',False),('/w/addon_config','/config',False),('/w/share','/share',True),
+        self.assertEqual(got,[('/w/data','/data',False),('/w/all_app_configs/test','/config',False),('/w/share','/share',True),
             ('/w/media','/media',False),('/w/ssl','/ssl',True),('/w/homeassistant_config','/homeassistant',True)])
+    def test_every_supervisor_type_has_its_default_path(self):
+        # home-assistant/supervisor@bde7fb7 docker/const.py PATH_*; aliases share their new name's directory.
+        expected={'config':('homeassistant_config','/config'),'homeassistant_config':('homeassistant_config','/homeassistant'),
+            'app_config':('all_app_configs/test','/config'),'addon_config':('all_app_configs/test','/config'),
+            'all_app_configs':('all_app_configs','/app_configs'),'all_addon_configs':('all_app_configs','/addon_configs'),
+            'local_apps':('local_apps','/local_apps'),'addons':('local_apps','/addons'),'ssl':('ssl','/ssl'),
+            'backup':('backup','/backup'),'share':('share','/share'),'media':('media','/media')}
+        self.assertEqual(set(expected)|{'data'},set(u.MAP_PATHS))
+        for kind,(source,target) in expected.items():
+            with self.subTest(kind):
+                self.assertEqual(self.mounts(map=[kind]),[('/w/data','/data',False),(f'/w/{source}',target,True)])
+                self.assertEqual(self.mounts(map=[{'type':kind,'path':'/custom','read_only':False}]),
+                    [('/w/data','/data',False),(f'/w/{source}','/custom',False)])
+    def test_odoo_app_config_shares_the_addon_config_directory(self):
+        # odoo #330 renames addon_config:rw to app_config:rw; both versions see the same directory at /config.
+        self.assertEqual(self.mounts(map=['app_config:rw']),self.mounts(map=['addon_config:rw']))
+        self.assertEqual(self.mounts(map=['app_config:rw']),[('/w/data','/data',False),('/w/all_app_configs/test','/config',False)])
+    def test_data_entry_is_the_one_data_directory(self):
+        # nextcloud #12 lists data itself; Supervisor mounts the add-on's data once, read-write, at its path or /data.
+        self.assertEqual(self.mounts(map=[{'type':'data','read_only':False}]),[('/w/data','/data',False)])
+        self.assertEqual(self.mounts(map=['data']),[('/w/data','/data',False)])
+        self.assertEqual(self.mounts(map=[{'type':'data','path':'/var/lib/app'},'share']),
+            [('/w/data','/var/lib/app',False),('/w/share','/share',True)])
     def test_custom_path_is_where_the_directory_is_mounted(self):
-        # headscale keeps its database in /var/lib/headscale.
-        got=self.mounts(map=[{'type':'addon_config','path':'/var/lib/headscale','read_only':False}])
-        self.assertEqual(got,[('/w/data','/data',False),('/w/addon_config','/var/lib/headscale',False)])
+        # headscale's map (Woow_ha_vpn_headscale_package headscale/config.yaml): its database in /var/lib/headscale
+        # (data), its config in /etc/headscale (addon_config).
+        got=self.mounts(map=[{'type':'addon_config','path':'/etc/headscale','read_only':False},{'type':'data','path':'/var/lib/headscale'}])
+        self.assertEqual(got,[('/w/data','/var/lib/headscale',False),('/w/all_app_configs/test','/etc/headscale',False)])
+    def test_each_mount_names_its_type_as_written(self):
+        # 'data' for the data mount wherever it is; otherwise the map type as config.yaml writes it.
+        def types(m):
+            code,out=self.run_cmd('mounts','--config',self.config(map=m),'--root','/w')
+            self.assertEqual(code,0,out);return [(x['type'],x['source'],x['target']) for x in json.loads(out)]
+        self.assertEqual(types([{'type':'addon_config','path':'/etc/headscale','read_only':False},{'type':'data','path':'/var/lib/headscale'}]),
+            [('data','/w/data','/var/lib/headscale'),('addon_config','/w/all_app_configs/test','/etc/headscale')])
+        self.assertEqual(types(['addon_config:rw','share']),
+            [('data','/w/data','/data'),('addon_config','/w/all_app_configs/test','/config'),('share','/w/share','/share')])
+        self.assertEqual([t for t,_,_ in types(['app_config','config:rw'])],['data','config'])
+    def test_own_config_folder_is_inside_all_app_configs(self):
+        # Supervisor's app_config is <app_configs>/<slug>, the folder all_app_configs shows as a whole.
+        self.assertEqual(self.mounts(map=['app_config:rw','all_app_configs']),
+            [('/w/data','/data',False),('/w/all_app_configs/test','/config',False),('/w/all_app_configs','/app_configs',True)])
+        code,out=self.run_cmd('mounts','--config',self.config(slug='',map=['app_config']),'--root','/w')
+        self.assertEqual(code,2);self.assertIn("map entry 'app_config' needs the add-on slug",out)
     def test_legacy_config_is_home_assistant_config_at_config(self):
-        self.assertEqual(self.mounts(map=['config:rw']),[('/w/data','/data',False),('/w/config','/config',False)])
-    def test_unknown_map_type_fails_with_the_reason(self):
-        code,out=self.run_cmd('mounts','--config',self.config(map=['nope']),'--root','/w')
-        self.assertEqual(code,2);self.assertIn("unknown map entry 'nope'",out)
-        code,out=self.run_cmd('mounts','--config',self.config(map=['config:rw','addon_config:rw']),'--root','/w')
+        self.assertEqual(self.mounts(map=['config:rw']),[('/w/data','/data',False),('/w/homeassistant_config','/config',False)])
+    def test_superseded_types_are_dropped_as_supervisor_does(self):
+        # config drops app_config/addon_config/homeassistant_config; a new name drops its legacy one, in either order.
+        self.assertEqual(self.mounts(map=['config:rw','addon_config:rw','homeassistant_config']),
+            [('/w/data','/data',False),('/w/homeassistant_config','/config',False)])
+        self.assertEqual(self.mounts(map=['addon_config','app_config:rw','addons','local_apps','all_addon_configs','all_app_configs']),
+            [('/w/data','/data',False),('/w/all_app_configs/test','/config',False),('/w/local_apps','/local_apps',True),('/w/all_app_configs','/app_configs',True)])
+        self.assertEqual(self.mounts(map=['app_config:rw','addon_config','local_apps','addons','all_app_configs','all_addon_configs']),
+            [('/w/data','/data',False),('/w/all_app_configs/test','/config',False),('/w/local_apps','/local_apps',True),('/w/all_app_configs','/app_configs',True)])
+        # A repeated type keeps its last entry.
+        self.assertEqual(self.mounts(map=['share','share:rw']),[('/w/data','/data',False),('/w/share','/share',False)])
+    def test_ignored_entries_are_reported(self):
+        self.assertEqual(u.map_warnings({'map':['config:rw','addon_config','homeassistant_config']}),
+            ["map entry 'addon_config' is ignored because 'config' is present (as Supervisor does)",
+             "map entry 'homeassistant_config' is ignored because 'config' is present (as Supervisor does)"])
+        self.assertEqual(u.map_warnings({'map':['addon_config','app_config']}),
+            ["map entry 'addon_config' is ignored because 'app_config' is present (as Supervisor does)"])
+        self.assertEqual(u.map_warnings({'map':['app_config:rw','share']}),[])
+    def test_entries_supervisor_skips_are_skipped_and_reported(self):
+        # apps/validate.py skips (and logs) a string that is not <known type>[:rw|:ro], a mapping without `type`,
+        # and anything else; the add-on still loads, so the upgrade test still runs it.
+        for entry in ['nope','media:rx','media:','share:rw:ro',{'path':'/x'},{'read_only':False},5,['share'],None]:
+            with self.subTest(entry=entry):
+                self.assertEqual(self.mounts(map=[entry,'share']),[('/w/data','/data',False),('/w/share','/share',True)])
+                self.assertEqual(len(u.map_warnings({'map':[entry,'share']})),1)
+                self.assertIn('is skipped because',u.map_warnings({'map':[entry]})[0])
+    def test_map_entries_supervisor_rejects_fail_with_the_reason(self):
+        # Supervisor's map schema: a known type, a boolean read_only (no coercion), a string path, no other key.
+        for entry in [{'type':'nope'},{'type':['share']},{'type':{'a':1}},{'type':5},{'type':'share','read_only':'false'},
+                {'type':'share','read_only':0},{'type':'share','path':5},{'type':'share','mode':'rw'}]:
+            with self.subTest(entry=entry):
+                code,out=self.run_cmd('mounts','--config',self.config(map=[entry]),'--root','/w')
+                self.assertEqual(code,2,out);self.assertIn('invalid map entry',out)
+        self.assertEqual(self.mounts(map=['share:ro']),[('/w/data','/data',False),('/w/share','/share',True)])
+        code,out=self.run_cmd('mounts','--config',self.config(map=['app_config:rw',{'type':'share','path':'/config'}]),'--root','/w')
         self.assertEqual(code,2);self.assertIn('two data directories are mounted at /config',out)
     def probe(self,settings=None,**cfg):
         args=['startup-probe','--config',self.config(**cfg)]
@@ -1396,9 +1514,23 @@ class RuntimeRulesCommand(unittest.TestCase):
         self.assertEqual((p['timeout'],p['stable_seconds']),(300,60))
         p=self.probe({'startup_timeout':900,'stable_seconds':90},watchdog='tcp://[HOST]:[PORT:1]')
         self.assertEqual((p['timeout'],p['stable_seconds']),(900,90))
+    def test_the_hooks_time_limit_is_a_known_setting_but_not_part_of_the_probe(self):
+        # hook_timeout (#138) is upgrade_runtime.py's; the same settings.yaml holds it.
+        p=self.probe({'hook_timeout':1200},watchdog='tcp://[HOST]:[PORT:1]')
+        self.assertEqual((p['timeout'],p['stable_seconds'],'hook_timeout' in p),(300,60,False))
+        # One loader validates every setting, the hooks' too.
+        self.assertEqual(u.upgrade_settings(None),{'startup_timeout':300,'stable_seconds':60,'hook_timeout':600})
+        self.assertEqual(u.upgrade_settings({'hook_timeout':1200})['hook_timeout'],1200)
+    def test_webui_endpoint_is_its_scheme_and_port_as_supervisor_reads_it(self):
+        self.assertEqual(u.webui_endpoint({'webui':'http://[HOST]:[PORT:5678]'}),('http',5678))
+        self.assertEqual(u.webui_endpoint({'webui':'[PROTO:ssl]://[HOST]:[PORT:8443]/admin','options':{'ssl':True}}),('https',8443))
+        self.assertEqual(u.webui_endpoint({'webui':'[PROTO:ssl]://[HOST]:[PORT:8443]/','options':{'ssl':False}}),('http',8443))
+        self.assertIsNone(u.webui_endpoint({'ingress':True}))
+        with self.assertRaisesRegex(ValueError,'as Supervisor does'):u.webui_endpoint({'webui':'http://localhost:1'})
     def test_bad_settings_fail_with_the_reason(self):
         path=self.dir/'settings.yaml'
         for text,reason in [('startup_timeout: 0\n','startup_timeout'),('startup_timeout: soon\n','startup_timeout'),('wait: 5\n',"unknown setting 'wait'"),
+                ('hook_timeout: 0\n','hook_timeout must be a whole number of seconds above 0'),
                 ('- 5\n','settings must be a mapping'),('stable_seconds: 300\n','stable_seconds (300) must be below startup_timeout (300)')]:
             with self.subTest(text):
                 path.write_text(text,encoding='utf-8')
