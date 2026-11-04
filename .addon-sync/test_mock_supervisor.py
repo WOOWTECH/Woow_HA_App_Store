@@ -40,17 +40,15 @@ class Mock:
                     raise RuntimeError(f'the mock did not start: {self.proc.stderr.read().decode(errors="replace")}')
                 time.sleep(0.1)
     def call(self, path, method='GET', source='127.0.0.2', token=TOKEN):
-        """(status, decoded body)."""
+        """(status, decoded body; None for HEAD)."""
         c = http.client.HTTPConnection('127.0.0.1', self.port, timeout=5, source_address=(source, 0))
         try:
             c.request(method, path, headers={'Authorization': f'Bearer {token}'})
-            r = c.getresponse(); return r.status, json.loads(r.read())
+            r = c.getresponse(); raw = r.read(); return r.status, json.loads(raw) if method != 'HEAD' else None
         finally:
             c.close()
     def summary(self):
-        """`mock_supervisor.py summary` as the runtime would run it."""
-        out = subprocess.run([sys.executable, str(TOOL), 'summary', '--state', str(self.state)], capture_output=True, text=True, check=True).stdout
-        return json.loads(out)
+        return m.summary(self.state)
     def close(self):
         self.proc.terminate(); self.proc.wait(10); self.proc.stderr.close()
         for f in sorted(self.dir.rglob('*'), reverse=True):
@@ -72,13 +70,41 @@ class Tests(unittest.TestCase):
         self.assertEqual(mock.summary(), {'unmocked': [], 'broken_fixtures': []})
 
     def test_a_fixture_beats_the_default_answer(self):
-        mock = self.mock({'info.json': {'supervisor': 'fixture'}, 'addons/self/info.json': {'slug': 'from-fixture'}})
+        mock = self.mock({'info.json': {'supervisor': 'fixture'}, 'addons/self/stats.json': {'cpu_percent': 99}})
         self.assertEqual(mock.call('/info'), (200, {'result': 'ok', 'data': {'supervisor': 'fixture'}}))
-        self.assertEqual(mock.call('/addons/self/info/')[1]['data'], {'slug': 'from-fixture'})
+        self.assertEqual(mock.call('/addons/self/stats')[1]['data'], {'cpu_percent': 99})
         # The add-on's own slug reads the self fixture too.
-        self.assertEqual(mock.call('/addons/test_addon/info')[1]['data'], {'slug': 'from-fixture'})
+        self.assertEqual(mock.call('/addons/test_addon/stats/')[1]['data'], {'cpu_percent': 99})
         # Paths without a fixture keep their default.
         self.assertEqual(mock.call('/os/info')[1]['data'], m._os_info())
+
+    def test_an_info_fixture_is_laid_over_the_runtime_info_on_every_alias(self):
+        # The runtime writes version, options and ingress_port per version: the fixture must not wipe them.
+        mock = self.mock({'addons/self/info.json': {'hostname': 'from-fixture', 'version': '9.9.9'}})
+        expected = {**ADDON, 'hostname': 'from-fixture', 'version': '9.9.9'}
+        for path in ('/addons/self/info', '/addons/self/info/', '/addons/self', '/addons/test_addon/info', '/addons/test_addon'):
+            self.assertEqual(mock.call(path), (200, {'result': 'ok', 'data': expected}), path)
+        # Another add-on's info is not the add-on's own.
+        self.assertEqual(mock.call('/addons/other/info')[0], 404)
+
+    def test_an_info_fixture_that_is_not_an_object_is_broken(self):
+        mock = self.mock({'addons/self/info.json': ['a', 'list']})
+        self.assertEqual(mock.call('/addons/self')[0], 500)
+        self.assertEqual(mock.summary()['broken_fixtures'], [{'path': '/addons/self', 'count': 1, 'methods': ['GET']}])
+
+    def test_ping_answers_itself_whatever_the_fixtures(self):
+        # The runtime's readiness check (from 127.0.0.1) must not break on a repo's supervisor/ping.json.
+        mock = self.mock({'supervisor/ping.json': '{broken'})
+        for source in ('127.0.0.1', '127.0.0.2'):
+            self.assertEqual(mock.call('/supervisor/ping', source=source), (200, {'result': 'ok', 'data': {}}))
+
+    def test_every_method_is_answered_and_logged(self):
+        mock = self.mock({'services/mqtt.json': {'host': 'x'}})
+        self.assertEqual(mock.call('/services/mqtt', method='PATCH')[1]['data'], {'host': 'x'})
+        self.assertEqual(mock.call('/services/mqtt', method='HEAD'), (200, None))
+        self.assertEqual(mock.call('/nope', method='PATCH')[0], 404); self.assertEqual(mock.call('/nope', method='HEAD')[0], 404)
+        self.assertEqual(mock.call('/nope', method='OPTIONS')[0], 404)
+        self.assertEqual(mock.summary()['unmocked'], [{'path': '/nope', 'count': 3, 'methods': ['HEAD', 'OPTIONS', 'PATCH']}])
 
     def test_a_fixture_answers_a_path_the_mock_does_not_know(self):
         mqtt = {'host': 'core-mosquitto', 'port': 1883, 'ssl': False, 'protocol': '3.1.1', 'username': 'addons', 'password': 'pw'}
@@ -108,16 +134,13 @@ class Tests(unittest.TestCase):
         mock.call('/services/mysql'); mock.call('/hardware/info')
         self.assertEqual(m.summary(mock.state, start)['unmocked'], [{'path': '/hardware/info', 'count': 1, 'methods': ['GET']},
             {'path': '/services/mysql', 'count': 1, 'methods': ['GET']}])
-        out = subprocess.run([sys.executable, str(TOOL), 'summary', '--state', str(mock.state), '--start', str(start)],
-            capture_output=True, text=True, check=True).stdout
-        self.assertEqual(json.loads(out), m.summary(mock.state, start))
         self.assertEqual(m.summary(mock.state)['unmocked'][1]['count'], 2)
         self.assertEqual(m.log_size(mock.state / 'nowhere'), 0)
 
     def test_a_broken_fixture_is_500_and_summarized(self):
         mock = self.mock({'services/mqtt.json': '{not json'})
         status, body = mock.call('/services/mqtt')
-        self.assertEqual(status, 500); self.assertIn('not valid JSON', body['message'])
+        self.assertEqual(status, 500); self.assertIn('not usable JSON', body['message'])
         self.assertEqual(mock.summary(), {'unmocked': [], 'broken_fixtures': [{'path': '/services/mqtt', 'count': 1, 'methods': ['GET']}]})
 
     def test_paths_cannot_reach_outside_the_fixtures(self):
@@ -139,12 +162,15 @@ class Tests(unittest.TestCase):
         with contextlib.ExitStack() as stack:
             stack.callback(setattr, m, 'FIXTURES', m.FIXTURES)
             m.FIXTURES = pathlib.Path('/fx')
-            f = lambda p, slug=None: m.fixture_file(m.normalize(p), slug)
+            f = lambda p, slug=None: m.fixture_file(m.canonical(p, slug))
             self.assertEqual(f('/services/mqtt'), pathlib.Path('/fx/services/mqtt.json'))
             self.assertEqual(f('/addons/self/info/?a=b'), pathlib.Path('/fx/addons/self/info.json'))
+            self.assertEqual(f('/addons/self'), pathlib.Path('/fx/addons/self/info.json'))
+            self.assertEqual(f('/addons/abc', 'abc'), pathlib.Path('/fx/addons/self/info.json'))
             self.assertEqual(f('/addons/abc/stats', 'abc'), pathlib.Path('/fx/addons/self/stats.json'))
+            self.assertEqual(f('/addons/abcd/stats', 'abc'), pathlib.Path('/fx/addons/abcd/stats.json'))
             self.assertEqual(f('/addons/other/info', 'abc'), pathlib.Path('/fx/addons/other/info.json'))
-            for bad in ('/', '/a/../b', '/a/%2e', '/a b'):
+            for bad in ('/', '/a/../b', '/a/%2e', '/a b', '/supervisor/ping'):
                 self.assertIsNone(f(bad), bad)
             m.FIXTURES = None
             self.assertIsNone(f('/services/mqtt'))

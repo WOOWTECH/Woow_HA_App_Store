@@ -12,28 +12,30 @@ upgrade_runtime.py runs this in a container at the Supervisor's address
                        127.0.0.1 (the runtime's readiness check). Every call needs
                        the add-on's token. --fixtures is the source repo's
                        upgrade-check/supervisor/ (see Fixtures).
-  summary --state DIR [--start BYTES]
-                       print, as JSON, the Supervisor calls the mock could not
-                       answer (summary() below; pipeline #142), after byte --start
-                       of requests.log (log_size() before a phase).
   probe --url URL      one check from the Supervisor's address: exit 0 when an
                        http(s) URL answers below --below (upgrade_check.startup_probe
                        sets it) or a tcp://host:port accepts a connection.
 
-The minimal API: /addons/self/info (also /addons/<slug>/info and /addons/self),
-/addons/self/options/config, /addons/self/stats, /info, /os/info, /core/info,
-/network/info and /supervisor/ping. Any other path answers 404 and is listed by
-summary as an unmocked Supervisor call (未模擬的 Supervisor 呼叫).
+The minimal API: /addons/self/info, /addons/self/options/config,
+/addons/self/stats, /info, /os/info, /core/info, /network/info and
+/supervisor/ping. Every method (GET, POST, HEAD, PATCH...) is answered the
+same way. A path loses its query and trailing slash; /addons/<the add-on's
+slug>/... is /addons/self/..., and /addons/self is /addons/self/info
+(canonical()). Any other path answers 404 and summary() lists it as an
+unmocked Supervisor call (未模擬的 Supervisor 呼叫).
 
-Fixtures (#142): one JSON file per API path, the `data` of the answer
-(the mock adds the {"result": "ok"} envelope), for every method. The path
-loses its query and trailing slash and maps to <fixtures><path>.json:
-/services/mqtt -> services/mqtt.json, /addons/self/info -> addons/self/info.json.
-/addons/<the add-on's slug>/... reads addons/self/... too. A fixture beats the
-default answer, so a repo can also change /info or /addons/self/info. A
-fixture that is not valid JSON answers 500 and summary lists it as broken.
-Only path segments of letters, digits, '.', '_' and '-' are looked up ('..'
-never is).
+Fixtures (#142): one JSON file per canonical path, the `data` of the answer
+(the mock adds the {"result": "ok"} envelope): /services/mqtt ->
+services/mqtt.json, /addons/self/info (and its aliases) -> addons/self/info.json.
+A fixture beats the default answer, except:
+  - addons/self/info.json must be an object and is laid over the info the
+    runtime writes for each version (version, options, ingress_port...): its
+    keys replace those keys only;
+  - /supervisor/ping always answers itself: the runtime's readiness check
+    must not depend on the repo.
+A fixture that is not valid JSON (or an info overlay that is not an object)
+answers 500 and summary() lists it as broken. Only path segments of letters,
+digits, '.', '_' and '-' are looked up, never one starting with '.'.
 """
 from __future__ import annotations
 import argparse, collections, http.server, json, os, pathlib, re, socket, ssl, sys, urllib.error, urllib.request
@@ -75,26 +77,36 @@ def normalize(path):
     """The path an API call is routed, looked up and summarized by: no query, no trailing slash."""
     return path.split('?', 1)[0].rstrip('/') or '/'
 
-def fixture_file(path, slug=None):
-    """The fixture file for a normalized path (it may not exist), or None when the path cannot name one."""
+def canonical(path, slug=None):
+    """The path the default answers and the fixtures know a call by: normalize(), then /addons/<slug>/... as
+    /addons/self/... and /addons/self as /addons/self/info."""
+    path = normalize(path)
+    if slug and (path == f'/addons/{slug}' or path.startswith(f'/addons/{slug}/')):
+        path = '/addons/self' + path[len(f'/addons/{slug}'):]
+    return '/addons/self/info' if path == '/addons/self' else path
+
+def fixture_file(path):
+    """The fixture file for a canonical path (it may not exist), or None when the path cannot name one."""
     parts = path.strip('/').split('/')
-    if FIXTURES is None or not all(SEGMENT.fullmatch(p) for p in parts):
+    if FIXTURES is None or path == '/supervisor/ping' or not all(SEGMENT.fullmatch(p) for p in parts):
         return None
-    if slug and len(parts) > 1 and parts[0] == 'addons' and parts[1] == slug:
-        parts[1] = 'self'
     return pathlib.Path(FIXTURES, *parts[:-1], parts[-1] + '.json')
 
 def route(path):
     """(status, data) for one API call; data None means 404 (500: a broken fixture)."""
-    path = normalize(path)
     addon = _addon()
-    fixture = fixture_file(path, addon.get('slug'))
+    path = canonical(path, addon.get('slug'))
+    fixture = fixture_file(path)
     if fixture is not None and fixture.is_file():
         try:
-            return 200, json.loads(fixture.read_text(encoding='utf-8'))
+            data = json.loads(fixture.read_text(encoding='utf-8'))
         except (OSError, ValueError):
             return 500, None
-    if path in ('/addons/self', '/addons/self/info', f'/addons/{addon.get("slug")}/info'):
+        if path != '/addons/self/info':
+            return 200, data
+        # The add-on's own info is the runtime's for each version: the fixture changes the keys it names only.
+        return (200, {**addon, **data}) if isinstance(data, dict) else (500, None)
+    if path == '/addons/self/info':
         return 200, addon
     if path == '/addons/self/options/config':
         return 200, addon.get('options', {})
@@ -115,7 +127,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         else:
             status, data = route(self.path)
             body = ({'result': 'ok', 'data': data} if status == 200 else
-                {'result': 'error', 'message': f'{self.path} is not mocked' if status == 404 else f'the fixture for {self.path} is not valid JSON'})
+                {'result': 'error', 'message': f'{self.path} is not mocked' if status == 404 else f'the fixture for {self.path} is not usable JSON'})
         # The runtime's own readiness check comes from inside this container: the log keeps the add-on's calls only.
         if self.client_address[0] != '127.0.0.1':
             with open(STATE / 'requests.log', 'a', encoding='utf-8') as log:
@@ -125,8 +137,13 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.send_header('Content-Type', 'application/json')
         self.send_header('Content-Length', str(len(raw)))
         self.end_headers()
-        self.wfile.write(raw)
-    do_GET = do_POST = do_PUT = do_DELETE = _answer
+        if self.command != 'HEAD':
+            self.wfile.write(raw)
+    def __getattr__(self, name):
+        # Every method (do_HEAD, do_PATCH...) is answered and logged alike, never with http.server's unlogged 501.
+        if name.startswith('do_'):
+            return self._answer
+        raise AttributeError(name)
     def log_message(self, *args):
         pass
 
@@ -174,14 +191,11 @@ def main(argv=None):
     sub = p.add_subparsers(dest='command', required=True)
     s = sub.add_parser('serve'); s.add_argument('--state', default='/state')
     s.add_argument('--fixtures', help="the repo's Supervisor fixtures directory"); s.add_argument('--port', type=int, default=80)
-    m = sub.add_parser('summary'); m.add_argument('--state', default='/state'); m.add_argument('--start', type=int, default=0)
     c = sub.add_parser('probe'); c.add_argument('--url', required=True)
     c.add_argument('--below', type=int, default=300); c.add_argument('--timeout', type=float, default=5)
     a = p.parse_args(argv)
     if a.command == 'probe':
         return 0 if probe(a.url, a.below, a.timeout) else 1
-    if a.command == 'summary':
-        print(json.dumps(summary(a.state, a.start), indent=1)); return 0
     global STATE, FIXTURES
     STATE = pathlib.Path(a.state)
     FIXTURES = pathlib.Path(a.fixtures) if a.fixtures else None
