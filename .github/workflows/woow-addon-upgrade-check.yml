@@ -469,6 +469,38 @@ jobs:
               echo "- ${id}: **failed**, ${scope}" >> "$GITHUB_STEP_SUMMARY";;
             *) echo "- ${id}: not run ($(jq -r '.note' "${result}"))" >> "$GITHUB_STEP_SUMMARY";;
           esac
+          # #141: the data-check deadline (registry upgrade_comparison.data_check_due, a UTC date) of each add-on with a result
+          # (plan.jsonl gives its directory). Without upgrade-check/verify in the PR it passes with the days left through the
+          # due date and fails from the day after; with verify, or with no due date, nothing. An add-on whose test ran (passed
+          # or failed) is judged; one whose test did not run (passed null) is not judged only for the runtime job's not_run
+          # codes no_target (no comparison target) and approved_skip (the registry's skip_upgrade_test). Every other one, the
+          # caller's missing image_artifact (no_image_artifact, #143) or a reason unknown here, is judged (fail closed): only
+          # the registry decides, no caller input waives the deadline. Add-ons built on the device are judged, since #144
+          # tests them. The "runtime job" record is not an add-on and is not judged. The due dates of every add-on are also
+          # checked on every PR (upgrade_check.py components, in "Find add-ons whose version changed").
+          # DATA_CHECK_TODAY (YYYY-MM-DD) is only for the tests; the workflow judges the UTC date of the run.
+          # TODO(#140): target_failed/addon_failed (log.sh) write hooks [] whatever upgrade-check/ has; verify is therefore read from
+          # the PR's upgrade-check/ here. Once target_failed records the hooks the add-on has, this can read the result.
+          not_run="$(jq -r 'if .passed == true or .passed == false then "" else (.not_run // "unknown" | tostring) end' "${result}")"
+          case "${not_run}" in no_target|approved_skip) continue;; esac
+          [ "${id}" != "runtime job" ] || continue
+          # Why an overdue add-on had no test, so the message says what else to do.
+          hint=""; [ -z "${not_run}" ] || hint="; 升級測試沒跑 (the upgrade test did not run: $(jq -r '.note // "no reason given"' "${result}"))"
+          [ "${not_run}" != no_image_artifact ] || hint="${hint}: add verify, and pass image_artifact (the addon-image action, #143) so the test runs"
+          notes="$(jq -r --arg id "${id}" 'select(.id == $id) | .notes' plan.jsonl 2> /dev/null | head -n1)" || notes=""
+          if [ -z "${notes}" ]; then
+            fail "${id}: the upgrade test has a result for this add-on, but this job's plan does not list it, so its data-check deadline cannot be judged; re-run all jobs"
+            status=1; echo "- ${id}: **data-check deadline not judged: not in this job's plan**" >> "$GITHUB_STEP_SUMMARY"; continue
+          fi
+          rc=0; due="$(python3 tooling/.addon-sync/upgrade_check.py data-check-due --registry tooling/.addon-sync/registry.json --repo "${REPO}" \
+            --component "${id}" --addon-dir "source/$(dirname "${notes}")" ${DATA_CHECK_TODAY:+--today "${DATA_CHECK_TODAY}"})" || rc=$?
+          case "${rc}" in
+            0) [ -z "${due}" ] || echo "- ${id}: ${due}" >> "$GITHUB_STEP_SUMMARY";;
+            3) fail "${id}: ${due}${hint}"; status=1; echo "- ${id}: **${due}${hint}**" >> "$GITHUB_STEP_SUMMARY";;
+            # 2: its ::error line, printed as is. Anything else (a crash) gets one, so it never passes silently.
+            *) if [ "${rc}" = 2 ]; then printf '%s\n' "${due}"; else fail "${id}: the data-check deadline could not be judged: upgrade_check.py data-check-due exited ${rc}"; fi
+              status=1; echo "- ${id}: **data-check deadline could not be judged (upgrade_check.py data-check-due exited ${rc}); the log has the error**" >> "$GITHUB_STEP_SUMMARY";;
+          esac
         done
         # upgrade_runtime.py's report of each add-on: both versions' startup and every check of its hooks.
         for report in runtime-reports/*.md; do
@@ -520,7 +552,8 @@ jobs:
             --component "${id}" --settings "source/$(dirname "${notes}")/upgrade-check/settings.yaml")" || fail_output "${reason}"
           if [ -z "${reason}" ]; then printf '%s\n' "${row}" >> plan.tested.jsonl; continue; fi
           note="categories 2 and 3 skipped as approved in the Store registry: ${reason}"
-          jq -n --arg name "${id}" --arg note "${note}" '{name: $name, passed: null, skipped: true, note: $note}' > "runtime-reports/${id}.json"
+          # not_run: why the test did not run, for compare's data-check deadline (#141).
+          jq -n --arg name "${id}" --arg note "${note}" '{name: $name, passed: null, skipped: true, not_run: "approved_skip", note: $note}' > "runtime-reports/${id}.json"
           echo "- ${id}: upgrade test not run (${note})" >> "$GITHUB_STEP_SUMMARY"
         done < plan.jsonl
         mv plan.tested.jsonl plan.jsonl
@@ -540,12 +573,13 @@ jobs:
         mkdir -p runtime-reports; : > upgrade.jsonl; status=0
         while IFS= read -r row; do
           fields "${row}" id=id notes=notes new=new target=target
-          old="$RUNNER_TEMP/${id}.old.yaml"; image="$(yq -r '.image // ""' "${new}")"; note=""; old_ref=""; old_src=""; new_src=""
+          old="$RUNNER_TEMP/${id}.old.yaml"; image="$(yq -r '.image // ""' "${new}")"; note=""; not_run=""; old_ref=""; old_src=""; new_src=""
           artifact="upgrade-comparison-image-${id}-attempt-${RUN_ATTEMPT}"
-          if [ ! -s "${old}" ]; then note="no comparison target"
+          # not_run: why the test does not run, a code for compare's data-check deadline (#141); note says it to people.
+          if [ ! -s "${old}" ]; then note="no comparison target"; not_run=no_target
           # Built on the device (no image in the PR's config): this job builds the new image from the PR checkout.
           elif [ -z "${image}" ]; then new_src=pr
-          elif [ -z "${IMAGE_ARTIFACT}" ]; then note="the caller passes no image_artifact; the upgrade test is being rolled out in #143"
+          elif [ -z "${IMAGE_ARTIFACT}" ]; then note="the caller passes no image_artifact; the upgrade test is being rolled out in #143"; not_run=no_image_artifact
           # shellcheck disable=SC2053 # IMAGE_ARTIFACT is a glob on purpose
           elif [[ "${artifact}" != ${IMAGE_ARTIFACT} ]]; then
             fail "${id}: image_artifact '${IMAGE_ARTIFACT}' does not match ${artifact}, the artifact the addon-image action uploads for component ${id}"
@@ -563,7 +597,7 @@ jobs:
               old_src="${target}"
             fi
           else
-            jq -n --arg name "${id}" --arg note "${note}" '{name: $name, passed: null, note: $note}' > "runtime-reports/${id}.json"
+            jq -n --arg name "${id}" --arg not_run "${not_run}" --arg note "${note}" '{name: $name, passed: null, not_run: $not_run, note: $note}' > "runtime-reports/${id}.json"
             echo "- ${id}: upgrade test not run (${note})" >> "$GITHUB_STEP_SUMMARY"
           fi
           jq -nc --arg id "${id}" --arg addon_dir "source/$(dirname "${notes}")" --arg new "${new}" --argjson test "$([ -z "${note}" ] && echo true || echo false)" \
