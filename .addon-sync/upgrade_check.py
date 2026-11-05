@@ -305,16 +305,24 @@ def components(registry, repo):
     return {'ref_policy':provider['ref_policy'],'skip_vulnerability_scan':skip,'scan_published_image':published,
         'components':[{'id':c['id'],**paths(c)} for c in provider['components'] if publishes_releases(c)]}
 
+def upgrade_comparison(component, prefix=''):
+    """The upgrade_comparison mapping of `component` (its Store registry entry), {} when it has none. A ValueError
+    naming the add-on (after `prefix`, e.g. the repository) when it is not a mapping; every per-add-on approval and
+    deadline reads it through here, so the fault has one message."""
+    given=component.get('upgrade_comparison')
+    if given is None:return {}
+    if not isinstance(given,dict):
+        raise ValueError(f'the Store registry entry for {prefix}{component.get("id")} is malformed: upgrade_comparison must be a mapping, not {given!r}')
+    return given
+
 DUE_KEY='data_check_due'
 
 def due_date(component, prefix=''):
     """The data-check due date of `component` (its Store registry entry; #141): upgrade_comparison.data_check_due as a
     date, or None when it has none. A ValueError, its message starting with `prefix`, when upgrade_comparison is not a
-    mapping or the due date is not a real YYYY-MM-DD date; components() checks every add-on with it on every PR."""
-    given=component.get('upgrade_comparison')
-    if given is None:return None
-    if not isinstance(given,dict):
-        raise ValueError(f'{prefix}{component.get("id")}: the Store registry gives upgrade_comparison {given!r}; upgrade_comparison must be a mapping')
+    mapping (upgrade_comparison()) or the due date is not a real YYYY-MM-DD date; components() checks every add-on with
+    it on every PR."""
+    given=upgrade_comparison(component,prefix)
     if DUE_KEY not in given:return None
     due=given[DUE_KEY]
     try:
@@ -578,10 +586,7 @@ def approved_upgrade_test_skip(component):
     skip_vulnerability_scan per provider: upgrade_comparison.skip_upgrade_test holds the reason and its ticket; the
     report gives that reason. A malformed entry (upgrade_comparison not a mapping, the reason not a non-empty
     string) is a ValueError naming the add-on, never an empty reason."""
-    given=component.get('upgrade_comparison',{})
-    if given is None:given={}
-    if not isinstance(given,dict):
-        raise ValueError(f'the Store registry entry for {component.get("id")} is malformed: upgrade_comparison must be a mapping, not {given!r}')
+    given=upgrade_comparison(component)
     approved=given.get(SKIP_KEY,'')
     if SKIP_KEY in given and (not isinstance(approved,str) or not approved.strip()):
         raise ValueError(f'the Store registry entry for {component.get("id")} is malformed: upgrade_comparison.{SKIP_KEY} must be the approved reason '

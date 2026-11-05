@@ -473,9 +473,9 @@ jobs:
           # test ran (passed or failed, plan.jsonl gives its directory). Without upgrade-check/verify in the PR it passes with
           # the days left through the due date and fails from the day after; with verify, or with no due date, nothing. An
           # add-on whose test did not run (no comparison target, approved skip, no image_artifact) has passed null and is
-          # not judged (add-ons built on the device are, since #144 tests them), nor is the "runtime job" record (not an add-on). The due dates
-          # of every add-on are also checked on every PR (upgrade_check.py components, in "Find add-ons whose version
-          # changed"). DATA_CHECK_TODAY (YYYY-MM-DD) is only for the tests; the workflow judges the UTC date of the run.
+          # not judged; add-ons built on the device are judged, since #144 tests them. The "runtime job" record is not an
+          # add-on and is not judged. The due dates of every add-on are also checked on every PR (upgrade_check.py
+          # components, in "Find add-ons whose version changed"). DATA_CHECK_TODAY (YYYY-MM-DD) is only for the tests; the workflow judges the UTC date of the run.
           # TODO(#140): target_failed/addon_failed (log.sh) write hooks [] whatever upgrade-check/ has; verify is therefore read from
           # the PR's upgrade-check/ here. Once target_failed records the hooks the add-on has, this can read the result.
           jq -e '.passed == true or .passed == false' "${result}" > /dev/null || continue

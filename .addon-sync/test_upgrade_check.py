@@ -1679,7 +1679,7 @@ class DataCheckDueCommand(unittest.TestCase):
             with self.subTest(given=given):
                 for verify in (False,True):
                     code,out=self.main('2026-11-04',verify=verify,given=given);self.assertEqual(code,2)
-                    self.assertIn(f'a: the Store registry gives upgrade_comparison {given!r}; upgrade_comparison must be a mapping',out)
+                    self.assertIn(f'the Store registry entry for a is malformed: upgrade_comparison must be a mapping, not {given!r}',out)
     def test_unexpected_error_is_a_tool_error_not_an_overdue_check(self):
         with unittest.mock.patch.object(u,'data_check_due',side_effect=RuntimeError('boom')):code,out=self.main('2026-11-18')
         self.assertEqual(code,2);self.assertIn('::error title=Upgrade comparison failed::boom',out)
@@ -1715,7 +1715,7 @@ class DataCheckDueCommand(unittest.TestCase):
         ok={'id':'b','source_path':'b','config_file':'config.yaml','upgrade_comparison':{'data_check_due':'2026-12-08'}}
         self.assertEqual([c['id'] for c in components(ok)['components']],['a','b'])
         for upgrade,message in (({'data_check_due':'2026-02-30'},"WOOWTECH/r b: the Store registry gives upgrade_comparison.data_check_due '2026-02-30'; it must be a date"),
-                ('soon',"WOOWTECH/r b: the Store registry gives upgrade_comparison 'soon'; upgrade_comparison must be a mapping")):
+                ('soon',"the Store registry entry for WOOWTECH/r b is malformed: upgrade_comparison must be a mapping, not 'soon'")):
             for extra in ({},{'enabled':False}):
                 with self.subTest(upgrade=upgrade,extra=extra):
                     with self.assertRaises(ValueError) as e:components(dict(ok,upgrade_comparison=upgrade,**extra))
