@@ -16,10 +16,10 @@ it is the docker bridge's address), and its address is that gateway
 (Supervisor's DockerAddon.ip_address): [HOST] in the startup probe, ADDON_URL,
 ADDON_HOST and the mock's /addons/self/info ip_address. It still resolves
 supervisor and hassio to the mock. Other host-network effects (host ports,
-other host services) are not modelled. Each version must start, judged as
-upgrade_check.startup_probe says from the Supervisor's address, and then stay
-up for stable_seconds; the add-on's upgrade-check/settings.yaml may override
-the time limits.
+other host services) are not modelled, and privileged is not applied. Each
+version must start, judged as upgrade_check.startup_probe says from the
+Supervisor's address, and then stay up for stable_seconds; the add-on's
+upgrade-check/settings.yaml may override the time limits.
 
 Data directories: <root>/data at /data, or at the `path` of a `data` entry;
 each other `map` entry at its `path` or Supervisor's default, from
