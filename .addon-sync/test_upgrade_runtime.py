@@ -253,6 +253,34 @@ class HookChecks(unittest.TestCase):
         self.assertEqual([env.hook_env('old', 'i', config, h)['HOOK_STATE_DIR'] for h in ('seed', 'verify', 'smoke')],
             ['/hook-state', '/hook-state', '/smoke-state'])
 
+class IngressInfo(unittest.TestCase):
+    """#161: /addons/self/info's ingress_entry and ingress_url as Supervisor gives them (App.ingress_entry/ingress_url)."""
+    def addon_info(self, **config):
+        return rt.addon_info({'slug': 'fake', 'version': '1.0.0', **config}, {}, 'tok')
+    def test_ingress_without_an_entry(self):
+        info = self.addon_info(ingress=True)
+        self.assertEqual((info['ingress_entry'], info['ingress_url']), ('/api/hassio_ingress/tok', '/api/hassio_ingress/tok/'))
+    def test_the_entry_is_only_appended_to_the_url(self):
+        info = self.addon_info(ingress=True, ingress_entry='signin')
+        self.assertEqual((info['ingress_entry'], info['ingress_url']), ('/api/hassio_ingress/tok', '/api/hassio_ingress/tok/signin'))
+    def test_the_entry_is_appended_as_is(self):
+        self.assertEqual(self.addon_info(ingress=True, ingress_entry='/')['ingress_url'], '/api/hassio_ingress/tok//')
+    def test_no_ingress_gives_none_even_with_an_entry(self):
+        info = self.addon_info(ingress_entry='signin')
+        self.assertEqual((info['ingress_entry'], info['ingress_url']), (None, None))
+    def test_old_and_new_version_share_the_token(self):
+        env = rt.UpgradeTestEnv(tempfile.mkdtemp()); self.addCleanup(shutil.rmtree, env.work)
+        config, seen = {'slug': 'fake', 'version': '1.0.0', 'ingress': True}, []
+        with mock.patch.object(rt, 'docker', return_value=''):
+            for phase in ('old', 'new'):
+                env.start(phase, 'image', config, {})
+                seen.append(json.loads((env.state / 'addon.json').read_text(encoding='utf-8'))['ingress_entry'])
+        self.assertEqual(seen[0], seen[1]); self.assertRegex(seen[0], r'^/api/hassio_ingress/[A-Za-z0-9_-]{20,}$')
+    def test_each_upgrade_test_has_its_own_token(self):
+        envs = [rt.UpgradeTestEnv(tempfile.mkdtemp()) for _ in range(2)]
+        for env in envs:self.addCleanup(shutil.rmtree, env.work)
+        self.assertNotEqual(envs[0].ingress_token, envs[1].ingress_token)
+
 @unittest.skipUnless(docker_ok(), 'needs a Docker daemon (present on GitHub runners)')
 class Runtime(unittest.TestCase):
     @classmethod

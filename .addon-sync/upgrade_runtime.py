@@ -415,15 +415,23 @@ def option_warnings(given, configs, images):
                 warning += '; it is masked wherever it appears, so pick a longer, test-only value'
                 if warning not in out:out.append(warning)
     return out
-def addon_info(config, options):
-    """The mock Supervisor's /addons/self/info for this version."""
-    keys = ('name', 'slug', 'version', 'description', 'url', 'arch', 'ingress', 'ingress_port', 'ingress_entry', 'webui', 'watchdog', 'ports')
+def addon_info(config, options, ingress_token):
+    """The mock Supervisor's /addons/self/info for this version. `ingress_token`: the one token of this upgrade test,
+    shared by both versions as Supervisor keeps it across an update (#161)."""
+    keys = ('name', 'slug', 'version', 'description', 'url', 'arch', 'ingress', 'ingress_port', 'webui', 'watchdog', 'ports')
     info = {k: config[k] for k in keys if k in config}
     # The port the add-on must serve ingress on, as Supervisor reports it: never 0, which it replaces at install.
     if config.get('ingress'):info['ingress_port'] = ingress_port(config)
     return {**info, 'hostname': f'local-{config.get("slug", "addon")}', 'ip_address': ADDON_IP, 'state': 'started', 'boot': 'auto',
         'repository': 'local', 'version_latest': config.get('version'), 'update_available': False, 'options': options,
-        'ingress_url': f'/api/hassio_ingress/{secrets.token_hex(8)}/' if config.get('ingress') else None, 'network': config.get('ports')}
+        **ingress_paths(config, ingress_token), 'network': config.get('ports')}
+
+def ingress_paths(config, token):
+    """ingress_entry and ingress_url as Supervisor gives them (App.ingress_entry/ingress_url): config.yaml's
+    ingress_entry is only appended to the url, as is (`/` gives `//`); both None without ingress."""
+    if not config.get('ingress'):return {'ingress_entry': None, 'ingress_url': None}
+    base = f'/api/hassio_ingress/{token}'
+    return {'ingress_entry': base, 'ingress_url': f'{base}/{config.get("ingress_entry") or ""}'}
 
 def addon_url(config):
     """ADDON_URL of the hooks: the webui's scheme and port, else the ingress port, else the bare address."""
@@ -467,6 +475,8 @@ class UpgradeTestEnv:
         self.words = []
         self.prefix = f'upgrade-test-{secrets.token_hex(4)}'
         self.net, self.supervisor, self.token = self.prefix, f'{self.prefix}-supervisor', secrets.token_hex(24)
+        # Supervisor makes an add-on's ingress token at install (secrets.token_urlsafe) and keeps it across updates.
+        self.ingress_token = secrets.token_urlsafe()
         self.state, self.data = self.work / 'supervisor', self.work / 'dirs'
         self.reports, self.hook_state, self.smoke_state = self.work / 'hook-reports', self.work / 'hook-state', self.work / 'smoke-state'
         for d in (self.state, self.data, self.reports, self.hook_state, self.smoke_state):d.mkdir(parents=True)
@@ -506,7 +516,7 @@ class UpgradeTestEnv:
         """Start one version on the shared directories with `options` as /data/options.json (build_test_options()); its
         container name."""
         self.log_start = mock_supervisor.log_size(self.state)
-        (self.state / 'addon.json').write_text(json.dumps(addon_info(config, options)), encoding='utf-8')
+        (self.state / 'addon.json').write_text(json.dumps(addon_info(config, options, self.ingress_token)), encoding='utf-8')
         args = []
         for m in mounts(config, self.data.as_posix()):
             pathlib.Path(m['source']).mkdir(parents=True, exist_ok=True)
