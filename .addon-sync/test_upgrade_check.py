@@ -815,7 +815,7 @@ class UpgradeTestPlan(StepHarness):
     def test_caller_without_image_artifact_is_reported_as_not_rolled_out(self):
         r,(row,),out=self.plan()
         self.assertEqual(r.returncode,0,r.stdout+r.stderr);self.assertIn('run=false',out);self.assertEqual(row['old_ref'],'')
-        self.assertEqual(self.note(),{'name':'t','passed':None,'note':'the caller passes no image_artifact; the upgrade test is being rolled out in #143'})
+        self.assertEqual(self.note(),{'name':'t','passed':None,'not_run':'no_image_artifact','note':'the caller passes no image_artifact; the upgrade test is being rolled out in #143'})
     @needs_shell
     def test_device_built_add_on_rebuilds_the_release_and_builds_the_pr_without_an_artifact(self):
         # #144: no image to pull or hand over, so the caller needs no image_artifact; the old image is rebuilt from the Release tag.
@@ -844,7 +844,7 @@ class UpgradeTestPlan(StepHarness):
     def test_device_built_add_on_without_a_comparison_target_is_not_tested(self):
         r,(row,),out=self.plan(new={'image':None},old={'image':None},sbom='',releases=())
         self.assertEqual(r.returncode,0,r.stdout+r.stderr);self.assertFalse(row['test']);self.assertIn('run=false',out)
-        self.assertEqual(self.note()['note'],'no comparison target')
+        self.assertEqual((self.note()['note'],self.note()['not_run']),('no comparison target','no_target'))
     @needs_shell
     def test_image_artifact_that_does_not_match_fails(self):
         r,rows,out=self.plan(image_artifact='other-*')
@@ -1122,13 +1122,41 @@ class DataCheckDueStep(StepHarness):
         self.assertEqual(code,1);self.assertNotIn('資料檢查期限',out)
         code,out,_=self.result(failed,self.day(-1))
         self.assertEqual(code,1);self.assertIn('資料檢查期限',out)
+    # The runtime job's not-run records ("Skip the upgrade tests the registry approves", "Plan the upgrade tests").
+    NO_TARGET={'name':'t','passed':None,'not_run':'no_target','note':'no comparison target'}
+    APPROVED_SKIP={'name':'t','passed':None,'skipped':True,'not_run':'approved_skip','note':'categories 2 and 3 skipped as approved in the Store registry: #158: x'}
+    NO_IMAGE_ARTIFACT={'name':'t','passed':None,'not_run':'no_image_artifact','note':'the caller passes no image_artifact; the upgrade test is being rolled out in #143'}
     @needs_shell
-    def test_add_on_whose_upgrade_test_did_not_run_is_not_judged(self):
-        # No comparison target, an approved skip (#140), no image_artifact (#143), built on the device before #144.
-        for note in ('no comparison target','built on the device; the upgrade test for these add-ons is #144'):
-            with self.subTest(note):
-                code,out,summary=self.result({'name':'t','passed':None,'note':note},self.day(-1))
+    def test_no_comparison_target_and_approved_skip_are_not_judged(self):
+        # Nothing to upgrade from (a first release), or the registry's owner decision (#140): no deadline either.
+        for result in (self.NO_TARGET,self.APPROVED_SKIP):
+            with self.subTest(result['not_run']):
+                code,out,summary=self.result(result,self.day(-1))
                 self.assertEqual(code,0,out);self.assertNotIn('資料檢查期限',summary+out)
+    @needs_shell
+    def test_caller_without_image_artifact_is_judged_after_the_due_date(self):
+        # image_artifact is the caller's input: dropping it must not waive the deadline (only the registry decides).
+        due=self.day(-1);code,out,summary=self.result(self.NO_IMAGE_ARTIFACT,due)
+        self.assertEqual(code,1);self.assertIn(f'::error title=Upgrade comparison failed::t: 資料檢查期限 {due} 已過，要補資料檢查',out)
+        self.assertIn('升級測試沒跑 (the upgrade test did not run: the caller passes no image_artifact',out)
+        self.assertIn('add verify, and pass image_artifact (the addon-image action, #143) so the test runs',out)
+        self.assertIn(f'- t: **資料檢查期限 {due} 已過',summary);self.assertIn('- t: not run (the caller passes no image_artifact',summary)
+    @needs_shell
+    def test_caller_without_image_artifact_passes_before_the_due_date_with_the_days_left(self):
+        due=self.day(3);code,out,summary=self.result(self.NO_IMAGE_ARTIFACT,due)
+        self.assertEqual(code,0,out);self.assertIn(f'- t: 資料檢查期限 {due}，剩 3 天',summary)
+    @needs_shell
+    def test_caller_without_image_artifact_with_verify_passes(self):
+        code,out,summary=self.result(self.NO_IMAGE_ARTIFACT,self.day(-30),verify=True)
+        self.assertEqual(code,0,out);self.assertNotIn('資料檢查期限',summary+out)
+    @needs_shell
+    def test_unknown_not_run_reason_is_judged(self):
+        # Fail closed: a not-run record without a known code (or any not_run code) is judged like a test that ran.
+        for result in ({'name':'t','passed':None,'note':'some new reason'},dict(self.NO_TARGET,not_run='something_else'),{'name':'t'}):
+            with self.subTest(result):
+                code,out,summary=self.result(result,self.day(-1))
+                self.assertEqual(code,1);self.assertIn(f'- t: **資料檢查期限 {self.day(-1)} 已過',summary)
+                self.assertIn('升級測試沒跑 (the upgrade test did not run:',out);self.assertNotIn('#143) so the test runs',out)
     @needs_shell
     def test_without_a_due_date_nothing_is_added(self):
         code,out,summary=self.result(self.PASSED,None);self.assertEqual(code,0,out);self.assertNotIn('資料檢查期限',summary)
@@ -1994,7 +2022,7 @@ class UpgradeTestSkipStep(StepHarness):
         self.assertEqual(r.returncode,0,r.stdout+r.stderr);self.assertIn('run=false',out)
         self.assertEqual(self.plans,[]);self.assertEqual((self.tmp/'upgrade.jsonl').read_text(),'')
         note='categories 2 and 3 skipped as approved in the Store registry: #158: needs a physical enp2s0'
-        self.assertEqual(json.loads((self.tmp/'runtime-reports/t.json').read_text()),{'name':'t','passed':None,'skipped':True,'note':note})
+        self.assertEqual(json.loads((self.tmp/'runtime-reports/t.json').read_text()),{'name':'t','passed':None,'skipped':True,'not_run':'approved_skip','note':note})
         self.assertIn(f'- t: upgrade test not run ({note})',(self.tmp/'summary').read_text())
     @needs_shell
     def test_add_on_without_approval_is_tested(self):
