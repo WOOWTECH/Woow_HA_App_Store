@@ -935,7 +935,7 @@ class DeviceBuiltImages(StepHarness):
         self.assertIn("build argument name 'A B' must be non-empty, without = or whitespace",reason)
     @needs_shell
     def test_an_approved_skip_is_not_built_or_tested(self):
-        # woow_lan_gateway (#158): built on the device and approved; it is "not run" with the registry's reason, not failing.
+        # woow_lan_gateway (#158, permanent): built on the device and approved; it is "not run" with the registry's reason, not failing.
         extra={'components':[{'id':'t','source_path':'addon','config_file':'config.yaml','upgrade_comparison':{'skip_upgrade_test':'#158: needs a physical enp2s0'}}]}
         r,_,out=self.run_step(self.STEPS[:3],extra=extra,**self.DEVICE)
         self.assertEqual(r.returncode,0,r.stdout+r.stderr)
@@ -1992,11 +1992,12 @@ class UpgradeTestSkipCommand(unittest.TestCase):
     def test_unknown_add_on_fails(self):
         code,out=self.main(component='zz');self.assertEqual(code,2);self.assertIn('zz',out)
     def test_registry_approves_exactly_the_add_ons_the_owner_did(self):
-        # Owner, 2026-11-04 (pipeline #140): each skip names the ticket that adds what the runtime lacks; drop it when that lands.
+        # Owner, 2026-11-04 (pipeline #140): each skip names its ticket. 2026-11-05 (#158): pi_agent runs (host_network);
+        # woow_lan_gateway's skip is permanent (pipeline .out-of-scope/lan-gateway-upgrade-test-on-runner.md).
         registry=json.loads((StepHarness.STORE/'.addon-sync/registry.json').read_text(encoding='utf-8'))
         approved={(repo,c['id']):u.upgrade_test_skip(c) for repo,p in registry['providers'].items() for c in p['components'] if u.upgrade_test_skip(c)}
-        self.assertEqual({k:re.match(r'#\d+',v).group() for k,v in approved.items()},{('WOOWTECH/woow-lan-gateway','woow_lan_gateway'):'#158',
-            ('WOOWTECH/Woow_ha_pi_agent_add_on','woow_ha_pi_agent'):'#158'})
+        self.assertEqual({k:re.match(r'#\d+',v).group() for k,v in approved.items()},{('WOOWTECH/woow-lan-gateway','woow_lan_gateway'):'#158'})
+        self.assertIn('permanent',approved[('WOOWTECH/woow-lan-gateway','woow_lan_gateway')]); self.assertNotIn('remove this skip',' '.join(approved.values()))
         for p in registry['providers'].values():
             with self.subTest('provider level'):self.assertNotIn('skip_upgrade_test',p.get('upgrade_comparison') or {})
 
