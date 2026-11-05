@@ -531,7 +531,7 @@ class Runtime(unittest.TestCase):
         # #158, pi_agent: the fake binds the address /addons/self/info reports (172.30.32.1), which exists only in the
         # host's namespace; it still reaches the mock Supervisor by name, and the probe and hooks reach it there.
         self.settings(stable_seconds=3); self.hook('verify', VERIFY_HOST); modes = self.network_modes()
-        code, result, out = self.run_test('good', 'good', host_network=True, watchdog='http://[HOST]:[PORT:8080]/health')
+        code, result, out = self.run_test('good', 'good', host_network=True, **self.DATA_CONFIG)
         self.assertEqual(code, 0, out + json.dumps(result, indent=1)); self.assertTrue(result['passed'])
         self.assertEqual(modes, ['host', 'host'])
         self.assertIn('the watchdog http://172.30.32.1:8080/health answered with success', result['phases'][0]['detail'])
