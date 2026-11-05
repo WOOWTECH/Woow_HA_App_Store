@@ -86,7 +86,10 @@
           "config_file": "config.yaml",
           "store_path": "woow-lan-gateway",
           "channel": "stable",
-          "enabled": true
+          "enabled": true,
+          "upgrade_comparison": {
+            "skip_upgrade_test": "#158: the comparison target needs a physical network interface (enp2s0) and exits with code 1 on a GitHub runner, where the runtime gives it only the mock hassio bridge; remove this skip once #158 lets the upgrade test run it"
+          }
         }
       ]
     },
@@ -877,7 +880,10 @@
           "config_file": "config.yaml",
           "store_path": "woow_ha_pi_agent",
           "channel": "stable",
-          "enabled": true
+          "enabled": true,
+          "upgrade_comparison": {
+            "skip_upgrade_test": "#158: host_network add-on; on the mock hassio bridge its watchdog (/api/home) never answers within the time limit; remove this skip once #158 lets the upgrade test run it"
+          }
         }
       ]
     },

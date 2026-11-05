@@ -4,9 +4,20 @@
 # Home Assistant App (Add-on): Cloudflared
 # Runs the Cloudflare Tunnel for Home Assistant
 # ==============================================================================
+# Protect restored credentials before any config read, network call or UI.
+cloudflared-credential-guard || exit 1
+umask 077
+
 declare config_file="/tmp/config.json"
 declare certificate="/data/cert.pem"
 declare -a options
+
+# Bashio's default trace helper logs every argument, including config values.
+# Retain the static event name while discarding all additional arguments.
+bashio::log.trace() {
+    local message="${1:-}"
+    bashio::log.log "${__BASHIO_LOG_LEVEL_TRACE}" "${message}"
+}
 
 # The unconfigured idle path exits before the normal mode branch below. A
 # disconnect can therefore leave a still-valid token file behind unless it
