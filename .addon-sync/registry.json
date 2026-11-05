@@ -88,7 +88,7 @@
           "channel": "stable",
           "enabled": true,
           "upgrade_comparison": {
-            "skip_upgrade_test": "#158: the comparison target needs a physical network interface (enp2s0) and exits with code 1 on a GitHub runner, where the runtime gives it only the mock hassio bridge; remove this skip once #158 lets the upgrade test run it"
+            "skip_upgrade_test": "#158, permanent (owner, 2026-11-05): a fail-closed NAT gateway for the Enrollment LAN; to start it needs host_network, NET_ADMIN, the fixed interfaces enp2s0 and enp1s0, nftables and a writable ip_forward, which a GitHub runner cannot give it, and a fake network would not test NAT, DHCP or fail-closed behaviour. On-device testing on the Enrollment LAN covers it (pipeline .out-of-scope/lan-gateway-upgrade-test-on-runner.md)"
           }
         }
       ]
@@ -892,10 +892,7 @@
           "config_file": "config.yaml",
           "store_path": "woow_ha_pi_agent",
           "channel": "stable",
-          "enabled": true,
-          "upgrade_comparison": {
-            "skip_upgrade_test": "#158: host_network add-on; on the mock hassio bridge its watchdog (/api/home) never answers within the time limit; remove this skip once #158 lets the upgrade test run it"
-          }
+          "enabled": true
         }
       ]
     },

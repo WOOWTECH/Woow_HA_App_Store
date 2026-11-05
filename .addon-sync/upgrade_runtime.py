@@ -8,9 +8,18 @@ upgrade_check.mounts), each under a mock Home Assistant Supervisor
 (mock_supervisor.py): the hassio bridge network 172.30.32.0/23, the
 Supervisor at 172.30.32.2 (also as host `supervisor`), a fake
 SUPERVISOR_TOKEN/HASSIO_TOKEN and /data/options.json (test options, below).
-Each version must start, judged as upgrade_check.startup_probe
-says from the Supervisor's address, and then stay up for stable_seconds; the
-add-on's upgrade-check/settings.yaml may override the time limits.
+The add-on runs on that network at 172.30.33.10, unless its config.yaml (each
+version's own) says host_network: true (#158): then, as Supervisor does, it
+runs in the host's network namespace (docker --network host), which holds the
+bridge gateway 172.30.32.1 once the mock network exists (on a GitHub runner
+it is the docker bridge's address), and its address is that gateway
+(Supervisor's DockerAddon.ip_address): [HOST] in the startup probe, ADDON_URL,
+ADDON_HOST and the mock's /addons/self/info ip_address. It still resolves
+supervisor and hassio to the mock. Other host-network effects (host ports,
+other host services) are not modelled. Each version must start, judged as
+upgrade_check.startup_probe says from the Supervisor's address, and then stay
+up for stable_seconds; the add-on's upgrade-check/settings.yaml may override
+the time limits.
 
 Data directories: <root>/data at /data, or at the `path` of a `data` entry;
 each other `map` entry at its `path` or Supervisor's default, from
@@ -67,7 +76,7 @@ wget, timeout), so they reach the add-on from the Supervisor's address, and
 never run docker themselves. Their environment:
   ADDON_URL        the add-on from the Supervisor: its webui's scheme and port,
                    else its ingress port, else http://ADDON_HOST (no path)
-  ADDON_HOST       the add-on's address (172.30.33.10)
+  ADDON_HOST       the add-on's address (172.30.33.10; 172.30.32.1 with host_network)
   ADDON_IMAGE, ADDON_VERSION   the version the hook runs against
   PHASE            old (seed) or new (verify)
   REPORT_DIR       where the hook may write <hook>.json (one directory per phase)
@@ -415,6 +424,16 @@ def option_warnings(given, configs, images):
                 warning += '; it is masked wherever it appears, so pick a longer, test-only value'
                 if warning not in out:out.append(warning)
     return out
+
+def host_network(config):
+    """Whether this version runs in the host's network namespace: config.yaml's host_network is true (#158)."""
+    return config.get('host_network') is True
+
+def addon_ip(config):
+    """The add-on's address as Supervisor gives it (DockerAddon.ip_address): the hassio bridge gateway for a
+    host-network add-on, else its address on the bridge (#158)."""
+    return GATEWAY if host_network(config) else ADDON_IP
+
 def addon_info(config, options, ingress_token):
     """The mock Supervisor's /addons/self/info for this version. `ingress_token`: the one token of this upgrade test,
     shared by both versions as Supervisor keeps it across an update (#161)."""
@@ -422,7 +441,7 @@ def addon_info(config, options, ingress_token):
     info = {k: config[k] for k in keys if k in config}
     # The port the add-on must serve ingress on, as Supervisor reports it: never 0, which it replaces at install.
     if config.get('ingress'):info['ingress_port'] = ingress_port(config)
-    return {**info, 'hostname': f'local-{config.get("slug", "addon")}', 'ip_address': ADDON_IP, 'state': 'started', 'boot': 'auto',
+    return {**info, 'hostname': f'local-{config.get("slug", "addon")}', 'ip_address': addon_ip(config), 'state': 'started', 'boot': 'auto',
         'repository': 'local', 'version_latest': config.get('version'), 'update_available': False, 'options': options,
         **ingress_paths(config, ingress_token), 'network': config.get('ports')}
 
@@ -435,10 +454,10 @@ def ingress_paths(config, token):
 
 def addon_url(config):
     """ADDON_URL of the hooks: the webui's scheme and port, else the ingress port, else the bare address."""
-    webui = webui_endpoint(config)
-    if webui:return f'{webui[0]}://{ADDON_IP}:{webui[1]}'
-    if config.get('ingress'):return f'http://{ADDON_IP}:{ingress_port(config)}'
-    return f'http://{ADDON_IP}'
+    webui, host = webui_endpoint(config), addon_ip(config)
+    if webui:return f'{webui[0]}://{host}:{webui[1]}'
+    if config.get('ingress'):return f'http://{host}:{ingress_port(config)}'
+    return f'http://{host}'
 
 def hook_problem(hooks_dir, hook):
     """Why upgrade-check/<hook> cannot run in the mock Supervisor's container, or '': only upgrade-check/ is mounted
@@ -525,7 +544,9 @@ class UpgradeTestEnv:
         container = f'{self.prefix}-{phase}'
         # Supervisor adds docker's init unless config.yaml says init: false; no restart policy, so a restart shows as an exit.
         init = [] if config.get('init') is False else ['--init']
-        docker('run', '-d', '--name', container, '--network', self.net, '--ip', ADDON_IP, *init,
+        # #158: host_network as Supervisor runs it, in the host's namespace (it holds the bridge gateway); else on the bridge.
+        network = ['--network', 'host'] if host_network(config) else ['--network', self.net, '--ip', ADDON_IP]
+        docker('run', '-d', '--name', container, *network, *init,
             '--add-host', f'supervisor:{SUPERVISOR_IP}', '--add-host', f'hassio:{SUPERVISOR_IP}',
             '-e', f'SUPERVISOR_TOKEN={self.token}', '-e', f'HASSIO_TOKEN={self.token}', '-e', 'TZ=UTC', *args, image)
         return container
@@ -534,7 +555,7 @@ class UpgradeTestEnv:
         return mock_supervisor.summary(self.state, self.log_start)
     def hook_env(self, phase, image, config, hook='seed'):
         """The environment of `hook` run against this version (the module docstring lists it); smoke has its own HOOK_STATE_DIR."""
-        out = {'ADDON_URL': addon_url(config), 'ADDON_HOST': ADDON_IP, 'ADDON_IMAGE': image, 'ADDON_VERSION': str(config.get('version')),
+        out = {'ADDON_URL': addon_url(config), 'ADDON_HOST': addon_ip(config), 'ADDON_IMAGE': image, 'ADDON_VERSION': str(config.get('version')),
             'PHASE': phase, 'REPORT_DIR': f'{IN_MOCK["reports"]}/{phase}', 'HOOK_STATE_DIR': IN_MOCK['smoke_state' if hook == 'smoke' else 'state'],
             'SUPERVISOR_URL': 'http://127.0.0.1', 'SUPERVISOR_TOKEN': self.token}
         for m in mounts(config, IN_MOCK['data']):
@@ -613,11 +634,12 @@ def _state(container):
     state, restarts = docker('inspect', '-f', '{{json .State}} {{.RestartCount}}', container).strip().rsplit(' ', 1)
     return json.loads(state), int(restarts)
 
-def wait_started(env, container, probe):
+def wait_started(env, container, probe, host):
     """(started, detail, answer): whether the version started as `probe` (upgrade_check.startup_probe) says, why or
     why not, and the start of what its url answered (http only). Started: the probe answers within the time limit
-    (none for stays-up), then the container runs stable_seconds without exiting or restarting."""
-    url = probe['url'].replace('[HOST]', ADDON_IP)
+    (none for stays-up), then the container runs stable_seconds without exiting or restarting. `host`: the add-on's
+    address for [HOST] (addon_ip())."""
+    url = probe['url'].replace('[HOST]', host)
     if probe['below'] is not None:
         answered = 'with success' if probe['method'] == 'watchdog' else f'below HTTP {probe["below"]}'
     else:answered = 'by accepting a connection'
@@ -696,7 +718,7 @@ def upgrade_test(name, addon_dir, old_image, old_config, new_image, new_config, 
                     'detail': str(e), 'answer': '', 'logs': logs, 'hooks': [], 'supervisor': {'unmocked': [], 'broken_fixtures': []}})
                 result['reason'] = f'{label} did not start: {e}'
                 return result
-            ok, detail, answer = wait_started(env, container, probe)
+            ok, detail, answer = wait_started(env, container, probe, addon_ip(config))
             entry = {'phase': phase, 'version': str(config.get('version')), 'image': image, 'method': probe['method'], 'started': ok,
                 'detail': detail, 'answer': answer, 'logs': '', 'hooks': []}
             phases.append(entry)
