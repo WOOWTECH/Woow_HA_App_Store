@@ -23,19 +23,20 @@
 # build, so re-run all jobs). An add-on with a prebuilt image whose SBOM
 # never arrives fails the check; it is never skipped.
 # Add-ons built on the device are reported as compared in #90. A provider
-# whose shipped image is not what its CI builds but the published image its
-# config.yaml names (knxd ships a third-party image) has
+# whose shipped image is the published one its config.yaml names, not one the
+# caller's PR builds (knxd ships a third-party image, #147; mcp_addons builds
+# its images only on woow-disposable-builder, #148), has
 # upgrade_comparison.scan_published_image in the Store registry (the approved
-# reason and ticket, #147): both sides are then that image's amd64 tag
-# <version>, pulled like the comparison target's, and no SBOM artifact is
-# awaited; a PR whose version the upstream has not published yet fails. A
-# caller whose category 4 cannot run (mcp_addons builds no PR image) passes
-# skip_vulnerability_scan (any non-empty text, e.g. the reason): category 4 is
-# then skipped for every add-on in the call; the configuration comparison
-# still runs. Only a provider whose Store registry entry has
-# upgrade_comparison.skip_vulnerability_scan (the approved reason and ticket)
-# may pass it, and the report gives that approved reason, not the caller's
-# text; any other caller that passes it fails.
+# reason and ticket): both sides are then that image's amd64 tag <version>,
+# pulled like the comparison target's, and no SBOM artifact is awaited; a PR
+# whose version's image is not published yet fails. A caller whose category 4
+# cannot run passes skip_vulnerability_scan (any non-empty text, e.g. the
+# reason): category 4 is then skipped for every add-on in the call; the
+# configuration comparison still runs. Only a provider whose Store registry
+# entry has upgrade_comparison.skip_vulnerability_scan (the approved reason
+# and ticket; no provider has one now) may pass it, and the report gives that
+# approved reason, not the caller's text; any other caller that passes it
+# fails.
 #
 # Category 2, the upgrade test (#137 startup, #138 data checks), runs in the
 # runtime job for add-ons with a prebuilt image when the caller passes
@@ -359,7 +360,7 @@ jobs:
             fail "${id}: cannot pull the comparison target's image ${ref} from the registry; re-run, or check that the image of ${target} exists"; exit 1
           fi
           if [ -n "${new_ref}" ] && ! docker pull --quiet --platform linux/amd64 "${new_ref}"; then
-            fail "${id}: cannot pull ${new_ref}, the image users would install with this PR: the upstream has not published tag ${new_ref##*:} of ${new_ref%:*} yet (or the registry is unreachable); bump to a version the upstream has released, or wait for its release, then re-run"; exit 1
+            fail "${id}: cannot pull ${new_ref}, the image users would install with this PR: tag ${new_ref##*:} of ${new_ref%:*} is not published yet (or the registry is unreachable); publish it first (its upstream's release for a third-party image, the repository's own image publication otherwise) or bump to a version whose image is published, then re-run"; exit 1
           fi
           for side in old new; do
             image="${ref}"; sbom="$RUNNER_TEMP/${id}.old.syft.json"
@@ -384,7 +385,7 @@ jobs:
       run: |
         set -euo pipefail
         # Only this attempt's artifact (plan.jsonl names it -attempt-<N>): a re-run judges its own build.
-        # With scan_published_image (new_ref) the new image is pulled and scanned instead: no SBOM to wait for (#147).
+        # With scan_published_image (new_ref) the new image is pulled and scanned instead: no SBOM to wait for (#147, #148).
         jq -r 'select(.ref != "" and .new_ref == "") | [.id, .artifact] | @tsv' plan.jsonl > wanted-sboms.tsv
         bash tooling/.addon-sync/wait_artifacts.sh wanted-sboms.tsv artifacts.tsv "SBOM of the new image" addon-sbom
     - name: Download the new images' SBOMs

@@ -284,7 +284,7 @@ def _error(title, message):
 def components(registry, repo):
     """What the reusable workflow needs from repo's registry entry: ref_policy, the approved reason to skip category 4
     ('' when not approved), the approved reason to scan, on both sides, the image config.yaml names at its version
-    instead of the PR build's SBOM (scan_published_image, #147: a repository that ships a third-party image; '' when
+    instead of the PR build's SBOM (scan_published_image, #147/#148: a repository whose shipped image is the published one its config names, not one its PR builds; '' when
     not approved; never together with the skip) and, for each add-on it releases (addon_sync.publishes_releases: a retired or prerelease add-on
     is not compared), the repository paths of its config and upgrade-notes.yaml (config, notes) and, while a config move
     is in progress, of the location it left (previous_config, previous_notes; '' when none). The workflow reads the
