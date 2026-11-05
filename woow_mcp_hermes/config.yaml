@@ -1,14 +1,14 @@
 name: Woow Hermes MCP Server
-version: 0.4.10
+version: 0.4.11
 slug: woow_mcp_hermes
-description: Experimental; HA admin-role management; full tool surface; every tool and write on by default (each can be turned off in the panel).
+description: HA admin-role management; full tool surface; every tool and write on by default (each can be turned off in the panel).
 url: https://github.com/WOOWTECH/Woow_ha_mcp_addons
 arch:
 - amd64
 startup: application
 boot: auto
 init: true
-stage: experimental
+stage: stable
 image: ghcr.io/woowtech/{arch}-mcp-hermes
 ingress: true
 ingress_port: 8099

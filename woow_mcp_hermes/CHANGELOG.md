@@ -1,3 +1,11 @@
+## 0.4.11 — images published and verified
+
+- Carry merged PR #58: every MCP-visible Hermes error reads `CODE: text` (`BACKEND_UNAVAILABLE`, `BACKEND_AUTH_REJECTED`, `BACKEND_REDIRECT_REJECTED`, `BACKEND_TIMEOUT`, `BACKEND_HTTP_ERROR`, `BACKEND_BUSY`, `BACKEND_STREAM_ERROR`, `BACKEND_UNEXPECTED_RESPONSE`, `INVALID_INPUT`, `NOT_FOUND`, `CONFIRMATION_REQUIRED`, `CONFIG_NOT_APPLIED`, `CHAT_TURN_FAILED` and the existing outcome-unknown codes), the same table as the PaaS woow-mcp-server.
+- Dashboard and Gateway transport failures use fixed public wording and never repeat the configured URL, the upstream body, a redirect Location or transport text; wrong reply shapes are rejected with fixed wording. A chat turn that the Gateway itself reports as failed, incomplete or cancelled returns `CHAT_TURN_FAILED` with the Gateway's own error message or reason; the add-on's own Gateway transport verdicts keep `BACKEND_BUSY` and `BACKEND_STREAM_ERROR`. Tool names, inputs, settings, grants and the 11 reviewed output schemas do not change.
+- Remove the experimental label (PR #59): the manifest declares `stage: stable` and the store description no longer starts with "Experimental;" (the image `io.hass.description` label follows).
+- Security: the image's OS-package step also upgrades `apt` and `libapt-pkg6.0` to 2.6.2 from the signature-checked Debian security snapshot `20261104T124343Z` (CVE-2026-109518, High, fix available in the pinned Python base). Runtime, tools, permissions and Python/Node dependencies do not change.
+- Exact-source image `ghcr.io/woowtech/amd64-mcp-hermes@sha256:a49a4fa8429e78ab062ac34422f41bfe585ce8077815e4d23674e2e0811a8fd8` passed P1–P5, anonymous verification and fresh remote layer/diffID checks. See ../../docs/provenance/release-0.4.11-images.json and ../../docs/operations/release-decision-0.4.11.md. Stable Release/Store distribution and actual HAOS acceptance remain separate evidence.
+
 ## 0.4.10 — images published and verified
 
 - Synchronize 0.4.10 release metadata with the merged Odoo read-error/result-size correction. The Hermes gateway and fallback advertise 11 reviewed output schemas matching the pinned child and PaaS runtime. Dashboard connection and missing-configuration errors now give bounded guidance without exposing credentials; tool names, inputs, settings, permission and dependency contracts remain unchanged.
