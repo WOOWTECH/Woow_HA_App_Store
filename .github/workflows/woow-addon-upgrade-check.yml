@@ -62,13 +62,14 @@
 # where its version first appeared); they need no image_artifact. A target that
 # cannot be downloaded or rebuilt is a comparison-target failure, as a pull is.
 #
-# Category 3, the regression comparison (#139), runs in the same upgrade test:
-# upgrade-check/smoke (optional) runs on the comparison target and on the new
-# version, and its checks are compared by name (upgrade_check.py regression):
-# a check that passes on the comparison target and not on the new version, or
-# one only the new version has that does not pass, fails the upgrade test;
-# one that already fails on the comparison target is only reported. Without
-# smoke, only startup is compared. The report lists every check on both versions.
+# Category 3, the regression comparison (#139), runs in the same upgrade test
+# (upgrade_runtime.py, in the runtime job): upgrade-check/smoke (optional) runs
+# on the comparison target and on the new version, and its checks are compared
+# by name with the rule upgrade_check.regression(): a check that passes on the
+# comparison target and not on the new version, or one only the new version
+# has that does not pass, fails the upgrade test; one that does not pass on the
+# comparison target is only reported. Without smoke, only startup is compared.
+# The report lists every check on both versions.
 #
 # Caller (in a workflow that also runs on push to the default branch, so
 # addon_sync's ci_gate keeps seeing a successful non-PR run; no path filter,
@@ -486,6 +487,9 @@ jobs:
     # Per add-on: up to two builds when built on the device (#144; an HA Core base is ~4 GB, pulled once per run), then
     # each version's startup (startup_timeout 300 s + stable_seconds 60 s by default) and its hooks (hook_timeout 600 s).
     # A repository like apporo bumps up to five add-ons in one PR, so 90 minutes could run out; GitHub allows 360.
+    # With smoke on both versions (#139) one add-on whose every wait runs out takes 2 x (300 + 60) s + 4 x 600 s of
+    # hooks = 52 minutes (plus its builds), so 150 is not a bound for several such add-ons: a job that runs out of
+    # time fails compare (runtime did not succeed), it never passes.
     timeout-minutes: 150
     env:
       # Every fail (log.sh) of this job is also written here; "Record why the runtime job failed" hands it to compare.

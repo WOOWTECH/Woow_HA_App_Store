@@ -106,14 +106,17 @@ json.dump({'checks': [{'name': n, 'result': 'pass' if ok else 'fail', 'detail': 
 sys.exit(0 if all(ok for _, ok, _ in checks) else 1)
 '''
 # The smoke hook (#139) runs the same checks on both versions, after seed on the comparison target (it finds the
-# item seed stored); the new version reports one more check. It exits 1 when a check fails.
+# item seed stored); the new version reports one more check, which also finds what smoke left in its own
+# HOOK_STATE_DIR on the comparison target. It exits 1 when a check fails.
 SMOKE = r'''#!/usr/bin/env python3
 import json, os, sys, urllib.error, urllib.request
 def status(path):
     try:return urllib.request.urlopen(os.environ['ADDON_URL'] + path, timeout=10).status
     except urllib.error.HTTPError as e:return e.code
 checks = [('seeded item readable', status('/items/greeting') == 200), ('feature works', status('/feature') == 200)]
-if os.environ['PHASE'] == 'new':checks.append(('new check', status('/health') == 200))
+state = os.environ['HOOK_STATE_DIR']
+if os.environ['PHASE'] == 'new':checks.append(('new check', status('/health') == 200 and os.path.exists(state + '/smoke-old') and state == '/smoke-state'))
+open(state + '/smoke-' + os.environ['PHASE'], 'w').write('ran')
 json.dump({'checks': [{'name': n, 'result': 'pass' if ok else 'fail', 'detail': os.environ['PHASE']} for n, ok in checks]}, open(os.environ['REPORT_DIR'] + '/smoke.json', 'w'))
 sys.exit(0 if all(ok for _, ok in checks) else 1)
 '''
@@ -156,7 +159,7 @@ class RegressionReport(unittest.TestCase):
     def result(self, old, new, passed=True, reason=''):
         def run(phase, code, checks):
             return {'hook': 'smoke', 'phase': phase, 'passed': code == 0, 'exit_code': code, 'detail': f'exited with code {code}',
-                'checks': [{'name': n, 'result': r, 'detail': ''} for n, r in checks.items()], 'output': '', 'report_error': ''}
+                'checks': [{'name': n, 'result': r, 'detail': f'{phase} {n}'} for n, r in checks.items()], 'output': '', 'report_error': '', 'reported': True}
         return {'name': 'fake', 'passed': passed, 'reason': reason, 'hooks': ['smoke'], 'data_checked': False, 'phases': [
             {'phase': p, 'version': v, 'image': 'i', 'method': 'stays-up', 'started': True, 'detail': 'd', 'answer': '', 'logs': '', 'hooks': [run(p, *r)]}
             for p, v, r in (('old', '1.0.0', old), ('new', '1.1.0', new))]}
@@ -174,7 +177,28 @@ class RegressionReport(unittest.TestCase):
         result = rt.compare_smoke(self.result((0, {'api': 'pass'}), (0, {'api': 'fail'}), passed=False, reason='verify failed'))
         self.assertEqual((result['passed'], result['reason']), (False, 'verify failed')); self.assertFalse(result['regression']['passed'])
         result = rt.compare_smoke(self.result((0, {'api': 'pass'}), (0, {'api': 'pass', 'new': 'skip'})))
-        self.assertFalse(result['passed']); self.assertIn('| new | absent | skip | only in the new version: **must pass** |', rt.report(result))
+        self.assertFalse(result['passed']); self.assertIn('| new | absent | skip | only in the new version: **must pass** | new new |', rt.report(result))
+    def test_smoke_runs_are_in_the_regression_table_only(self):
+        result = self.result((0, {'api': 'pass'}), (0, {'api': 'pass'}))
+        result['hooks'] = ['seed', 'smoke']
+        result['phases'][0]['hooks'].insert(0, {'hook': 'seed', 'phase': 'old', 'passed': True, 'exit_code': 0, 'detail': 'exited 0',
+            'checks': [{'name': 'item stored', 'result': 'pass', 'detail': 'ok'}], 'output': '', 'report_error': '', 'reported': True})
+        text = rt.report(rt.compare_smoke(result))
+        self.assertIn('| api | pass | pass | no regression | new api |', text)
+        self.assertIn('| the comparison target 1.0.0 | seed | item stored | pass | ok |', text); self.assertNotIn('| smoke |', text)
+
+class HookChecks(unittest.TestCase):
+    """What a hook's report may say and what smoke's environment is (#139); no Docker."""
+    def test_the_hooks_own_row_name_is_reserved(self):
+        path = pathlib.Path(tempfile.mkdtemp()) / 'smoke.json'; self.addCleanup(shutil.rmtree, path.parent)
+        path.write_text(json.dumps({'checks': [{'name': 'api', 'result': 'pass'}, {'name': '(the hook)', 'result': 'pass'}]}), encoding='utf-8')
+        checks, problem = rt._read_checks(path)
+        self.assertEqual([c['name'] for c in checks], ['api']); self.assertIn("names a check '(the hook)', which is reserved", problem)
+    def test_smoke_has_its_own_state_directory(self):
+        env = rt.UpgradeTestEnv(tempfile.mkdtemp()); self.addCleanup(shutil.rmtree, env.work)
+        config = {'slug': 'fake', 'version': '1.0.0'}
+        self.assertEqual([env.hook_env('old', 'i', config, h)['HOOK_STATE_DIR'] for h in ('seed', 'verify', 'smoke')],
+            ['/hook-state', '/hook-state', '/smoke-state'])
 
 @unittest.skipUnless(docker_ok(), 'needs a Docker daemon (present on GitHub runners)')
 class Runtime(unittest.TestCase):
@@ -408,10 +432,19 @@ class Runtime(unittest.TestCase):
         code, result, out = self.run_test('regress', 'regress', **self.DATA_CONFIG)
         self.assertEqual(code, 0, out + json.dumps(result, indent=1)); self.assertTrue(result['passed'])
         self.assertEqual({r['name']: r['verdict'] for r in result['regression']['rows']},
-            {'(the hook)': 'not compared', 'seeded item readable': 'pass', 'feature works': 'not compared', 'new check': 'pass'})
+            {'(the hook)': 'not compared', 'seeded item readable': 'pass', 'feature works': 'not compared', 'new check': 'not compared'})
         summary = (self.dir / 'summary.md').read_text(encoding='utf-8')
         self.assertIn('no smoke check that passes on the comparison target fails on the new version', summary)
         self.assertIn('| feature works | **fail** | **fail** | not compared: not passing on the comparison target (未比對, report only) |', summary)
+    def test_smoke_does_not_run_on_the_new_version_after_category_2_failed(self):
+        self.settings(stable_seconds=3); self.hook('smoke', SMOKE); self.hook('verify', '#!/bin/sh\nexit 3\n')
+        code, result, out = self.run_test('good', 'good', **self.DATA_CONFIG)
+        self.assertEqual(code, 1); self.assertIn('verify failed on the new version (1.1.0): exited with code 3', result['reason'])
+        self.assertEqual([[h['hook'] for h in p['hooks']] for p in result['phases']], [['smoke'], ['verify']])
+        self.assertEqual(result['phases'][1]['smoke_not_run'], result['reason'])
+        self.assertEqual((result['regression']['compared'], result['regression']['rows']), (False, []))
+        summary = (self.dir / 'summary.md').read_text(encoding='utf-8')
+        self.assertIn('**Regression comparison** (category 3): not compared, smoke did not run on the new version: verify failed', summary)
     def test_verify_that_exits_non_zero_fails(self):
         self.settings(stable_seconds=3); self.hook('verify', '#!/bin/sh\necho "the data is gone"\nexit 3\n')
         code, result, out = self.run_test('good', 'good')

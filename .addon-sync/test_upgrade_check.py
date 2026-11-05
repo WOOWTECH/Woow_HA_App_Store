@@ -1893,16 +1893,18 @@ class ComparisonTargetFailure(StepHarness):
 def smoke_run(phase,exit_code=0,checks=None,report_error=''):
     """A smoke run as upgrade_runtime.py records it; checks: {name: result}, or None when the hook wrote no report."""
     return {'hook':'smoke','phase':phase,'passed':exit_code==0 and not report_error and 'fail' not in (checks or {}).values(),'exit_code':exit_code,
-        'detail':f'exited with code {exit_code}','checks':[{'name':n,'result':r,'detail':f'{n} {r}'} for n,r in (checks or {}).items()],'output':'','report_error':report_error}
+        'detail':f'exited with code {exit_code}','checks':[{'name':n,'result':r,'detail':f'{n} {r}'} for n,r in (checks or {}).items()],'output':'','report_error':report_error,'reported':checks is not None or bool(report_error)}
 
 class RegressionCommand(unittest.TestCase):
     """Category 3 (#139): `regression` compares the smoke checks of an upgrade test result by name."""
     def setUp(self):
         self.dir=pathlib.Path(tempfile.mkdtemp());self.addCleanup(shutil.rmtree,self.dir)
-    def compare(self,old,new,hooks=('seed','verify','smoke'),started=(True,True)):
-        """old/new: the smoke run of each version (None: smoke did not run there; 'absent': that version did not run)."""
+    def compare(self,old,new,hooks=('seed','verify','smoke'),started=(True,True),not_run=None):
+        """old/new: the smoke run of each version (None: smoke did not run there; 'absent': that version did not run).
+        not_run: the new version's smoke_not_run."""
         phases=[{'phase':phase,'version':version,'started':up,'detail':f'{phase} detail','hooks':[run] if run else []}
             for phase,version,up,run in (('old','1.0.0',started[0],old),('new','1.1.0',started[1],new)) if run!='absent']
+        if not_run:phases[-1]['smoke_not_run']=not_run
         path=self.dir/'t.json';path.write_text(json.dumps({'name':'t','passed':True,'reason':'','hooks':list(hooks),'phases':phases}),encoding='utf-8')
         with contextlib.redirect_stdout(io.StringIO()) as out:code=u.main(['regression','--result',str(path)])
         r=json.loads(out.getvalue());self.assertEqual(code,0 if r['passed'] else 1)
@@ -1948,15 +1950,27 @@ class RegressionCommand(unittest.TestCase):
         # A target report that cannot be read has no checks to go by: a check is not "only in the new version".
         r=self.compare(smoke_run('old',0,report_error='its report smoke.json is not JSON'),smoke_run('new',0,{'api':'fail'}))
         self.assertTrue(r['passed']);self.assertEqual(self.verdicts(r),{'(the hook)':'not compared','api':'not compared'})
-    def test_smoke_that_did_not_run_on_the_new_version_regresses_and_on_the_target_is_not_compared(self):
+    def test_smoke_not_run_on_the_new_version_is_not_compared(self):
+        # Category 2 failed first (the new version did not start, verify failed): category 3 is not judged.
+        r=self.compare(smoke_run('old',0,{'api':'pass'}),None,not_run='verify failed on the new version (1.1.0): exited with code 1')
+        self.assertEqual((r['compared'],r['passed'],r['rows'],r['reason']),(False,True,[],''))
+        self.assertEqual(r['not_run'],'verify failed on the new version (1.1.0): exited with code 1')
         r=self.compare(smoke_run('old',0,{'api':'pass'}),'absent')
-        self.assertFalse(r['passed']);self.assertIn('(the hook) passes on the comparison target but is not run on the new version',r['reason'])
-        self.assertIn('api passes on the comparison target but is not run on the new version',r['reason'])
+        self.assertEqual((r['compared'],r['not_run']),(False,'the upgrade test ended before the new version ran'))
         r=self.compare(None,smoke_run('new',0,{'api':'fail'}))
-        self.assertTrue(r['passed']);self.assertEqual(self.verdicts(r),{'(the hook)':'not compared','api':'not compared'})
+        self.assertTrue(r['passed']);self.assertTrue(r['compared']);self.assertEqual(self.verdicts(r),{'(the hook)':'not compared','api':'not compared'})
+    def test_target_smoke_that_is_not_usable_makes_no_check_only_in_the_new_version(self):
+        # Timed out (exit_code None), crashed or exited non-zero before writing smoke.json, or exited 0 without one:
+        # the comparison target has no checks to go by, so the new version's checks are 未比對.
+        for old in (smoke_run('old',None),smoke_run('old',2),smoke_run('old',0),smoke_run('old',1,{})):
+            with self.subTest(old):
+                r=self.compare(old,smoke_run('new',0,{'new':'fail'}))
+                self.assertTrue(r['passed'],r['reason']);self.assertEqual(self.verdicts(r)['new'],'not compared')
+        # A check that passes on a target whose hook exited non-zero is still compared.
+        self.assertEqual(self.verdicts(self.compare(smoke_run('old',1,{'api':'pass'}),smoke_run('new',1,{'api':'fail'})))['api'],'fail')
     def test_without_smoke_only_startup_is_compared(self):
         r=self.compare(None,None,hooks=('seed','verify'))
-        self.assertTrue(r['passed']);self.assertFalse(r['smoke'])
+        self.assertTrue(r['passed']);self.assertFalse(r['smoke']);self.assertTrue(r['compared'])
         self.assertEqual(r['rows'],[{'name':'starts','old':'pass','new':'pass','verdict':'pass','old_detail':'old detail','new_detail':'new detail'}])
         r=self.compare(None,None,hooks=(),started=(True,False))
         self.assertFalse(r['passed']);self.assertEqual(r['reason'],'regression (category 3): starts passes on the comparison target but is fail on the new version')
