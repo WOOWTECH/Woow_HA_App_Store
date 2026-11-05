@@ -485,8 +485,11 @@ class Runtime(unittest.TestCase):
         code, result, out = self.run_test('regress', 'regress', **self.DATA_CONFIG)
         self.assertEqual(code, 0, out + json.dumps(result, indent=1)); self.assertTrue(result['passed'])
         self.assertEqual({r['name']: r['verdict'] for r in result['regression']['rows']},
-            {'(the hook)': 'not compared', 'seeded item readable': 'pass', 'feature works': 'not compared', 'new check': 'not compared'})
+            {'(the hook)': 'not compared', 'seeded item readable': 'pass', 'feature works': 'not compared', 'new check': 'pass'})
         summary = (self.dir / 'summary.md').read_text(encoding='utf-8')
+        # The comparison target's smoke exited 1 (feature works fails) but wrote its report: a check only the new
+        # version has still must pass.
+        self.assertIn('| new check | absent | pass | only in the new version, passes |', summary)
         self.assertIn('no smoke check that passes on the comparison target fails on the new version', summary)
         self.assertIn('| feature works | **fail** | **fail** | not compared: not passing on the comparison target (未比對, report only) |', summary)
     def test_smoke_does_not_run_on_the_new_version_after_category_2_failed(self):

@@ -402,8 +402,8 @@ def regression(result):
     code. Each row is {name, old, new, verdict, old_detail, new_detail}: old/new are pass, fail, skip or None
     (absent from that report, or smoke did not run there); verdict as _verdict: the comparison target pass and the
     new version not pass is 'fail'; the comparison target fail, skip or None is 'not compared' (未比對, report only),
-    except that a check only in the new version's report must pass when the comparison target's smoke is usable
-    (exited 0 and wrote a report that could be read). When smoke did not run on the new version (category 2 failed
+    except that a check only in the new version's report must pass when the comparison target's smoke wrote a
+    report that could be read, whatever its exit code (a hook exits non-zero when one of its checks fails). When smoke did not run on the new version (category 2 failed
     first), nothing is compared: compared is false, rows is empty and not_run says why. Without smoke the only row is
     STARTS_ROW, whether each version started. passed: no row is 'fail'; reason names the failing rows ('' when passed)."""
     if not isinstance(result,dict) or not isinstance(result.get('phases'),list):raise ValueError('not an upgrade test result (no phases list)')
@@ -425,9 +425,10 @@ def regression(result):
             return 'pass' if run.get('exit_code')==0 and not run.get('report_error') else 'fail'
         rows=[row(HOOK_ROW,*map(outcome,runs),od=(runs[0] or {}).get('detail',''),nd=(runs[1] or {}).get('detail',''))]
         checks=[{c['name']:c for c in (r or {}).get('checks') or []} for r in runs]
-        # A comparison target whose smoke did not run, exited non-zero (a timeout or crash too) or wrote no usable
-        # report has no checks to go by: then nothing is "only in the new version" (未比對).
-        target_reported=outcome(runs[0])=='pass' and bool(runs[0].get('reported'))
+        # A comparison target whose smoke did not run, or wrote no report that could be read (a timeout or crash
+        # before writing it), has no checks to go by: then nothing is "only in the new version" (未比對). Its exit
+        # code does not matter: a hook with one failing check exits non-zero but its report still lists every check.
+        target_reported=runs[0] is not None and bool(runs[0].get('reported')) and not runs[0].get('report_error')
         for name in [*checks[0],*(n for n in checks[1] if n not in checks[0])]:
             o,n=(c.get(name) or {} for c in checks)
             rows.append(row(name,o.get('result'),n.get('result'),target_reported,o.get('detail',''),n.get('detail','')))

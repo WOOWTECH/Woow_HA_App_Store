@@ -1959,13 +1959,24 @@ class RegressionCommand(unittest.TestCase):
         self.assertEqual((r['compared'],r['not_run']),(False,'the upgrade test ended before the new version ran'))
         r=self.compare(None,smoke_run('new',0,{'api':'fail'}))
         self.assertTrue(r['passed']);self.assertTrue(r['compared']);self.assertEqual(self.verdicts(r),{'(the hook)':'not compared','api':'not compared'})
-    def test_target_smoke_that_is_not_usable_makes_no_check_only_in_the_new_version(self):
+    def test_target_smoke_without_a_readable_report_makes_no_check_only_in_the_new_version(self):
         # Timed out (exit_code None), crashed or exited non-zero before writing smoke.json, or exited 0 without one:
         # the comparison target has no checks to go by, so the new version's checks are 未比對.
-        for old in (smoke_run('old',None),smoke_run('old',2),smoke_run('old',0),smoke_run('old',1,{})):
+        for old in (smoke_run('old',None),smoke_run('old',2),smoke_run('old',0)):
             with self.subTest(old):
                 r=self.compare(old,smoke_run('new',0,{'new':'fail'}))
                 self.assertTrue(r['passed'],r['reason']);self.assertEqual(self.verdicts(r)['new'],'not compared')
+    def test_target_smoke_that_exits_non_zero_with_a_report_still_makes_new_checks_count(self):
+        # One check already fails on the comparison target, so its smoke exits 1; its report still lists every
+        # check, so a check only the new version has must pass (an empty report counts too).
+        for old in (smoke_run('old',1,{'api':'pass','old bug':'fail'}),smoke_run('old',1,{})):
+            with self.subTest(old):
+                r=self.compare(old,smoke_run('new',1,{'api':'pass','old bug':'fail','new':'fail'}))
+                self.assertFalse(r['passed']);self.assertEqual(self.verdicts(r)['new'],'fail')
+                self.assertIn('new is only in the new version and is fail, not pass',r['reason'])
+                self.assertEqual(self.verdicts(r)['(the hook)'],'not compared')
+        r=self.compare(smoke_run('old',1,{'old bug':'fail'}),smoke_run('new',1,{'old bug':'fail','new':'pass'}))
+        self.assertTrue(r['passed'],r['reason']);self.assertEqual(self.verdicts(r),{'(the hook)':'not compared','old bug':'not compared','new':'pass'})
         # A check that passes on a target whose hook exited non-zero is still compared.
         self.assertEqual(self.verdicts(self.compare(smoke_run('old',1,{'api':'pass'}),smoke_run('new',1,{'api':'fail'})))['api'],'fail')
     def test_without_smoke_only_startup_is_compared(self):

@@ -114,8 +114,8 @@ its report is $REPORT_DIR/smoke.json. A failing smoke is not itself a failure:
 upgrade_check.regression compares the two runs check by check (a check that
 passes on the comparison target must pass on the new version; one that does
 not pass there is only reported; one only in the new version must pass when
-the comparison target's smoke exited 0 with a report; without a report, the
-exit codes), and a regression fails the upgrade comparison. The check name
+the comparison target's smoke wrote a readable report, whatever its exit code;
+without a report, the exit codes), and a regression fails the upgrade comparison. The check name
 '(the hook)' is reserved for the hook's own row: a report that uses it cannot
 be used. Without smoke, category 3 compares only that both versions start.
 The result below also has, since #139: report_error and reported (whether it
