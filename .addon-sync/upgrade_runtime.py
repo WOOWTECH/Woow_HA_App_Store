@@ -689,7 +689,8 @@ def upgrade_test(name, addon_dir, old_image, old_config, new_image, new_config, 
                 'detail': detail, 'answer': answer, 'logs': '', 'hooks': []}
             phases.append(entry)
             if not ok:result['reason'] = f'{label} did not start: {detail}'
-            for hook in (h for h in present if ok and HOOK_PHASE[h] == phase):
+            # The data hooks of this phase; smoke (in present, not in HOOK_PHASE) runs below.
+            for hook in (h for h in present if ok and HOOK_PHASE.get(h) == phase):
                 run = env.run_hook(hook, phase, image, config, limits['hook_timeout'])
                 entry['hooks'].append(run)
                 if hook == 'verify':result['data_checked'] = True

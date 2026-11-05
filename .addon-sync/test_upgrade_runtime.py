@@ -187,6 +187,50 @@ class RegressionReport(unittest.TestCase):
         self.assertIn('| api | pass | pass | no regression | new api |', text)
         self.assertIn('| the comparison target 1.0.0 | seed | item stored | pass | ok |', text); self.assertNotIn('| smoke |', text)
 
+class HookDispatch(unittest.TestCase):
+    """upgrade_test()'s phase loop with every hook present, its containers stubbed (no Docker): which hook runs where,
+    in which order (#139; a KeyError here once broke every upgrade test with smoke, n8n #28)."""
+    def run_upgrade_test(self, hooks, failing=()):
+        """hooks: the upgrade-check/ files; failing: the (hook, phase) runs that fail. The result and the runs in order."""
+        work = pathlib.Path(tempfile.mkdtemp()); self.addCleanup(shutil.rmtree, work, True)
+        (work / 'addon/upgrade-check').mkdir(parents=True)
+        for h in hooks:(work / 'addon/upgrade-check' / h).write_text('#!/bin/sh\n', encoding='utf-8')
+        calls = []
+        class Env:
+            prefix = 'upgrade-test-stub'
+            def __init__(self, *a):pass
+            def open(self):pass
+            def start(self, phase, *a):return f'stub-{phase}'
+            def run_hook(self, hook, phase, *a):
+                calls.append((hook, phase)); ok = (hook, phase) not in failing
+                return {'hook': hook, 'phase': phase, 'passed': ok, 'exit_code': 0 if ok else 1, 'detail': 'exited 0' if ok else 'exited with code 1',
+                    'checks': [{'name': 'api', 'result': 'pass' if ok else 'fail', 'detail': ''}], 'output': '', 'report_error': '', 'reported': True}
+            def stop(self, *a):pass
+            def supervisor_calls(self):return {'unmocked': [], 'broken_fixtures': []}
+            def close(self):pass
+        config = lambda v:{'name': 'Fake', 'slug': 'fake', 'version': v, 'arch': ['amd64']}
+        with mock.patch.object(rt, 'UpgradeTestEnv', Env), mock.patch.object(rt, 'wait_started', return_value=(True, 'started', '')), \
+                mock.patch.object(rt, '_logs', return_value=''):
+            result = rt.compare_smoke(rt.upgrade_test('fake', str(work / 'addon'), 'old:1', config('1.0.0'), 'new:1', config('1.1.0'), str(work / 'w')))
+        return result, calls
+    def test_every_hook_runs_in_its_phase_with_smoke_after_the_data_hook(self):
+        result, calls = self.run_upgrade_test(('seed', 'verify', 'smoke'))
+        self.assertEqual(calls, [('seed', 'old'), ('smoke', 'old'), ('verify', 'new'), ('smoke', 'new')])
+        self.assertTrue(result['passed'], result['reason']); self.assertEqual(result['hooks'], ['seed', 'verify', 'smoke'])
+        self.assertTrue(result['regression']['compared'])
+        result, calls = self.run_upgrade_test(('smoke',))
+        self.assertEqual(calls, [('smoke', 'old'), ('smoke', 'new')]); self.assertTrue(result['passed'], result['reason'])
+    def test_a_failing_data_hook_stops_smoke_on_that_version(self):
+        result, calls = self.run_upgrade_test(('seed', 'verify', 'smoke'), failing={('seed', 'old')})
+        self.assertEqual(calls, [('seed', 'old')]); self.assertIn('seed failed on the comparison target', result['reason'])
+        result, calls = self.run_upgrade_test(('seed', 'verify', 'smoke'), failing={('verify', 'new')})
+        self.assertEqual(calls, [('seed', 'old'), ('smoke', 'old'), ('verify', 'new')])
+        self.assertEqual(result['phases'][1]['smoke_not_run'], result['reason']); self.assertFalse(result['regression']['compared'])
+    def test_a_smoke_regression_fails_the_test(self):
+        result, calls = self.run_upgrade_test(('seed', 'verify', 'smoke'), failing={('smoke', 'new')})
+        self.assertEqual(len(calls), 4); self.assertFalse(result['passed'])
+        self.assertTrue(result['reason'].startswith('regression (category 3): '), result['reason'])
+
 class HookChecks(unittest.TestCase):
     """What a hook's report may say and what smoke's environment is (#139); no Docker."""
     def test_the_hooks_own_row_name_is_reserved(self):
