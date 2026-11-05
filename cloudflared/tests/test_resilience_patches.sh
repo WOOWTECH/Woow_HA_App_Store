@@ -54,9 +54,12 @@ bashio::log.warning() { echo "[WARNING] $*"; }
 bashio::log.error()   { echo "[ERROR] $*"; }
 bashio::log.debug()   { echo "[DEBUG] $*"; }
 bashio::log.trace()   { :; }
+bashio::log.log()     { :; }
 bashio::config.true()      { return 1; }
 bashio::config.has_value() { [ "$1" = "tunnel_token" ]; }
 bashio::config()           { echo "STUB_TOKEN"; }
+# Credential permissions have their own test (test_credential_permissions.py).
+cloudflared-credential-guard() { return 0; }
 STUB
 
 # cloudflared: record that the tunnel was actually reached, then exit.

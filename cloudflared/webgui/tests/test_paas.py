@@ -446,3 +446,52 @@ def test_device_slow_down_increases_poll_interval(client, fake_paas):
     assert result.json() == {"status": "waiting", "interval": 10}
     assert client.get("/api/paas/authorization/status").json()["status"] == "waiting"
     assert sum(path == "/oauth2/token" for path, _ in fake_paas) == 1
+
+
+def _authorized_link(tmp_path):
+    (tmp_path / "link.json").write_text(json.dumps({
+        "access_token": "PRIVATE_ACCESS_TOKEN", "refresh_token": "PRIVATE_REFRESH_TOKEN",
+        "expires_at": time.time() + 3600,
+    }))
+
+
+def test_pending_publication_with_complete_protection_does_not_block(client, fake_paas, fake_supervisor, tmp_path):
+    # After an authorization change PaaS keeps the route pending (its origin
+    # published as http_status:503) and re-publishes Access only once the tunnel
+    # has a live connector. Requiring pending=False before connecting therefore
+    # never ended for a newly protected route: each side waited for the other.
+    _authorized_link(tmp_path)
+    fake_paas.detail["routes"][0].update(access_publish_pending=True, access_configuration_ready=False)
+    review = client.get("/api/paas/accesses/25/review").json()
+    assert review["ready"] is True
+    assert review["awaiting_publication"] is True
+    route = review["access"]["routes"][0]
+    assert route["protected"] is False and route["awaiting_publication"] is True
+    response = client.post("/api/paas/accesses/25/connect")
+    assert response.status_code == 200
+    assert fake_supervisor.options["tunnel_token"] == "PRIVATE_TUNNEL_TOKEN"
+
+
+@pytest.mark.parametrize("change", ["no_login", "everyone", "unprotected", "lost", "unresolved_idp", "no_allow"])
+def test_pending_publication_never_hides_a_missing_protection(client, fake_paas, fake_supervisor, tmp_path, change):
+    _authorized_link(tmp_path)
+    route = fake_paas.detail["routes"][0]
+    route.update(access_publish_pending=True, access_configuration_ready=False)
+    if change == "no_login":
+        route.update(login_email_otp=False, login_google=False)
+    elif change == "everyone":
+        route["access_policies"].append({"decision": "allow", "include": [{"rule_type": "everyone"}]})
+    elif change == "unprotected":
+        route["is_protected"] = False
+    elif change == "lost":
+        route["access_protection_lost"] = True
+    elif change == "unresolved_idp":
+        route["access_unresolved_idp_types"] = "google"
+    else:
+        route["access_policies"] = []
+    review = client.get("/api/paas/accesses/25/review").json()
+    assert review["ready"] is False
+    assert review["access"]["routes"][0]["awaiting_publication"] is False
+    assert client.post("/api/paas/accesses/25/connect").status_code == 409
+    assert all("tunnel-token" not in path for path, _ in fake_paas)
+    assert "tunnel_token" not in fake_supervisor.options

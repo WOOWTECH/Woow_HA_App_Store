@@ -445,6 +445,7 @@ def upgrade_settings(settings):
     limits=dict(SETTINGS_DEFAULTS)
     if settings is not None and not isinstance(settings,dict):raise ValueError('settings must be a mapping of setting: seconds')
     for key,value in (settings or {}).items():
+        if key==SKIP_KEY:continue  # not a time limit: upgrade_test_skip() refuses it unless the registry approves the skip
         if key not in limits:raise ValueError(f'unknown setting {key!r} (known: {", ".join(limits)})')
         if not isinstance(value,int) or isinstance(value,bool) or value<=0:raise ValueError(f'{key} must be a whole number of seconds above 0, not {value!r}')
         limits[key]=value
@@ -468,6 +469,71 @@ def startup_probe(config, settings=None):
     else:method,url,below='stays-up','',None
     if url.startswith('tcp://'):below=None
     return {'method':method,'url':url,'below':below,'timeout':limits['startup_timeout'],'stable_seconds':limits['stable_seconds']}
+
+# Add-ons built on the device (#144): the upgrade test rebuilds both images the way Supervisor builds them
+# (supervisor/addons/build.py): build.yaml, .yml or .json next to config.yaml; base image build_from (a string, or
+# one per arch), else Home Assistant's base image; Dockerfile.<arch> when there is one, else Dockerfile.
+BUILD_FILES=('build.yaml','build.yml','build.json')
+
+def build_args(addon_dir, version, arch='amd64'):
+    """How Supervisor builds the add-on in `addon_dir` at `version` for `arch`: {'dockerfile': its path,
+    'args': {build argument: value}}, BUILD_FROM, BUILD_VERSION, BUILD_ARCH and then build.yaml's args."""
+    root=pathlib.Path(addon_dir);build={}
+    found=[root/n for n in BUILD_FILES if (root/n).is_file()]
+    if found:
+        build=(json.loads if found[0].suffix=='.json' else yaml.safe_load)(found[0].read_text(encoding='utf-8')) or {}
+        if not isinstance(build,dict):raise ValueError(f'{found[0].name} is not a mapping')
+    base=build.get('build_from')
+    if isinstance(base,dict):
+        if arch not in base:raise ValueError(f'{found[0].name} build_from has no base image for {arch}')
+        base=base[arch]
+    elif not base:base=f'ghcr.io/home-assistant/{arch}-base:latest'
+    extra=build.get('args') or {}
+    if not isinstance(extra,dict):raise ValueError(f'{found[0].name} args is not a mapping')
+    args={'BUILD_FROM':base,'BUILD_VERSION':version,'BUILD_ARCH':arch,**{str(k):v for k,v in extra.items()}}
+    for k in args:
+        # docker build --build-arg KEY=VALUE: a key that is empty or holds = or whitespace would become another argument.
+        if not k or re.search(r'[=\s]',k):raise ValueError(f'build argument name {k!r} must be non-empty, without = or whitespace')
+    for k,v in args.items():
+        if not isinstance(v,(str,int,float)) or isinstance(v,bool) or re.search(r'[\x00-\x1f\x7f]',f'{k}={v}'):
+            raise ValueError(f'build argument {k} must be one line of text, not {v!r}')
+    args={k:str(v) for k,v in args.items()}
+    dockerfile=root/f'Dockerfile.{arch}'
+    if not dockerfile.is_file():dockerfile=root/'Dockerfile'
+    if not dockerfile.is_file():raise ValueError(f'no Dockerfile (or Dockerfile.{arch}) in {root.as_posix()}')
+    return {'dockerfile':dockerfile.as_posix(),'args':args}
+
+SKIP_KEY='skip_upgrade_test'
+
+def approved_upgrade_test_skip(component):
+    """The reason the Store registry approves for skipping the upgrade test (categories 2 and 3) of `component` (its
+    registry entry), or '' when none is approved (#140, pipeline #90). Approved per add-on, like
+    skip_vulnerability_scan per provider: upgrade_comparison.skip_upgrade_test holds the reason and its ticket; the
+    report gives that reason. A malformed entry (upgrade_comparison not a mapping, the reason not a non-empty
+    string) is a ValueError naming the add-on, never an empty reason."""
+    given=component.get('upgrade_comparison',{})
+    if given is None:given={}
+    if not isinstance(given,dict):
+        raise ValueError(f'the Store registry entry for {component.get("id")} is malformed: upgrade_comparison must be a mapping, not {given!r}')
+    approved=given.get(SKIP_KEY,'')
+    if SKIP_KEY in given and (not isinstance(approved,str) or not approved.strip()):
+        raise ValueError(f'the Store registry entry for {component.get("id")} is malformed: upgrade_comparison.{SKIP_KEY} must be the approved reason '
+            f'and its ticket (a non-empty string), not {approved!r}')
+    return approved.strip()
+
+def upgrade_test_skip(component, settings=None):
+    """approved_upgrade_test_skip(component). The registry alone decides, so a source repository cannot skip by
+    itself: `settings` (the add-on's upgrade-check/settings.yaml, parsed, or None) that asks for the skip without the
+    approval is a ValueError saying to get it approved in the registry. Only a non-empty string skip_upgrade_test
+    asks (the reason, as in the registry); false, null, "" or any other value is no request. With the approval the
+    settings are not looked at (_upgrade_test_skip does not even read them)."""
+    approved=approved_upgrade_test_skip(component)
+    if approved:return approved
+    asked=settings.get(SKIP_KEY) if isinstance(settings,dict) else None
+    if isinstance(asked,str) and asked.strip():
+        raise ValueError(f'upgrade-check/settings.yaml asks for {SKIP_KEY}, but skipping the upgrade test is not approved for {component.get("id")}: '
+            f'the Store registry entry of this add-on needs upgrade_comparison.{SKIP_KEY} with the reason. Remove it from settings.yaml or get the skip approved in the registry.')
+    return ''
 
 class _Failed(Exception):
     """A command's expected failure: main() reports it as an ::error (title, message) and exits 2."""
@@ -543,7 +609,19 @@ def _startup_probe(a):
         print(json.dumps(startup_probe(_load(a.config,'yaml') or {},_load(a.settings,'yaml',optional=True))))
     return 0
 
-COMMANDS={'mounts':_mounts,'startup-probe':_startup_probe,'components':_components,'comparison-target':_comparison_target,'version':_version_command,'check-target':_check_target,'release-notes':_release_notes,'compare':_compare,'data-check-due':_data_check_due}
+def _build_args(a):
+    with _failing((ValueError,OSError,yaml.YAMLError,json.JSONDecodeError,AttributeError),f'{a.name}: {a.addon_dir}: '):print(json.dumps(build_args(a.addon_dir,a.version)))
+    return 0
+
+def _upgrade_test_skip(a):
+    with _failing((ValueError,KeyError,TypeError,OSError)):_,comp=find_component(_load(a.registry,'json'),a.repo,a.component)  # names the repository and add-on
+    with _failing((ValueError,OSError,yaml.YAMLError),f'{a.component}: '):
+        # Approved: the registry decides, so the repository's settings.yaml is not read (a malformed one cannot fail it).
+        approved=approved_upgrade_test_skip(comp)
+        print(approved or upgrade_test_skip(comp,_load(a.settings,'yaml',optional=True)))
+    return 0
+
+COMMANDS={'build-args':_build_args,'upgrade-test-skip':_upgrade_test_skip,'mounts':_mounts,'startup-probe':_startup_probe,'components':_components,'comparison-target':_comparison_target,'version':_version_command,'check-target':_check_target,'release-notes':_release_notes,'compare':_compare,'data-check-due':_data_check_due}
 
 def main(argv=None):
     p=argparse.ArgumentParser(description=__doc__.splitlines()[0]);sub=p.add_subparsers(dest='command',required=True)
@@ -582,6 +660,12 @@ def main(argv=None):
     m.add_argument('--config',required=True,help="the version's config.yaml");m.add_argument('--root',required=True,help='directory holding one directory per type')
     s=sub.add_parser('startup-probe',help='print how the upgrade test judges that a version starts, as JSON {method, url, below, timeout, stable_seconds} (startup_probe())')
     s.add_argument('--config',required=True,help="the version's config.yaml");s.add_argument('--settings',help='upgrade-check/settings.yaml of the add-on (may be absent)')
+    b=sub.add_parser('build-args',help="print how Supervisor builds an add-on built on the device for amd64, as JSON {dockerfile, args} (build_args())")
+    b.add_argument('--addon-dir',required=True,help="the add-on's directory (config.yaml, build.yaml, Dockerfile)");b.add_argument('--version',required=True,help='its version (BUILD_VERSION)')
+    b.add_argument('--name',required=True,help='add-on id, for the error')
+    x=sub.add_parser('upgrade-test-skip',help="print the reason the Store registry approves for skipping the add-on's upgrade test (categories 2 and 3); nothing when none (upgrade_test_skip())")
+    x.add_argument('--registry',required=True,help='Store registry.json');x.add_argument('--repo',required=True,help='source repository, owner/name')
+    x.add_argument('--component',required=True,help='add-on id in the registry');x.add_argument('--settings',help='upgrade-check/settings.yaml of the add-on (may be absent)')
     a=p.parse_args(argv)
     try:return COMMANDS[a.command](a)
     except _Failed as e:

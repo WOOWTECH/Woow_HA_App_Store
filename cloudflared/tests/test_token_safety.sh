@@ -21,7 +21,10 @@ bashio::log.notice() { echo "[NOTICE] $*"; }
 bashio::log.warning() { echo "[WARNING] $*"; }
 bashio::log.error() { echo "[ERROR] $*"; }
 bashio::log.trace() { echo "[TRACE] $*"; }
+bashio::log.log() { echo "[$1] $2"; }
 bashio::config.true() { return 1; }
+# Credential permissions have their own test (test_credential_permissions.py).
+cloudflared-credential-guard() { return 0; }
 bashio::config.has_value() {
     [[ "${SIMULATE_UNCONFIGURED:-0}" != 1 ]] &&
         [[ "$1" == tunnel_token || ( "$1" == run_parameters && -n "${RUN_PARAMS:-}" ) ]]
