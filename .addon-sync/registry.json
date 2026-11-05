@@ -88,7 +88,7 @@
           "channel": "stable",
           "enabled": true,
           "upgrade_comparison": {
-            "skip_upgrade_test": "#158, permanent (owner, 2026-11-05): a fail-closed NAT gateway for the Enrollment LAN; to start it needs host_network, NET_ADMIN, the fixed interfaces enp2s0 and enp1s0, nftables and a writable ip_forward, which a GitHub runner cannot give it, and a fake network would not test NAT, DHCP or fail-closed behaviour. On-device testing on the Enrollment LAN covers it (pipeline .out-of-scope/lan-gateway-upgrade-test-on-runner.md)"
+            "skip_upgrade_test": "#158, permanent (owner, 2026-11-05): a fail-closed NAT gateway for the Enrollment LAN; the upgrade test runs it on the host network, but to start it also needs NET_ADMIN, the fixed interfaces enp2s0 and enp1s0, nftables and IPv4 forwarding already enabled by the host, which a GitHub runner cannot give it, and a fake network would not test NAT or fail-closed behaviour. On-device testing on the Enrollment LAN covers it (pipeline .out-of-scope/lan-gateway-upgrade-test-on-runner.md)"
           }
         }
       ]
