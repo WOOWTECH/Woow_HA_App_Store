@@ -120,7 +120,7 @@ permissions:
   contents: read
   actions: read
 jobs:
-  # The required check. It waits for runtime (category 2) and runs whatever runtime's result:
+  # The required check. It waits for runtime (categories 2 and 3) and runs whatever runtime's result:
   # a skipped required check counts as passed, so it must never be skipped.
   compare:
     name: compare

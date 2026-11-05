@@ -237,7 +237,16 @@ class HookChecks(unittest.TestCase):
         path = pathlib.Path(tempfile.mkdtemp()) / 'smoke.json'; self.addCleanup(shutil.rmtree, path.parent)
         path.write_text(json.dumps({'checks': [{'name': 'api', 'result': 'pass'}, {'name': '(the hook)', 'result': 'pass'}]}), encoding='utf-8')
         checks, problem = rt._read_checks(path)
-        self.assertEqual([c['name'] for c in checks], ['api']); self.assertIn("names a check '(the hook)', which is reserved", problem)
+        self.assertEqual(checks, []); self.assertIn("names a check '(the hook)', which is reserved", problem)
+    def test_an_unusable_report_gives_no_checks(self):
+        # The checks before the problem are not kept: on the comparison target they would be compared one by one.
+        path = pathlib.Path(tempfile.mkdtemp()) / 'smoke.json'; self.addCleanup(shutil.rmtree, path.parent)
+        api = {'name': 'api', 'result': 'pass'}
+        for bad, why in (({'name': 'api', 'result': 'ok'}, 'has a check that is not'), (api, "names two checks 'api'")):
+            with self.subTest(why=why):
+                path.write_text(json.dumps({'checks': [api, bad]}), encoding='utf-8')
+                checks, problem = rt._read_checks(path)
+                self.assertEqual(checks, []); self.assertIn(why, problem)
     def test_smoke_has_its_own_state_directory(self):
         env = rt.UpgradeTestEnv(tempfile.mkdtemp()); self.addCleanup(shutil.rmtree, env.work)
         config = {'slug': 'fake', 'version': '1.0.0'}

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Upgrade test of one add-on: startup (pipeline #137) and data (#138), category 2 of ADR-0005.
+"""Upgrade test of one add-on: startup (pipeline #137) and data (#138), category 2 of ADR-0005, and the regression
+comparison of its smoke checks (#139), category 3.
 
 Runs the comparison target's image, then the new image on the same data
 directories (/data and one per config.yaml `map` entry, at its `path`:
@@ -532,8 +533,8 @@ class UpgradeTestEnv:
         return out
     def run_hook(self, hook, phase, image, config, timeout):
         """Run upgrade-check/<hook> against the running version: {hook, phase, passed, exit_code, detail, checks, output,
-        report_error, reported}. report_error: why its report cannot be used ('' when it can, or there is none); reported:
-        whether it wrote one."""
+        report_error, reported}. report_error: why its report cannot be used ('' when it can, or there is none; checks is
+        then []); reported: whether it wrote one."""
         (self.reports / phase).mkdir(exist_ok=True)
         report = self.reports / phase / f'{hook}.json'
         if report.exists():report.unlink()
@@ -576,7 +577,8 @@ class UpgradeTestEnv:
         docker('run', '--rm', '--mount', f'type=bind,source={self.work},target=/w', '--entrypoint', 'sh', MOCK_IMAGE, '-c', 'rm -rf /w/* /w/.[!.]*', check=False)
 
 def _read_checks(path):
-    """(checks, problem) from a hook's report: [] when it wrote none; problem is why the report cannot be used."""
+    """(checks, problem) from a hook's report: [] when it wrote none; problem is why the report cannot be used, and
+    then checks is [] too, so no check of an unusable report is compared (#139)."""
     if not path.exists():return [], ''
     try:data = json.loads(path.read_text(encoding='utf-8'))
     except (OSError, ValueError) as e:return [], f'its report {path.name} is not JSON: {e}'
@@ -585,9 +587,9 @@ def _read_checks(path):
     out = []
     for c in checks:
         if not isinstance(c, dict) or not isinstance(c.get('name'), str) or not c['name'] or c.get('result') not in CHECK_RESULTS:
-            return out, f'its report {path.name} has a check that is not {{"name": "...", "result": "pass|fail|skip"}}: {json.dumps(c)[:200]}'
-        if any(o['name'] == c['name'] for o in out):return out, f'its report {path.name} names two checks {c["name"]!r}'
-        if c['name'] == HOOK_ROW:return out, f'its report {path.name} names a check {HOOK_ROW!r}, which is reserved for the hook itself (#139)'
+            return [], f'its report {path.name} has a check that is not {{"name": "...", "result": "pass|fail|skip"}}: {json.dumps(c)[:200]}'
+        if any(o['name'] == c['name'] for o in out):return [], f'its report {path.name} names two checks {c["name"]!r}'
+        if c['name'] == HOOK_ROW:return [], f'its report {path.name} names a check {HOOK_ROW!r}, which is reserved for the hook itself (#139)'
         out.append({'name': c['name'], 'result': c['result'], 'detail': str(c.get('detail', ''))})
     return out, ''
 

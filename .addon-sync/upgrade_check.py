@@ -675,7 +675,7 @@ def main(argv=None):
     k.add_argument('--registry',required=True,help='Store registry.json');k.add_argument('--repo',required=True,help='source repository, owner/name')
     m=sub.add_parser('mounts',help="print the upgrade test's data directories as JSON [{type, source, target, read_only}] (mounts())")
     m.add_argument('--config',required=True,help="the version's config.yaml");m.add_argument('--root',required=True,help='directory holding one directory per type')
-    r=sub.add_parser('regression',help="compare the smoke checks of an upgrade test result (category 3): print {smoke, passed, rows, reason} as JSON (regression()); exits 1 on a regression")
+    r=sub.add_parser('regression',help="compare the smoke checks of an upgrade test result (category 3): print {smoke, compared, passed, rows, reason} (and not_run when smoke did not run on the new version) as JSON (regression()); exits 1 on a regression")
     r.add_argument('--result',required=True,help="upgrade_runtime.py's result, <name>.json")
     s=sub.add_parser('startup-probe',help='print how the upgrade test judges that a version starts, as JSON {method, url, below, timeout, stable_seconds} (startup_probe())')
     s.add_argument('--config',required=True,help="the version's config.yaml");s.add_argument('--settings',help='upgrade-check/settings.yaml of the add-on (may be absent)')
