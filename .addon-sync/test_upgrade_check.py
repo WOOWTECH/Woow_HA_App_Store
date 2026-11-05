@@ -1062,7 +1062,7 @@ class UpgradeTestResult(StepHarness):
 class DataCheckDueStep(StepHarness):
     """compare's 'Upgrade test result' applies the data-check deadline (#141) to each add-on whose upgrade test ran."""
     TODAY='2026-11-10'  # DATA_CHECK_TODAY: fixed, so no test races UTC midnight
-    def result(self,result,due='2026-11-17',verify=False,in_plan=True,crash=False):
+    def result(self,result,due='2026-11-17',verify=False,in_plan=True,crash=False,smoke=False):
         """result: t's runtime-reports/t.json. due: t's data_check_due in the registry (None: none). verify: the PR's
         upgrade-check/ has verify. crash: upgrade_check.py dies with exit 1 and no output. (exit code, stdout, step summary)."""
         import os,subprocess
@@ -1075,6 +1075,7 @@ class DataCheckDueStep(StepHarness):
         (tmp/'tooling/.addon-sync/registry.json').write_text(json.dumps({'providers':{'o/r':{'ref_policy':'release','components':[comp]}}}))
         if in_plan:(tmp/'plan.jsonl').write_text(json.dumps({'id':'t','notes':'addon/upgrade-notes.yaml'})+'\n')
         if verify:(tmp/'source/addon/upgrade-check/verify').write_text('#!/bin/sh\nexit 0\n',newline='\n')
+        if smoke:(tmp/'source/addon/upgrade-check/smoke').write_text('#!/bin/sh\nexit 0\n',newline='\n')
         if crash:(tmp/'tooling/.addon-sync/upgrade_check.py').write_text('import sys\nsys.exit(1)\n')
         (tmp/'bin/gh').write_text('#!/bin/sh\nexit 0\n',newline='\n');(tmp/'bin/gh').chmod(0o755)
         (tmp/'runtime-reports/t.json').write_text(json.dumps(result))
@@ -1101,6 +1102,17 @@ class DataCheckDueStep(StepHarness):
     def test_with_verify_the_due_date_is_not_looked_at(self):
         result=dict(self.PASSED,hooks=['seed','verify'],data_checked=True)
         code,out,summary=self.result(result,self.day(-30),verify=True)
+        self.assertEqual(code,0,out);self.assertNotIn('資料檢查期限',summary+out)
+    @needs_shell
+    def test_smoke_is_not_a_data_check(self):
+        # #139: smoke (category 3) appears in hooks and phases[].hooks with reported/report_error, and the new phase may
+        # carry smoke_not_run; none of it is read here. Only upgrade-check/verify in the PR counts as the data check.
+        smoke={'hook':'smoke','phase':'new','passed':True,'reported':True,'report_error':'','checks':[]}
+        result=dict(self.PASSED,hooks=['seed','smoke'],phases=[{'phase':'new','started':True,'hooks':[smoke]}])
+        code,out,summary=self.result(result,self.day(-1),smoke=True)
+        self.assertEqual(code,1);self.assertIn(f'- t: **資料檢查期限 {self.day(-1)} 已過',summary)
+        not_run=dict(self.PASSED,hooks=['seed','verify','smoke'],data_checked=True,phases=[{'phase':'new','started':True,'hooks':[],'smoke_not_run':'verify failed'}])
+        code,out,summary=self.result(not_run,self.day(-1),verify=True,smoke=True)
         self.assertEqual(code,0,out);self.assertNotIn('資料檢查期限',summary+out)
     @needs_shell
     def test_target_that_failed_before_verify_ran_is_not_also_failed_for_the_deadline(self):
