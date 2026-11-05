@@ -537,7 +537,7 @@
     },
     "WOOWTECH/Woow_ha_mcp_addons": {
       "upgrade_comparison": {
-        "skip_vulnerability_scan": "#123: mcp_addons builds no image in its PRs (only on woow-disposable-builder); its vulnerability comparison (category 4) moves to #90"
+        "scan_published_image": "#148: mcp_addons builds images only on woow-disposable-builder; the readiness check makes the new version's amd64 image pullable from GHCR before merge, and that is the image users install"
       },
       "default_branch": "claude-delivery",
       "required_workflows": [

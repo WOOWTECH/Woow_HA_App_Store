@@ -663,7 +663,7 @@ class StepHarness(unittest.TestCase):
     def step(self,ident):return next(s for j in ('compare','runtime') for s in self.wf['jobs'][j]['steps'] if ident in (s.get('id'),s.get('name')))
     def run_step(self,ident,*,policy='release',extra=None,releases=('v1.0.0',),old_config=True,new_config=True,skip='',sbom='',version='1.1.0',old=None,old_path='',
             new_path='addon/config.yaml',new=None,files=None,raw_version=None,history=None,changed=1,gh_fail='',images=(),vulnerable='',image_artifact='',
-            tarball=None,build_fail=''):
+            tarball=None,build_fail='',news=None):
         """ident: one step, or a tuple run in order until one fails. new_path: where the PR has the config; new: changes to it;
         files: more files of the PR checkout; raw_version: {'old'/'new': the version line's YAML as written, e.g. 1.10 unquoted}.
         history: the PR base's history, newest first, [(sha, {path: changes to the config, or None for no file})]; the first
@@ -675,6 +675,7 @@ class StepHarness(unittest.TestCase):
         image_artifact: the caller's image_artifact (the runtime job's plan, #137).
         tarball: {path: text} in GitHub's archive of every ref besides its configs (#144); build_fail: the tag whose
         `docker build` fails. self.builds is every `docker build` (DOCKER_STUB); gh.log in self.tmp has every tarball URL asked for.
+        news: {add-on id: changes to its PR config} for a changed add-on of a multi-add-on provider whose PR config is not t's.
         self.tmp is the job's directory (also RUNNER_TEMP); self.plans is every line of plan.jsonl."""
         import os,subprocess
         tmp=self.tmp=pathlib.Path(tempfile.mkdtemp());self.addCleanup(shutil.rmtree,tmp)
@@ -696,7 +697,9 @@ class StepHarness(unittest.TestCase):
         with contextlib.redirect_stdout(io.StringIO()) as provider:
             self.assertEqual(u.main(['components','--registry',str(tmp/'tooling/.addon-sync/registry.json'),'--repo','WOOWTECH/t']),0)
         (tmp/'provider.json').write_text(provider.getvalue())
-        (tmp/'changed.jsonl').write_text(''.join(json.dumps(dict(c,version=version,new=str(tmp/'t.new.yaml')))+'\n' for c in json.loads(provider.getvalue())['components'][:changed]))
+        for cid,changes in (news or {}).items():(tmp/f'{cid}.new.yaml').write_text(dump(dict(cfg,version=version,**changes),'new'))
+        def new_of(cid):return str(tmp/(f'{cid}.new.yaml' if cid in (news or {}) else 't.new.yaml'))
+        (tmp/'changed.jsonl').write_text(''.join(json.dumps(dict(c,version=version,new=new_of(c['id'])))+'\n' for c in json.loads(provider.getvalue())['components'][:changed]))
         if history is not None:
             (tmp/'history.json').write_text(json.dumps([{'sha':sha,'date':f'2026-01-01T00:{59-i:02d}:00Z','files':{p:dump(dict(cfg,**c),'old')
                 for p,c in at.items() if c is not None}} for i,(sha,at) in enumerate(history)]))
@@ -1182,8 +1185,9 @@ class DataCheckDueStep(StepHarness):
         self.assertNotIn('data-check',out+summary)
 
 class SkipVulnerabilityScan(StepHarness):
-    """skip_vulnerability_scan: a caller whose category 4 cannot run (mcp_addons builds no PR image) opts out with a
-    reason; category 1 still runs and the report says why.
+    """skip_vulnerability_scan: a caller whose category 4 cannot run opts out with a reason; category 1 still runs and
+    the report says why. No provider is approved now (mcp_addons' #123 became scan_published_image, #148); the
+    mechanism stays.
     Only a provider the Store registry approves may skip (upgrade_comparison.skip_vulnerability_scan, with the reason)."""
     REASON='the shipped image is third-party; category 4 for it is out of scope'
     APPROVED={'upgrade_comparison':{'skip_vulnerability_scan':'#122: third-party image; category 4 moves to #90'}}
@@ -1192,10 +1196,9 @@ class SkipVulnerabilityScan(StepHarness):
         self.assertEqual((inp['type'],inp['default']),('string',''))
         for ident in ('detect','plan'):
             with self.subTest(ident):self.assertEqual(self.step(ident)['env']['SKIP_VULNERABILITY_SCAN'],'${{ inputs.skip_vulnerability_scan }}')
-    def test_registry_approves_the_skip_only_for_mcp_addons(self):
-        # #123 (mcp_addons builds no PR image): its category 4 is #148. knxd scans its published image instead (#147).
-        approved=registry_approvals('skip_vulnerability_scan')
-        self.assertEqual(sorted(approved),['WOOWTECH/Woow_ha_mcp_addons']);self.assertIn('#123',approved['WOOWTECH/Woow_ha_mcp_addons'])
+    def test_registry_approves_the_skip_for_no_provider(self):
+        # knxd (#147) and mcp_addons (#148, formerly skipped under #123) scan their published images instead.
+        self.assertEqual(registry_approvals('skip_vulnerability_scan'),{})
     @needs_shell
     def test_unapproved_provider_that_sets_the_skip_fails(self):
         r,_,_=self.run_step('detect',skip=self.REASON)
@@ -1218,14 +1221,17 @@ class SkipVulnerabilityScan(StepHarness):
         self.assertEqual(r.returncode,1);self.assertIn('passes no sbom_artifact',r.stdout+r.stderr)
 
 class PublishedImageScan(StepHarness):
-    """scan_published_image (#147): knxd ships the third-party image its config.yaml names, so category 4 scans that image
-    at the comparison target's version and at the PR's version (the version is the tag), not an SBOM of the PR's build."""
+    """scan_published_image: the shipped image is the published one its config.yaml names, not one the caller's PR builds
+    (knxd's third-party image, #147; mcp_addons' images built only on woow-disposable-builder, #148), so category 4 scans
+    that image at the comparison target's version and at the PR's version (the version is the tag), not an SBOM of the
+    PR's build."""
     APPROVED={'upgrade_comparison':{'scan_published_image':'#147: knxd ships the third-party image config.yaml names'}}
     SBOMS=('plan',"SBOMs of the comparison targets' images")
     OLD,NEW='ghcr.io/da-anda/addon-amd64:1.0.0','ghcr.io/da-anda/addon-amd64:1.1.0'
-    def test_registry_approves_it_only_for_knxd(self):
+    def test_registry_approves_it_for_knxd_and_mcp_addons(self):
         approved=registry_approvals('scan_published_image')
-        self.assertEqual(sorted(approved),['WOOWTECH/Woow_ha_knxd_add_on']);self.assertIn('#147',approved['WOOWTECH/Woow_ha_knxd_add_on'])
+        self.assertEqual(sorted(approved),['WOOWTECH/Woow_ha_knxd_add_on','WOOWTECH/Woow_ha_mcp_addons'])
+        self.assertIn('#147',approved['WOOWTECH/Woow_ha_knxd_add_on']);self.assertIn('#148',approved['WOOWTECH/Woow_ha_mcp_addons'])
     @needs_shell
     def test_both_sides_are_the_published_image_at_their_version(self):
         r,plan,out=self.run_step('plan',extra=self.APPROVED)
@@ -1250,12 +1256,42 @@ class PublishedImageScan(StepHarness):
         self.assertEqual(json.loads((self.tmp/'t.old.syft.json').read_text()),{'source':'docker:'+self.OLD})
         self.assertEqual(json.loads((self.tmp/'sboms/t.syft.json').read_text()),{'source':'docker:'+self.NEW})
     @needs_shell
-    def test_a_version_the_upstream_has_not_published_fails_saying_so(self):
+    def test_an_unpublished_version_fails_saying_its_image_is_not_published(self):
         r,_,_=self.run_step(self.SBOMS,extra=self.APPROVED,images=(self.OLD,))
         self.assertEqual(r.returncode,1,r.stdout+r.stderr)
+        # #148: not only an upstream publishes these images (mcp_addons' are the WOOW builder's), so the message names neither alone.
         self.assertIn(f'::error title=Upgrade comparison failed::t: cannot pull {self.NEW}, the image users would install with this PR: '
-            'the upstream has not published tag 1.1.0 of ghcr.io/da-anda/addon-amd64 yet',r.stdout)
+            'tag 1.1.0 of ghcr.io/da-anda/addon-amd64 is not published yet (or the registry is unreachable); publish it first '
+            "(its upstream's release for a third-party image, the repository's own image publication otherwise)",r.stdout)
+        self.assertNotIn('the upstream has not published',r.stdout)
         self.assertFalse((self.tmp/'sboms/t.syft.json').exists())
+    def multi(self,images):
+        """mcp_addons' shape (#148): three add-ons with their own WOOW image; the PR changes the first two's versions."""
+        comps=[{'id':i,'source_path':'addons/'+i,'config_file':'config.yaml'} for i in ('n8n','hermes','odoo')]
+        image={i:f'ghcr.io/woowtech/{{arch}}-mcp-{i}' for i in ('n8n','hermes','odoo')}
+        history=[('b',{})]+[(f'{i}-v1.0.0',{f'addons/{i}/config.yaml':{'image':image[i]}}) for i in image]
+        return self.run_step(self.SBOMS,extra={'components':comps,**self.APPROVED},releases=tuple(f'{i}-v1.0.0' for i in image),
+            history=history,changed=2,news={i:{'image':image[i]} for i in ('n8n','hermes')},images=images)
+    @needs_shell
+    def test_each_changed_add_on_of_a_multi_add_on_repository_scans_its_own_published_images(self):
+        refs={i:(f'ghcr.io/woowtech/amd64-mcp-{i}:1.0.0',f'ghcr.io/woowtech/amd64-mcp-{i}:1.1.0') for i in ('n8n','hermes')}
+        r,_,out=self.multi([x for pair in refs.values() for x in pair])
+        self.assertEqual(r.returncode,0,r.stdout+r.stderr)
+        # The unchanged add-on (odoo) is not compared; each changed one gets its own old and new image, nothing is awaited.
+        self.assertEqual({p['id']:(p['ref'],p['new_ref']) for p in self.plans},refs)
+        self.assertIn('wait=false',out)
+        for i,(old,new) in refs.items():
+            with self.subTest(i):
+                self.assertEqual(json.loads((self.tmp/f'{i}.old.syft.json').read_text()),{'source':'docker:'+old})
+                self.assertEqual(json.loads((self.tmp/f'sboms/{i}.syft.json').read_text()),{'source':'docker:'+new})
+        self.assertFalse((self.tmp/'sboms/odoo.syft.json').exists())
+    @needs_shell
+    def test_an_unpublished_version_of_one_add_on_fails_naming_it(self):
+        # hermes' new version has no image on GHCR yet (for mcp_addons: the builder has not published it).
+        r,_,_=self.multi(['ghcr.io/woowtech/amd64-mcp-n8n:1.0.0','ghcr.io/woowtech/amd64-mcp-n8n:1.1.0','ghcr.io/woowtech/amd64-mcp-hermes:1.0.0'])
+        self.assertEqual(r.returncode,1,r.stdout+r.stderr)
+        self.assertIn('::error title=Upgrade comparison failed::hermes: cannot pull ghcr.io/woowtech/amd64-mcp-hermes:1.1.0, the image users would '
+            'install with this PR: tag 1.1.0 of ghcr.io/woowtech/amd64-mcp-hermes is not published yet',r.stdout)
     def test_a_published_new_image_is_not_awaited_or_downloaded(self):
         # The harness runs a step whatever its `if:`; in the workflow these two must not run for a pulled new image.
         for name in ("Wait for the new images' SBOMs","Download the new images' SBOMs"):
