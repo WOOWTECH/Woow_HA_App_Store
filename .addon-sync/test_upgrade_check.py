@@ -1469,10 +1469,15 @@ class PublishedImageScan(StepHarness):
     APPROVED={'upgrade_comparison':{'scan_published_image':'#147: knxd ships the third-party image config.yaml names'}}
     SBOMS=('plan',"SBOMs of the comparison targets' images")
     OLD,NEW='ghcr.io/da-anda/addon-amd64:1.0.0','ghcr.io/da-anda/addon-amd64:1.1.0'
-    def test_registry_approves_it_for_knxd_and_mcp_addons(self):
+    def test_registry_approves_it_for_knxd_mcp_addons_and_the_mirrors(self):
         approved=registry_approvals('scan_published_image')
-        self.assertEqual(sorted(approved),['WOOWTECH/Woow_ha_knxd_add_on','WOOWTECH/Woow_ha_mcp_addons'])
+        # Mirror 來源 (branch_rules.exempt "mirror: ...", pipeline #91) ship the GHCR copy their config.yaml names.
+        providers=json.loads((StepHarness.STORE/'.addon-sync/registry.json').read_text(encoding='utf-8'))['providers']
+        mirrors={repo for repo in approved if providers[repo].get('branch_rules',{}).get('exempt','').startswith('mirror:')}
+        self.assertEqual(sorted(set(approved)-mirrors),['WOOWTECH/Woow_ha_knxd_add_on','WOOWTECH/Woow_ha_mcp_addons'])
+        self.assertIn('WOOWTECH/Woow_ha_music_assistant_add_on',mirrors)
         self.assertIn('#147',approved['WOOWTECH/Woow_ha_knxd_add_on']);self.assertIn('#148',approved['WOOWTECH/Woow_ha_mcp_addons'])
+        for repo in mirrors:self.assertIn('#91',approved[repo],repo)
     @needs_shell
     def test_both_sides_are_the_published_image_at_their_version(self):
         r,plan,out=self.run_step('plan',extra=self.APPROVED)
