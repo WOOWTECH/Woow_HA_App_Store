@@ -47,9 +47,9 @@ ha store add https://github.com/WOOWTECH/Woow_HA_App_Store
 | `woow_ha_opendesign` | Woow HA OpenDesign | 0.2.15 | 預建映像 | Ingress-only BYOK 設計工作台 + PDF／圖片／PPTX 匯出 |
 | `woow-omnigent` | Woow Omnigent | 0.1.16 | 預建映像 | Omnigent 編排伺服器 + 內建 Postgres（外部 runner 註冊制） |
 
-### 🤖 MCP Server（WOOWTECH 自主開發，experimental）
+### 🤖 MCP Server（WOOWTECH 自主開發）
 
-把對應軟體的部分工具以 MCP（Streamable HTTP，Bearer token）提供給 AI client；預設只開讀取工具，寫入要由 HA 管理員在 add-on 面板逐支授權。圖示與所連接的軟體相同。來源與完整文件：[WOOWTECH/Woow_ha_mcp_addons](https://github.com/WOOWTECH/Woow_ha_mcp_addons)。
+把對應軟體的完整工具以 MCP（Streamable HTTP，Bearer token）提供給 AI client；所有工具與寫入預設開啟，HA 管理員可在 add-on 面板逐支停用工具或取消寫入。0.4.11 起 manifest 標為 `stage: stable`，商店不再顯示「實驗性」。圖示與所連接的軟體相同。來源與完整文件：[WOOWTECH/Woow_ha_mcp_addons](https://github.com/WOOWTECH/Woow_ha_mcp_addons)。
 同一套 add-on 也在該 repo 自己的 store；兩個 store 的同名 add-on 在 HA 裡是不同的 add-on（slug 前綴不同，設定不互通），同一台 HA 只裝其中一個來源的。
 下面 6 支只同步正式 Release，和其他來源 repo 一樣：升版的 PR 通過該 repo 的 `WOOW addon release` 檢查並合併後，自動發 `<slug>-v<版本>` 正式 Release，本 store 才會前進到該版本。原本的第 7 支 `woow_mcp_opendesign` 已於 2026-10-15 下架（見下方說明）。
 
