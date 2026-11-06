@@ -22,7 +22,13 @@
 # of the same run attempt, through the Actions API (a re-run judges its own
 # build, so re-run all jobs). An add-on with a prebuilt image whose SBOM
 # never arrives fails the check; it is never skipped.
-# Add-ons built on the device are reported as compared in #90. A provider
+# Add-ons built on the device (#146; either side, as each side's config says)
+# get category 4 from the images the runtime job rebuilds for the upgrade test
+# (below): it makes their SBOMs with the same pinned Syft and syft.yaml right
+# after each build and hands them over as the artifact
+# upgrade-comparison-rebuilt-sboms-attempt-<N>; compare scans them with the
+# same DB. A rebuilt side without its SBOM (the rebuild or Syft failed, or the
+# artifact is missing) fails category 4 with the reason. A provider
 # whose shipped image is the published one its config.yaml names, not one the
 # caller's PR builds (knxd ships a third-party image, #147; mcp_addons builds
 # its images only on woow-disposable-builder, #148), has
@@ -53,7 +59,9 @@
 # target that cannot be tested (its image cannot be pulled, it does not start,
 # its seed fails) fails it too (#140), unless the add-on's Store registry entry
 # has upgrade_comparison.skip_upgrade_test (the approved reason and ticket):
-# then categories 2 and 3 are skipped and the report gives that reason. The
+# then categories 2 and 3 are skipped and the report gives that reason (the
+# add-on is not started; one built on the device is still rebuilt, only for
+# its category 4 SBOMs, #146). The
 # registry alone decides; there is no caller input. Callers that pass no
 # image_artifact are reported as not run yet (rolled out in #143). A provider
 # with upgrade_comparison.scan_published_image (category 4 above; knxd, #154)
@@ -250,8 +258,10 @@ jobs:
         scan_published="$(jq -r '.scan_published_image' provider.json)"
         releases="$(gh api --paginate "repos/${REPO}/releases?per_page=100" --jq '.[]' | jq -sc .)"
         # plan.jsonl, one object per add-on: id, notes (path in the PR), new (where the detect step left the PR's config),
-        # target, ref (old image; "" = no scan), new_ref (with scan_published_image the new image to pull; "" = the caller's
-        # build hands over its SBOM), artifact (the addon-sbom artifact of its new image), note (why there is no scan).
+        # target, ref (old image to pull; "" = not pulled), new_ref (with scan_published_image the new image to pull; "" = the
+        # caller's build hands over its SBOM, or it is rebuilt), artifact (the addon-sbom artifact of its new image),
+        # rebuilt_old/rebuilt_new (#146: that side is built on the device; the runtime job rebuilds it and hands over its
+        # SBOM), note (why there is no scan; "" = scanned).
         : > plan.jsonl; status=0
         while IFS= read -r component; do
           fields "${component}" id=id path=config previous=previous_config notes=notes version=version new=new
@@ -291,45 +301,49 @@ jobs:
           else
             echo "${id}: no stable Release yet"
           fi
-          # Category 4: needs a prebuilt image and a comparison target; then the new image's SBOM is mandatory, from the
-          # caller's build or, when the registry approves scan_published_image, from the image the PR's config names.
-          image="$(yq -r '.image // ""' "${new}")"; new_ref=""; scan_old=""
+          # Category 4: needs a comparison target; then both images' SBOMs are mandatory, each side from where its image is
+          # (#146): an image built on the device (no image in that side's config) from the runtime job, which rebuilds it
+          # for the upgrade test anyway; the comparison target's prebuilt image pulled from GHCR; the PR's prebuilt image
+          # from the caller's build or, when the registry approves scan_published_image, the image the PR's config names.
+          image="$(yq -r '.image // ""' "${new}")"; new_ref=""; rebuilt_old=false; rebuilt_new=false
           artifact="upgrade-comparison-sbom-${id}-attempt-${RUN_ATTEMPT}"
           if [ -n "${SKIP_VULNERABILITY_SCAN}" ]; then
             # The detect step checked the approval; the report gives the registry's reason, never the caller's text.
             note="skipped as approved in the Store registry: ${approved}"
-          elif [ -z "${image}" ]; then
-            note="built on the device; the vulnerability comparison for these add-ons is #90"
           elif [ ! -s "${old}" ]; then
             note="no comparison target"
-          elif [ -z "$(yq -r '.image // ""' "${old}")" ]; then
-            note="the comparison target ${target} has no prebuilt image"
-          elif [ -n "${scan_published}" ]; then
-            # The image users would install from this PR; pulled, not built.
-            no_cntrl "${image}" "${id}: the image in ${path} has a control character (newline, tab...): ${image}" || exit 1
-            new_ref="$(amd64_ref "${image}" "${version}")"; scan_old=1
-          elif [ -z "${SBOM_ARTIFACT}" ]; then
-            fail "${id} has a prebuilt image but the caller passes no sbom_artifact; run the addon-sbom action after the amd64 build and pass sbom_artifact: upgrade-comparison-sbom-*"
-            status=1
-          # shellcheck disable=SC2053 # SBOM_ARTIFACT is a glob on purpose
-          elif [[ "${artifact}" != ${SBOM_ARTIFACT} ]]; then
-            fail "${id}: sbom_artifact '${SBOM_ARTIFACT}' does not match ${artifact}, the artifact the addon-sbom action uploads for component ${id}"
-            status=1
           else
-            scan_old=1
-          fi
-          # Both scanning branches: the comparison target's image, as users run it now.
-          if [ -n "${scan_old}" ]; then
-            old_image="$(yq -r '.image' "${old}")"
-            no_cntrl "${old_image}" "${id}: the comparison target ${target} has a control character (newline, tab...) in its image: ${old_image}" || exit 1
-            ref="$(amd64_ref "${old_image}" "${old_version}")"
+            if [ -z "${image}" ]; then rebuilt_new=true
+            elif [ -n "${scan_published}" ]; then
+              # The image users would install from this PR; pulled, not built.
+              no_cntrl "${image}" "${id}: the image in ${path} has a control character (newline, tab...): ${image}" || exit 1
+              new_ref="$(amd64_ref "${image}" "${version}")"
+            elif [ -z "${SBOM_ARTIFACT}" ]; then
+              fail "${id} has a prebuilt image but the caller passes no sbom_artifact; run the addon-sbom action after the amd64 build and pass sbom_artifact: upgrade-comparison-sbom-*"
+              status=1
+            # shellcheck disable=SC2053 # SBOM_ARTIFACT is a glob on purpose
+            elif [[ "${artifact}" != ${SBOM_ARTIFACT} ]]; then
+              fail "${id}: sbom_artifact '${SBOM_ARTIFACT}' does not match ${artifact}, the artifact the addon-sbom action uploads for component ${id}"
+              status=1
+            fi
+            # The comparison target's image, as users run it now.
+            old_image="$(yq -r '.image // ""' "${old}")"
+            if [ -z "${old_image}" ]; then rebuilt_old=true
+            else
+              no_cntrl "${old_image}" "${id}: the comparison target ${target} has a control character (newline, tab...) in its image: ${old_image}" || exit 1
+              ref="$(amd64_ref "${old_image}" "${old_version}")"
+            fi
           fi
           jq -nc --arg id "${id}" --arg notes "${notes}" --arg new "${new}" --arg target "${target}" --arg ref "${ref}" \
-            --arg new_ref "${new_ref}" --arg artifact "${artifact}" --arg note "${note}" '$ARGS.named' >> plan.jsonl
+            --arg new_ref "${new_ref}" --arg artifact "${artifact}" --argjson rebuilt_old "${rebuilt_old}" --argjson rebuilt_new "${rebuilt_new}" \
+            --arg note "${note}" '$ARGS.named' >> plan.jsonl
         done < changed.jsonl
-        if [ -n "$(jq -r 'select(.ref != "") | .id' plan.jsonl)" ]; then echo "scan=true" >> "$GITHUB_OUTPUT"; else echo "scan=false" >> "$GITHUB_OUTPUT"; fi
-        # Only a new image built by the caller hands over its SBOM as an artifact; a published one is pulled.
-        if [ -n "$(jq -r 'select(.ref != "" and .new_ref == "") | .id' plan.jsonl)" ]; then echo "wait=true" >> "$GITHUB_OUTPUT"; else echo "wait=false" >> "$GITHUB_OUTPUT"; fi
+        if [ -n "$(jq -r 'select(.ref != "" or .rebuilt_old or .rebuilt_new) | .id' plan.jsonl)" ]; then echo "scan=true" >> "$GITHUB_OUTPUT"; else echo "scan=false" >> "$GITHUB_OUTPUT"; fi
+        # Only a new image built by the caller hands over its SBOM as an artifact; a published one is pulled, a rebuilt one
+        # comes from the runtime job.
+        if [ -n "$(jq -r 'select((.ref != "" or .rebuilt_old) and .new_ref == "" and (.rebuilt_new | not)) | .id' plan.jsonl)" ]; then
+          echo "wait=true" >> "$GITHUB_OUTPUT"; else echo "wait=false" >> "$GITHUB_OUTPUT"; fi
+        if [ -n "$(jq -r 'select(.rebuilt_old or .rebuilt_new) | .id' plan.jsonl)" ]; then echo "rebuilt=true" >> "$GITHUB_OUTPUT"; else echo "rebuilt=false" >> "$GITHUB_OUTPUT"; fi
         exit "${status}"
     # While the caller's amd64 build is still running: scanners, DB and the old images' SBOMs.
     - name: Install pinned Syft and Grype
@@ -392,8 +406,9 @@ jobs:
       run: |
         set -euo pipefail
         # Only this attempt's artifact (plan.jsonl names it -attempt-<N>): a re-run judges its own build.
-        # With scan_published_image (new_ref) the new image is pulled and scanned instead: no SBOM to wait for (#147, #148).
-        jq -r 'select(.ref != "" and .new_ref == "") | [.id, .artifact] | @tsv' plan.jsonl > wanted-sboms.tsv
+        # With scan_published_image (new_ref) the new image is pulled and scanned instead: no SBOM to wait for (#147, #148);
+        # one built on the device comes from the runtime job (#146).
+        jq -r 'select((.ref != "" or .rebuilt_old) and .new_ref == "" and (.rebuilt_new | not)) | [.id, .artifact] | @tsv' plan.jsonl > wanted-sboms.tsv
         bash tooling/.addon-sync/wait_artifacts.sh wanted-sboms.tsv artifacts.tsv "SBOM of the new image" addon-sbom
     - name: Download the new images' SBOMs
       if: steps.plan.outputs.wait == 'true'
@@ -407,6 +422,28 @@ jobs:
           gh api "repos/${REPO}/actions/artifacts/${artifact_id}/zip" > "$RUNNER_TEMP/${id}.sbom.zip"
           unzip -o -q "$RUNNER_TEMP/${id}.sbom.zip" "${id}.syft.json" -d sboms
         done < artifacts.tsv
+    # #146: images built on the device are rebuilt only in the runtime job (for the upgrade test, or only for these SBOMs
+    # when the registry skips that test), which makes their SBOMs with the same pinned Syft and hands them over. compare
+    # runs after runtime (needs), so the artifact is there or never will be: no wait. Without it, "Compare with the
+    # comparison target" fails each add-on that needs one.
+    - name: Download the rebuilt images' SBOMs
+      if: steps.plan.outputs.rebuilt == 'true'
+      env:
+        GH_TOKEN: ${{ github.token }}
+        REPO: ${{ github.repository }}
+        RUN_ID: ${{ github.run_id }}
+        RUN_ATTEMPT: ${{ github.run_attempt }}
+      run: |
+        set -euo pipefail
+        source tooling/.addon-sync/log.sh
+        artifact="$(gh api --paginate "repos/${REPO}/actions/runs/${RUN_ID}/artifacts?per_page=100" \
+          --jq ".artifacts[] | select(.name == \"upgrade-comparison-rebuilt-sboms-attempt-${RUN_ATTEMPT}\") | .id" | tail -n1)"
+        [ -n "${artifact}" ] || exit 0
+        mkdir -p rebuilt-sboms
+        if ! { gh api "repos/${REPO}/actions/artifacts/${artifact}/zip" > "$RUNNER_TEMP/rebuilt-sboms.zip" \
+            && unzip -o -q "$RUNNER_TEMP/rebuilt-sboms.zip" -d rebuilt-sboms; }; then
+          fail "cannot download the SBOMs of the rebuilt images (artifact upgrade-comparison-rebuilt-sboms-attempt-${RUN_ATTEMPT}); re-run all jobs"; exit 1
+        fi
     - name: Compare with the comparison target
       if: steps.detect.outputs.changed == 'true'
       run: |
@@ -417,22 +454,39 @@ jobs:
           GRYPE_DB_MAX_ALLOWED_BUILT_AGE="${DB_MAX_AGE_HOURS}h" GRYPE_CHECK_FOR_APP_UPDATE=false
         status=0
         while IFS= read -r row; do
-          fields "${row}" id=id notes=notes new=new target=target ref=ref new_ref=new_ref note=note
+          fields "${row}" id=id notes=notes new=new target=target ref=ref new_ref=new_ref note=note \
+            rebuilt_old='rebuilt_old // false' rebuilt_new='rebuilt_new // false'
           old="$RUNNER_TEMP/${id}.old.yaml"
           args=(--name "${id}" --new "${new}" --notes "source/${notes}" --notes-path "${notes}")
           [ ! -s "${old}" ] || args+=(--old "${old}")
-          if [ -z "${ref}" ]; then
+          # Each side's SBOM: a rebuilt image's from the runtime job (#146), else the pulled target's (made above) and the
+          # caller's or the published new image's (downloaded or made above).
+          old_sbom="$RUNNER_TEMP/${id}.old.syft.json"; [ "${rebuilt_old}" != true ] || old_sbom="rebuilt-sboms/${id}.old.syft.json"
+          new_sbom="sboms/${id}.syft.json"; [ "${rebuilt_new}" != true ] || new_sbom="rebuilt-sboms/${id}.new.syft.json"
+          if [ -z "${ref}" ] && [ "${rebuilt_old}" != true ]; then
             args+=(--scan-note "${note}")
-          elif [ ! -s "sboms/${id}.syft.json" ]; then
+          elif { [ "${rebuilt_old}" = true ] && [ ! -s "${old_sbom}" ]; } || { [ "${rebuilt_new}" = true ] && [ ! -s "${new_sbom}" ]; }; then
+            # Fail closed: a rebuilt side without its SBOM fails, with the reason the runtime job recorded.
+            if [ ! -d rebuilt-sboms ]; then
+              fail "${id}: the runtime job handed over no SBOMs of the rebuilt images; its log has the reason"
+            elif [ -s "rebuilt-sboms/${id}.json" ]; then
+              fail "${id}: the vulnerability comparison cannot run without the SBOMs of both images: $(jq -r '.reasons | join("; ")' "rebuilt-sboms/${id}.json")"
+            else
+              fail "${id}: the runtime job handed over no SBOM of this add-on's rebuilt image; its log has the reason"
+            fi
+            status=1; continue
+          elif [ ! -s "${new_sbom}" ]; then
             fail "${id}: the SBOM artifact of this attempt holds no ${id}.syft.json"; status=1; continue
           else
             for side in old new; do
-              sbom="$RUNNER_TEMP/${id}.old.syft.json"; [ "${side}" = old ] || sbom="sboms/${id}.syft.json"
+              sbom="${old_sbom}"; [ "${side}" = old ] || sbom="${new_sbom}"
               if ! "$RUNNER_TEMP/scanners/grype" "sbom:${sbom}" -o json --file "$RUNNER_TEMP/${id}.${side}.grype.json"; then
                 fail "${id}: Grype could not scan the ${side} image's SBOM"; status=1; continue 2
               fi
             done
-            echo "${id}: scanned $(esc "${ref}") ($(esc "${target}")) and $(esc "${new_ref:-the PR image}") with the same DB"
+            old_desc="$(esc "${ref}") ($(esc "${target}"))"; [ "${rebuilt_old}" != true ] || old_desc="$(esc "${target}") rebuilt"
+            new_desc="$(esc "${new_ref:-the PR image}")"; [ "${rebuilt_new}" != true ] || new_desc="the PR image rebuilt"
+            echo "${id}: scanned ${old_desc} and ${new_desc} with the same DB"
             args+=(--old-scan "$RUNNER_TEMP/${id}.old.grype.json" --new-scan "$RUNNER_TEMP/${id}.new.grype.json")
           fi
           rc=0; python3 tooling/.addon-sync/upgrade_check.py compare "${args[@]}" || rc=$?
@@ -544,7 +598,9 @@ jobs:
     # #140: an add-on whose upgrade test cannot run (categories 2 and 3) is skipped only when its Store registry entry
     # approves it (upgrade_comparison.skip_upgrade_test, the reason and its ticket); the report gives that reason. The
     # registry alone decides, so there is no caller input; an upgrade-check/settings.yaml that asks for the skip without
-    # the approval fails. Skipped add-ons leave this job's plan.jsonl, so no later step of this job sees them.
+    # the approval fails. The skip is of the test only (#146): a skipped add-on stays in this job's plan.jsonl marked
+    # skipped, so its images built on the device are still rebuilt for the vulnerability comparison (category 4), but it
+    # is never started or tested, and its result stays this one.
     - name: Skip the upgrade tests the registry approves
       if: steps.detect.outputs.changed == 'true'
       env:
@@ -563,6 +619,7 @@ jobs:
           # not_run: why the test did not run, for compare's data-check deadline (#141).
           jq -n --arg name "${id}" --arg note "${note}" '{name: $name, passed: null, skipped: true, not_run: "approved_skip", note: $note}' > "runtime-reports/${id}.json"
           echo "- ${id}: upgrade test not run (${note})" >> "$GITHUB_STEP_SUMMARY"
+          jq -c '.skipped = true' <<<"${row}" >> plan.tested.jsonl
         done < plan.jsonl
         mv plan.tested.jsonl plan.jsonl
     - name: Plan the upgrade tests
@@ -576,9 +633,11 @@ jobs:
         source tooling/.addon-sync/log.sh
         source tooling/.addon-sync/fields.sh
         source tooling/.addon-sync/images.sh
-        # upgrade.jsonl, one object per add-on: id, addon_dir, new, test (whether it is tested), artifact, old_ref (the
-        # comparison target's prebuilt image to pull; "" = rebuilt), old_src (the target's tag or commit to rebuild it from,
-        # #144), new_src and new_ref (with new_src published, the new image to pull; else "").
+        # upgrade.jsonl, one object per add-on: id, addon_dir, new, test (whether it is tested), sbom (#146: the images this
+        # job builds for it get SBOMs for compare's category 4; an add-on whose test the registry skips is built only for
+        # them: test false, sbom true), artifact, old_ref (the comparison target's prebuilt image to pull; "" = rebuilt),
+        # old_src (the target's tag or commit to rebuild it from, #144), new_src and new_ref (with new_src published, the new
+        # image to pull; else "").
         # new_src, where the new image comes from; every later step compares it with one of these names, never with "":
         #   artifact   the caller's addon-image artifact: "Wait for the new images" and "Load the new images"
         #   pr         built from the PR checkout (#144): "Build the images of add-ons built on the device"
@@ -588,9 +647,20 @@ jobs:
         scan_published="$(jq -r '.scan_published_image' provider.json)"
         mkdir -p runtime-reports; : > upgrade.jsonl; status=0
         while IFS= read -r row; do
-          fields "${row}" id=id notes=notes new=new target=target
+          fields "${row}" id=id notes=notes new=new target=target skipped='skipped // false' rebuilt_old='rebuilt_old // false' rebuilt_new='rebuilt_new // false'
           old="$RUNNER_TEMP/${id}.old.yaml"; image="$(yq -r '.image // ""' "${new}")"; note=""; not_run=""; old_ref=""; old_src=""; new_src=artifact; new_ref=""
           artifact="upgrade-comparison-image-${id}-attempt-${RUN_ATTEMPT}"
+          # The plan's category 4 sides built on the device (#146); the same sides this job builds for the test.
+          sbom=false; if [ "${rebuilt_old}" = true ] || [ "${rebuilt_new}" = true ]; then sbom=true; fi
+          if [ "${skipped}" = true ]; then
+            # The registry skips the test (the step above wrote its result); only its category 4 images are built.
+            [ "${sbom}" = true ] || continue
+            [ "${rebuilt_old}" != true ] || old_src="${target}"
+            [ "${rebuilt_new}" != true ] || new_src=pr
+            jq -nc --arg id "${id}" --arg addon_dir "source/$(dirname "${notes}")" --arg new "${new}" --argjson test false --argjson sbom true \
+              --arg artifact "${artifact}" --arg old_ref "" --arg old_src "${old_src}" --arg new_src "${new_src}" --arg new_ref "" '$ARGS.named' >> upgrade.jsonl
+            continue
+          fi
           # not_run: why the test does not run, a code for compare's data-check deadline (#141); note says it to people.
           if [ ! -s "${old}" ]; then note="no comparison target"; not_run=no_target
           # Built on the device (no image in the PR's config): this job builds the new image from the PR checkout.
@@ -619,15 +689,18 @@ jobs:
               old_src="${target}"
             fi
           else
+            # Not tested, but a comparison target built on the device is still rebuilt for its category 4 SBOM (#146).
+            [ "${rebuilt_old}" != true ] || old_src="${target}"
             jq -n --arg name "${id}" --arg not_run "${not_run}" --arg note "${note}" '{name: $name, passed: null, not_run: $not_run, note: $note}' > "runtime-reports/${id}.json"
             echo "- ${id}: upgrade test not run (${note})" >> "$GITHUB_STEP_SUMMARY"
           fi
           jq -nc --arg id "${id}" --arg addon_dir "source/$(dirname "${notes}")" --arg new "${new}" --argjson test "$([ -z "${note}" ] && echo true || echo false)" \
-            --arg artifact "${artifact}" --arg old_ref "${old_ref}" --arg old_src "${old_src}" --arg new_src "${new_src}" --arg new_ref "${new_ref}" \
+            --argjson sbom "${sbom}" --arg artifact "${artifact}" --arg old_ref "${old_ref}" --arg old_src "${old_src}" --arg new_src "${new_src}" --arg new_ref "${new_ref}" \
             '$ARGS.named' >> upgrade.jsonl
         done < plan.jsonl
         if [ -n "$(jq -r 'select(.test) | .id' upgrade.jsonl)" ]; then echo "run=true" >> "$GITHUB_OUTPUT"; else echo "run=false" >> "$GITHUB_OUTPUT"; fi
-        if [ -n "$(jq -r 'select(.test and (.old_src != "" or .new_src == "pr")) | .id' upgrade.jsonl)" ]; then echo "build=true" >> "$GITHUB_OUTPUT"; else echo "build=false" >> "$GITHUB_OUTPUT"; fi
+        if [ -n "$(jq -r 'select((.test or .sbom) and (.old_src != "" or .new_src == "pr")) | .id' upgrade.jsonl)" ]; then echo "build=true" >> "$GITHUB_OUTPUT"; else echo "build=false" >> "$GITHUB_OUTPUT"; fi
+        if [ -n "$(jq -r 'select(.sbom and (.old_src != "" or .new_src == "pr")) | .id' upgrade.jsonl)" ]; then echo "sbom=true" >> "$GITHUB_OUTPUT"; else echo "sbom=false" >> "$GITHUB_OUTPUT"; fi
         if [ -n "$(jq -r 'select(.test and .new_src == "artifact") | .id' upgrade.jsonl)" ]; then echo "wait=true" >> "$GITHUB_OUTPUT"; else echo "wait=false" >> "$GITHUB_OUTPUT"; fi
         exit "${status}"
     # While the caller's amd64 build is still running.
@@ -660,6 +733,15 @@ jobs:
     # PR that does not build is reported as the PR's fault (addon_failed); then the comparison target's, from GitHub's
     # archive of the target (downloaded once per target, removed at the end of this step). Like a pull (#140), a target
     # that cannot be downloaded or rebuilt fails that add-on (target_failed); either way the others are still tested.
+    # Category 4 (#146): right after each image builds, the same pinned Syft and syft.yaml as compare's make its SBOM in
+    # rebuilt-sboms/<id>.<old|new>.syft.json, which "Upload the rebuilt images' SBOMs" hands to compare (scanned there with
+    # its one Grype DB). A side with no SBOM (not built, not downloaded, Syft failed) has its reason in rebuilt-sboms/<id>.json,
+    # and compare fails category 4 with it. An add-on whose test the registry skips (test false, sbom true) is built only for
+    # its SBOMs: a failure is recorded there only, never as an upgrade test result (that stays approved_skip), and its images
+    # are removed right after their SBOMs.
+    - name: Install pinned Syft
+      if: steps.upgrade.outputs.sbom == 'true'
+      run: bash tooling/.github/actions/addon-sbom/install-scanners.sh "$RUNNER_TEMP/scanners" syft
     - name: Build the images of add-ons built on the device
       if: steps.upgrade.outputs.build == 'true'
       env:
@@ -669,6 +751,23 @@ jobs:
         set -euo pipefail
         source tooling/.addon-sync/log.sh
         source tooling/.addon-sync/fields.sh
+        export SYFT_CHECK_FOR_APP_UPDATE=false
+        mkdir -p rebuilt-sboms
+        # no_sbom <id> <reason>: one side of <id> has no SBOM, for <reason> (compare quotes them all).
+        no_sbom() {
+          local file="rebuilt-sboms/$1.json"
+          [ -s "${file}" ] || echo '{"reasons": []}' > "${file}"
+          jq --arg reason "$2" '.reasons += [$reason]' "${file}" > "${file}.tmp" && mv "${file}.tmp" "${file}"
+        }
+        # sbom_of <id> <old|new>: Syft's SBOM of upgrade-comparison/<id>:<side>; on failure the reason is recorded.
+        sbom_of() {
+          if ! "$RUNNER_TEMP/scanners/syft" scan "docker:upgrade-comparison/$1:$2" --config tooling/.github/actions/addon-sbom/syft.yaml \
+              -o "syft-json=rebuilt-sboms/$1.$2.syft.json"; then
+            local reason="Syft could not read the rebuilt $2 image upgrade-comparison/$1:$2"
+            printf '::error title=Upgrade comparison failed::%s\n' "$(esc "$1: ${reason}")"
+            rm -f "rebuilt-sboms/$1.$2.syft.json"; no_sbom "$1" "${reason}"
+          fi
+        }
         # build <id> <old|new> <add-on directory> <its config.yaml>: tags upgrade-comparison/<id>:<old|new>. On failure it
         # returns 1 and leaves the reason in why: the tool's error (version, build-args) or docker build's exit code.
         why=""
@@ -691,13 +790,29 @@ jobs:
         declare -A trees=()
         : > built.jsonl
         while IFS= read -r row; do
-          fields "${row}" id=id new=new old_src=old_src new_src='new_src // "artifact"' test=test
+          fields "${row}" id=id new=new old_src=old_src new_src='new_src // "artifact"' test=test sbom='sbom // false'
           fields "$(jq -c --arg id "${id}" '.components[] | select(.id == $id)' provider.json)" path=config previous=previous_config
-          if [ "${test}" = true ] && [ "${new_src}" = pr ] && ! build "${id}" new "$(dir_of source "${path}" "${previous}")" "${new}"; then
-            addon_failed "${id}" "the new version could not be built for amd64 from this PR: ${why}"
-            test=false
+          # failed <addon_failed|target_failed> <reason for the test> [<reason for category 4>]: this add-on's build failed; a
+          # tested one fails its upgrade test, and its missing SBOM gets the second reason (default the first). An add-on
+          # built only for its SBOMs prints the second as an error, never an upgrade test result. Building stops for it.
+          failed() {
+            local why4="${3:-$2}"
+            if [ "${test}" = true ]; then "$1" "${id}" "$2"; else printf '::error title=Upgrade comparison failed::%s\n' "$(esc "${id}: ${why4}")"; fi
+            [ "${sbom}" != true ] || no_sbom "${id}" "${why4}"
+            want=false; test=false
+          }
+          # want: this add-on's images are built, for its test, its SBOMs (#146), or both.
+          want=false; if [ "${test}" = true ] || [ "${sbom}" = true ]; then want=true; fi
+          if [ "${want}" = true ] && [ "${new_src}" = pr ]; then
+            if ! build "${id}" new "$(dir_of source "${path}" "${previous}")" "${new}"; then
+              failed addon_failed "the new version could not be built for amd64 from this PR: ${why}"
+            elif [ "${sbom}" = true ]; then
+              sbom_of "${id}" new
+              # Only for its SBOM: removed at once, so the next build has the disk.
+              [ "${test}" = true ] || docker image rm --force "upgrade-comparison/${id}:new" > /dev/null 2>&1 || true
+            fi
           fi
-          if [ "${test}" = true ] && [ -n "${old_src}" ]; then
+          if [ "${want}" = true ] && [ -n "${old_src}" ]; then
             tree="${trees[${old_src}]:-}"
             if [ -z "${tree}" ]; then
               tree="$RUNNER_TEMP/old-src-${#trees[@]}"; archive="${tree}.tar.gz"; rm -rf "${tree}"; mkdir -p "${tree}"
@@ -711,11 +826,14 @@ jobs:
               rm -f "${archive}"
             fi
             if [ -z "${tree}" ]; then
-              target_failed "${id}" "cannot download the source of the comparison target ${old_src} to rebuild its image, so the upgrade cannot be tested; re-run the check"
-              test=false
+              failed target_failed "cannot download the source of the comparison target ${old_src} to rebuild its image, so the upgrade cannot be tested; re-run the check" \
+                "cannot download the source of the comparison target ${old_src} to rebuild its image; re-run the check"
             elif ! build "${id}" old "$(dir_of "${tree}" "${path}" "${previous}")" "$RUNNER_TEMP/${id}.old.yaml"; then
-              target_failed "${id}" "the comparison target ${old_src} could not be rebuilt for amd64, so the upgrade cannot be tested: ${why}"
-              test=false
+              failed target_failed "the comparison target ${old_src} could not be rebuilt for amd64, so the upgrade cannot be tested: ${why}" \
+                "the comparison target ${old_src} could not be rebuilt for amd64: ${why}"
+            elif [ "${sbom}" = true ]; then
+              sbom_of "${id}" old
+              [ "${test}" = true ] || docker image rm --force "upgrade-comparison/${id}:old" > /dev/null 2>&1 || true
             fi
           fi
           jq -c --argjson test "${test}" '.test = $test' <<<"${row}" >> built.jsonl
@@ -800,5 +918,15 @@ jobs:
         # compare reads this attempt's results; the run attempt keeps a re-run from reading an earlier one.
         name: upgrade-comparison-runtime-attempt-${{ github.run_attempt }}
         path: runtime-reports/
+        if-no-files-found: ignore
+        retention-days: 7
+    # #146: the SBOMs of the images built on the device, and why a side has none, for compare's category 4 ("Download the
+    # rebuilt images' SBOMs"). Uploaded whatever happened, so compare reads what there is, and fails without it.
+    - name: Upload the rebuilt images' SBOMs
+      if: always() && github.event_name == 'pull_request'
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      with:
+        name: upgrade-comparison-rebuilt-sboms-attempt-${{ github.run_attempt }}
+        path: rebuilt-sboms/
         if-no-files-found: ignore
         retention-days: 7

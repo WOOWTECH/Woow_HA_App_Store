@@ -239,9 +239,9 @@ class Vulnerabilities(unittest.TestCase):
     def test_blocked_headline_names_the_vulnerability(self):
         self.assertIn('new fixable vulnerability',vrun(self.NEW())['report'].splitlines()[2])
     def test_no_scan_results_says_why(self):
-        r=u.compare(BASE,new(),'1.0.0','1.1.0',scan_note='built on the device; compared in #90')
+        r=u.compare(BASE,new(),'1.0.0','1.1.0',scan_note='skipped as approved in the Store registry: a reason')
         self.assertFalse(r['blocked']);self.assertIsNone(r['vulnerabilities'])
-        self.assertIn('Vulnerability comparison: not run (built on the device; compared in #90).',r['report'])
+        self.assertIn('Vulnerability comparison: not run (skipped as approved in the Store registry: a reason).',r['report'])
     def test_one_sided_or_malformed_scans_are_an_error(self):
         rows=[('old scan missing',None,self.NEW()),('new scan missing',OLD_SCAN,None),('not Grype JSON',OLD_SCAN,{'results':[]}),
             ('match without id',OLD_SCAN,scan({'vulnerability':{'severity':'High'},'artifact':{'name':'zlib'}}))]
@@ -313,8 +313,8 @@ class CommandLine(unittest.TestCase):
         code,out=self.main('--old',self.write('old.yaml',dict(BASE,version='1.2.0')),'--new',self.write('new.yaml',new()),'--name','t')
         self.assertEqual(code,2);self.assertIn('::error title=Upgrade comparison failed::t: version 1.1.0 is not newer than 1.2.0',out)
     def test_scan_note_explains_a_skipped_comparison(self):
-        self.main('--old',self.write('old.yaml',BASE),'--new',self.write('new.yaml',new()),'--scan-note','built on the device; compared in #90')
-        self.assertIn('not run (built on the device; compared in #90)',self.summary.read_text(encoding='utf-8'))
+        self.main('--old',self.write('old.yaml',BASE),'--new',self.write('new.yaml',new()),'--scan-note','skipped as approved in the Store registry: a reason')
+        self.assertIn('not run (skipped as approved in the Store registry: a reason)',self.summary.read_text(encoding='utf-8'))
     def commands(self,out):
         # Workflow commands GitHub would run: everything between ::stop-commands::<token> and ::<token>:: is plain text.
         lines=[];stop=None
@@ -601,8 +601,26 @@ class ReusableWorkflow(unittest.TestCase):
         self.assertIn('upgrade_check.py components --registry',self.step('Find add-ons whose version changed'))
         for duplicate in ('.providers[','source_path','config_file','upgrade-notes.yaml"','[ "${dir}" = "." ]'):
             with self.subTest(duplicate):self.assertNotIn(duplicate,self.text.split('jobs:',1)[1])
-    def test_device_built_add_ons_are_reported_as_compared_in_90(self):
-        self.assertIn('built on the device; the vulnerability comparison for these add-ons is #90',self.step('Find the comparison targets'))
+    def test_device_built_add_ons_get_category_4_from_the_runtime_jobs_rebuilt_images(self):
+        # #146: no step says category 4 of these add-ons is another ticket's; their SBOMs come from runtime, after it (needs).
+        self.assertNotIn('#90',self.text.split('jobs:',1)[1])
+        self.assertNotIn('has no prebuilt image',self.text)
+        steps=self.wf['jobs']['compare']['steps'];names=[s.get('name') for s in steps]
+        download=steps[names.index("Download the rebuilt images' SBOMs")]
+        self.assertEqual(download['if'],"steps.plan.outputs.rebuilt == 'true'")
+        self.assertIn('upgrade-comparison-rebuilt-sboms-attempt-${RUN_ATTEMPT}',download['run'])
+        self.assertLess(names.index("Download the rebuilt images' SBOMs"),names.index('Compare with the comparison target'))
+        runtime=self.wf['jobs']['runtime']['steps'];rnames=[s.get('name') for s in runtime]
+        upload=runtime[rnames.index("Upload the rebuilt images' SBOMs")]
+        self.assertEqual((upload['if'],upload['with']['name'],upload['with']['path'],upload['with']['retention-days']),
+            ("always() && github.event_name == 'pull_request'",'upgrade-comparison-rebuilt-sboms-attempt-${{ github.run_attempt }}','rebuilt-sboms/',7))
+        # The same pinned Syft and config as compare's own SBOMs (#89).
+        install=runtime[rnames.index('Install pinned Syft')]
+        self.assertEqual(install['run'],'bash tooling/.github/actions/addon-sbom/install-scanners.sh "$RUNNER_TEMP/scanners" syft')
+        self.assertLess(rnames.index('Install pinned Syft'),rnames.index('Build the images of add-ons built on the device'))
+        build=runtime[rnames.index('Build the images of add-ons built on the device')]['run']
+        self.assertIn('scan "docker:upgrade-comparison/$1:$2" --config tooling/.github/actions/addon-sbom/syft.yaml',build)
+        self.assertIn('scan "docker:${image}" --config tooling/.github/actions/addon-sbom/syft.yaml',self.step("SBOMs of the comparison targets' images"))
     def test_runtime_plans_with_the_same_steps_as_compare(self):
         # Both jobs judge the same add-ons and comparison targets: runtime repeats compare's steps up to the plan.
         compare,runtime=self.wf['jobs']['compare']['steps'],self.wf['jobs']['runtime']['steps']
@@ -635,8 +653,8 @@ class ReusableWorkflow(unittest.TestCase):
         # Only add-ons built on the device are built here (#144): an add-on with a prebuilt image is never rebuilt.
         builds=[n for n,s in steps.items() if 'docker build' in s.get('run','')]
         self.assertEqual(builds,['Build the images of add-ons built on the device'])
-        self.assertIn('[ "${test}" = true ] && [ -n "${old_src}" ]',steps[builds[0]]['run'])
-        self.assertIn('[ "${test}" = true ] && [ "${new_src}" = pr ]',steps[builds[0]]['run'])
+        self.assertIn('[ "${want}" = true ] && [ -n "${old_src}" ]',steps[builds[0]]['run'])
+        self.assertIn('[ "${want}" = true ] && [ "${new_src}" = pr ]',steps[builds[0]]['run'])
         for name in ('Wait for the new images','Load the new images'):
             with self.subTest(name):self.assertEqual(steps[name]['if'],"steps.upgrade.outputs.wait == 'true'")
         self.assertIn('select(.test and .new_src == "artifact")',steps['Wait for the new images']['run'])
@@ -650,7 +668,7 @@ class ReusableWorkflow(unittest.TestCase):
     def test_add_ons_without_a_test_yet_are_named_with_their_ticket(self):
         plan=next(s for s in self.wf['jobs']['runtime']['steps'] if s.get('name')=='Plan the upgrade tests')['run']
         self.assertIn('the caller passes no image_artifact; the upgrade test is being rolled out in #143',plan)
-        # Add-ons built on the device are tested (#144); only their vulnerability comparison still waits (#146).
+        # Add-ons built on the device are tested (#144), and their rebuilt images get category 4 (#146).
         self.assertNotIn('the upgrade test for these add-ons is #144',plan)
     def step(self,name):return next(s for s in self.wf['jobs']['compare']['steps'] if s.get('name')==name)['run']
     def step_env(self,name):return next(s for s in self.wf['jobs']['compare']['steps'] if s.get('name')==name)['env']
@@ -664,7 +682,7 @@ class StepHarness(unittest.TestCase):
     def step(self,ident):return next(s for j in ('compare','runtime') for s in self.wf['jobs'][j]['steps'] if ident in (s.get('id'),s.get('name')))
     def run_step(self,ident,*,policy='release',extra=None,releases=('v1.0.0',),old_config=True,new_config=True,skip='',sbom='',version='1.1.0',old=None,old_path='',
             new_path='addon/config.yaml',new=None,files=None,raw_version=None,history=None,changed=1,gh_fail='',images=(),vulnerable='',image_artifact='',
-            tarball=None,build_fail='',news=None):
+            tarball=None,build_fail='',news=None,syft_fail=''):
         """ident: one step, or a tuple run in order until one fails. new_path: where the PR has the config; new: changes to it;
         files: more files of the PR checkout; raw_version: {'old'/'new': the version line's YAML as written, e.g. 1.10 unquoted}.
         history: the PR base's history, newest first, [(sha, {path: changes to the config, or None for no file})]; the first
@@ -675,7 +693,8 @@ class StepHarness(unittest.TestCase):
         vulnerability in (CVE-2026-0001 openssl, fixed in 3.0.9); every scan reports the same DB.
         image_artifact: the caller's image_artifact (the runtime job's plan, #137).
         tarball: {path: text} in GitHub's archive of every ref besides its configs (#144); build_fail: the tag whose
-        `docker build` fails. self.builds is every `docker build` (DOCKER_STUB); gh.log in self.tmp has every tarball URL asked for.
+        `docker build` fails. self.builds is every `docker build` (DOCKER_STUB); gh.log in self.tmp has every tarball URL asked for,
+        rm.log every `docker image rm`. syft_fail: the image the stub Syft cannot read.
         news: {add-on id: changes to its PR config} for a changed add-on of a multi-add-on provider whose PR config is not t's.
         self.tmp is the job's directory (also RUNNER_TEMP); self.plans is every line of plan.jsonl."""
         import os,subprocess
@@ -712,7 +731,8 @@ class StepHarness(unittest.TestCase):
         env=dict(os.environ,PATH=f"{tmp/'bin'}{os.pathsep}{os.environ['PATH']}",OLD=str(tmp/'old.yaml'),OLD_PATH=old_path,RELEASES=releases,REPO='WOOWTECH/t',BASE_SHA='b',
             GH_TOKEN='x',DB_MAX_AGE_HOURS='120',IMAGES='\n'.join(images),VULNERABLE=vulnerable,SBOM_ARTIFACT=sbom,IMAGE_ARTIFACT=image_artifact,SKIP_VULNERABILITY_SCAN=skip,RUNNER_TEMP=str(tmp),RUN_ATTEMPT='1',
             GITHUB_OUTPUT=str(tmp/'out'),GITHUB_STEP_SUMMARY=str(tmp/'summary'),HISTORY=str(tmp/'history.json') if history is not None else '',GH_FAIL=gh_fail,
-            TMPDIR=str(tmp/'mktemp'),TARBALL=json.dumps(tarball or {}),BUILD_FAIL=build_fail,DOCKER_LOG=str(tmp/'docker.log'),GH_LOG=str(tmp/'gh.log'))
+            TMPDIR=str(tmp/'mktemp'),TARBALL=json.dumps(tarball or {}),BUILD_FAIL=build_fail,DOCKER_LOG=str(tmp/'docker.log'),GH_LOG=str(tmp/'gh.log'),
+            DOCKER_RM_LOG=str(tmp/'rm.log'),SYFT_FAIL=syft_fail)
         (tmp/'mktemp').mkdir(exist_ok=True)
         for one in (ident if isinstance(ident,tuple) else (ident,)):
             (tmp/'step.sh').write_text(self.step(one)['run'])
@@ -778,7 +798,8 @@ elif '/tarball/' in url:
 else:sys.exit(1)
 '''
 
-# StepHarness's image registry: `docker pull` succeeds only for a reference in $IMAGES; `docker image rm` always does.
+# StepHarness's image registry: `docker pull` succeeds only for a reference in $IMAGES; `docker image rm` always does (and
+# appends the image to $DOCKER_RM_LOG when set).
 # `docker build` appends {args, files: the context's files and their text} to $DOCKER_LOG and fails for the tag $BUILD_FAIL.
 DOCKER_STUB=r'''#!/usr/bin/env python3
 import json,os,pathlib,sys
@@ -792,12 +813,18 @@ if args[:1]==['build']:
     with open(os.environ['DOCKER_LOG'],'a') as f:f.write(json.dumps({'args':args,'files':files})+'\n')
     if tag==os.environ.get('BUILD_FAIL'):print('ERROR: failed to solve: process "/bin/sh -c false" did not complete successfully',file=sys.stderr);sys.exit(1)
     sys.exit(0)
-sys.exit(0 if args[:2]==['image','rm'] else 1)
+if args[:2]==['image','rm']:
+    if os.environ.get('DOCKER_RM_LOG'):
+        with open(os.environ['DOCKER_RM_LOG'],'a') as f:f.write(args[-1]+'\n')
+    sys.exit(0)
+sys.exit(1)
 '''
-# Stub Syft: `syft scan <source> --config ... -o syft-json=<file>` writes {"source": <source>} to <file>.
+# Stub Syft: `syft scan <source> --config ... -o syft-json=<file>` writes {"source": <source>} to <file>; it fails for
+# the source docker:$SYFT_FAIL.
 SYFT_STUB=r'''#!/usr/bin/env python3
-import json,sys
+import json,os,sys
 args=sys.argv[1:];out=next(a for a in args if a.startswith('syft-json=')).split('=',1)[1]
+if args[1]=='docker:'+os.environ.get('SYFT_FAIL','-'):print('syft: cannot read the image',file=sys.stderr);sys.exit(1)
 json.dump({'source':args[1]},open(out,'w'))
 '''
 # Stub Grype: `grype sbom:<file> -o json --file <out>`; one High fixable match when the SBOM is of $VULNERABLE.
@@ -951,17 +978,183 @@ class DeviceBuiltImages(StepHarness):
         reason=self.failed(self.build(files={'addon/Dockerfile':'FROM new','addon/build.yaml':'args:\n  "A B": x\n'}),
             'the new version could not be built for amd64 from this PR: t: ',exact=False)
         self.assertIn("build argument name 'A B' must be non-empty, without = or whitespace",reason)
+    SKIPPED={'components':[{'id':'t','source_path':'addon','config_file':'config.yaml','upgrade_comparison':{'skip_upgrade_test':'#158: needs a physical enp2s0'}}]}
+    SKIP_NOTE='categories 2 and 3 skipped as approved in the Store registry: #158: needs a physical enp2s0'
+    def rows(self):return [json.loads(l) for l in (self.tmp/'upgrade.jsonl').read_text().splitlines()]
+    def sbom(self,side):
+        p=self.tmp/f'rebuilt-sboms/t.{side}.syft.json';return json.loads(p.read_text()) if p.exists() else None
+    def removed(self):return (self.tmp/'rm.log').read_text().splitlines() if (self.tmp/'rm.log').exists() else []
     @needs_shell
-    def test_an_approved_skip_is_not_built_or_tested(self):
-        # woow_lan_gateway (#158, permanent): built on the device and approved; it is "not run" with the registry's reason, not failing.
-        extra={'components':[{'id':'t','source_path':'addon','config_file':'config.yaml','upgrade_comparison':{'skip_upgrade_test':'#158: needs a physical enp2s0'}}]}
-        r,_,out=self.run_step(self.STEPS[:3],extra=extra,**self.DEVICE)
+    def test_tested_add_on_gets_sboms_of_both_rebuilt_images_right_after_each_build(self):
+        # #146: category 4 of an add-on built on the device uses the images built here for the upgrade test.
+        r=self.build()
         self.assertEqual(r.returncode,0,r.stdout+r.stderr)
-        for output in ('run=false','build=false'):
+        self.assertEqual((self.sbom('old'),self.sbom('new')),({'source':'docker:upgrade-comparison/t:old'},{'source':'docker:upgrade-comparison/t:new'}))
+        self.assertFalse((self.tmp/'rebuilt-sboms/t.json').exists())
+        # Kept for the upgrade test ("Run the upgrade tests" removes them).
+        self.assertEqual(self.removed(),[]);self.assertEqual([x['test'] for x in self.rows()],[True])
+    @needs_shell
+    def test_an_approved_skip_is_built_for_its_sboms_but_not_tested(self):
+        # woow_lan_gateway (#158, permanent): skip_upgrade_test skips categories 2 and 3 only (owner, #146): both images are
+        # still rebuilt and get SBOMs, then removed; it is never started, and its result stays the registry's reason.
+        r,_,out=self.run_step(self.STEPS[:3],extra=self.SKIPPED,**self.DEVICE)
+        self.assertEqual(r.returncode,0,r.stdout+r.stderr)
+        for output in ('run=false','build=true','sbom=true'):
             with self.subTest(output):self.assertIn(output,out)
-        self.assertEqual(json.loads((self.tmp/'runtime-reports/t.json').read_text())['note'],
-            'categories 2 and 3 skipped as approved in the Store registry: #158: needs a physical enp2s0')
-        self.assertEqual(self.builds,[])
+        (row,)=self.rows();self.assertEqual((row['test'],row['sbom'],row['old_src'],row['new_src']),(False,True,'v1.0.0','pr'))
+        r=self.build(extra=self.SKIPPED)
+        self.assertEqual(r.returncode,0,r.stdout+r.stderr)
+        self.assertEqual([b['args'][b['args'].index('-t')+1] for b in self.builds],['upgrade-comparison/t:new','upgrade-comparison/t:old'])
+        self.assertEqual((self.sbom('old'),self.sbom('new')),({'source':'docker:upgrade-comparison/t:old'},{'source':'docker:upgrade-comparison/t:new'}))
+        self.assertEqual(self.removed(),['upgrade-comparison/t:new','upgrade-comparison/t:old'])
+        self.assertEqual(json.loads((self.tmp/'runtime-reports/t.json').read_text()),
+            {'name':'t','passed':None,'skipped':True,'not_run':'approved_skip','note':self.SKIP_NOTE})
+        self.assertEqual([x['test'] for x in self.rows()],[False])
+    @needs_shell
+    def test_a_skipped_prebuilt_add_on_is_not_built(self):
+        r,_,out=self.run_step(self.STEPS[:3],extra=self.SKIPPED,sbom='upgrade-comparison-sbom-*')
+        self.assertEqual(r.returncode,0,r.stdout+r.stderr);self.assertEqual(self.rows(),[])
+        for output in ('run=false','build=false','sbom=false'):
+            with self.subTest(output):self.assertIn(output,out)
+    @needs_shell
+    def test_an_sbom_only_build_failure_is_recorded_for_category_4_not_as_a_test_result(self):
+        for name,kw,reason in (('target',dict(build_fail='upgrade-comparison/t:old'),f'the comparison target v1.0.0 could not be rebuilt for amd64: {self.DOCKER_FAILED}'),
+                ('download',dict(gh_fail='/tarball/'),'cannot download the source of the comparison target v1.0.0 to rebuild its image; re-run the check'),
+                ('pr',dict(build_fail='upgrade-comparison/t:new'),f'the new version could not be built for amd64 from this PR: {self.DOCKER_FAILED}'),
+                ('syft',dict(syft_fail='upgrade-comparison/t:new'),'Syft could not read the rebuilt new image upgrade-comparison/t:new')):
+            with self.subTest(name):
+                r=self.build(extra=self.SKIPPED,**kw)
+                self.assertEqual(r.returncode,0,r.stdout+r.stderr)
+                self.assertEqual(json.loads((self.tmp/'rebuilt-sboms/t.json').read_text()),{'reasons':[reason]})
+                self.assertIn(f'::error title=Upgrade comparison failed::t: {reason}',r.stdout)
+                self.assertEqual(json.loads((self.tmp/'runtime-reports/t.json').read_text())['not_run'],'approved_skip')
+                # "Run the upgrade tests" does not fail the job for it: only category 4 fails.
+                (run,)=self.run_runtime_steps(self.tmp,('Run the upgrade tests',));self.assertEqual(run.returncode,0,run.stdout+run.stderr)
+    @needs_shell
+    def test_a_tested_add_ons_build_failure_also_leaves_its_reason_for_category_4(self):
+        reason=self.failed(self.build(build_fail='upgrade-comparison/t:old'),
+            f'the comparison target v1.0.0 could not be rebuilt for amd64, so the upgrade cannot be tested: {self.DOCKER_FAILED}')
+        self.assertEqual(json.loads((self.tmp/'rebuilt-sboms/t.json').read_text()),
+            {'reasons':[f'the comparison target v1.0.0 could not be rebuilt for amd64: {self.DOCKER_FAILED}']})
+        self.assertIn('so the upgrade cannot be tested',reason)
+    @needs_shell
+    def test_a_tested_add_on_whose_syft_fails_is_still_tested(self):
+        r=self.build(syft_fail='upgrade-comparison/t:old')
+        self.assertEqual(r.returncode,0,r.stdout+r.stderr);self.assertEqual([x['test'] for x in self.rows()],[True])
+        self.assertFalse((self.tmp/'runtime-reports/t.json').exists());self.assertIsNone(self.sbom('old'))
+        self.assertEqual(json.loads((self.tmp/'rebuilt-sboms/t.json').read_text()),{'reasons':['Syft could not read the rebuilt old image upgrade-comparison/t:old']})
+    @needs_shell
+    def test_without_category_4_no_sbom_is_made(self):
+        # skip_vulnerability_scan: still built and tested, no SBOM.
+        r=self.build(skip='a reason',extra={'upgrade_comparison':{'skip_vulnerability_scan':'#x: approved'}})
+        self.assertEqual(r.returncode,0,r.stdout+r.stderr);self.assertEqual(len(self.builds),2)
+        self.assertEqual(list((self.tmp/'rebuilt-sboms').glob('*')),[]);self.assertEqual([x['sbom'] for x in self.rows()],[False])
+
+class DeviceBuiltVulnerabilityComparison(StepHarness):
+    """Category 4 of add-ons built on the device (#146): the plan marks each rebuilt side, the runtime job hands over the
+    SBOMs of the images it rebuilds, and compare scans them with its one Grype DB, as it scans prebuilt images (#89)."""
+    RUNTIME=('plan','Skip the upgrade tests the registry approves','upgrade','Build the images of add-ons built on the device')
+    DEVICE=DeviceBuiltImages.DEVICE
+    FILES={'addon/Dockerfile':'FROM new','addon/build.yaml':DeviceBuiltImages.BUILD.format(v='new')}
+    TARBALL={'addon/Dockerfile':'FROM old','addon/build.yaml':DeviceBuiltImages.BUILD.format(v='old')}
+    OLD='ghcr.io/da-anda/addon-amd64:1.0.0'
+    def runtime(self,**kw):
+        kw.setdefault('files',self.FILES);kw.setdefault('tarball',self.TARBALL)
+        return self.run_step(self.RUNTIME,**{**self.DEVICE,**kw})
+    def compare(self,**env):
+        """compare's 'Compare with the comparison target' in the job's directory, after the runtime steps (the harness
+        stands in for the download: rebuilt-sboms/ is where it would unzip the artifact)."""
+        (r,)=self.run_runtime_steps(self.tmp,('Compare with the comparison target',),DB_MAX_AGE_HOURS='120',**env)
+        return r
+    @needs_shell
+    def test_both_sides_rebuilt_plan_a_scan_without_waiting(self):
+        r,plan,out=self.run_step('plan',**self.DEVICE)
+        self.assertEqual(r.returncode,0,r.stdout+r.stderr)
+        self.assertEqual((plan['ref'],plan['new_ref'],plan['rebuilt_old'],plan['rebuilt_new'],plan['note']),('','',True,True,''))
+        for output in ('scan=true','wait=false','rebuilt=true'):
+            with self.subTest(output):self.assertIn(output,out)
+    @needs_shell
+    def test_without_a_comparison_target_there_is_nothing_to_scan(self):
+        r,plan,out=self.run_step('plan',releases=(),**self.DEVICE)
+        self.assertEqual(r.returncode,0,r.stdout+r.stderr)
+        self.assertEqual((plan['note'],plan['rebuilt_old'],plan['rebuilt_new']),('no comparison target',False,False))
+        for output in ('scan=false','rebuilt=false'):
+            with self.subTest(output):self.assertIn(output,out)
+    @needs_shell
+    def test_a_new_fixable_vulnerability_in_the_rebuilt_pr_image_blocks(self):
+        r,_,_=self.runtime();self.assertEqual(r.returncode,0,r.stdout+r.stderr)
+        r=self.compare(VULNERABLE='upgrade-comparison/t:new')
+        self.assertEqual(r.returncode,1,r.stdout+r.stderr)
+        self.assertIn('::error title=New fixable vulnerability::CVE-2026-0001 openssl (High, fixed in 3.0.9)',r.stdout)
+        self.assertIn('t: scanned v1.0.0 rebuilt and the PR image rebuilt with the same DB',r.stdout)
+        # Only in the old image: reported, not blocking.
+        r=self.compare(VULNERABLE='upgrade-comparison/t:old')
+        self.assertEqual(r.returncode,0,r.stdout+r.stderr);self.assertIn('No new fixable vulnerabilities.',r.stdout)
+        self.assertNotIn('#90',r.stdout)
+    @needs_shell
+    def test_an_approved_skip_still_gets_category_4(self):
+        # woow_lan_gateway: categories 2 and 3 skipped, category 4 judged on its rebuilt images.
+        r,_,_=self.runtime(extra=DeviceBuiltImages.SKIPPED);self.assertEqual(r.returncode,0,r.stdout+r.stderr)
+        r=self.compare(VULNERABLE='upgrade-comparison/t:new')
+        self.assertEqual(r.returncode,1,r.stdout+r.stderr);self.assertIn('CVE-2026-0001 openssl',r.stdout)
+    @needs_shell
+    def test_an_sbom_only_rebuild_failure_fails_category_4_with_its_reason(self):
+        r,_,_=self.runtime(extra=DeviceBuiltImages.SKIPPED,build_fail='upgrade-comparison/t:old');self.assertEqual(r.returncode,0,r.stdout+r.stderr)
+        r=self.compare()
+        self.assertEqual(r.returncode,1,r.stdout+r.stderr)
+        self.assertIn('::error title=Upgrade comparison failed::t: the vulnerability comparison cannot run without the SBOMs of both images: '
+            f'the comparison target v1.0.0 could not be rebuilt for amd64: {DeviceBuiltImages.DOCKER_FAILED}',r.stdout)
+    @needs_shell
+    def test_a_missing_artifact_fails_saying_so(self):
+        r,_,_=self.run_step('plan',**self.DEVICE);self.assertEqual(r.returncode,0,r.stdout+r.stderr)
+        r=self.compare()
+        self.assertEqual(r.returncode,1,r.stdout+r.stderr)
+        self.assertIn('::error title=Upgrade comparison failed::t: the runtime job handed over no SBOMs of the rebuilt images; its log has the reason',r.stdout)
+    @needs_shell
+    def test_an_artifact_without_this_add_ons_sbom_fails(self):
+        r,_,_=self.run_step('plan',**self.DEVICE);(self.tmp/'rebuilt-sboms').mkdir()
+        r=self.compare()
+        self.assertEqual(r.returncode,1,r.stdout+r.stderr)
+        self.assertIn("t: the runtime job handed over no SBOM of this add-on's rebuilt image; its log has the reason",r.stdout)
+    @needs_shell
+    def test_a_rebuilt_target_and_a_prebuilt_pr_image_are_compared_per_side(self):
+        # The target was built on the device, the PR ships a prebuilt image: old from the runtime job, new from the caller's SBOM.
+        kw=dict(old={'image':None},sbom='upgrade-comparison-sbom-*',image_artifact='upgrade-comparison-image-*')
+        r,plan,out=self.run_step('plan',**kw)
+        self.assertEqual(r.returncode,0,r.stdout+r.stderr)
+        self.assertEqual((plan['ref'],plan['rebuilt_old'],plan['rebuilt_new'],plan['note']),('',True,False,''))
+        for output in ('scan=true','wait=true','rebuilt=true'):
+            with self.subTest(output):self.assertIn(output,out)
+        r,_,_=self.run_step(self.RUNTIME,files=self.FILES,tarball=self.TARBALL,**kw);self.assertEqual(r.returncode,0,r.stdout+r.stderr)
+        self.assertEqual([b['args'][b['args'].index('-t')+1] for b in self.builds],['upgrade-comparison/t:old'])
+        (self.tmp/'sboms').mkdir();(self.tmp/'sboms/t.syft.json').write_text(json.dumps({'source':'docker:the caller build'}))
+        r=self.compare(VULNERABLE='the caller build')
+        self.assertEqual(r.returncode,1,r.stdout+r.stderr);self.assertIn('t: scanned v1.0.0 rebuilt and the PR image with the same DB',r.stdout)
+        self.assertNotIn('has no prebuilt image',r.stdout)
+    @needs_shell
+    def test_a_rebuilt_target_is_built_for_its_sbom_when_the_test_does_not_run(self):
+        # The caller passes no image_artifact (#143), so the upgrade test does not run; category 4 still gets the target's SBOM.
+        r,_,out=self.run_step(self.RUNTIME,files=self.FILES,tarball=self.TARBALL,old={'image':None},sbom='upgrade-comparison-sbom-*')
+        self.assertEqual(r.returncode,0,r.stdout+r.stderr);self.assertIn('build=true',out)
+        self.assertEqual([b['args'][b['args'].index('-t')+1] for b in self.builds],['upgrade-comparison/t:old'])
+        self.assertEqual(json.loads((self.tmp/'rebuilt-sboms/t.old.syft.json').read_text()),{'source':'docker:upgrade-comparison/t:old'})
+        self.assertEqual(json.loads((self.tmp/'runtime-reports/t.json').read_text())['not_run'],'no_image_artifact')
+        self.assertEqual((self.tmp/'rm.log').read_text().splitlines(),['upgrade-comparison/t:old'])
+    @needs_shell
+    def test_a_prebuilt_target_and_a_rebuilt_pr_image_are_compared_per_side(self):
+        # The target's image is pulled from GHCR (its SBOM made in compare), the PR's is rebuilt in the runtime job.
+        kw=dict(new={'image':None},images=(self.OLD,))
+        r,plan,out=self.run_step('plan',**kw)
+        self.assertEqual(r.returncode,0,r.stdout+r.stderr)
+        self.assertEqual((plan['ref'],plan['rebuilt_old'],plan['rebuilt_new']),(self.OLD,False,True))
+        for output in ('scan=true','wait=false','rebuilt=true'):
+            with self.subTest(output):self.assertIn(output,out)
+        r,_,_=self.run_step(self.RUNTIME[:3]+("SBOMs of the comparison targets' images",self.RUNTIME[3]),files=self.FILES,**kw)
+        self.assertEqual(r.returncode,0,r.stdout+r.stderr)
+        self.assertEqual([b['args'][b['args'].index('-t')+1] for b in self.builds],['upgrade-comparison/t:new'])
+        r=self.compare(VULNERABLE='upgrade-comparison/t:new')
+        self.assertEqual(r.returncode,1,r.stdout+r.stderr)
+        self.assertIn(f't: scanned {self.OLD} (v1.0.0) and the PR image rebuilt with the same DB',r.stdout)
 
 class BuildArgs(unittest.TestCase):
     """upgrade_check.build_args (#144): how Supervisor builds an add-on built on the device (supervisor/addons/build.py)."""
@@ -2072,7 +2265,9 @@ class UpgradeTestSkipStep(StepHarness):
     def test_approved_add_on_is_skipped_with_the_registrys_reason(self):
         r,_,out=self.plan(extra=self.approved(),files={'addon/upgrade-check/settings.yaml':'skip_upgrade_test: "my text"\n'})
         self.assertEqual(r.returncode,0,r.stdout+r.stderr);self.assertIn('run=false',out)
-        self.assertEqual(self.plans,[]);self.assertEqual((self.tmp/'upgrade.jsonl').read_text(),'')
+        # It stays in the plan marked skipped (#146: one built on the device is still rebuilt for category 4); a prebuilt
+        # one has nothing to build, so it is not in upgrade.jsonl.
+        self.assertEqual([(p['id'],p.get('skipped')) for p in self.plans],[('t',True)]);self.assertEqual((self.tmp/'upgrade.jsonl').read_text(),'')
         note='categories 2 and 3 skipped as approved in the Store registry: #158: needs a physical enp2s0'
         self.assertEqual(json.loads((self.tmp/'runtime-reports/t.json').read_text()),{'name':'t','passed':None,'skipped':True,'not_run':'approved_skip','note':note})
         self.assertIn(f'- t: upgrade test not run ({note})',(self.tmp/'summary').read_text())
