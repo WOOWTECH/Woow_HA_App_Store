@@ -88,7 +88,7 @@
           "channel": "stable",
           "enabled": true,
           "upgrade_comparison": {
-            "skip_upgrade_test": "#158: the comparison target needs a physical network interface (enp2s0) and exits with code 1 on a GitHub runner, where the runtime gives it only the mock hassio bridge; remove this skip once #158 lets the upgrade test run it"
+            "skip_upgrade_test": "#158, permanent (owner, 2026-11-05): a fail-closed NAT gateway for the Enrollment LAN; the upgrade test runs it on the host network, but to start it also needs NET_ADMIN, the fixed interfaces enp2s0 and enp1s0, nftables and IPv4 forwarding already enabled by the host, which a GitHub runner cannot give it, and a fake network would not test NAT or fail-closed behaviour. On-device testing on the Enrollment LAN covers it (pipeline .out-of-scope/lan-gateway-upgrade-test-on-runner.md)"
           }
         }
       ]
@@ -537,7 +537,7 @@
     },
     "WOOWTECH/Woow_ha_mcp_addons": {
       "upgrade_comparison": {
-        "skip_vulnerability_scan": "#123: mcp_addons builds no image in its PRs (only on woow-disposable-builder); its vulnerability comparison (category 4) moves to #90"
+        "scan_published_image": "#148: mcp_addons builds images only on woow-disposable-builder; the readiness check makes the new version's amd64 image pullable from GHCR before merge, and that is the image users install"
       },
       "default_branch": "claude-delivery",
       "required_workflows": [
@@ -892,10 +892,7 @@
           "config_file": "config.yaml",
           "store_path": "woow_ha_pi_agent",
           "channel": "stable",
-          "enabled": true,
-          "upgrade_comparison": {
-            "skip_upgrade_test": "#158: host_network add-on; on the mock hassio bridge its watchdog (/api/home) never answers within the time limit; remove this skip once #158 lets the upgrade test run it"
-          }
+          "enabled": true
         }
       ]
     },

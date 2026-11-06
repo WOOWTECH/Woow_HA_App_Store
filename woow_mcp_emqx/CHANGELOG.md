@@ -1,3 +1,9 @@
+## 0.4.11 — images published and verified
+
+- Remove the experimental label (PR #59): the manifest declares `stage: stable` and the store description no longer starts with "Experimental;" (the image `io.hass.description` label follows). Runtime, tools, permissions and dependencies are unchanged from 0.4.10.
+- Security: the image's OS-package step also upgrades `apt` and `libapt-pkg6.0` to 2.6.2 from the signature-checked Debian security snapshot `20261104T124343Z` (CVE-2026-109518, High, fix available in the pinned Python base). Runtime, tools, permissions and Python/Node dependencies do not change.
+- Exact-source image `ghcr.io/woowtech/amd64-mcp-emqx@sha256:36fef7c4735d0b97cc50511ab08ebfae3703ded740e19e104412ad8940e1cd02` passed P1–P5, anonymous verification and fresh remote layer/diffID checks. See ../../docs/provenance/release-0.4.11-images.json and ../../docs/operations/release-decision-0.4.11.md. Stable Release/Store distribution and actual HAOS acceptance remain separate evidence.
+
 ## 0.4.10 — images published and verified
 
 - Synchronize 0.4.10 release metadata with the merged Odoo read-error/result-size correction. EMQX source now bounds public broker errors, rejects redirects, and omits raw broker responses and request paths. The gateway/fallback advertise 39 exact reviewed EMQX output schemas. Tool names, inputs, permissions and dependency contracts remain unchanged.

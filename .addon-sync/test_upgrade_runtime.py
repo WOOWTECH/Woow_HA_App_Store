@@ -46,8 +46,9 @@ class H(http.server.BaseHTTPRequestHandler):
     def do_PUT(self):
         open(D + '/items/' + self.path[7:], 'wb').write(self.rfile.read(int(self.headers['Content-Length'])))
         self.send_response(204); self.end_headers()
-# Like hamh and woow-tailscale (ingress_port: 0), serve on the ingress port Supervisor reports, if any.
-server = http.server.HTTPServer(('0.0.0.0', info.get('ingress_port') or 8080), H)
+# Like hamh and woow-tailscale (ingress_port: 0), serve on the ingress port Supervisor reports, if any; like pi_agent's
+# nginx (host_network, #158), only on the address Supervisor reports: binding fails unless it is in this namespace.
+server = http.server.HTTPServer((info['ip_address'], info.get('ingress_port') or 8080), H)
 if os.environ['MODE'] == 'answer-then-crash':
     # Answers its watchdog at once, then dies: a version that only looks started.
     import threading; threading.Thread(target=server.serve_forever, daemon=True).start(); time.sleep(4); os._exit(4)
@@ -142,6 +143,17 @@ checks = [('repo value', old['token'] == new['token'] == 'repo-token-value', '')
     ('optional password not generated', 'spare' not in new, ''),
     ('key only the new schema has', ('extra' in old, new.get('extra')) == (False, 'new only'), '')]
 json.dump({'checks': [{'name': n, 'result': 'pass' if ok else 'fail', 'detail': d} for n, ok, d in checks]}, open(os.environ['REPORT_DIR'] + '/verify.json', 'w'))
+sys.exit(0 if all(ok for _, ok, _ in checks) else 1)
+'''
+
+# #158: a host-network add-on is reached at the bridge gateway, from the Supervisor's address.
+VERIFY_HOST = r'''#!/usr/bin/env python3
+import json, os, sys, urllib.request
+env = dict(os.environ)
+body = urllib.request.urlopen(env['ADDON_URL'] + '/health', timeout=10).read().decode()
+checks = [('address', (env['ADDON_HOST'], env['ADDON_URL']) == ('172.30.32.1', 'http://172.30.32.1:8080'), env['ADDON_URL']),
+    ('answers on the gateway', body == '2', body)]
+json.dump({'checks': [{'name': n, 'result': 'pass' if ok else 'fail', 'detail': d} for n, ok, d in checks]}, open(env['REPORT_DIR'] + '/verify.json', 'w'))
 sys.exit(0 if all(ok for _, ok, _ in checks) else 1)
 '''
 
@@ -280,6 +292,63 @@ class IngressInfo(unittest.TestCase):
         envs = [rt.UpgradeTestEnv(tempfile.mkdtemp()) for _ in range(2)]
         for env in envs:self.addCleanup(shutil.rmtree, env.work)
         self.assertNotEqual(envs[0].ingress_token, envs[1].ingress_token)
+
+class HostNetwork(unittest.TestCase):
+    """#158: host_network: true runs the version in the host's namespace at the bridge gateway, as Supervisor does; any
+    other value changes nothing. No Docker: the docker command is recorded."""
+    VALUES = ({'host_network': True}, {}, {'host_network': False})
+    def config(self, **extra):
+        return {'slug': 'fake', 'version': '1.0.0', 'webui': 'http://[HOST]:[PORT:8080]/', **extra}
+    def start(self, config):
+        env = rt.UpgradeTestEnv(tempfile.mkdtemp()); self.addCleanup(shutil.rmtree, env.work)
+        with mock.patch.object(rt, 'docker', return_value='') as docker:container = env.start('old', 'image:1', config, {})
+        info = json.loads((env.state / 'addon.json').read_text(encoding='utf-8'))
+        return env, container, list(docker.call_args.args), info
+    def test_host_network_runs_in_the_hosts_namespace(self):
+        env, container, args, info = self.start(self.config(host_network=True))
+        self.assertEqual(args[:6], ['run', '-d', '--name', container, '--network', 'host'])
+        self.assertNotIn('--ip', args); self.assertNotIn(env.net, args)
+        # It still finds the mock Supervisor by name and gets its token.
+        for arg in ('supervisor:172.30.32.2', 'hassio:172.30.32.2', f'SUPERVISOR_TOKEN={env.token}', f'HASSIO_TOKEN={env.token}'):
+            self.assertIn(arg, args)
+        self.assertEqual(info['ip_address'], '172.30.32.1')
+    def test_without_host_network_the_arguments_are_unchanged(self):
+        for value in self.VALUES[1:]:
+            with self.subTest(value):
+                env, container, args, info = self.start(self.config(**value))
+                self.assertEqual(args, ['run', '-d', '--name', container, '--network', env.net, '--ip', '172.30.33.10', '--init',
+                    '--add-host', 'supervisor:172.30.32.2', '--add-host', 'hassio:172.30.32.2', '-e', f'SUPERVISOR_TOKEN={env.token}',
+                    '-e', f'HASSIO_TOKEN={env.token}', '-e', 'TZ=UTC', '--mount', f'type=bind,source={env.data.as_posix()}/data,target=/data', 'image:1'])
+                self.assertEqual(info['ip_address'], '172.30.33.10')
+    def test_the_hooks_address_is_the_gateway(self):
+        env = rt.UpgradeTestEnv(tempfile.mkdtemp()); self.addCleanup(shutil.rmtree, env.work)
+        for value, host in zip(self.VALUES, ('172.30.32.1', '172.30.33.10', '172.30.33.10')):
+            with self.subTest(value):
+                hook = env.hook_env('new', 'i', self.config(**value))
+                self.assertEqual((hook['ADDON_HOST'], hook['ADDON_URL']), (host, f'http://{host}:8080'))
+                self.assertEqual(rt.addon_url({'slug': 'fake', **value}), f'http://{host}')
+                self.assertEqual(rt.addon_url({'ingress': True, 'ingress_port': 8099, **value}), f'http://{host}:8099')
+    def test_the_probe_asks_each_version_at_its_own_address(self):
+        # The comparison target and the new version may differ: each version's config.yaml decides for it.
+        work = pathlib.Path(tempfile.mkdtemp()); self.addCleanup(shutil.rmtree, work, True)
+        (work / 'addon/upgrade-check').mkdir(parents=True)
+        (work / 'addon/upgrade-check/settings.yaml').write_text('stable_seconds: 1\n', encoding='utf-8')
+        urls = []
+        class Env:
+            prefix = 'upgrade-test-stub'
+            def __init__(self, *a):pass
+            def open(self):pass
+            def start(self, phase, *a):return f'stub-{phase}'
+            def probe(self, url, below, timeout=5):urls.append(url); return True
+            def fetch(self, url):return ''
+            def stop(self, *a):pass
+            def supervisor_calls(self):return {'unmocked': [], 'broken_fixtures': []}
+            def close(self):pass
+        config = lambda v, **extra:{'slug': 'fake', 'version': v, 'watchdog': 'http://[HOST]:[PORT:8080]/health', **extra}
+        with mock.patch.object(rt, 'UpgradeTestEnv', Env), mock.patch.object(rt, '_down', return_value=''), mock.patch.object(rt, '_logs', return_value=''):
+            result = rt.upgrade_test('fake', str(work / 'addon'), 'old:1', config('1.0.0', host_network=True), 'new:1', config('1.1.0'), str(work / 'w'))
+        self.assertTrue(result['passed'], result['reason'])
+        self.assertEqual(urls, ['http://172.30.32.1:8080/health', 'http://172.30.33.10:8080/health'])
 
 @unittest.skipUnless(docker_ok(), 'needs a Docker daemon (present on GitHub runners)')
 class Runtime(unittest.TestCase):
@@ -450,6 +519,32 @@ class Runtime(unittest.TestCase):
         with mock.patch.object(rt.UpgradeTestEnv, 'close', keep_log):
             code, result, out = self.run_test('good', 'good')
         self.assertEqual(code, 0, out); self.assertEqual(seen[0].splitlines(), ['GET /addons/self/info 200'] * 2)
+    def network_modes(self):
+        """Record each version's docker network mode as it stops (UpgradeTestEnv.stop): the list it fills."""
+        modes, stop = [], rt.UpgradeTestEnv.stop
+        def record(env, container, config):
+            modes.append(subprocess.run(['docker', 'inspect', '-f', '{{.HostConfig.NetworkMode}}', container], capture_output=True, text=True).stdout.strip())
+            stop(env, container, config)
+        patch = mock.patch.object(rt.UpgradeTestEnv, 'stop', record); patch.start(); self.addCleanup(patch.stop)
+        return modes
+    def test_host_network_add_on_listens_on_the_gateway_and_finds_the_supervisor(self):
+        # #158, pi_agent: the fake binds the address /addons/self/info reports (172.30.32.1), which exists only in the
+        # host's namespace; it still reaches the mock Supervisor by name, and the probe and hooks reach it there.
+        self.settings(stable_seconds=3); self.hook('verify', VERIFY_HOST); modes = self.network_modes()
+        code, result, out = self.run_test('good', 'good', host_network=True, **self.DATA_CONFIG)
+        self.assertEqual(code, 0, out + json.dumps(result, indent=1)); self.assertTrue(result['passed'])
+        self.assertEqual(modes, ['host', 'host'])
+        self.assertIn('the watchdog http://172.30.32.1:8080/health answered with success', result['phases'][0]['detail'])
+        self.assertEqual([c['result'] for c in result['phases'][1]['hooks'][0]['checks']], ['pass', 'pass'])
+        self.assertEqual(leftovers(), [])
+    def test_each_version_runs_on_the_network_its_config_says(self):
+        # The comparison target has host_network, the new version not: each is probed at its own address.
+        self.settings(stable_seconds=3); modes = self.network_modes()
+        code, result, out = self.run_test('good', 'good', watchdog='http://[HOST]:[PORT:8080]/health', sides={'old': {'host_network': True}})
+        self.assertEqual(code, 0, out + json.dumps(result, indent=1))
+        self.assertEqual((modes[0], modes[1].startswith('upgrade-test-')), ('host', True))
+        self.assertEqual([p['detail'].split(' answered')[0] for p in result['phases']],
+            ['the watchdog http://172.30.32.1:8080/health', 'the watchdog http://172.30.33.10:8080/health'])
     def test_settings_that_are_not_a_mapping_fail_with_the_reason(self):
         (self.dir / 'addon/upgrade-check').mkdir()
         (self.dir / 'addon/upgrade-check/settings.yaml').write_text('- 5\n', encoding='utf-8')

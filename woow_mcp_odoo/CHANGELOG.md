@@ -1,3 +1,9 @@
+## 0.4.11 — images published and verified
+
+- Remove the experimental label (PR #59): the manifest declares `stage: stable` and the store description no longer starts with "Experimental;" (the image `io.hass.description` label follows). Runtime, tools, permissions and dependencies are unchanged from 0.4.10.
+- Security: the image's OS-package step also upgrades `apt` and `libapt-pkg6.0` to 2.6.2 from the signature-checked Debian security snapshot `20261104T124343Z` (CVE-2026-109518, High, fix available in the pinned Python base). Runtime, tools, permissions and Python/Node dependencies do not change.
+- Exact-source image `ghcr.io/woowtech/amd64-mcp-odoo@sha256:f198a3c9c99618b18e85a22fae7920bbbccca90f76c6f181da64baa744a95b77` passed P1–P5, anonymous verification and fresh remote layer/diffID checks. See ../../docs/provenance/release-0.4.11-images.json and ../../docs/operations/release-decision-0.4.11.md. Stable Release/Store distribution and actual HAOS acceptance remain separate evidence.
+
 ## 0.4.10 — images published and verified
 
 - Carry merged PR #46: upstream `search_read`/`read_records` failures propagate to tool errors instead of a false success with zero rows. `search_records`/`read_record` successful results above the default 2 MiB bound return `success:false` and MCP `isError:true`, naming the largest fields. Smaller results, tool names, inputs and grants retain their contracts.
