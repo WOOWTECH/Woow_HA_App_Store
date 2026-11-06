@@ -13,6 +13,9 @@ upgrade-notes.yaml with a reason. Already in the old image, no fixed version,
 or below High: counted in the report only. No network, no Docker: the reusable
 workflow woow-addon-upgrade-check.yml fetches the inputs and calls this.
 
+sha mode (#167): a source with no PR compares one commit before its Releases are cut (release_change(): what changed;
+sha_verdicts(): which add-ons passed, the workflow's output `passed`).
+
 Category 3 (regression comparison, #139): the checks of the add-on's smoke hook
 on the comparison target and on the new version, compared by name in the
 upgrade test's result (regression(); upgrade_runtime.py runs the hook).
@@ -35,10 +38,10 @@ values, required made optional, added optional keys (not maps), added keys with 
 upgrade-notes.yaml format, version order and Release notes (#119): addon_sync, the comment above REBUILD.
 """
 from __future__ import annotations
-import argparse, contextlib, datetime, json, os, pathlib, re, secrets, sys
+import argparse, contextlib, datetime, functools, json, os, pathlib, re, secrets, sys
 import yaml
 # addon_sync owns the Release rules (version order, upgrade-notes.yaml parsing, Release notes); it does not import this module.
-from addon_sync import Blocked, comparison_target, config_version, declaration_text, declarations, find_component, find_provider, locations, markdown_cell, publishes_releases, release_notes, release_tag, require_newer, source_file, stable_versions, version_cmp, workflow_command
+from addon_sync import Blocked, Form, _read, comparison_target, config_version, declaration_text, declarations, find_component, find_provider, locations, markdown_cell, publishes_releases, release_notes, release_tag, require_newer, source_file, stable_versions, version_cmp, workflow_command
 
 RANGED={'int','float','str'}
 
@@ -262,6 +265,45 @@ def check_target(version, target, config, target_config_version, tag_version=Non
     except ValueError:same=False
     if not same:raise ValueError(f'the comparison target {target} is version {tag_version} by its tag but {target_config_version} by {config}; correct that Release so its tag and config agree, then re-run this check')
     require_newer(version,target_config_version)
+
+# sha mode (#167, pipeline #91): a source with no PR (a Mirror 來源's mirror-sync) is compared at one commit before its
+# Releases are cut. The workflow's sha input names the commit; these two rules decide what is compared and what passed.
+SHA_FORMAT=re.compile(r'[0-9a-f]{40}')
+
+def release_change(provider, comp, releases, version, sha):
+    """sha mode (#167): 'unchanged' when `version` (the add-on's at commit `sha`, as written) is the version of its
+    latest stable Release (the one comparison_target picks) as its tag writes it, so the Release workflow has nothing
+    to release (release(): that tag exists); else 'changed'. A changed add-on is compared with that Release; one that
+    is not newer (a downgrade, the same version written differently) or cannot be ordered against it is 'changed' too
+    and fails in the plan (comparison-target, require_newer), as on a PR; with no stable Release there is no
+    comparison target. Without a PR base, the latest stable Release is what users run, so a re-run at the same commit
+    after a failed check compares again (a declaration added since, #91). ValueError when `sha` is not a full commit
+    id (a branch could move) or the provider is not ref_policy release: sha mode gates Releases, and a ref_policy main
+    source ships its default branch whatever this check says."""
+    if not isinstance(sha,str) or not SHA_FORMAT.fullmatch(sha):raise ValueError(f'sha must be a full commit id (40 lower-case hex digits), not {sha!r}')
+    if provider.get('ref_policy')!='release':
+        raise ValueError(f'{comp["id"]}: sha mode compares with the latest stable Release before Releases are cut, but the Store registry gives ref_policy '
+            f'{provider.get("ref_policy")!r}, which ships the default branch; switch the provider to ref_policy release first')
+    whole=[v for v in stable_versions(provider,comp,releases) if _read(v)[0]==Form.WHOLE]
+    latest=max(whole,key=functools.cmp_to_key(version_cmp),default=None)
+    return 'unchanged' if latest is not None and version==latest else 'changed'
+
+def sha_verdicts(components, unchanged, planned, compared, results, runtime_failed):
+    """sha mode (#167): each add-on's verdict, in the order of `components` (the ids `components()` gives):
+    'unchanged' (in `unchanged`: its version is its latest stable Release's, not compared), 'passed' or 'failed'.
+    Passed needs positive evidence from both jobs: the add-on is in the compare job's plan (`planned`), its comparison
+    (categories 1 and 4) passed (`compared`), and its upgrade test result (categories 2 and 3; `results`, the runtime
+    job's runtime-reports, {name: passed}) is there and not failed: passed true, or null when the test did not run (no
+    comparison target, an approved skip), as on a PR; and 'Upgrade test result' failed it for nothing else
+    (`runtime_failed`, e.g. its data-check deadline). Every other add-on failed, also one a step dropped or never
+    reached (a tool error), so nothing passes without being judged."""
+    out=[]
+    for cid in components:
+        if cid in unchanged:verdict='unchanged'
+        elif cid in planned and cid in compared and cid in results and results[cid] is not False and cid not in runtime_failed:verdict='passed'
+        else:verdict='failed'
+        out.append({'id':cid,'verdict':verdict})
+    return out
 
 def _load(path, fmt, optional=False):
     """Parsed `fmt` ('yaml' or 'json') file, or None when `path` is not given or, if `optional`, does not exist."""
@@ -644,6 +686,35 @@ def _comparison_target(a):
     if target is not None:print(release_tag(provider,comp,target)+'\t'+target)
     return 0
 
+def _release_change(a):
+    # Like comparison-target: the registry lookup, Release filter and tag rule are addon_sync's.
+    with _failing((ValueError,KeyError,TypeError,OSError)):provider,comp=find_component(_load(a.registry,'json'),a.repo,a.component)  # names the repository and add-on
+    with _failing((ValueError,KeyError,TypeError,AttributeError,OSError),f'Releases of {a.repo} {a.component}: '):
+        releases=json.load(sys.stdin)
+        if not isinstance(releases,list):raise ValueError('stdin is not a JSON array of Releases')
+    with _failing(ValueError):print(release_change(provider,comp,releases,a.version,a.sha))
+    return 0
+
+def _lines(path):
+    """The non-empty lines of a file the workflow writes as it goes; an absent file (the step never got there) is none."""
+    p=pathlib.Path(path)
+    return [l.strip() for l in p.read_text(encoding='utf-8').splitlines() if l.strip()] if p.exists() else []
+
+def _sha_verdicts(a):
+    # Fails (exit 2) only when the provider's add-ons are unknown; every other missing file means "not judged", so failed.
+    with _failing((ValueError,KeyError,TypeError,OSError)):
+        components=[c['id'] for c in _load(a.provider,'json')['components']]
+        planned=set()
+        for line in _lines(a.plan):
+            with contextlib.suppress(ValueError,KeyError,TypeError,AttributeError):planned.add(json.loads(line)['id'])
+        results={}
+        for p in sorted(pathlib.Path(a.runtime_reports).glob('*.json')) if a.runtime_reports else []:
+            with contextlib.suppress(ValueError,KeyError,TypeError,AttributeError,OSError):
+                r=json.loads(p.read_text(encoding='utf-8'));results[r['name']]=r.get('passed')
+        verdicts=sha_verdicts(components,set(_lines(a.unchanged)),planned,set(_lines(a.compared)),results,set(_lines(a.runtime_failed)))
+    print(json.dumps({'passed':[v['id'] for v in verdicts if v['verdict']=='passed'],'verdicts':verdicts}))
+    return 1 if any(v['verdict']=='failed' for v in verdicts) else 0
+
 def _version_command(a):
     with _failing((ValueError,OSError,yaml.YAMLError),f'{a.name}: {a.path or a.file}: '):print(config_version(pathlib.Path(a.file).read_text(encoding='utf-8'),a.as_written) or '')
     return 0
@@ -699,6 +770,8 @@ def _regression(a):
     with _failing((ValueError,KeyError,TypeError,AttributeError,OSError),f'{a.result}: '):r=regression(_load(a.result,'json'))
     print(json.dumps(r));return 0 if r['passed'] else 1
 COMMANDS['regression']=_regression  # #139
+COMMANDS['release-change']=_release_change  # #167
+COMMANDS['sha-verdicts']=_sha_verdicts  # #167
 
 def main(argv=None):
     p=argparse.ArgumentParser(description=__doc__.splitlines()[0]);sub=p.add_subparsers(dest='command',required=True)
@@ -745,6 +818,16 @@ def main(argv=None):
     x=sub.add_parser('upgrade-test-skip',help="print the reason the Store registry approves for skipping the add-on's upgrade test (categories 2 and 3); nothing when none (upgrade_test_skip())")
     x.add_argument('--registry',required=True,help='Store registry.json');x.add_argument('--repo',required=True,help='source repository, owner/name')
     x.add_argument('--component',required=True,help='add-on id in the registry');x.add_argument('--settings',help='upgrade-check/settings.yaml of the add-on (may be absent)')
+    w=sub.add_parser('release-change',help="sha mode (#167): read the repository's Releases (GitHub API JSON array) on stdin and print 'unchanged' when --version is "
+        "the version of the add-on's latest stable Release, else 'changed' (release_change())")
+    w.add_argument('--registry',required=True,help='Store registry.json');w.add_argument('--repo',required=True,help='source repository, owner/name')
+    w.add_argument('--component',required=True,help='add-on id in the registry');w.add_argument('--version',required=True,help='its version at the commit, as written')
+    w.add_argument('--sha',required=True,help='the commit (the workflow input sha), a full commit id')
+    y=sub.add_parser('sha-verdicts',help="sha mode (#167): print {passed: [add-on ids], verdicts: [{id, verdict}]} as JSON from what the compare job wrote (sha_verdicts()); "
+        "exits 1 when an add-on failed")
+    y.add_argument('--provider',required=True,help="provider.json (upgrade_check.py components)");y.add_argument('--unchanged',required=True,help='ids whose version is unchanged, one per line (may be absent)')
+    y.add_argument('--plan',required=True,help="the compare job's plan.jsonl (may be absent)");y.add_argument('--compared',required=True,help='ids whose comparison passed, one per line (may be absent)')
+    y.add_argument('--runtime-reports',required=True,help="directory of the runtime job's results, <id>.json");y.add_argument('--runtime-failed',required=True,help="ids 'Upgrade test result' failed, one per line (may be absent)")
     a=p.parse_args(argv)
     try:return COMMANDS[a.command](a)
     except _Failed as e:
