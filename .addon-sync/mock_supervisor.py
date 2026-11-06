@@ -17,8 +17,8 @@ upgrade_runtime.py runs this in a container at the Supervisor's address
                        sets it) or a tcp://host:port accepts a connection.
 
 The minimal API: /addons/self/info, /addons/self/options/config,
-/addons/self/stats, /info, /os/info, /core/info, /network/info and
-/supervisor/ping. Every method (GET, POST, HEAD, PATCH...) is answered the
+/addons/self/stats, /info, /os/info, /core/info, /network/info, /dns/info
+and /supervisor/ping. Every method (GET, POST, HEAD, PATCH...) is answered the
 same way. A path loses its query and trailing slash; /addons/<the add-on's
 slug>/... is /addons/self/..., and /addons/self is /addons/self/info
 (canonical()). Any other path answers 404 and summary() lists it as an
@@ -44,7 +44,10 @@ TOKEN = os.environ.get('SUPERVISOR_TOKEN', '')
 STATE = pathlib.Path('/state')
 FIXTURES = None  # the repo's fixtures directory (serve --fixtures), or None
 SEGMENT = re.compile(r'[A-Za-z0-9_-][A-Za-z0-9._-]*')
-VERSIONS = {'supervisor': '2026.10.0', 'homeassistant': '2026.10.1', 'os': '16.2'}
+VERSIONS = {'supervisor': '2026.10.0', 'homeassistant': '2026.10.1', 'os': '16.2', 'dns': '2026.10.0'}
+# The mock host's LAN and the add-ons' docker network: /network/info and /dns/info report the same addresses.
+HOST_NAMESERVER = '192.168.1.1'
+DOCKER_DNS = '172.30.32.3'
 
 def _addon():
     return json.loads((STATE / 'addon.json').read_text(encoding='utf-8'))
@@ -67,11 +70,16 @@ def _core_info():
 
 def _network_info():
     return {'interfaces': [{'interface': 'eth0', 'type': 'ethernet', 'enabled': True, 'connected': True, 'primary': True,
-            'mac': '02:42:ac:11:00:02', 'ipv4': {'method': 'auto', 'address': ['192.168.1.10/24'], 'nameservers': ['192.168.1.1'],
+            'mac': '02:42:ac:11:00:02', 'ipv4': {'method': 'auto', 'address': ['192.168.1.10/24'], 'nameservers': [HOST_NAMESERVER],
                 'gateway': '192.168.1.1', 'ready': True},
             'ipv6': {'method': 'disabled', 'address': [], 'nameservers': [], 'gateway': None, 'ready': False}, 'wifi': None, 'vlan': None}],
-        'docker': {'interface': 'hassio', 'address': '172.30.32.0/23', 'gateway': '172.30.32.1', 'dns': '172.30.32.3'},
+        'docker': {'interface': 'hassio', 'address': '172.30.32.0/23', 'gateway': '172.30.32.1', 'dns': DOCKER_DNS},
         'host_internet': True, 'supervisor_internet': True}
+
+def _dns_info():
+    # Supervisor's api/dns.py: `host` is the DNS plugin's address on the docker network, `locals` the host's nameservers.
+    return {'version': VERSIONS['dns'], 'version_latest': VERSIONS['dns'], 'update_available': False, 'host': DOCKER_DNS,
+        'servers': [], 'locals': [f'dns://{HOST_NAMESERVER}'], 'mdns': True, 'llmnr': True, 'fallback': True}
 
 def normalize(path):
     """The path an API call is routed, looked up and summarized by: no query, no trailing slash."""
@@ -115,7 +123,8 @@ def route(path):
             'network_rx': 0, 'network_tx': 0, 'blk_read': 0, 'blk_write': 0}
     if path == '/supervisor/ping':
         return 200, {}
-    data = {'/info': _info, '/os/info': _os_info, '/core/info': _core_info, '/network/info': _network_info}.get(path)
+    data = {'/info': _info, '/os/info': _os_info, '/core/info': _core_info, '/network/info': _network_info,
+        '/dns/info': _dns_info}.get(path)
     return (200, data()) if data else (404, None)
 
 class Handler(http.server.BaseHTTPRequestHandler):
