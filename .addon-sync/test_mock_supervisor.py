@@ -78,6 +78,26 @@ class Tests(unittest.TestCase):
         # Paths without a fixture keep their default.
         self.assertEqual(mock.call('/os/info')[1]['data'], m._os_info())
 
+    def test_dns_info_answers_with_the_docker_network_dns_address(self):
+        # #163: bashio::dns.host (nginxpm's init-nginx) reads /dns/info; a 404 stopped the add-on.
+        mock = self.mock()
+        status, body = mock.call('/dns/info')
+        self.assertEqual((status, body['result']), (200, 'ok'))
+        dns = body['data']
+        network = mock.call('/network/info')[1]['data']
+        self.assertEqual(dns['host'], network['docker']['dns'])
+        self.assertEqual(dns['host'], '172.30.32.3')
+        for key in ('version', 'version_latest', 'update_available', 'servers', 'locals', 'mdns', 'llmnr', 'fallback'):
+            self.assertIn(key, dns)
+        self.assertEqual(dns['locals'], [f'dns://{s}' for s in network['interfaces'][0]['ipv4']['nameservers']])
+        self.assertEqual(mock.call('/dns/info/?x=1')[1]['data'], dns)
+        self.assertEqual(mock.summary(), {'unmocked': [], 'broken_fixtures': []})
+
+    def test_a_dns_info_fixture_beats_the_default(self):
+        mock = self.mock({'dns/info.json': {'host': '172.30.32.99', 'servers': ['dns://1.1.1.1']}})
+        self.assertEqual(mock.call('/dns/info'), (200, {'result': 'ok', 'data': {'host': '172.30.32.99', 'servers': ['dns://1.1.1.1']}}))
+        self.assertEqual(mock.summary(), {'unmocked': [], 'broken_fixtures': []})
+
     def test_an_info_fixture_is_laid_over_the_runtime_info_on_every_alias(self):
         # The runtime writes version, options and ingress_port per version: the fixture must not wipe them.
         mock = self.mock({'addons/self/info.json': {'hostname': 'from-fixture', 'version': '9.9.9'}})
