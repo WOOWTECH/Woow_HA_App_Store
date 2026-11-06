@@ -55,7 +55,12 @@
 # has upgrade_comparison.skip_upgrade_test (the approved reason and ticket):
 # then categories 2 and 3 are skipped and the report gives that reason. The
 # registry alone decides; there is no caller input. Callers that pass no
-# image_artifact are reported as not run yet (rolled out in #143). Add-ons built
+# image_artifact are reported as not run yet (rolled out in #143). A provider
+# with upgrade_comparison.scan_published_image (category 4 above; knxd, #154)
+# needs no image_artifact: its new image is the published one the PR's config
+# names (image's amd64 tag <version>), pulled like the comparison target's,
+# and a PR whose version's image is not published yet fails as the PR's fault
+# (the same message as category 4). Add-ons built
 # on the device (#144) have no image to pull or hand over, so the runtime job
 # builds both for amd64 as Supervisor does (upgrade_check.py build-args): the
 # new one from the PR checkout, the comparison target's from its source at the
@@ -84,7 +89,7 @@
 #     uses: WOOWTECH/Woow_HA_App_Store/.github/workflows/woow-addon-upgrade-check.yml@main
 #     with:
 #       sbom_artifact: upgrade-comparison-sbom-*  # omit only when no add-on has a prebuilt image, or with scan_published_image
-#       image_artifact: upgrade-comparison-image-*  # the upgrade test; omit until the repository is rolled out (#143), and when every add-on is built on the device
+#       image_artifact: upgrade-comparison-image-*  # the upgrade test; omit until the repository is rolled out (#143), when every add-on is built on the device, and with scan_published_image
 #       # skip_vulnerability_scan: "<reason>"      # instead of sbom_artifact, only when category 4 does not apply (quote it)
 #
 # GitHub names the check "<caller job> / <job>": "Upgrade comparison / compare".
@@ -110,7 +115,7 @@ name: Upgrade comparison
         type: number
         default: 40
       image_artifact:
-        description: Name or glob of the artifacts the addon-image action uploads in the same run (upgrade-comparison-image-<component>-attempt-<run attempt>; pass upgrade-comparison-image-*); empty = the upgrade test of add-ons with a prebuilt image is not run yet (#143). Add-ons built on the device need none (#144).
+        description: Name or glob of the artifacts the addon-image action uploads in the same run (upgrade-comparison-image-<component>-attempt-<run attempt>; pass upgrade-comparison-image-*); empty = the upgrade test of add-ons with a prebuilt image is not run yet (#143). Add-ons built on the device need none (#144), nor providers the Store registry approves with scan_published_image, whose new image is pulled (#154).
         type: string
         default: ''
       image_wait_minutes:
@@ -240,8 +245,9 @@ jobs:
         source tooling/.addon-sync/gh_raw.sh
         source tooling/.addon-sync/log.sh
         source tooling/.addon-sync/fields.sh
+        source tooling/.addon-sync/images.sh
         policy="$(jq -r '.ref_policy' provider.json)"; approved="$(jq -r '.skip_vulnerability_scan' provider.json)"
-        published="$(jq -r '.scan_published_image' provider.json)"
+        scan_published="$(jq -r '.scan_published_image' provider.json)"
         releases="$(gh api --paginate "repos/${REPO}/releases?per_page=100" --jq '.[]' | jq -sc .)"
         # plan.jsonl, one object per add-on: id, notes (path in the PR), new (where the detect step left the PR's config),
         # target, ref (old image; "" = no scan), new_ref (with scan_published_image the new image to pull; "" = the caller's
@@ -298,10 +304,10 @@ jobs:
             note="no comparison target"
           elif [ -z "$(yq -r '.image // ""' "${old}")" ]; then
             note="the comparison target ${target} has no prebuilt image"
-          elif [ -n "${published}" ]; then
-            # The image users would install from this PR (Supervisor: image with {arch}, tag = version); pulled, not built.
+          elif [ -n "${scan_published}" ]; then
+            # The image users would install from this PR; pulled, not built.
             no_cntrl "${image}" "${id}: the image in ${path} has a control character (newline, tab...): ${image}" || exit 1
-            new_ref="${image//\{arch\}/amd64}:${version}"; scan_old=1
+            new_ref="$(amd64_ref "${image}" "${version}")"; scan_old=1
           elif [ -z "${SBOM_ARTIFACT}" ]; then
             fail "${id} has a prebuilt image but the caller passes no sbom_artifact; run the addon-sbom action after the amd64 build and pass sbom_artifact: upgrade-comparison-sbom-*"
             status=1
@@ -316,7 +322,7 @@ jobs:
           if [ -n "${scan_old}" ]; then
             old_image="$(yq -r '.image' "${old}")"
             no_cntrl "${old_image}" "${id}: the comparison target ${target} has a control character (newline, tab...) in its image: ${old_image}" || exit 1
-            ref="${old_image//\{arch\}/amd64}:${old_version}"
+            ref="$(amd64_ref "${old_image}" "${old_version}")"
           fi
           jq -nc --arg id "${id}" --arg notes "${notes}" --arg new "${new}" --arg target "${target}" --arg ref "${ref}" \
             --arg new_ref "${new_ref}" --arg artifact "${artifact}" --arg note "${note}" '$ARGS.named' >> plan.jsonl
@@ -352,6 +358,7 @@ jobs:
         set -euo pipefail
         source tooling/.addon-sync/log.sh
         source tooling/.addon-sync/fields.sh
+        source tooling/.addon-sync/images.sh
         export SYFT_CHECK_FOR_APP_UPDATE=false
         mkdir -p sboms
         while IFS= read -r row; do
@@ -360,7 +367,7 @@ jobs:
             fail "${id}: cannot pull the comparison target's image ${ref} from the registry; re-run, or check that the image of ${target} exists"; exit 1
           fi
           if [ -n "${new_ref}" ] && ! docker pull --quiet --platform linux/amd64 "${new_ref}"; then
-            fail "${id}: cannot pull ${new_ref}, the image users would install with this PR: tag ${new_ref##*:} of ${new_ref%:*} is not published yet (or the registry is unreachable); publish it first (its upstream's release for a third-party image, the repository's own image publication otherwise) or bump to a version whose image is published, then re-run"; exit 1
+            fail "${id}: $(unpublished_reason "${new_ref}")"; exit 1
           fi
           for side in old new; do
             image="${ref}"; sbom="$RUNNER_TEMP/${id}.old.syft.json"
@@ -568,18 +575,32 @@ jobs:
         set -euo pipefail
         source tooling/.addon-sync/log.sh
         source tooling/.addon-sync/fields.sh
+        source tooling/.addon-sync/images.sh
         # upgrade.jsonl, one object per add-on: id, addon_dir, new, test (whether it is tested), artifact, old_ref (the
         # comparison target's prebuilt image to pull; "" = rebuilt), old_src (the target's tag or commit to rebuild it from,
-        # #144) and new_src ("pr" = built from the PR checkout, #144; "" = the caller's addon-image artifact).
+        # #144), new_src and new_ref (with new_src published, the new image to pull; else "").
+        # new_src, where the new image comes from; every later step compares it with one of these names, never with "":
+        #   artifact   the caller's addon-image artifact: "Wait for the new images" and "Load the new images"
+        #   pr         built from the PR checkout (#144): "Build the images of add-ons built on the device"
+        #   published  pulled from the registry (#154): "Pull the images"
+        # The provider's scan_published_image approval (#147, #148), as the plan step reads it: the shipped image is the
+        # published one the PR's config names, not one the caller's PR builds, so it is the one tested (#154).
+        scan_published="$(jq -r '.scan_published_image' provider.json)"
         mkdir -p runtime-reports; : > upgrade.jsonl; status=0
         while IFS= read -r row; do
           fields "${row}" id=id notes=notes new=new target=target
-          old="$RUNNER_TEMP/${id}.old.yaml"; image="$(yq -r '.image // ""' "${new}")"; note=""; not_run=""; old_ref=""; old_src=""; new_src=""
+          old="$RUNNER_TEMP/${id}.old.yaml"; image="$(yq -r '.image // ""' "${new}")"; note=""; not_run=""; old_ref=""; old_src=""; new_src=artifact; new_ref=""
           artifact="upgrade-comparison-image-${id}-attempt-${RUN_ATTEMPT}"
           # not_run: why the test does not run, a code for compare's data-check deadline (#141); note says it to people.
           if [ ! -s "${old}" ]; then note="no comparison target"; not_run=no_target
           # Built on the device (no image in the PR's config): this job builds the new image from the PR checkout.
           elif [ -z "${image}" ]; then new_src=pr
+          # scan_published_image: the image users would install with this PR, pulled in "Pull the images"; no
+          # image_artifact is awaited, so the caller's glob is not checked.
+          elif [ -n "${scan_published}" ]; then
+            new_version="$(python3 tooling/.addon-sync/upgrade_check.py version --file "${new}" --name "${id}")" || fail_output "${new_version}"
+            no_cntrl "${image}${new_version}" "${id}: the PR's config has a control character (newline, tab...) in its image or version" || exit 1
+            new_src=published; new_ref="$(amd64_ref "${image}" "${new_version}")"
           elif [ -z "${IMAGE_ARTIFACT}" ]; then note="the caller passes no image_artifact; the upgrade test is being rolled out in #143"; not_run=no_image_artifact
           # shellcheck disable=SC2053 # IMAGE_ARTIFACT is a glob on purpose
           elif [[ "${artifact}" != ${IMAGE_ARTIFACT} ]]; then
@@ -591,7 +612,7 @@ jobs:
             if [ -n "${old_image}" ]; then
               old_version="$(python3 tooling/.addon-sync/upgrade_check.py version --file "${old}" --name "${id}")" || fail_output "${old_version}"
               no_cntrl "${old_image}${old_version}" "${id}: the comparison target ${target} has a control character (newline, tab...) in its image or version" || exit 1
-              old_ref="${old_image//\{arch\}/amd64}:${old_version}"
+              old_ref="$(amd64_ref "${old_image}" "${old_version}")"
             else
               # Built on the device at the comparison target: rebuilt from its source, its Release tag or, under
               # ref_policy main, the commit on the PR base where its version first appeared (the plan's target).
@@ -602,25 +623,32 @@ jobs:
             echo "- ${id}: upgrade test not run (${note})" >> "$GITHUB_STEP_SUMMARY"
           fi
           jq -nc --arg id "${id}" --arg addon_dir "source/$(dirname "${notes}")" --arg new "${new}" --argjson test "$([ -z "${note}" ] && echo true || echo false)" \
-            --arg artifact "${artifact}" --arg old_ref "${old_ref}" --arg old_src "${old_src}" --arg new_src "${new_src}" '$ARGS.named' >> upgrade.jsonl
+            --arg artifact "${artifact}" --arg old_ref "${old_ref}" --arg old_src "${old_src}" --arg new_src "${new_src}" --arg new_ref "${new_ref}" \
+            '$ARGS.named' >> upgrade.jsonl
         done < plan.jsonl
         if [ -n "$(jq -r 'select(.test) | .id' upgrade.jsonl)" ]; then echo "run=true" >> "$GITHUB_OUTPUT"; else echo "run=false" >> "$GITHUB_OUTPUT"; fi
-        if [ -n "$(jq -r 'select(.test and (.old_src != "" or .new_src != "")) | .id' upgrade.jsonl)" ]; then echo "build=true" >> "$GITHUB_OUTPUT"; else echo "build=false" >> "$GITHUB_OUTPUT"; fi
-        if [ -n "$(jq -r 'select(.test and .new_src == "") | .id' upgrade.jsonl)" ]; then echo "wait=true" >> "$GITHUB_OUTPUT"; else echo "wait=false" >> "$GITHUB_OUTPUT"; fi
+        if [ -n "$(jq -r 'select(.test and (.old_src != "" or .new_src == "pr")) | .id' upgrade.jsonl)" ]; then echo "build=true" >> "$GITHUB_OUTPUT"; else echo "build=false" >> "$GITHUB_OUTPUT"; fi
+        if [ -n "$(jq -r 'select(.test and .new_src == "artifact") | .id' upgrade.jsonl)" ]; then echo "wait=true" >> "$GITHUB_OUTPUT"; else echo "wait=false" >> "$GITHUB_OUTPUT"; fi
         exit "${status}"
     # While the caller's amd64 build is still running.
-    - name: Pull the comparison targets' images
+    - name: Pull the images
       if: steps.upgrade.outputs.run == 'true'
       run: |
         set -euo pipefail
         source tooling/.addon-sync/log.sh
         source tooling/.addon-sync/fields.sh
+        source tooling/.addon-sync/images.sh
         # #140: an add-on whose comparison target cannot be pulled fails with the reason (target_failed) and leaves the
         # test (test false); the others are still tested, and "Run the upgrade tests" fails the job for it at the end.
+        # #154: with scan_published_image (new_src published) the new image is pulled too, first, so a PR whose version's
+        # image is not published is the PR's fault (addon_failed) whatever its comparison target does; the same contract.
         : > pulled.jsonl
         while IFS= read -r row; do
-          fields "${row}" id=id ref=old_ref
-          if [ -n "${ref}" ] && ! docker pull --quiet --platform linux/amd64 "${ref}"; then
+          fields "${row}" id=id ref=old_ref test=test new_src='new_src // "artifact"' new_ref='new_ref // ""'
+          if [ "${test}" = true ] && [ "${new_src}" = published ] && ! docker pull --quiet --platform linux/amd64 "${new_ref}"; then
+            addon_failed "${id}" "$(unpublished_reason "${new_ref}")"
+            row="$(jq -c '.test = false' <<<"${row}")"
+          elif [ "${test}" = true ] && [ -n "${ref}" ] && ! docker pull --quiet --platform linux/amd64 "${ref}"; then
             target_failed "${id}" "cannot pull the comparison target's image ${ref} from the registry, so the upgrade cannot be tested; re-run, or check that the image exists"
             row="$(jq -c '.test = false' <<<"${row}")"
           fi
@@ -663,7 +691,7 @@ jobs:
         declare -A trees=()
         : > built.jsonl
         while IFS= read -r row; do
-          fields "${row}" id=id new=new old_src=old_src new_src=new_src test=test
+          fields "${row}" id=id new=new old_src=old_src new_src='new_src // "artifact"' test=test
           fields "$(jq -c --arg id "${id}" '.components[] | select(.id == $id)' provider.json)" path=config previous=previous_config
           if [ "${test}" = true ] && [ "${new_src}" = pr ] && ! build "${id}" new "$(dir_of source "${path}" "${previous}")" "${new}"; then
             addon_failed "${id}" "the new version could not be built for amd64 from this PR: ${why}"
@@ -705,8 +733,9 @@ jobs:
         WAIT_MINUTES: ${{ inputs.image_wait_minutes }}
       run: |
         set -euo pipefail
-        # Only the caller's builds hand over an artifact; images built on the device were built in the step above.
-        jq -r 'select(.test and .new_src == "") | [.id, .artifact] | @tsv' upgrade.jsonl > wanted-images.tsv
+        # Only the caller's builds hand over an artifact; images built on the device were built in the step above, and
+        # published ones (scan_published_image, #154) were pulled.
+        jq -r 'select(.test and .new_src == "artifact") | [.id, .artifact] | @tsv' upgrade.jsonl > wanted-images.tsv
         bash tooling/.addon-sync/wait_artifacts.sh wanted-images.tsv images.tsv "new image" addon-image
     - name: Load the new images
       if: steps.upgrade.outputs.wait == 'true'
@@ -734,11 +763,14 @@ jobs:
         source tooling/.addon-sync/fields.sh
         status=0
         while IFS= read -r row; do
-          fields "${row}" id=id addon_dir=addon_dir new=new ref=old_ref old_src='old_src // ""' new_src='new_src // ""'
+          fields "${row}" id=id addon_dir=addon_dir new=new ref=old_ref old_src='old_src // ""' new_src='new_src // "artifact"' new_ref='new_ref // ""'
           # A comparison target built on the device was rebuilt as upgrade-comparison/<id>:old (a local image, never pulled).
           old_image="${ref:-upgrade-comparison/${id}:old}"
+          # The new image: the published one pulled by its ref (#154, so the report names it), else the caller's artifact or
+          # the image built here, both upgrade-comparison/<id>:new.
+          new_image="upgrade-comparison/${id}:new"; if [ "${new_src}" = published ]; then new_image="${new_ref}"; fi
           rc=0; python3 tooling/.addon-sync/upgrade_runtime.py --name "${id}" --addon-dir "${addon_dir}" \
-            --old-image "${old_image}" --old-config "$RUNNER_TEMP/${id}.old.yaml" --new-image "upgrade-comparison/${id}:new" --new-config "${new}" \
+            --old-image "${old_image}" --old-config "$RUNNER_TEMP/${id}.old.yaml" --new-image "${new_image}" --new-config "${new}" \
             --report-dir runtime-reports --summary "$GITHUB_STEP_SUMMARY" || rc=$?
           [ "${rc}" = 0 ] || status=1
           # Images built on the device (#144) are removed once tested, so the next add-on's builds have the disk. The

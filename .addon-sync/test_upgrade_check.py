@@ -630,7 +630,8 @@ class ReusableWorkflow(unittest.TestCase):
         self.assertIn('artifact="upgrade-comparison-image-${id}-attempt-${RUN_ATTEMPT}"',steps['Plan the upgrade tests']['run'])
         self.assertIn('wait_artifacts.sh wanted-images.tsv images.tsv',steps['Wait for the new images']['run'])
         self.assertIn('docker load -i',steps['Load the new images']['run'])
-        self.assertIn('--new-image "upgrade-comparison/${id}:new"',steps['Run the upgrade tests']['run'])
+        self.assertIn('new_image="upgrade-comparison/${id}:new"',steps['Run the upgrade tests']['run'])
+        self.assertIn('--new-image "${new_image}"',steps['Run the upgrade tests']['run'])
         # Only add-ons built on the device are built here (#144): an add-on with a prebuilt image is never rebuilt.
         builds=[n for n,s in steps.items() if 'docker build' in s.get('run','')]
         self.assertEqual(builds,['Build the images of add-ons built on the device'])
@@ -638,7 +639,7 @@ class ReusableWorkflow(unittest.TestCase):
         self.assertIn('[ "${test}" = true ] && [ "${new_src}" = pr ]',steps[builds[0]]['run'])
         for name in ('Wait for the new images','Load the new images'):
             with self.subTest(name):self.assertEqual(steps[name]['if'],"steps.upgrade.outputs.wait == 'true'")
-        self.assertIn('select(.test and .new_src == "")',steps['Wait for the new images']['run'])
+        self.assertIn('select(.test and .new_src == "artifact")',steps['Wait for the new images']['run'])
         runtime=yaml.safe_dump(self.wf['jobs']['runtime'])
         for absent in ('docker push','buildx'):
             with self.subTest(absent):self.assertNotIn(absent,runtime)
@@ -720,6 +721,20 @@ class StepHarness(unittest.TestCase):
         self.plans=[json.loads(l) for l in (tmp/'plan.jsonl').read_text().splitlines()] if (tmp/'plan.jsonl').exists() else []
         self.builds=[json.loads(l) for l in (tmp/'docker.log').read_text().splitlines()] if (tmp/'docker.log').exists() else []
         return r,(self.plans[0] if self.plans else {}),(tmp/'out').read_text() if (tmp/'out').exists() else ''
+    def run_runtime_steps(self,tmp,steps,**env):
+        """Runtime-job steps run in order in tmp (the job's directory, also RUNNER_TEMP), every one even after a failure;
+        tmp/bin first on PATH. upgrade_runtime.py is stood in for: it passes and records the images it was given.
+        env: more variables (e.g. IMAGES for DOCKER_STUB). Returns each step's CompletedProcess."""
+        import os,subprocess
+        (tmp/'tooling/.addon-sync/upgrade_runtime.py').write_text('import argparse,json,pathlib\np=argparse.ArgumentParser()\n'
+            "for o in ('--name','--addon-dir','--old-image','--old-config','--new-image','--new-config','--report-dir','--summary'):p.add_argument(o)\n"
+            "a=p.parse_args();pathlib.Path(a.report_dir,a.name+'.json').write_text(json.dumps({'name':a.name,'passed':True,'old_image':a.old_image,'new_image':a.new_image}))\n")
+        env=dict(os.environ,PATH=f"{tmp/'bin'}{os.pathsep}{os.environ['PATH']}",RUNNER_TEMP=str(tmp),GITHUB_STEP_SUMMARY=str(tmp/'summary'),**env)
+        runs=[]
+        for step in steps:
+            (tmp/'step.sh').write_text(self.step(step)['run'],newline='\n')
+            runs.append(subprocess.run(['bash',str(tmp/'step.sh')],cwd=tmp,env=env,capture_output=True,text=True))
+        return runs
 
 # The fake GitHub API of StepHarness: Releases, raw files at a ref and the commits that changed a path (with --jq through jq).
 GH_STUB=r'''#!/usr/bin/env python3
@@ -838,7 +853,7 @@ class UpgradeTestPlan(StepHarness):
         # The comparison target was built on the device, the PR ships a prebuilt image: rebuild the old one, await the new one.
         r,(row,),out=self.plan(old={'image':None},image_artifact='upgrade-comparison-image-*')
         self.assertEqual(r.returncode,0,r.stdout+r.stderr)
-        self.assertEqual((row['old_ref'],row['old_src'],row['new_src']),('','v1.0.0',''));self.assertIn('wait=true',out)
+        self.assertEqual((row['old_ref'],row['old_src'],row['new_src']),('','v1.0.0','artifact'));self.assertIn('wait=true',out)
         # And back: the target's image is pulled, the PR's is built here.
         r,(row,),out=self.plan(new={'image':None},sbom='')
         self.assertEqual(r.returncode,0,r.stdout+r.stderr)
@@ -2084,7 +2099,7 @@ class ComparisonTargetFailure(StepHarness):
     does not start or whose seed fails is upgrade_runtime.py's (test_upgrade_runtime.py)."""
     @needs_shell
     def test_image_that_cannot_be_pulled_is_the_add_ons_failure_with_the_reason(self):
-        r,_,_=self.run_step(('plan','upgrade',"Pull the comparison targets' images"),sbom='upgrade-comparison-sbom-*',image_artifact='upgrade-comparison-image-*')
+        r,_,_=self.run_step(('plan','upgrade','Pull the images'),sbom='upgrade-comparison-sbom-*',image_artifact='upgrade-comparison-image-*')
         # The step goes on (other add-ons are still tested); the add-on leaves the test and "Run the upgrade tests" fails the job.
         self.assertEqual(r.returncode,0,r.stdout+r.stderr)
         self.assertEqual([json.loads(l)['test'] for l in (self.tmp/'upgrade.jsonl').read_text().splitlines()],[False])
@@ -2098,25 +2113,15 @@ class ComparisonTargetFailure(StepHarness):
         self.assertEqual(code,1);self.assertIn(f't: upgrade test failed: {reason}',out);self.assertIn('- t: **failed**',summary)
     @needs_shell
     def test_one_unpullable_target_does_not_stop_the_others(self):
-        import os,subprocess
         tmp=pathlib.Path(tempfile.mkdtemp());self.addCleanup(shutil.rmtree,tmp)
         (tmp/'tooling/.addon-sync').mkdir(parents=True);(tmp/'bin').mkdir();(tmp/'runtime-reports').mkdir()
-        for name in ('log.sh','fields.sh'):shutil.copy(self.STORE/'.addon-sync'/name,tmp/'tooling/.addon-sync'/name)
-        # Stands in for upgrade_runtime.py: a passing result naming the image it was given.
-        (tmp/'tooling/.addon-sync/upgrade_runtime.py').write_text('import argparse,json,pathlib\np=argparse.ArgumentParser()\n'
-            "for o in ('--name','--addon-dir','--old-image','--old-config','--new-image','--new-config','--report-dir','--summary'):p.add_argument(o)\n"
-            "a=p.parse_args();pathlib.Path(a.report_dir,a.name+'.json').write_text(json.dumps({'name':a.name,'passed':True,'old_image':a.old_image}))\n")
+        for name in ('log.sh','fields.sh','images.sh'):shutil.copy(self.STORE/'.addon-sync'/name,tmp/'tooling/.addon-sync'/name)
         (tmp/'bin/docker').write_text(DOCKER_STUB);(tmp/'bin/docker').chmod(0o755)
         rows=[{'id':i,'addon_dir':f'source/{i}','new':f'{i}.yaml','old_ref':f'ghcr.io/o/{i}-amd64:1.0.0','artifact':'x','test':True} for i in ('a','b','c')]
         (tmp/'upgrade.jsonl').write_text(''.join(json.dumps(r)+'\n' for r in rows))
-        env=dict(os.environ,PATH=f"{tmp/'bin'}{os.pathsep}{os.environ['PATH']}",IMAGES='ghcr.io/o/a-amd64:1.0.0\nghcr.io/o/c-amd64:1.0.0',
-            RUNNER_TEMP=str(tmp),GITHUB_STEP_SUMMARY=str(tmp/'summary'))
-        codes=[]
-        for step in ("Pull the comparison targets' images",'Run the upgrade tests'):
-            (tmp/'step.sh').write_text(self.step(step)['run'],newline='\n')
-            r=subprocess.run(['bash',str(tmp/'step.sh')],cwd=tmp,env=env,capture_output=True,text=True);codes.append(r.returncode)
+        runs=self.run_runtime_steps(tmp,('Pull the images','Run the upgrade tests'),IMAGES='ghcr.io/o/a-amd64:1.0.0\nghcr.io/o/c-amd64:1.0.0')
         # b fails with its reason, a and c are still tested, and the job fails at the end.
-        self.assertEqual(codes,[0,1],r.stdout+r.stderr)
+        self.assertEqual([r.returncode for r in runs],[0,1],runs[-1].stdout+runs[-1].stderr)
         results={p.stem:json.loads(p.read_text()) for p in (tmp/'runtime-reports').iterdir()}
         self.assertEqual({k:v['passed'] for k,v in results.items()},{'a':True,'b':False,'c':True})
         self.assertIn("cannot pull the comparison target's image ghcr.io/o/b-amd64:1.0.0",results['b']['reason'])
@@ -2140,6 +2145,94 @@ class ComparisonTargetFailure(StepHarness):
         r=subprocess.run(['bash','-c',script,'bash','bad\n::error::x'],cwd=tmp,env=dict(os.environ,FAIL_LOG=str(tmp/'fail.txt')),capture_output=True,text=True)
         self.assertEqual(r.returncode,0,r.stderr);self.assertEqual(r.stdout,'::error title=Upgrade comparison failed::t: bad%0A::error::x\n')
         self.assertFalse((tmp/'fail.txt').exists());self.assertEqual(json.loads((tmp/'runtime-reports/t.json').read_text())['reason'],'bad\n::error::x')
+
+class PublishedImageUpgradeTest(StepHarness):
+    """#154: with the provider's scan_published_image approval (#147, #148) the upgrade test's new image is the published one
+    the PR's config names (image with {arch} -> amd64, tag = the PR's version), pulled in the runtime job like the comparison
+    target's: no image_artifact is awaited or checked. An unpublished tag is the PR's fault (addon_failed); an unpullable
+    comparison target is still target_failed (#140)."""
+    APPROVED=PublishedImageScan.APPROVED
+    OLD,NEW=PublishedImageScan.OLD,PublishedImageScan.NEW
+    STEPS=('plan','Skip the upgrade tests the registry approves','upgrade','Pull the images')
+    UNPUBLISHED_REASON=("cannot pull ghcr.io/da-anda/addon-amd64:1.1.0, the image users would install with this PR: tag 1.1.0 of ghcr.io/da-anda/addon-amd64 "
+        "is not published yet (or the registry is unreachable); publish it first (its upstream's release for a third-party image, the repository's "
+        "own image publication otherwise) or bump to a version whose image is published, then re-run")
+    def rows(self):return [json.loads(l) for l in (self.tmp/'upgrade.jsonl').read_text().splitlines()]
+    def run_tests(self):
+        """'Run the upgrade tests' in the job's directory (run_runtime_steps)."""
+        (r,)=self.run_runtime_steps(self.tmp,('Run the upgrade tests',))
+        return r,{p.stem:json.loads(p.read_text()) for p in (self.tmp/'runtime-reports').glob('*.json')}
+    @needs_shell
+    def test_published_provider_without_image_artifact_is_tested_with_the_pulled_new_image(self):
+        r,_,out=self.run_step(self.STEPS,extra=self.APPROVED,images=(self.OLD,self.NEW))
+        self.assertEqual(r.returncode,0,r.stdout+r.stderr)
+        (row,)=self.rows()
+        self.assertEqual((row['test'],row['old_ref'],row['new_src'],row['new_ref']),(True,self.OLD,'published',self.NEW))
+        # Nothing to wait for, load or build; no "not run" note (the #143 one is for callers whose own build ships).
+        for output in ('run=true','wait=false','build=false'):
+            with self.subTest(output):self.assertIn(output,out)
+        self.assertFalse((self.tmp/'runtime-reports/t.json').exists())
+        r,results=self.run_tests()
+        self.assertEqual(r.returncode,0,r.stdout+r.stderr)
+        self.assertEqual(results['t'],{'name':'t','passed':True,'old_image':self.OLD,'new_image':self.NEW})
+    @needs_shell
+    def test_the_callers_image_artifact_glob_is_not_checked(self):
+        r,_,_=self.run_step(self.STEPS[:3],extra=self.APPROVED,image_artifact='other-*')
+        self.assertEqual(r.returncode,0,r.stdout+r.stderr);self.assertEqual(self.rows()[0]['new_src'],'published')
+    def test_category_4_and_the_upgrade_test_give_one_unpublished_reason(self):
+        # One text (images.sh), so the README's "the same message as category 4" cannot drift.
+        for name in ("SBOMs of the comparison targets' images",'Pull the images'):
+            with self.subTest(name):
+                run=self.step(name)['run'];self.assertIn('source tooling/.addon-sync/images.sh',run);self.assertIn('$(unpublished_reason "${new_ref}")',run)
+    @needs_shell
+    def test_an_unpublished_new_tag_is_the_prs_fault_with_the_category_4_message(self):
+        r,_,_=self.run_step(self.STEPS,extra=self.APPROVED,images=(self.OLD,))
+        # Like a target that cannot be pulled, the step goes on and the add-on leaves the test with its result.
+        self.assertEqual(r.returncode,0,r.stdout+r.stderr)
+        self.assertEqual([x['test'] for x in self.rows()],[False])
+        self.assertIn(f'::error title=Upgrade comparison failed::t: {self.UNPUBLISHED_REASON}',r.stdout)
+        result=json.loads((self.tmp/'runtime-reports/t.json').read_text())
+        self.assertEqual(result,{'name':'t','passed':False,'reason':self.UNPUBLISHED_REASON,'hooks':[],'data_checked':False,'phases':[]})
+        self.assertNotIn('comparison target',result['reason'])
+        # compare quotes it, once.
+        self.assertEqual(RuntimeFailureRecord.record(self,results=(result,)),{'t.json':result})
+        code,out,_=UpgradeTestResult.result(self,[result],runtime='failure')
+        self.assertEqual(code,1);self.assertIn(f't: upgrade test failed: {self.UNPUBLISHED_REASON}',out)
+        r,_=self.run_tests();self.assertEqual(r.returncode,1,r.stdout+r.stderr)
+    @needs_shell
+    def test_an_unpullable_comparison_target_is_still_a_target_failure(self):
+        r,_,_=self.run_step(self.STEPS,extra=self.APPROVED,images=(self.NEW,))
+        self.assertEqual(r.returncode,0,r.stdout+r.stderr)
+        self.assertEqual(json.loads((self.tmp/'runtime-reports/t.json').read_text())['reason'],
+            f"cannot pull the comparison target's image {self.OLD} from the registry, so the upgrade cannot be tested; re-run, or check that the image exists")
+    @needs_shell
+    def test_one_unpublished_add_on_of_a_multi_add_on_repository_does_not_stop_the_others(self):
+        # mcp_addons' shape (#155 reuses this): each changed add-on pulls its own published image; hermes' is not published.
+        comps=[{'id':i,'source_path':'addons/'+i,'config_file':'config.yaml'} for i in ('n8n','hermes','odoo')]
+        image={i:f'ghcr.io/woowtech/{{arch}}-mcp-{i}' for i in ('n8n','hermes','odoo')}
+        history=[('b',{})]+[(f'{i}-v1.0.0',{f'addons/{i}/config.yaml':{'image':image[i]}}) for i in image]
+        images=('ghcr.io/woowtech/amd64-mcp-n8n:1.0.0','ghcr.io/woowtech/amd64-mcp-n8n:1.1.0','ghcr.io/woowtech/amd64-mcp-hermes:1.0.0')
+        r,_,_=self.run_step(self.STEPS,extra={'components':comps,**self.APPROVED},releases=tuple(f'{i}-v1.0.0' for i in image),
+            history=history,changed=2,news={i:{'image':image[i]} for i in ('n8n','hermes')},images=images)
+        self.assertEqual(r.returncode,0,r.stdout+r.stderr)
+        self.assertEqual({x['id']:(x['test'],x['new_ref']) for x in self.rows()},
+            {'n8n':(True,'ghcr.io/woowtech/amd64-mcp-n8n:1.1.0'),'hermes':(False,'ghcr.io/woowtech/amd64-mcp-hermes:1.1.0')})
+        self.assertIn('hermes: cannot pull ghcr.io/woowtech/amd64-mcp-hermes:1.1.0, the image users would install with this PR: tag 1.1.0 of '
+            'ghcr.io/woowtech/amd64-mcp-hermes is not published yet',r.stdout)
+        r,results=self.run_tests()
+        self.assertEqual(r.returncode,1,r.stdout+r.stderr)
+        self.assertEqual((results['n8n']['passed'],results['n8n']['new_image'],results['hermes']['passed']),(True,'ghcr.io/woowtech/amd64-mcp-n8n:1.1.0',False))
+    @needs_shell
+    def test_a_provider_without_the_approval_is_unchanged(self):
+        # Still the caller's artifact, its glob checked, and the #143 note without one.
+        r,_,out=self.run_step(self.STEPS[:3],sbom='upgrade-comparison-sbom-*',image_artifact='upgrade-comparison-image-*',images=(self.OLD,self.NEW))
+        self.assertEqual(r.returncode,0,r.stdout+r.stderr)
+        self.assertEqual((self.rows()[0]['new_src'],self.rows()[0]['new_ref']),('artifact',''));self.assertIn('wait=true',out)
+        r,_,_=self.run_step(self.STEPS[:3],sbom='upgrade-comparison-sbom-*',image_artifact='other-*')
+        self.assertNotEqual(r.returncode,0);self.assertIn("image_artifact 'other-*' does not match",r.stdout)
+        r,_,out=self.run_step(self.STEPS[:3],sbom='upgrade-comparison-sbom-*')
+        self.assertEqual(r.returncode,0,r.stdout+r.stderr);self.assertIn('run=false',out)
+        self.assertEqual(json.loads((self.tmp/'runtime-reports/t.json').read_text())['not_run'],'no_image_artifact')
 
 def smoke_run(phase,exit_code=0,checks=None,report_error=''):
     """A smoke run as upgrade_runtime.py records it; checks: {name: result}, or None when the hook wrote no report."""
