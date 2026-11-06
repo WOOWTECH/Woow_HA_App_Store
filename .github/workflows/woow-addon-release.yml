@@ -17,6 +17,8 @@
 # the API, so the version and the tagged commit cannot disagree. The Release notes are
 # GitHub's generated notes, preceded by the add-on's upgrade-notes.yaml declarations since
 # its last stable Release (破壞性變更與遷移方式, 已接受的漏洞; pipeline #119), when there are any.
+# A caller that gates each component separately (mirror-sync, pipeline #91) passes `components`, a JSON array of
+# the ids that may get a Release; the others are not touched. Callers that leave it empty release every component.
 # The token is the caller's own GITHUB_TOKEN;
 # a Release created with it does not trigger the caller's other workflows, so
 # callers run woow-addon-sync.yml on `workflow_run` of the calling workflow.
@@ -26,6 +28,10 @@ name: WOOW addon release (reusable)
     inputs:
       sha:
         description: Commit to release; defaults to the commit that triggered the caller. Set it when the caller pushed a new commit itself (mirror-sync).
+        type: string
+        default: ''
+      components:
+        description: 'JSON array of the component ids that may get a Release, e.g. the upgrade comparison''s `passed` output (pipeline #91). Empty (the default) releases every component as before; [] releases none; a listed id that is unknown or whose version already has its Release is ignored with a warning.'
         type: string
         default: ''
 jobs:
@@ -52,4 +58,5 @@ jobs:
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         RELEASE_SHA: ${{ inputs.sha || github.sha }}
-      run: python3 tooling/.addon-sync/addon_sync.py release --registry tooling/.addon-sync/registry.json --sha "$RELEASE_SHA" --apply
+        RELEASE_COMPONENTS: ${{ inputs.components }}
+      run: python3 tooling/.addon-sync/addon_sync.py release --registry tooling/.addon-sync/registry.json --sha "$RELEASE_SHA" --components "$RELEASE_COMPONENTS" --apply
