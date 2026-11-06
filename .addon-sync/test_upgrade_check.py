@@ -2045,10 +2045,17 @@ class UpgradeTestSkipCommand(unittest.TestCase):
     def test_registry_approves_exactly_the_add_ons_the_owner_did(self):
         # Owner, 2026-11-04 (pipeline #140): each skip names its ticket. 2026-11-05 (#158): pi_agent runs (host_network);
         # woow_lan_gateway's skip is permanent (pipeline .out-of-scope/lan-gateway-upgrade-test-on-runner.md).
+        # 2026-11-06 (#164): woow-tailscale's skip is temporary, until 0.1.4 is its Stable Release.
         registry=json.loads((StepHarness.STORE/'.addon-sync/registry.json').read_text(encoding='utf-8'))
         approved={(repo,c['id']):u.upgrade_test_skip(c) for repo,p in registry['providers'].items() for c in p['components'] if u.upgrade_test_skip(c)}
-        self.assertEqual({k:re.match(r'#\d+',v).group() for k,v in approved.items()},{('WOOWTECH/woow-lan-gateway','woow_lan_gateway'):'#158'})
-        self.assertIn('permanent',approved[('WOOWTECH/woow-lan-gateway','woow_lan_gateway')]); self.assertNotIn('remove this skip',' '.join(approved.values()))
+        expected={('WOOWTECH/woow-lan-gateway','woow_lan_gateway'):('#158','permanent'),
+            ('WOOWTECH/Woow_ha_vpn_tailscale_package','woow-tailscale'):('#164','temporary')}
+        self.assertEqual({k:re.match(r'#\d+',v).group() for k,v in approved.items()},{k:ticket for k,(ticket,_) in expected.items()})
+        for k,(_,kind) in expected.items():
+            with self.subTest(k):
+                self.assertIn(kind,approved[k])
+                # Only a temporary approval says when it comes out; a permanent one names no removal.
+                if kind=='permanent':self.assertNotIn('remove',approved[k].lower())
         for p in registry['providers'].values():
             with self.subTest('provider level'):self.assertNotIn('skip_upgrade_test',p.get('upgrade_comparison') or {})
 
