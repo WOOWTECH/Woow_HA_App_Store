@@ -451,7 +451,7 @@
         "image-mirror",
         "mirror-sync"
       ],
-      "ref_policy": "main",
+      "ref_policy": "release",
       "branch_rules": {
         "exempt": "mirror: mirror-sync pushes the default branch; checked before release by pipeline #91"
       },
