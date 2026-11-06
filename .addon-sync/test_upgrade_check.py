@@ -2223,6 +2223,26 @@ class PublishedImageUpgradeTest(StepHarness):
         self.assertEqual(r.returncode,1,r.stdout+r.stderr)
         self.assertEqual((results['n8n']['passed'],results['n8n']['new_image'],results['hermes']['passed']),(True,'ghcr.io/woowtech/amd64-mcp-n8n:1.1.0',False))
     @needs_shell
+    def test_two_changed_add_ons_of_one_provider_each_get_their_own_pulled_new_image(self):
+        # release-gating/155: mcp_addons bumps several add-ons in one PR; each is tested on its own published image, and an
+        # add-on whose version did not change (odoo) is not in the plan.
+        ids=('n8n','hermes','odoo')
+        comps=[{'id':i,'source_path':'addons/'+i,'config_file':'config.yaml'} for i in ids]
+        image={i:f'ghcr.io/woowtech/{{arch}}-mcp-{i}' for i in ids}
+        history=[('b',{})]+[(f'{i}-v1.0.0',{f'addons/{i}/config.yaml':{'image':image[i]}}) for i in ids]
+        images=tuple(f'ghcr.io/woowtech/amd64-mcp-{i}:{v}' for i in ('n8n','hermes') for v in ('1.0.0','1.1.0'))
+        r,_,out=self.run_step(self.STEPS,extra={'components':comps,**self.APPROVED},releases=tuple(f'{i}-v1.0.0' for i in ids),
+            history=history,changed=2,news={i:{'image':image[i]} for i in ('n8n','hermes')},images=images)
+        self.assertEqual(r.returncode,0,r.stdout+r.stderr)
+        self.assertEqual({x['id']:(x['test'],x['old_ref'],x['new_src'],x['new_ref']) for x in self.rows()},
+            {i:(True,f'ghcr.io/woowtech/amd64-mcp-{i}:1.0.0','published',f'ghcr.io/woowtech/amd64-mcp-{i}:1.1.0') for i in ('n8n','hermes')})
+        for output in ('run=true','wait=false','build=false'):
+            with self.subTest(output):self.assertIn(output,out)
+        r,results=self.run_tests()
+        self.assertEqual(r.returncode,0,r.stdout+r.stderr)
+        self.assertEqual(results,{i:{'name':i,'passed':True,'old_image':f'ghcr.io/woowtech/amd64-mcp-{i}:1.0.0',
+            'new_image':f'ghcr.io/woowtech/amd64-mcp-{i}:1.1.0'} for i in ('n8n','hermes')})
+    @needs_shell
     def test_a_provider_without_the_approval_is_unchanged(self):
         # Still the caller's artifact, its glob checked, and the #143 note without one.
         r,_,out=self.run_step(self.STEPS[:3],sbom='upgrade-comparison-sbom-*',image_artifact='upgrade-comparison-image-*',images=(self.OLD,self.NEW))
