@@ -1,4 +1,4 @@
-import io,json,pathlib,tarfile,tempfile,unittest
+import contextlib,io,json,os,pathlib,tarfile,tempfile,unittest
 from unittest.mock import patch
 import addon_sync as s
 import download_addon as d
@@ -411,6 +411,40 @@ class Tests(unittest.TestCase):
         self.assertEqual([(r['id'],r['state'],r.get('tag')) for r in report],
             [('one','already-released','one-v1.0.0'),('two','released','two-v2.1.0'),('beta','excluded',None),('off','excluded',None)])
         self.assertEqual([c['tag_name'] for c in gh.created],['two-v2.1.0'])
+    def listed_release(self,components,released=()):
+        # Pipeline #91: mirror-sync passes the ids that passed the upgrade comparison; 'one' and 'two' are both bumped.
+        gh=self.release_gh({'one/config.yaml':'name: One\nslug: one\nversion: 1.0.0\n','two/config.yaml':'name: Two\nslug: two\nversion: 2.1.0\n'},released=released)
+        registry={'providers':{'WOOWTECH/test':{'components':[self.release_component('one','one'),self.release_component('two','two'),
+            self.release_component('beta','beta',channel='prerelease')]}}}
+        report=s.release(gh,registry,'WOOWTECH/test','a'*40,apply=True,components=components)
+        return report,[c['tag_name'] for c in gh.created]
+    def test_release_with_listed_components_releases_only_those(self):
+        report,created=self.listed_release(['two'])
+        self.assertEqual(created,['two-v2.1.0'])
+        self.assertEqual([(r['id'],r['state']) for r in report],[('one','not-listed'),('two','released'),('beta','not-listed')])
+        self.assertFalse(any('warning' in r for r in report))
+    def test_release_with_an_empty_list_releases_nothing(self):
+        report,created=self.listed_release([])
+        self.assertEqual(created,[]);self.assertEqual({r['state'] for r in report},{'not-listed'})
+    def test_release_without_a_list_releases_every_bumped_component(self):
+        self.assertEqual(self.listed_release(None)[1],['one-v1.0.0','two-v2.1.0'])
+        self.assertEqual(s.release_components(''),None);self.assertEqual(s.release_components('  '),None)
+    def test_release_ignores_listed_ids_that_are_unchanged_unknown_or_not_released_here_with_a_warning(self):
+        report,created=self.listed_release(['one','two','beta','gone','gone'],released={'one-v1.0.0'})
+        self.assertEqual(created,['two-v2.1.0'])
+        states=[(r['id'],r['state']) for r in report]
+        self.assertEqual(states,[('one','already-released'),('two','released'),('beta','excluded'),('gone','unknown-component')])
+        self.assertEqual([r['id'] for r in report if 'warning' in r],['one','beta','gone'])
+        self.assertFalse(any(r['state']=='blocked' for r in report))
+        out=io.StringIO()
+        with patch.dict(os.environ,{'GITHUB_STEP_SUMMARY':''}),contextlib.redirect_stdout(out):s.summary(report)
+        warnings=[line for line in out.getvalue().splitlines() if line.startswith('::warning ')]
+        self.assertEqual(len(warnings),3);self.assertTrue(any('gone' in w and 'no component of WOOWTECH/test' in w for w in warnings))
+    def test_release_components_input_must_be_a_json_array_of_ids(self):
+        self.assertEqual(s.release_components('["one", "two"]'),['one','two']);self.assertEqual(s.release_components('[]'),[])
+        for text in ['one','["one"','{"one": true}','"one"','[1]','[""]','null']:
+            with self.subTest(text):
+                with self.assertRaisesRegex(s.Blocked,'JSON array'):s.release_components(text)
     NOTES=('"1.1.0":\n  breaking:\n    - {change: port-removed, key: 8080/tcp, migration: Old news.}\n'
         '"1.2.0":\n  breaking:\n    - {change: option-removed, key: ssl_port, migration: Use the 443/tcp port mapping instead.}\n'
         '  accepted_vulnerabilities:\n    - {id: CVE-2026-1234, package: openssl, reason: Fixed upstream in 1.2.1.}\n')
@@ -529,6 +563,11 @@ class Tests(unittest.TestCase):
         commands='\n'.join(x.get('run','') for x in steps)
         self.assertIn('addon_sync.py release --registry '+tooling['with']['path']+'/.addon-sync/registry.json',commands)
         self.assertIn('--apply',commands)
+        # Pipeline #91: `components` is optional, so callers that do not pass it release every component as before.
+        inputs=workflow.get('on',workflow.get(True))['workflow_call']['inputs']
+        self.assertEqual((inputs['components']['type'],inputs['components']['default']),('string',''))
+        step=next(x for x in steps if 'addon_sync.py release' in x.get('run',''))
+        self.assertEqual(step['env']['RELEASE_COMPONENTS'],'${{ inputs.components }}');self.assertIn('--components "$RELEASE_COMPONENTS"',step['run'])
         self.assertNotIn('secrets.',path.read_text(encoding='utf-8').replace('secrets.GITHUB_TOKEN',''))
 
     def test_every_provider_is_gated_by_branch_rules_or_exempt_with_a_reason(self):

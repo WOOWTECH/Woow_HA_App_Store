@@ -517,17 +517,34 @@ def release_body(gh, repo, comp, sha, version, released):
     try:return release_notes(yaml.safe_load(raw),version,released)
     except (ValueError,TypeError,yaml.YAMLError) as e:raise Blocked(path+': '+str(e))
 
-def release(gh, registry, repo, sha, apply=False):
+def release_components(text):
+    """The `components` input of woow-addon-release.yml: '' (not given) -> None, every component as before; otherwise a
+    JSON array of component ids (pipeline #91: those that passed the upgrade comparison). Anything else is the caller's
+    mistake and blocks before any Release is created, rather than guessing which components were meant."""
+    if text is None or text.strip()=='':return None
+    try:ids=json.loads(text)
+    except ValueError:ids=None
+    if not isinstance(ids,list) or not all(isinstance(i,str) and i for i in ids):
+        raise Blocked('components must be a JSON array of component ids, got '+json.dumps(text))
+    return ids
+
+def release(gh, registry, repo, sha, apply=False, components=None):
     """Publish a stable Release for each stable addon whose manifest version at sha has none yet.
     Runs in the source repository after its CI, on a default-branch commit; reads the manifest at
-    sha itself, so the version and the tagged commit cannot disagree."""
+    sha itself, so the version and the tagged commit cannot disagree.
+    components, when not None, lists the only component ids that may get a Release (pipeline #91: those that passed the
+    upgrade comparison); the others are not read. A listed id that is no component of repo, is not released through
+    this workflow, or whose version already has its Release is ignored with a warning, not a failure."""
     provider=registry['providers'][repo];branch,_=gh.head(repo)
     if not SHA.fullmatch(sha or ''):raise Blocked('Release must target an immutable commit SHA')
     if gh.api(repo,'compare/'+sha+'...'+urllib.parse.quote(branch,safe=''))['status'] not in ['ahead','identical']:raise Blocked('Commit is not on the default branch')
+    listed=None if components is None else set(components)
+    def warn(text):return {} if listed is None else {'warning':'listed in components but '+text}
     report=[];releases=None
     for comp in provider['components']:
         cid=comp['id']
-        if not publishes_releases(comp):report.append({'id':cid,'state':'excluded'});continue
+        if listed is not None and cid not in listed:report.append({'id':cid,'state':'not-listed'});continue
+        if not publishes_releases(comp):report.append({'id':cid,'state':'excluded',**warn('not released through this workflow')});continue
         try:
             comp,raw=locate(gh,repo,comp,sha)
             cfg=yaml.safe_load(raw)
@@ -536,7 +553,8 @@ def release(gh, registry, repo, sha, apply=False):
             except ValueError as e:raise Blocked(f'{source_file(comp,comp["config_file"])}: {e}') from None
             if version is None:raise Blocked(source_file(comp,comp['config_file'])+' has no version')
             tag=release_tag(provider,comp,version)
-            if get_or_none(gh,repo,'releases/tags/'+urllib.parse.quote(tag,safe='')) is not None:report.append({'id':cid,'state':'already-released','tag':tag,'version':version});continue
+            if get_or_none(gh,repo,'releases/tags/'+urllib.parse.quote(tag,safe='')) is not None:
+                report.append({'id':cid,'state':'already-released','tag':tag,'version':version,**warn('its version '+version+' already has its Release')});continue
             if tagged_commit(gh,repo,tag) not in [None,sha]:raise Blocked('Tag '+tag+' points at another commit; release or delete it by hand')
             if releases is None:releases=all_releases(gh,repo)
             released=stable_versions(provider,comp,releases)
@@ -549,6 +567,8 @@ def release(gh, registry, repo, sha, apply=False):
             report.append({'id':cid,'state':'released' if apply else 'would-release','tag':tag,'version':version})
         except Exception as e:
             report.append({'id':cid,'state':'blocked','reason':str(e) if isinstance(e,Blocked) else type(e).__name__})
+    known={c['id'] for c in provider['components']}
+    report+=[{'id':cid,'state':'unknown-component',**warn('it is no component of '+repo)} for cid in dict.fromkeys(components or []) if cid not in known]
     return report
 
 def validate_entry(gh, repo, component, entry, default_branch=None):
@@ -698,14 +718,16 @@ def summary(report):
     for r in report:
         if r['state'] in ATTENTION:
             print(workflow_command('warning','WOOW addon '+r['state'],str(r.get('id',r.get('repository')))+': '+r.get('reason',r['state'])))
+        elif 'warning' in r:print(workflow_command('warning','WOOW addon '+r['state'],str(r['id'])+': '+r['warning']))
     if os.environ.get('GITHUB_STEP_SUMMARY'):
         with open(os.environ['GITHUB_STEP_SUMMARY'],'a') as f:f.write(text)
 
 def main():
     p=argparse.ArgumentParser();p.add_argument('command',choices=['publish','consume','release']);p.add_argument('--registry',default='.addon-sync/registry.json');p.add_argument('--repo',default=os.environ.get('GITHUB_REPOSITORY'));p.add_argument('--workspace',default='.');p.add_argument('--apply',action='store_true');p.add_argument('--only',action='append');p.add_argument('--result');p.add_argument('--sha',default=os.environ.get('GITHUB_SHA'))
+    p.add_argument('--components',default='',help="release: JSON array of the component ids that may get a Release; '' releases every component")
     a=p.parse_args();registry=json.loads(pathlib.Path(a.registry).read_text(encoding='utf-8'));gh=GitHub()
     if a.command=='release':
-        report=release(gh,registry,a.repo,a.sha,a.apply);summary(report)
+        report=release(gh,registry,a.repo,a.sha,a.apply,release_components(a.components));summary(report)
         if any(r['state']=='blocked' for r in report):raise SystemExit(1)
         return
     if a.command=='publish':report,data=publish(gh,registry,a.repo,a.apply,a.only)
