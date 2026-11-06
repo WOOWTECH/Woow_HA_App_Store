@@ -1155,6 +1155,27 @@ class DeviceBuiltVulnerabilityComparison(StepHarness):
         r=self.compare(VULNERABLE='upgrade-comparison/t:new')
         self.assertEqual(r.returncode,1,r.stdout+r.stderr)
         self.assertIn(f't: scanned {self.OLD} (v1.0.0) and the PR image rebuilt with the same DB',r.stdout)
+    @needs_shell
+    def test_a_rebuilt_target_and_a_published_pr_image_are_compared_per_side(self):
+        # The target was built on the device, the PR names a published image (scan_published_image): old from the runtime
+        # job, new pulled and given its SBOM in compare.
+        new=PublishedImageScan.NEW
+        kw=dict(old={'image':None},extra=PublishedImageScan.APPROVED,images=(new,))
+        r,plan,out=self.run_step('plan',**kw)
+        self.assertEqual(r.returncode,0,r.stdout+r.stderr)
+        self.assertEqual((plan['ref'],plan['new_ref'],plan['rebuilt_old'],plan['rebuilt_new']),('',new,True,False))
+        for output in ('scan=true','wait=false','rebuilt=true'):
+            with self.subTest(output):self.assertIn(output,out)
+        r,_,_=self.run_step(self.RUNTIME[:3]+("SBOMs of the comparison targets' images",self.RUNTIME[3]),
+            files=self.FILES,tarball=self.TARBALL,**kw)
+        self.assertEqual(r.returncode,0,r.stdout+r.stderr)
+        self.assertEqual(json.loads((self.tmp/'sboms/t.syft.json').read_text()),{'source':'docker:'+new})
+        self.assertEqual(json.loads((self.tmp/'rebuilt-sboms/t.old.syft.json').read_text()),{'source':'docker:upgrade-comparison/t:old'})
+        r=self.compare(VULNERABLE=new)
+        self.assertEqual(r.returncode,1,r.stdout+r.stderr)
+        self.assertIn('::error title=New fixable vulnerability::CVE-2026-0001 openssl',r.stdout)
+        self.assertIn(f't: scanned v1.0.0 rebuilt and {new} with the same DB',r.stdout)
+        self.assertNotIn('holds no t.syft.json',r.stdout)
 
 class BuildArgs(unittest.TestCase):
     """upgrade_check.build_args (#144): how Supervisor builds an add-on built on the device (supervisor/addons/build.py)."""
@@ -1398,7 +1419,7 @@ class SkipVulnerabilityScan(StepHarness):
     mechanism stays.
     Only a provider the Store registry approves may skip (upgrade_comparison.skip_vulnerability_scan, with the reason)."""
     REASON='the shipped image is third-party; category 4 for it is out of scope'
-    APPROVED={'upgrade_comparison':{'skip_vulnerability_scan':'#122: third-party image; category 4 moves to #90'}}
+    APPROVED={'upgrade_comparison':{'skip_vulnerability_scan':'#122: third-party image; category 4 for it is out of scope'}}
     def test_optional_string_input_that_defaults_to_scanning(self):
         inp=self.wf['on']['workflow_call']['inputs']['skip_vulnerability_scan']
         self.assertEqual((inp['type'],inp['default']),('string',''))
@@ -2253,7 +2274,8 @@ class UpgradeTestSkipCommand(unittest.TestCase):
 
 class UpgradeTestSkipStep(StepHarness):
     """The runtime job's 'Skip the upgrade tests the registry approves' (#140): an approved add-on gets a result with the
-    registry's reason and leaves the job's plan; asking for the skip without the approval fails the job, so compare fails."""
+    registry's reason and stays in the job's plan marked skipped, so one built on the device is still rebuilt for its
+    SBOMs (#146) but not tested; asking for the skip without the approval fails the job, so compare fails."""
     STEP='Skip the upgrade tests the registry approves'
     def approved(self,reason='#158: needs a physical enp2s0'):
         return {'components':[{'id':'t','source_path':'addon','config_file':'config.yaml','upgrade_comparison':{'skip_upgrade_test':reason}}]}
