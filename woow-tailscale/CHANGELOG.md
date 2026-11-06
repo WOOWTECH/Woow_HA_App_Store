@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.4
+
+- The image builds again. Alpine no longer serves the package versions 0.1.3
+  pinned (`bind-tools=9.20.29-r0`, `nginx=1.30.4-r1`), so 0.1.3 can no longer
+  be rebuilt on a device. The pins are now `bind-tools=9.20.30-r0` and
+  `nginx=1.30.6-r0`. Nothing else changes in the app.
+
 ## 0.1.3
 
 - Stopping the app now leaves it **stopped** instead of **error**. When
