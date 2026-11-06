@@ -2441,9 +2441,11 @@ class UpgradeTestSkipCommand(unittest.TestCase):
         # Owner, 2026-11-04 (pipeline #140): each skip names its ticket. 2026-11-05 (#158): pi_agent runs (host_network);
         # woow_lan_gateway's skip is permanent (pipeline .out-of-scope/lan-gateway-upgrade-test-on-runner.md).
         # 2026-11-06 (#164): woow-tailscale's temporary skip is removed; 0.1.4 is its Stable Release and rebuilds.
+        # 2026-11-06 (#170): music_assistant's skip is temporary, until the mock Supervisor gives it the HA Core API (#174).
         registry=json.loads((StepHarness.STORE/'.addon-sync/registry.json').read_text(encoding='utf-8'))
         approved={(repo,c['id']):u.upgrade_test_skip(c) for repo,p in registry['providers'].items() for c in p['components'] if u.upgrade_test_skip(c)}
-        expected={('WOOWTECH/woow-lan-gateway','woow_lan_gateway'):('#158','permanent')}
+        expected={('WOOWTECH/woow-lan-gateway','woow_lan_gateway'):('#158','permanent'),
+            ('WOOWTECH/Woow_ha_music_assistant_add_on','music_assistant'):('#174','temporary')}
         self.assertEqual({k:re.match(r'#\d+',v).group() for k,v in approved.items()},{k:ticket for k,(ticket,_) in expected.items()})
         for k,(_,kind) in expected.items():
             with self.subTest(k):

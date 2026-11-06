@@ -645,7 +645,10 @@
           "config_file": "config.yaml",
           "store_path": "music_assistant",
           "channel": "stable",
-          "enabled": true
+          "enabled": true,
+          "upgrade_comparison": {
+            "skip_upgrade_test": "#174, temporary (owner, 2026-11-06): music_assistant needs the HA Core API (homeassistant_api; its ingress index checks the user's HA admin role through the Home Assistant provider), which the mock Supervisor does not provide, so even the comparison target 2.10.9 answers HTTP 500 and never counts as started (run 42201544824); categories 1 and 4 still run; remove when #174 lands"
+          }
         },
         {
           "id": "music_assistant_beta",
