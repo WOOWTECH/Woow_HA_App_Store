@@ -691,7 +691,7 @@ jobs:
         declare -A trees=()
         : > built.jsonl
         while IFS= read -r row; do
-          fields "${row}" id=id new=new old_src=old_src new_src=new_src test=test
+          fields "${row}" id=id new=new old_src=old_src new_src='new_src // "artifact"' test=test
           fields "$(jq -c --arg id "${id}" '.components[] | select(.id == $id)' provider.json)" path=config previous=previous_config
           if [ "${test}" = true ] && [ "${new_src}" = pr ] && ! build "${id}" new "$(dir_of source "${path}" "${previous}")" "${new}"; then
             addon_failed "${id}" "the new version could not be built for amd64 from this PR: ${why}"
