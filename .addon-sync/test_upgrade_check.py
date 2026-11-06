@@ -544,6 +544,9 @@ class ComponentsCommand(unittest.TestCase):
                 code,out=self.main(registry)
                 self.assertEqual(code,2);self.assertTrue(out.startswith('::error title=Upgrade comparison failed::WOOWTECH/r '),out)
         self.assertEqual(self.main({'providers':{}})[1],'::error title=Upgrade comparison failed::WOOWTECH/r is not in the Store registry\n')
+# A step that also runs after an earlier one failed in sha mode (#167); on a PR the prefix is success(), as before.
+SHA_GOES_ON="(success() || (inputs.sha != '' && !cancelled())) && "
+ALWAYS_ON_PR_OR_SHA="always() && (github.event_name == 'pull_request' || inputs.sha != '')"
 class ReusableWorkflow(unittest.TestCase):
     """Shape that callers and the ruleset depend on; the shell itself is verified on pilot PRs (#89 Testing Decisions)."""
     def setUp(self):
@@ -607,13 +610,13 @@ class ReusableWorkflow(unittest.TestCase):
         self.assertNotIn('has no prebuilt image',self.text)
         steps=self.wf['jobs']['compare']['steps'];names=[s.get('name') for s in steps]
         download=steps[names.index("Download the rebuilt images' SBOMs")]
-        self.assertEqual(download['if'],"steps.plan.outputs.rebuilt == 'true'")
+        self.assertEqual(download['if'],SHA_GOES_ON+"steps.plan.outputs.rebuilt == 'true'")
         self.assertIn('upgrade-comparison-rebuilt-sboms-attempt-${RUN_ATTEMPT}',download['run'])
         self.assertLess(names.index("Download the rebuilt images' SBOMs"),names.index('Compare with the comparison target'))
         runtime=self.wf['jobs']['runtime']['steps'];rnames=[s.get('name') for s in runtime]
         upload=runtime[rnames.index("Upload the rebuilt images' SBOMs")]
         self.assertEqual((upload['if'],upload['with']['name'],upload['with']['path'],upload['with']['retention-days']),
-            ("always() && github.event_name == 'pull_request'",'upgrade-comparison-rebuilt-sboms-attempt-${{ github.run_attempt }}','rebuilt-sboms/',7))
+            (ALWAYS_ON_PR_OR_SHA,'upgrade-comparison-rebuilt-sboms-attempt-${{ github.run_attempt }}','rebuilt-sboms/',7))
         # The same pinned Syft and config as compare's own SBOMs (#89).
         install=runtime[rnames.index('Install pinned Syft')]
         self.assertEqual(install['run'],'bash tooling/.github/actions/addon-sbom/install-scanners.sh "$RUNNER_TEMP/scanners" syft')
@@ -628,7 +631,7 @@ class ReusableWorkflow(unittest.TestCase):
         self.assertEqual(runtime[:plan+1],compare[:plan+1])
     def test_upgrade_test_result_fails_compare_with_the_reason(self):
         step=next(s for s in self.wf['jobs']['compare']['steps'] if s.get('name')=='Upgrade test result')
-        self.assertEqual(step['if'],"always() && github.event_name == 'pull_request'")
+        self.assertEqual(step['if'],ALWAYS_ON_PR_OR_SHA)
         self.assertEqual(step['env']['RUNTIME_RESULT'],'${{ needs.runtime.result }}')
         self.assertIn('upgrade-comparison-runtime-attempt-${RUN_ATTEMPT}',step['run'])
         self.assertIn("upgrade test failed: $(jq -r '.reason'",step['run'])
@@ -656,7 +659,7 @@ class ReusableWorkflow(unittest.TestCase):
         self.assertIn('[ "${want}" = true ] && [ -n "${old_src}" ]',steps[builds[0]]['run'])
         self.assertIn('[ "${want}" = true ] && [ "${new_src}" = pr ]',steps[builds[0]]['run'])
         for name in ('Wait for the new images','Load the new images'):
-            with self.subTest(name):self.assertEqual(steps[name]['if'],"steps.upgrade.outputs.wait == 'true'")
+            with self.subTest(name):self.assertEqual(steps[name]['if'],SHA_GOES_ON+"steps.upgrade.outputs.wait == 'true'")
         self.assertIn('select(.test and .new_src == "artifact")',steps['Wait for the new images']['run'])
         runtime=yaml.safe_dump(self.wf['jobs']['runtime'])
         for absent in ('docker push','buildx'):
@@ -682,7 +685,7 @@ class StepHarness(unittest.TestCase):
     def step(self,ident):return next(s for j in ('compare','runtime') for s in self.wf['jobs'][j]['steps'] if ident in (s.get('id'),s.get('name')))
     def run_step(self,ident,*,policy='release',extra=None,releases=('v1.0.0',),old_config=True,new_config=True,skip='',sbom='',version='1.1.0',old=None,old_path='',
             new_path='addon/config.yaml',new=None,files=None,raw_version=None,history=None,changed=1,gh_fail='',images=(),vulnerable='',image_artifact='',
-            tarball=None,build_fail='',news=None,syft_fail=''):
+            tarball=None,build_fail='',news=None,syft_fail='',sha='',keep_going=False,results=None,runtime='success'):
         """ident: one step, or a tuple run in order until one fails. new_path: where the PR has the config; new: changes to it;
         files: more files of the PR checkout; raw_version: {'old'/'new': the version line's YAML as written, e.g. 1.10 unquoted}.
         history: the PR base's history, newest first, [(sha, {path: changes to the config, or None for no file})]; the first
@@ -696,6 +699,9 @@ class StepHarness(unittest.TestCase):
         `docker build` fails. self.builds is every `docker build` (DOCKER_STUB); gh.log in self.tmp has every tarball URL asked for,
         rm.log every `docker image rm`. syft_fail: the image the stub Syft cannot read.
         news: {add-on id: changes to its PR config} for a changed add-on of a multi-add-on provider whose PR config is not t's.
+        sha: the workflow input sha (sha mode, #167); keep_going: run every step of a tuple even after one fails, as sha mode
+        does (self.runs has each step's CompletedProcess); results: {id: the runtime job's runtime-reports/<id>.json};
+        runtime: the runtime job's result (RUNTIME_RESULT).
         self.tmp is the job's directory (also RUNNER_TEMP); self.plans is every line of plan.jsonl."""
         import os,subprocess
         tmp=self.tmp=pathlib.Path(tempfile.mkdtemp());self.addCleanup(shutil.rmtree,tmp)
@@ -732,12 +738,16 @@ class StepHarness(unittest.TestCase):
             GH_TOKEN='x',DB_MAX_AGE_HOURS='120',IMAGES='\n'.join(images),VULNERABLE=vulnerable,SBOM_ARTIFACT=sbom,IMAGE_ARTIFACT=image_artifact,SKIP_VULNERABILITY_SCAN=skip,RUNNER_TEMP=str(tmp),RUN_ATTEMPT='1',
             GITHUB_OUTPUT=str(tmp/'out'),GITHUB_STEP_SUMMARY=str(tmp/'summary'),HISTORY=str(tmp/'history.json') if history is not None else '',GH_FAIL=gh_fail,
             TMPDIR=str(tmp/'mktemp'),TARBALL=json.dumps(tarball or {}),BUILD_FAIL=build_fail,DOCKER_LOG=str(tmp/'docker.log'),GH_LOG=str(tmp/'gh.log'),
-            DOCKER_RM_LOG=str(tmp/'rm.log'),SYFT_FAIL=syft_fail)
+            DOCKER_RM_LOG=str(tmp/'rm.log'),SYFT_FAIL=syft_fail,SHA=sha,RUN_ID='1',RUNTIME_RESULT=runtime)
+        if results is not None:
+            (tmp/'runtime-reports').mkdir(exist_ok=True)
+            for cid,result in results.items():(tmp/'runtime-reports'/f'{cid}.json').write_text(json.dumps(result))
         (tmp/'mktemp').mkdir(exist_ok=True)
+        self.runs=[]
         for one in (ident if isinstance(ident,tuple) else (ident,)):
             (tmp/'step.sh').write_text(self.step(one)['run'])
-            r=subprocess.run(['bash',str(tmp/'step.sh')],cwd=tmp,env=env,capture_output=True,text=True)
-            if r.returncode:break
+            r=subprocess.run(['bash',str(tmp/'step.sh')],cwd=tmp,env=env,capture_output=True,text=True);self.runs.append(r)
+            if r.returncode and not keep_going:break
         self.plans=[json.loads(l) for l in (tmp/'plan.jsonl').read_text().splitlines()] if (tmp/'plan.jsonl').exists() else []
         self.builds=[json.loads(l) for l in (tmp/'docker.log').read_text().splitlines()] if (tmp/'docker.log').exists() else []
         return r,(self.plans[0] if self.plans else {}),(tmp/'out').read_text() if (tmp/'out').exists() else ''
@@ -783,6 +793,8 @@ elif '/commits?' in url:
     start=next(i for i,c in enumerate(commits) if c['sha']==q['sha'])
     def changed(i):return commits[i]['files'].get(q['path'])!=(commits[i+1]['files'].get(q['path']) if i+1<len(commits) else None)
     out([{'sha':c['sha'],'commit':{'committer':{'date':c['date']}}} for i,c in enumerate(commits) if i>=start and changed(i)])
+elif '/actions/runs/' in url:
+    out({'artifacts':[]})  # no artifact: the runtime job's results are already in runtime-reports/ (results)
 elif '/tarball/' in url:
     # The repository at a ref as GitHub archives it: one top directory, the configs at that ref and $TARBALL's files.
     import io,tarfile
@@ -1538,6 +1550,170 @@ class PublishedImageScan(StepHarness):
     def test_a_new_image_with_a_newline_is_rejected(self):
         r,plan,_=self.run_step('plan',extra=self.APPROVED,new={'image':'ghcr.io/x/a-{arch}\n::warning title=Injected::boom'})
         self.assertEqual(r.returncode,1,r.stdout+r.stderr);self.assertIn('control character',r.stdout);self.assertEqual(plan,{})
+
+class ShaMode(StepHarness):
+    """sha mode (#167, pipeline #91): a source with no PR (a Mirror 來源's mirror-sync) is compared at one commit before its
+    Releases are cut. Given the registry, the Releases and the configs at the commit, the compare job's steps run as they
+    do in sha mode (each one also after an earlier one failed); the runtime job's results (categories 2 and 3) are given
+    as its runtime-reports. A Mirror 來源 has scan_published_image: both sides are its GHCR copy at their version."""
+    SHA='0123456789abcdef0123456789abcdef01234567'
+    APPROVED={'upgrade_comparison':{'scan_published_image':'#91: mirror; the image is the GHCR copy config.yaml names'}}
+    STEPS=('detect','plan',"SBOMs of the comparison targets' images",'Compare with the comparison target','Upgrade test result','passed')
+    OLD,NEW='ghcr.io/da-anda/addon-amd64:1.0.0','ghcr.io/da-anda/addon-amd64:1.1.0'
+    # The runtime job's result of an add-on with no hooks: it started; there is no data to check (#91 writes no hooks).
+    STARTED={'passed':True,'reason':'','hooks':[],'data_checked':False,'phases':[]}
+    NO_WORKERS={'schema':{k:v for k,v in BASE['schema'].items() if k!='workers'},'options':{k:v for k,v in BASE['options'].items() if k!='workers'}}
+    DECLARED='"1.1.0":\n  breaking:\n    - change: option-removed\n      key: workers\n      migration: Set workers again in the new options.\n'
+    def sha(self,steps=STEPS,started=('t',),**kw):
+        """(exit code of the last step, the output passed as a list or None when unset, every step's log, step summary).
+        started: the add-ons whose upgrade test passed (results), unless results is given."""
+        kw.setdefault('extra',self.APPROVED);kw.setdefault('images',(self.OLD,self.NEW))
+        kw.setdefault('results',{i:dict(self.STARTED,name=i) for i in started})
+        _,_,out=self.run_step(steps,sha=self.SHA,keep_going=True,**kw)
+        passed=[l.split('=',1)[1] for l in out.splitlines() if l.startswith('passed=')]
+        summary=(self.tmp/'summary').read_text(encoding='utf-8') if (self.tmp/'summary').exists() else ''
+        return self.runs[-1].returncode,json.loads(passed[-1]) if passed else None,''.join(r.stdout+r.stderr for r in self.runs),summary
+    def test_workflow_passes_sha_to_the_cli_and_outputs_passed(self):
+        inp=self.wf['on']['workflow_call']['inputs']['sha'];self.assertEqual((inp['type'],inp['default']),('string',''))
+        detect=self.step('detect')
+        self.assertEqual(detect['env']['SHA'],'${{ inputs.sha }}');self.assertIn('release-change --registry',detect['run']);self.assertIn('--sha "${SHA}"',detect['run'])
+        self.assertEqual(self.step('Check out the pull request')['with']['ref'],'${{ inputs.sha }}')
+        passed=self.step('passed');self.assertEqual(passed['if'],"always() && inputs.sha != ''");self.assertIn('upgrade_check.py sha-verdicts',passed['run'])
+        self.assertEqual(self.wf['jobs']['compare']['outputs'],{'passed':'${{ steps.passed.outputs.passed }}'})
+        # Without sha, "" as before #167; with sha never "", even when the compare job ended before its last step.
+        self.assertEqual(self.wf['on']['workflow_call']['outputs']['passed']['value'],"${{ jobs.compare.outputs.passed || (inputs.sha != '' && '[]' || '') }}")
+        # The required check keeps its name, and nothing on a PR depends on sha.
+        self.assertEqual((sorted(self.wf['jobs']),self.wf['jobs']['compare']['name']),(['compare','runtime'],'compare'))
+    @needs_shell
+    def test_a_compatible_version_change_passes(self):
+        code,passed,log,summary=self.sha()
+        self.assertEqual((code,passed),(0,['t']),log)
+        # Category 4 on the GHCR copies at both versions; categories 2 and 3 start-up only, and the report says so.
+        self.assertIn(f't: scanned {self.OLD} (v1.0.0) and {self.NEW} with the same DB',log)
+        self.assertIn('- t: passed, startup only: data was not checked (只檢查啟動，沒有檢查資料)',summary)
+        self.assertIn('- t: passed\n',summary)
+    @needs_shell
+    def test_an_undeclared_breaking_change_fails(self):
+        code,passed,log,summary=self.sha(new=self.NO_WORKERS)
+        self.assertEqual((code,passed),(1,[]),log)
+        self.assertIn('::error title=Undeclared breaking change::option-removed workers — declare it in addon/upgrade-notes.yaml',log)
+        self.assertIn('- t: **failed**',summary)
+    @needs_shell
+    def test_a_declared_breaking_change_passes(self):
+        # The owner's declaration in the overlay (#91), at the commit: a re-run at the same commit passes.
+        code,passed,log,_=self.sha(new=self.NO_WORKERS,files={'addon/upgrade-notes.yaml':self.DECLARED})
+        self.assertEqual((code,passed),(0,['t']),log)
+    @needs_shell
+    def test_a_version_not_newer_than_the_comparison_target_fails(self):
+        # The runtime job's plan fails it the same way, so it has no result there.
+        for version in ('0.9.0','1.0'):
+            with self.subTest(version):
+                code,passed,log,summary=self.sha(version=version,results={},runtime='failure')
+                self.assertEqual((code,passed),(1,[]),log)
+                self.assertIn(f'version {version} is not newer than 1.0.0',log);self.assertIn('- t: **failed**',summary)
+    @needs_shell
+    def test_no_version_change_is_not_compared_and_passes_at_once(self):
+        # Only detect runs (every later step's `if` needs a change), then the verdicts.
+        code,passed,log,summary=self.sha(('detect','passed'),version='1.0.0',results={})
+        self.assertEqual((code,passed),(0,[]),log)
+        self.assertIn('changed=false',(self.tmp/'out').read_text());self.assertIn('- t: version unchanged, not compared',summary)
+    @needs_shell
+    def test_an_unpublished_new_image_fails(self):
+        result={'name':'t','passed':False,'reason':'cannot pull '+self.NEW,'hooks':[],'data_checked':False,'phases':[]}
+        code,passed,log,_=self.sha(images=(self.OLD,),results={'t':result},runtime='failure')
+        self.assertEqual((code,passed),(1,[]),log)
+        self.assertIn(f'::error title=Upgrade comparison failed::t: cannot pull {self.NEW}',log)
+    @needs_shell
+    def test_a_failed_upgrade_test_fails(self):
+        result={'name':'t','passed':False,'reason':'the new version (1.1.0) did not start','hooks':[],'data_checked':False,'phases':[]}
+        code,passed,log,_=self.sha(results={'t':result},runtime='failure')
+        self.assertEqual((code,passed),(1,[]),log);self.assertIn('t: upgrade test failed: the new version (1.1.0) did not start',log)
+    @needs_shell
+    def test_ref_policy_main_is_refused(self):
+        code,passed,log,_=self.sha(policy='main',results={})
+        self.assertEqual((code,passed),(1,[]),log);self.assertIn('switch the provider to ref_policy release first',log)
+    def multi(self,two=None,images=None,**kw):
+        """music_assistant's shape: two add-ons with their own image; both bump to 1.1.0; two's config gets `two`."""
+        comps=[{'id':i,'source_path':i,'config_file':'config.yaml'} for i in ('one','two')]
+        image={i:f'ghcr.io/woowtech/ha-mirror-{i}-{{arch}}' for i in ('one','two')}
+        files={f'{i}/config.yaml':yaml.safe_dump(dict(BASE,image=image[i],version='1.1.0',**(two if i=='two' else {}) or {})) for i in image}
+        history=[('b',{})]+[(f'{i}-v1.0.0',{f'{i}/config.yaml':{'image':image[i]}}) for i in image]
+        refs=[f'ghcr.io/woowtech/ha-mirror-{i}-amd64:{v}' for i in image for v in ('1.0.0','1.1.0')]
+        return self.sha(extra={'components':comps,**self.APPROVED},releases=('one-v1.0.0','two-v1.0.0'),history=history,
+            files=files,images=refs if images is None else images,started=('one','two'),**kw)
+    @needs_shell
+    def test_one_add_on_failing_leaves_only_the_other_in_passed(self):
+        code,passed,log,summary=self.multi(two=self.NO_WORKERS)
+        self.assertEqual((code,passed),(1,['one']),log)
+        self.assertIn('- one: passed\n',summary);self.assertIn('- two: **failed**',summary)
+    @needs_shell
+    def test_an_image_one_add_on_cannot_pull_does_not_stop_the_others(self):
+        # On a PR the step ends at the first image it cannot pull; in sha mode the other add-on is still scanned and compared.
+        refs=['ghcr.io/woowtech/ha-mirror-one-amd64:1.0.0','ghcr.io/woowtech/ha-mirror-two-amd64:1.0.0','ghcr.io/woowtech/ha-mirror-two-amd64:1.1.0']
+        code,passed,log,summary=self.multi(images=refs)
+        self.assertEqual((code,passed),(1,['two']),log)
+        self.assertIn('one: cannot pull ghcr.io/woowtech/ha-mirror-one-amd64:1.1.0',log)
+        self.assertIn('two: scanned ghcr.io/woowtech/ha-mirror-two-amd64:1.0.0 (two-v1.0.0)',log);self.assertIn('- one: **failed**',summary)
+    @needs_shell
+    def test_without_sha_the_image_step_still_ends_at_the_first_failure(self):
+        r,_,_=self.run_step(('plan',"SBOMs of the comparison targets' images"),extra=self.APPROVED,images=())
+        self.assertEqual(r.returncode,1);self.assertFalse((self.tmp/'unscanned.txt').exists())
+
+class ShaCommands(unittest.TestCase):
+    """The two rules sha mode adds (#167): what changed at a commit (release-change) and what passed (sha-verdicts)."""
+    SHA='0123456789abcdef0123456789abcdef01234567'
+    def change(self,releases,version,policy='release',sha=SHA):
+        d=pathlib.Path(tempfile.mkdtemp());self.addCleanup(shutil.rmtree,d)
+        (d/'registry.json').write_text(json.dumps({'providers':{'WOOWTECH/r':{'ref_policy':policy,'components':[{'id':'t'}]}}}))
+        stdin=json.dumps([r if isinstance(r,dict) else {'tag_name':r,'draft':False,'prerelease':False} for r in releases])
+        with contextlib.redirect_stdout(io.StringIO()) as out,unittest.mock.patch('sys.stdin',io.StringIO(stdin)):
+            code=u.main(['release-change','--registry',str(d/'registry.json'),'--repo','WOOWTECH/r','--component','t','--version',version,'--sha',sha])
+        return code,out.getvalue()
+    def test_unchanged_only_at_the_latest_stable_releases_version(self):
+        releases=['v1.0.0','v1.1.0',{'tag_name':'v1.2.0','draft':False,'prerelease':True},'nightly']
+        self.assertEqual(self.change(releases,'1.1.0'),(0,'unchanged\n'))
+        # Newer is compared; a downgrade, the same version written differently and no Release are compared too (the plan fails the first two).
+        for version in ('1.2.0','1.0.0','1.1'):
+            with self.subTest(version):self.assertEqual(self.change(releases,version),(0,'changed\n'))
+        self.assertEqual(self.change([],'1.0.0'),(0,'changed\n'))
+    def test_sha_must_be_a_full_commit_and_the_provider_ref_policy_release(self):
+        for kw,why in (({'sha':'main'},'sha must be a full commit id'),({'sha':''},'sha must be a full commit id'),({'policy':'main'},'switch the provider to ref_policy release first')):
+            with self.subTest(kw):
+                code,out=self.change(['v1.0.0'],'1.1.0',**kw)
+                self.assertEqual(code,2);self.assertIn(why,out);self.assertTrue(out.startswith('::error title=Upgrade comparison failed::'))
+    def verdicts(self,plan=('a','b','c'),compared=('a','b','c'),results=None,unchanged=(),runtime_failed=(),components=('a','b','c','d')):
+        d=pathlib.Path(tempfile.mkdtemp());self.addCleanup(shutil.rmtree,d);(d/'reports').mkdir()
+        (d/'provider.json').write_text(json.dumps({'components':[{'id':i} for i in components]}))
+        (d/'plan.jsonl').write_text(''.join(json.dumps({'id':i})+'\n' for i in plan))
+        for name,lines in (('compared.txt',compared),('unchanged.txt',unchanged),('failed.txt',runtime_failed)):(d/name).write_text(''.join(i+'\n' for i in lines))
+        for i,passed in (results if results is not None else {'a':True,'b':True,'c':True}).items():(d/'reports'/f'{i}.json').write_text(json.dumps({'name':i,'passed':passed}))
+        with contextlib.redirect_stdout(io.StringIO()) as out:
+            code=u.main(['sha-verdicts','--provider',str(d/'provider.json'),'--unchanged',str(d/'unchanged.txt'),'--plan',str(d/'plan.jsonl'),
+                '--compared',str(d/'compared.txt'),'--runtime-reports',str(d/'reports'),'--runtime-failed',str(d/'failed.txt')])
+        return code,json.loads(out.getvalue())
+    def test_passed_needs_both_jobs_evidence(self):
+        code,v=self.verdicts(unchanged=('d',))
+        self.assertEqual((code,v['passed']),(0,['a','b','c']))
+        self.assertEqual(v['verdicts'],[{'id':i,'verdict':'passed'} for i in 'abc']+[{'id':'d','verdict':'unchanged'}])
+        # A test that did not run (no comparison target, an approved skip) is not a failure, as on a PR.
+        self.assertEqual(self.verdicts(results={'a':None,'b':True,'c':True},unchanged=('d',))[1]['passed'],['a','b','c'])
+    def test_any_missing_or_failed_evidence_fails_that_add_on_only(self):
+        for kw,failed in (({'compared':('b','c')},'a'),({'results':{'b':True,'c':True}},'a'),({'results':{'a':False,'b':True,'c':True}},'a'),
+                ({'runtime_failed':('a',)},'a'),({'plan':('b','c')},'a')):
+            with self.subTest(kw):
+                code,v=self.verdicts(unchanged=('d',),**kw)
+                self.assertEqual((code,v['passed']),(1,['b','c']));self.assertEqual(v['verdicts'][0],{'id':failed,'verdict':'failed'})
+        # An add-on no step reached (d: neither unchanged nor planned) failed too.
+        code,v=self.verdicts();self.assertEqual((code,v['passed'],v['verdicts'][3]),(1,['a','b','c'],{'id':'d','verdict':'failed'}))
+    def test_missing_files_mean_not_judged_and_an_unknown_provider_is_an_error(self):
+        with tempfile.TemporaryDirectory() as d:
+            with contextlib.redirect_stdout(io.StringIO()) as out:
+                code=u.main(['sha-verdicts','--provider',f'{d}/provider.json','--unchanged',f'{d}/x','--plan',f'{d}/x','--compared',f'{d}/x','--runtime-reports',f'{d}/x','--runtime-failed',f'{d}/x'])
+            self.assertEqual(code,2);self.assertTrue(out.getvalue().startswith('::error title=Upgrade comparison failed::'))
+            pathlib.Path(d,'provider.json').write_text(json.dumps({'components':[{'id':'a'}]}))
+            with contextlib.redirect_stdout(io.StringIO()) as out:
+                code=u.main(['sha-verdicts','--provider',f'{d}/provider.json','--unchanged',f'{d}/x','--plan',f'{d}/x','--compared',f'{d}/x','--runtime-reports',f'{d}/x','--runtime-failed',f'{d}/x'])
+            self.assertEqual((code,json.loads(out.getvalue())['passed']),(1,[]))
 
 class ComparisonTarget(StepHarness):
     """"No comparison target" only when there is no stable Release (or, for ref_policy main, no config at the PR base)."""

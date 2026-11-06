@@ -102,6 +102,27 @@
 #
 # GitHub names the check "<caller job> / <job>": "Upgrade comparison / compare".
 # On other events both jobs pass at once: the PR was already compared.
+#
+# sha mode (#167, pipeline #91): a source with no PR (a Mirror 來源: mirror-sync pushes the default branch, then cuts
+# its Releases) passes the commit as sha (the full commit id) before it calls the Release workflow. Then, whatever
+# the event, this compares that commit the way a PR is compared, with categories 1-4, except that an add-on's version
+# changed when it is not the version of its latest stable Release (upgrade_check.py release-change; there is no PR
+# base), so a re-run at the same commit compares again (after a declaration was added). The comparison target is
+# that Release and the version must be newer; an add-on whose version did not change is not compared, and a commit
+# with no change passes in seconds. Only ref_policy release providers can use it. Each add-on passes or fails on its
+# own: after a step fails for one add-on the later steps still run for the others (only in sha mode), and the output
+# `passed` is the JSON array of the ids of the add-ons that passed (upgrade_check.py sha-verdicts), for the Release
+# workflow's `components` input (#168). Any failed add-on fails the job; `passed` is set all the same, so the
+# caller's Release job reads it with `if: ${{ !cancelled() }}`. Without sha, `passed` is "" and nothing changes.
+#
+#   upgrade-comparison:
+#     name: Upgrade comparison
+#     needs: sync                                 # the job that pushed the commit
+#     permissions: {contents: read, actions: read}
+#     uses: WOOWTECH/Woow_HA_App_Store/.github/workflows/woow-addon-upgrade-check.yml@main
+#     with:
+#       sha: ${{ needs.sync.outputs.sha }}
+#   # then the Release job: needs: upgrade-comparison, if: !cancelled(), components: needs.upgrade-comparison.outputs.passed
 name: Upgrade comparison
 'on':
   workflow_call:
@@ -130,6 +151,15 @@ name: Upgrade comparison
         description: How long a version-change PR waits for the new-image artifacts of the same run before it fails.
         type: number
         default: 40
+      sha:
+        description: sha mode (#167), for a source with no PR such as a Mirror 來源's mirror-sync; the full commit id to compare with each add-on's latest stable Release before Releases are cut. Empty = compare the pull request (other events pass at once), as before.
+        type: string
+        default: ''
+    outputs:
+      passed:
+        description: sha mode (#167) only, "" otherwise. JSON array of the ids of the add-ons that passed, e.g. ["a","b"] or []; set also when the check fails, for the Release workflow's components input (#168).
+        # Never "" in sha mode: a compare job that ended before its last step gives [], so a caller never reads "" (to the Release workflow: every add-on) after a failure.
+        value: ${{ jobs.compare.outputs.passed || (inputs.sha != '' && '[]' || '') }}
 permissions:
   contents: read
   actions: read
@@ -145,24 +175,30 @@ jobs:
     env:
       # Grype refuses an older DB; the step after `grype db update` checks it too, with a clear reason.
       DB_MAX_AGE_HOURS: '120'
+    outputs:
+      passed: ${{ steps.passed.outputs.passed }}
+    # A step's `if` that starts with (success() || (inputs.sha != '' && !cancelled())) also runs after an earlier step
+    # failed in sha mode (#167), so the add-ons that one step failed do not stop the others; on a PR it is success().
     steps:
     # These steps up to the plan also run in the runtime job (YAML aliases), so both jobs judge the same add-ons and targets.
     - &not-pr
       name: Not a pull request
-      if: github.event_name != 'pull_request'
+      if: inputs.sha == '' && github.event_name != 'pull_request'
       env:
         EVENT: ${{ github.event_name }}
       run: echo "Upgrade comparison runs on pull requests; nothing to compare on ${EVENT} (the PR was already compared)." >> "$GITHUB_STEP_SUMMARY"
+    # In sha mode the commit sha instead (ref is empty on a PR: the pull request, as before).
     - &checkout-pr
       name: Check out the pull request
-      if: github.event_name == 'pull_request'
+      if: github.event_name == 'pull_request' || inputs.sha != ''
       uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
       with:
+        ref: ${{ inputs.sha }}
         path: source
         persist-credentials: false
     - &checkout-tooling
       name: Check out Store tooling
-      if: github.event_name == 'pull_request'
+      if: github.event_name == 'pull_request' || inputs.sha != ''
       uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
       with:
         repository: WOOWTECH/Woow_HA_App_Store
@@ -175,17 +211,18 @@ jobs:
         persist-credentials: false
     - &install
       name: Install dependencies
-      if: github.event_name == 'pull_request'
+      if: github.event_name == 'pull_request' || inputs.sha != ''
       run: python3 -m pip install -r tooling/.addon-sync/requirements.txt
     - &detect
       name: Find add-ons whose version changed
       id: detect
-      if: github.event_name == 'pull_request'
+      if: github.event_name == 'pull_request' || inputs.sha != ''
       env:
         GH_TOKEN: ${{ github.token }}
         REPO: ${{ github.repository }}
         BASE_SHA: ${{ github.event.pull_request.base.sha }}
         SKIP_VULNERABILITY_SCAN: ${{ inputs.skip_vulnerability_scan }}
+        SHA: ${{ inputs.sha }}
       run: |
         set -euo pipefail
         source tooling/.addon-sync/gh_raw.sh
@@ -202,16 +239,24 @@ jobs:
         fi
         : > changed.jsonl; status=0
         echo "## Upgrade comparison" >> "$GITHUB_STEP_SUMMARY"
+        if [ -n "${SHA}" ]; then
+          # sha mode (#167): no PR base; each add-on's version at the commit against its latest stable Release.
+          releases="$(gh api --paginate "repos/${REPO}/releases?per_page=100" --jq '.[]' | jq -sc .)"
+          : > unchanged.txt
+          echo "Commit $(esc "${SHA}"), each add-on against its latest stable Release (sha mode, #167):" >> "$GITHUB_STEP_SUMMARY"
+        fi
         # Same detection as Woow_ha_odoo's CI: the version in the PR against the version on the PR base.
         while IFS= read -r component; do
           fields "${component}" id=id path=config notes=notes previous=previous_config previous_notes=previous_notes
           # During a config move (previous_config in the registry) either side may still have the config at the old path.
           base="$RUNNER_TEMP/${id}.base.yaml"; new="$RUNNER_TEMP/${id}.new.yaml"
-          config_at "${BASE_SHA}" "${path}" "${previous}" "${base}" > /dev/null
+          if [ -z "${SHA}" ]; then config_at "${BASE_SHA}" "${path}" "${previous}" "${base}" > /dev/null; else : > "${base}"; fi
           found="$(config_at "" "${path}" "${previous}" "${new}")"
           if [ -z "${found}" ]; then
             # A config the PR deletes or moves, or a registry path that is wrong, must not pass as "nothing to compare".
-            if [ -s "${base}" ]; then
+            if [ -n "${SHA}" ]; then
+              fail "${id}: the Store registry lists ${path}${previous:+ (or previous_config ${previous})} for this add-on, but commit ${SHA} does not have it; correct the registry entry, or restore the config (Store README)"
+            elif [ -s "${base}" ]; then
               fail "${id}: this PR deletes or moves ${path}, the config the Store registry lists for this add-on; restore it, or to move it, first merge a Store PR that lists the new path with previous_config: ${path}, then re-run this check (moving a config, Store README)"
             else
               fail "${id}: the Store registry lists ${path}${previous:+ (or previous_config ${previous})} for this add-on, but neither this PR nor its base has it; correct the registry entry, or for a new add-on, add it to the registry only after its config is merged here (Store README)"
@@ -226,8 +271,15 @@ jobs:
           if [ -z "${current}" ]; then fail "${id}: ${found} has no version"; status=1; continue; fi
           # Besides esc on every echo: a value from the PR or its Releases with a control character is refused before use.
           no_cntrl "${current}" "${id}: the version in ${found} contains a control character (newline, tab...): ${current}" || exit 1
-          before=""; [ ! -s "${base}" ] || before="$(python3 tooling/.addon-sync/upgrade_check.py version --file "${base}" --name "${id}")" \
-            || fail_output "${before}"
+          if [ -n "${SHA}" ]; then
+            # Unchanged: the version of its latest stable Release; any other (a downgrade too) is compared, and the plan fails one that is not newer.
+            change="$(python3 tooling/.addon-sync/upgrade_check.py release-change --registry tooling/.addon-sync/registry.json --repo "${REPO}" \
+              --component "${id}" --version "${current}" --sha "${SHA}" <<<"${releases}")" || fail_output "${change}"
+            before=""; [ "${change}" != unchanged ] || { before="${current}"; printf '%s\n' "${id}" >> unchanged.txt; }
+          else
+            before=""; [ ! -s "${base}" ] || before="$(python3 tooling/.addon-sync/upgrade_check.py version --file "${base}" --name "${id}")" \
+              || fail_output "${before}"
+          fi
           if [ "${current}" != "${before}" ]; then
             jq -c --arg version "${current}" --arg notes "${notes}" --arg new "${new}" '. + {version: $version, notes: $notes, new: $new}' <<<"${component}" >> changed.jsonl
           else
@@ -240,7 +292,7 @@ jobs:
     - &plan
       name: Find the comparison targets
       id: plan
-      if: steps.detect.outputs.changed == 'true'
+      if: (success() || (inputs.sha != '' && !cancelled())) && steps.detect.outputs.changed == 'true'
       env:
         SBOM_ARTIFACT: ${{ inputs.sbom_artifact }}
         SKIP_VULNERABILITY_SCAN: ${{ inputs.skip_vulnerability_scan }}
@@ -347,10 +399,10 @@ jobs:
         exit "${status}"
     # While the caller's amd64 build is still running: scanners, DB and the old images' SBOMs.
     - name: Install pinned Syft and Grype
-      if: steps.plan.outputs.scan == 'true'
+      if: (success() || (inputs.sha != '' && !cancelled())) && steps.plan.outputs.scan == 'true'
       run: bash tooling/.github/actions/addon-sbom/install-scanners.sh "$RUNNER_TEMP/scanners" syft grype
     - name: Update the vulnerability database
-      if: steps.plan.outputs.scan == 'true'
+      if: (success() || (inputs.sha != '' && !cancelled())) && steps.plan.outputs.scan == 'true'
       run: |
         set -euo pipefail
         export GRYPE_DB_CACHE_DIR="$RUNNER_TEMP/grype-db" GRYPE_CHECK_FOR_APP_UPDATE=false
@@ -367,7 +419,9 @@ jobs:
         fi
     # With scan_published_image also the new image the PR's config names: its SBOM goes where a downloaded artifact would.
     - name: SBOMs of the comparison targets' images
-      if: steps.plan.outputs.scan == 'true'
+      if: (success() || (inputs.sha != '' && !cancelled())) && steps.plan.outputs.scan == 'true'
+      env:
+        SHA: ${{ inputs.sha }}
       run: |
         set -euo pipefail
         source tooling/.addon-sync/log.sh
@@ -375,30 +429,35 @@ jobs:
         source tooling/.addon-sync/images.sh
         export SYFT_CHECK_FOR_APP_UPDATE=false
         mkdir -p sboms
+        # stop <id>: on a PR the step ends at the first image that cannot be read; in sha mode (#167) only <id> fails: it is
+        # listed in unscanned.txt, which "Compare with the comparison target" skips, and the other add-ons are still scanned.
+        status=0
+        stop() { [ -n "${SHA}" ] || exit 1; printf '%s\n' "$1" >> unscanned.txt; status=1; }
         while IFS= read -r row; do
           fields "${row}" id=id target=target ref=ref new_ref=new_ref
           # No ref: the comparison target was built on the device; its SBOM comes from the runtime job (#146).
           if [ -n "${ref}" ] && ! docker pull --quiet --platform linux/amd64 "${ref}"; then
-            fail "${id}: cannot pull the comparison target's image ${ref} from the registry; re-run, or check that the image of ${target} exists"; exit 1
+            fail "${id}: cannot pull the comparison target's image ${ref} from the registry; re-run, or check that the image of ${target} exists"; stop "${id}"; continue
           fi
           if [ -n "${new_ref}" ] && ! docker pull --quiet --platform linux/amd64 "${new_ref}"; then
-            fail "${id}: $(unpublished_reason "${new_ref}")"; exit 1
+            fail "${id}: $(unpublished_reason "${new_ref}")"; stop "${id}"; continue
           fi
           for side in old new; do
             image="${ref}"; sbom="$RUNNER_TEMP/${id}.old.syft.json"
             if [ "${side}" = old ]; then [ -n "${ref}" ] || continue; fi
             if [ "${side}" = new ]; then [ -n "${new_ref}" ] || continue; image="${new_ref}"; sbom="sboms/${id}.syft.json"; fi
             if ! "$RUNNER_TEMP/scanners/syft" scan "docker:${image}" --config tooling/.github/actions/addon-sbom/syft.yaml -o "syft-json=${sbom}"; then
-              fail "${id}: Syft could not read ${image}"; exit 1
+              fail "${id}: Syft could not read ${image}"; stop "${id}"; continue 2
             fi
             docker image rm --force "${image}" > /dev/null
           done
         done < <(jq -c 'select(.ref != "" or .new_ref != "")' plan.jsonl)
+        exit "${status}"
     # The caller does not make this job wait on its build (`needs:`), so a PR that changes no
     # version passes in seconds; only here, after a version change, does the job wait for the
     # addon-sbom artifact of this same run.
     - name: Wait for the new images' SBOMs
-      if: steps.detect.outputs.changed == 'true' && steps.plan.outputs.wait == 'true'
+      if: (success() || (inputs.sha != '' && !cancelled())) && steps.detect.outputs.changed == 'true' && steps.plan.outputs.wait == 'true'
       env:
         GH_TOKEN: ${{ github.token }}
         REPO: ${{ github.repository }}
@@ -413,7 +472,7 @@ jobs:
         jq -r 'select((.ref != "" or .rebuilt_old) and .new_ref == "" and (.rebuilt_new | not)) | [.id, .artifact] | @tsv' plan.jsonl > wanted-sboms.tsv
         bash tooling/.addon-sync/wait_artifacts.sh wanted-sboms.tsv artifacts.tsv "SBOM of the new image" addon-sbom
     - name: Download the new images' SBOMs
-      if: steps.plan.outputs.wait == 'true'
+      if: (success() || (inputs.sha != '' && !cancelled())) && steps.plan.outputs.wait == 'true'
       env:
         GH_TOKEN: ${{ github.token }}
         REPO: ${{ github.repository }}
@@ -429,7 +488,7 @@ jobs:
     # runs after runtime (needs), so the artifact is there or never will be: no wait. Without it, "Compare with the
     # comparison target" fails each add-on that needs one.
     - name: Download the rebuilt images' SBOMs
-      if: steps.plan.outputs.rebuilt == 'true'
+      if: (success() || (inputs.sha != '' && !cancelled())) && steps.plan.outputs.rebuilt == 'true'
       env:
         GH_TOKEN: ${{ github.token }}
         REPO: ${{ github.repository }}
@@ -447,7 +506,7 @@ jobs:
           fail "cannot download the SBOMs of the rebuilt images (artifact upgrade-comparison-rebuilt-sboms-attempt-${RUN_ATTEMPT}); re-run all jobs"; exit 1
         fi
     - name: Compare with the comparison target
-      if: steps.detect.outputs.changed == 'true'
+      if: (success() || (inputs.sha != '' && !cancelled())) && steps.detect.outputs.changed == 'true'
       run: |
         set -euo pipefail
         source tooling/.addon-sync/log.sh
@@ -458,6 +517,8 @@ jobs:
         while IFS= read -r row; do
           fields "${row}" id=id notes=notes new=new target=target ref=ref new_ref=new_ref note=note \
             rebuilt_old='rebuilt_old // false' rebuilt_new='rebuilt_new // false'
+          # sha mode (#167): an add-on whose images could not be read already failed (the step above said why).
+          if [ -s unscanned.txt ] && grep -qxF -- "${id}" unscanned.txt; then status=1; continue; fi
           old="$RUNNER_TEMP/${id}.old.yaml"
           args=(--name "${id}" --new "${new}" --notes "source/${notes}" --notes-path "${notes}")
           [ ! -s "${old}" ] || args+=(--old "${old}")
@@ -492,12 +553,13 @@ jobs:
             args+=(--old-scan "$RUNNER_TEMP/${id}.old.grype.json" --new-scan "$RUNNER_TEMP/${id}.new.grype.json")
           fi
           rc=0; python3 tooling/.addon-sync/upgrade_check.py compare "${args[@]}" || rc=$?
-          [ "${rc}" = 0 ] || status=1
+          # compared.txt: the add-ons whose categories 1 and 4 passed, for sha mode's verdicts (#167).
+          if [ "${rc}" = 0 ]; then printf '%s\n' "${id}" >> compared.txt; else status=1; fi
         done < plan.jsonl
         exit "${status}"
     # Category 2 (#137): the runtime job's verdict, whatever happened in the steps above.
     - name: Upgrade test result
-      if: always() && github.event_name == 'pull_request'
+      if: always() && (github.event_name == 'pull_request' || inputs.sha != '')
       env:
         GH_TOKEN: ${{ github.token }}
         REPO: ${{ github.repository }}
@@ -558,6 +620,8 @@ jobs:
           fi
           rc=0; due="$(python3 tooling/.addon-sync/upgrade_check.py data-check-due --registry tooling/.addon-sync/registry.json --repo "${REPO}" \
             --component "${id}" --addon-dir "source/$(dirname "${notes}")" ${DATA_CHECK_TODAY:+--today "${DATA_CHECK_TODAY}"})" || rc=$?
+          # runtime-failed.txt: the add-ons this step fails although their result passed, for sha mode's verdicts (#167).
+          [ "${rc}" = 0 ] || printf '%s\n' "${id}" >> runtime-failed.txt
           case "${rc}" in
             0) [ -z "${due}" ] || echo "- ${id}: ${due}" >> "$GITHUB_STEP_SUMMARY";;
             3) fail "${id}: ${due}${hint}"; status=1; echo "- ${id}: **${due}${hint}**" >> "$GITHUB_STEP_SUMMARY";;
@@ -575,6 +639,27 @@ jobs:
           fail "the runtime job (upgrade test) ended ${RUNTIME_RESULT} with no failing add-on result; its log has the reason"; status=1
         fi
         exit "${status}"
+    # sha mode (#167): each add-on's verdict and the output `passed`, whatever happened above (an add-on passes only with
+    # both jobs' evidence, upgrade_check.py sha-verdicts). It fails when an add-on failed, so the job does too.
+    - name: Add-ons that passed
+      id: passed
+      if: always() && inputs.sha != ''
+      run: |
+        set -euo pipefail
+        source tooling/.addon-sync/log.sh
+        rc=0; verdicts="$(python3 tooling/.addon-sync/upgrade_check.py sha-verdicts --provider provider.json --unchanged unchanged.txt --plan plan.jsonl \
+          --compared compared.txt --runtime-reports runtime-reports --runtime-failed runtime-failed.txt)" || rc=$?
+        if [ "${rc}" -gt 1 ] || ! passed="$(jq -c '.passed' <<<"${verdicts}" 2> /dev/null)"; then
+          # Not even the add-ons are known (the job ended before it found them): none passed.
+          printf '%s\n' "${verdicts}"; echo "passed=[]" >> "$GITHUB_OUTPUT"
+          fail "the verdicts could not be made (the steps above ended early; their log has the reason), so no add-on passed"; exit 1
+        fi
+        echo "passed=${passed}" >> "$GITHUB_OUTPUT"
+        echo "## Verdicts (sha mode)" >> "$GITHUB_STEP_SUMMARY"
+        jq -r '.verdicts[] | "- \(.id): \({passed: "passed", failed: "**failed** (the errors above give the reason)", unchanged: "version unchanged, not compared"}[.verdict])"' \
+          <<<"${verdicts}" >> "$GITHUB_STEP_SUMMARY"
+        echo "Passed: ${passed}"
+        exit "${rc}"
   # Category 2: the upgrade test of each add-on whose version changed: startup (#137), the seed/verify data hooks (#138),
   # the registry's approved skips and comparison-target failures (#140), add-ons built on the device rebuilt here (#144).
   runtime:
@@ -606,7 +691,7 @@ jobs:
     # skipped, so its images built on the device are still rebuilt for the vulnerability comparison (category 4), but it
     # is never started or tested, and its result stays this one.
     - name: Skip the upgrade tests the registry approves
-      if: steps.detect.outputs.changed == 'true'
+      if: (success() || (inputs.sha != '' && !cancelled())) && steps.detect.outputs.changed == 'true'
       env:
         REPO: ${{ github.repository }}
       run: |
@@ -628,7 +713,7 @@ jobs:
         mv plan.tested.jsonl plan.jsonl
     - name: Plan the upgrade tests
       id: upgrade
-      if: steps.detect.outputs.changed == 'true'
+      if: (success() || (inputs.sha != '' && !cancelled())) && steps.detect.outputs.changed == 'true'
       env:
         IMAGE_ARTIFACT: ${{ inputs.image_artifact }}
         RUN_ATTEMPT: ${{ github.run_attempt }}
@@ -709,7 +794,7 @@ jobs:
         exit "${status}"
     # While the caller's amd64 build is still running.
     - name: Pull the images
-      if: steps.upgrade.outputs.run == 'true'
+      if: (success() || (inputs.sha != '' && !cancelled())) && steps.upgrade.outputs.run == 'true'
       run: |
         set -euo pipefail
         source tooling/.addon-sync/log.sh
@@ -744,10 +829,10 @@ jobs:
     # its SBOMs: a failure is recorded there only, never as an upgrade test result (that stays approved_skip), and its images
     # are removed right after their SBOMs.
     - name: Install pinned Syft
-      if: steps.upgrade.outputs.sbom == 'true'
+      if: (success() || (inputs.sha != '' && !cancelled())) && steps.upgrade.outputs.sbom == 'true'
       run: bash tooling/.github/actions/addon-sbom/install-scanners.sh "$RUNNER_TEMP/scanners" syft
     - name: Build the images of add-ons built on the device
-      if: steps.upgrade.outputs.build == 'true'
+      if: (success() || (inputs.sha != '' && !cancelled())) && steps.upgrade.outputs.build == 'true'
       env:
         GH_TOKEN: ${{ github.token }}
         REPO: ${{ github.repository }}
@@ -846,7 +931,7 @@ jobs:
         # The images are built; their sources are no longer needed (an HA Core tree is tens of MB, its image GBs).
         rm -rf "$RUNNER_TEMP"/old-src-*
     - name: Wait for the new images
-      if: steps.upgrade.outputs.wait == 'true'
+      if: (success() || (inputs.sha != '' && !cancelled())) && steps.upgrade.outputs.wait == 'true'
       env:
         GH_TOKEN: ${{ github.token }}
         REPO: ${{ github.repository }}
@@ -860,7 +945,7 @@ jobs:
         jq -r 'select(.test and .new_src == "artifact") | [.id, .artifact] | @tsv' upgrade.jsonl > wanted-images.tsv
         bash tooling/.addon-sync/wait_artifacts.sh wanted-images.tsv images.tsv "new image" addon-image
     - name: Load the new images
-      if: steps.upgrade.outputs.wait == 'true'
+      if: (success() || (inputs.sha != '' && !cancelled())) && steps.upgrade.outputs.wait == 'true'
       env:
         GH_TOKEN: ${{ github.token }}
         REPO: ${{ github.repository }}
@@ -879,7 +964,7 @@ jobs:
           fi
         done < images.tsv
     - name: Run the upgrade tests
-      if: steps.upgrade.outputs.run == 'true'
+      if: (success() || (inputs.sha != '' && !cancelled())) && steps.upgrade.outputs.run == 'true'
       run: |
         set -euo pipefail
         source tooling/.addon-sync/fields.sh
@@ -907,7 +992,7 @@ jobs:
     # FAIL_LOG; compare quotes them instead of only saying that this job failed. When upgrade_runtime.py already
     # wrote why an add-on failed, that is the reason: a second entry would only say that this job failed.
     - name: Record why the runtime job failed
-      if: failure() && github.event_name == 'pull_request'
+      if: failure() && (github.event_name == 'pull_request' || inputs.sha != '')
       run: |
         set -euo pipefail
         mkdir -p runtime-reports
@@ -916,7 +1001,7 @@ jobs:
         else reason="a step failed without a reason; the runtime job's log has it"; fi
         jq -n --arg reason "${reason}" '{name: "runtime job", passed: false, reason: $reason}' > runtime-reports/runtime-job.json
     - name: Upload the upgrade test results
-      if: always() && github.event_name == 'pull_request'
+      if: always() && (github.event_name == 'pull_request' || inputs.sha != '')
       uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
       with:
         # compare reads this attempt's results; the run attempt keeps a re-run from reading an earlier one.
@@ -927,7 +1012,7 @@ jobs:
     # #146: the SBOMs of the images built on the device, and why a side has none, for compare's category 4 ("Download the
     # rebuilt images' SBOMs"). Uploaded whatever happened, so compare reads what there is, and fails without it.
     - name: Upload the rebuilt images' SBOMs
-      if: always() && github.event_name == 'pull_request'
+      if: always() && (github.event_name == 'pull_request' || inputs.sha != '')
       uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
       with:
         name: upgrade-comparison-rebuilt-sboms-attempt-${{ github.run_attempt }}
