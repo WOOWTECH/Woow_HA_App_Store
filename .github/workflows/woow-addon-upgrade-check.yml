@@ -583,7 +583,9 @@ jobs:
     # A repository like apporo bumps up to five add-ons in one PR, so 90 minutes could run out; GitHub allows 360.
     # With smoke on both versions (#139) one add-on whose every wait runs out takes 2 x (300 + 60) s + 4 x 600 s of
     # hooks = 52 minutes (plus its builds), so 150 is not a bound for several such add-ons: a job that runs out of
-    # time fails compare (runtime did not succeed), it never passes.
+    # time fails compare (runtime did not succeed), it never passes. The Syft SBOM after each build (#146) adds little:
+    # on the apporo pilot (one HA Core add-on, 2026-11-06) both builds with their SBOMs took 2 minutes and the whole job
+    # 4.5, so five such add-ons stay far below 150.
     timeout-minutes: 150
     env:
       # Every fail (log.sh) of this job is also written here; "Record why the runtime job failed" hands it to compare.
