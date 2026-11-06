@@ -33,7 +33,7 @@
 | [Woow_ha_frigate_add_on](https://github.com/WOOWTECH/Woow_ha_frigate_add_on) | 預設分支（`main`） | `frigate` | `frigate`／stable | `frigate` | ✓ | —；各架構映像 digest | 預建映像（amd64、aarch64） | 已同步 |
 | [Woow_ha_hermes_add_on](https://github.com/WOOWTECH/Woow_ha_hermes_add_on) | 正式 Release（`main`） | `hermes` | `woow-hermes`／stable | `woow-hermes` | ✓ | `publish-hermes-addon-images.yml`、`release-train.yml`；各架構映像 digest | 預建映像（amd64） | 已同步 |
 | [Woow_ha_immich](https://github.com/WOOWTECH/Woow_ha_immich) | 正式 Release（`main`） | `woow-immich` | `woow-immich`／stable | `woow-immich` | ✓ | `release.yml`（amd64 建置） | 本機建置（aarch64、amd64） | 已同步 |
-| [Woow_ha_jellyfin_add_on](https://github.com/WOOWTECH/Woow_ha_jellyfin_add_on) | 預設分支（`main`） | `jellyfin` | `jellyfin`／stable | `jellyfin` | ✓ | —；各架構映像 digest | 預建映像（aarch64、amd64） | 已同步 |
+| [Woow_ha_jellyfin_add_on](https://github.com/WOOWTECH/Woow_ha_jellyfin_add_on) | 正式 Release（`main`） | `jellyfin` | `jellyfin`／stable | `jellyfin` | ✓ | —；各架構映像 digest | 預建映像（aarch64、amd64） | 已同步 |
 | [Woow_ha_knxd_add_on](https://github.com/WOOWTECH/Woow_ha_knxd_add_on) | 正式 Release（`main`） | `knxd` | `knxd`／stable | `knxd` | ✓ | `release.yml`（amd64 建置）；各架構映像 digest | 預建映像（armhf、armv7、aarch64、amd64、i386） | 已同步 |
 | [Woow_ha_matter_hub_add_on](https://github.com/WOOWTECH/Woow_ha_matter_hub_add_on) | 正式 Release（`main`） | `hamh-alpha` | `hamh-alpha`／prerelease | `hamh-alpha` | — | — | — | 開發通道，不進 stable |
 | [Woow_ha_matter_hub_add_on](https://github.com/WOOWTECH/Woow_ha_matter_hub_add_on) | 正式 Release（`main`） | `hamh-testing` | `hamh-testing`／prerelease | `hamh-testing` | — | — | — | 開發通道，不進 stable |
