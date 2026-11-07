@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.1.17 — 2026-11-07
+
+Fix: an existing install no longer stops after the update to 0.1.16.
+
+- 0.1.16 stopped the add-on whenever `admin_password` was empty. An install
+  that had never saved the option relied on the default of 0.1.15 and earlier,
+  which is gone from `config.yaml`, so the option became empty and the add-on
+  failed to start after the update ("FATAL: admin_password is empty"), although
+  its admin account already existed. The option is only read when that account
+  is created.
+- A new install still has to set `admin_password`: with no database yet, an
+  empty value stops the add-on before Postgres is created, as in 0.1.16.
+- An existing install with an empty value now starts and logs a warning. The
+  admin account keeps the password it has. If the install was created by
+  0.1.15 or earlier, that may still be the retired default: change it (see
+  DOCS.md, section "Security").
+- If an existing database has no admin account (the boot that created it never
+  got that far) and the value is empty, the add-on stops with a clear message
+  instead of leaving the server open to a first-come setup call.
+- No change to options, schema, ports or data. Omnigent stays 0.12.0.
+
 ## 0.1.16 — 2026-10-29
 
 Security: no more publicly readable default admin password.

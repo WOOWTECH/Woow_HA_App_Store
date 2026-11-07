@@ -9,7 +9,7 @@ dependency, no external database wiring.
 1. Supervisor → **Add-on Store** → three-dot menu → **Repositories**
 2. Add `https://github.com/WOOWTECH/Woow_ha_omnigent_addon`
 3. Install **Woow Omnigent**
-4. On the **Configuration** tab, set `admin_password` (required, no default);
+4. On the **Configuration** tab, set `admin_password` (required for a new install, no default);
    adjust the other options if you don't want their defaults
 5. **Start**
 
@@ -21,7 +21,7 @@ admin. The Ingress panel appears in the HA sidebar once ready.
 | Option           | Default              | Purpose                                                                                        |
 |------------------|----------------------|------------------------------------------------------------------------------------------------|
 | `admin_username` | `woow`               | Local admin created via `POST /auth/setup` on first boot                                       |
-| `admin_password` | *(required)*         | Password of the admin account, used for the web UI. The add-on does not start while it is empty |
+| `admin_password` | *(required)*         | Password of the admin account, used for the web UI. A new install does not start while it is empty; an existing install does, and keeps the account's current password |
 | `base_url`       | *(empty)*            | Public URL runners dial in on. Empty = `http://homeassistant.local:8000`                       |
 | `features`       | *(empty)*            | Comma-separated feature flags forwarded as `OMNIGENT_FEATURES=…`                               |
 | `env_vars`       | `[]`                 | Arbitrary passthrough — each item `{key, value}` becomes an env var (key must match `^[A-Z]…`) |
@@ -46,6 +46,12 @@ boot, so editing the option afterwards does **not** change an existing account:
 
 While the retired default is still the configured value, the add-on logs a
 warning at every start.
+
+If you updated from 0.1.15 or earlier without ever saving the Configuration
+tab, `admin_password` is empty. 0.1.16 refused to start in that state; since
+0.1.17 the add-on starts, logs a warning, and the account keeps its current
+password. That password may still be the retired default, so change it as
+above and then fill in the option.
 
 ### Suggested `features`
 

@@ -11,6 +11,9 @@ set -e
 
 OPTIONS_FILE=/data/options.json
 CONFIG_ENV=/var/run/omnigent.env
+# init-postgres creates this file on the first boot. Its presence means an earlier boot already got as
+# far as creating the database, and init-admin-claim created the admin account then.
+PG_VERSION_FILE=/data/postgres/PG_VERSION
 # s6-overlay v3 reads /run/s6/container_environment/<VAR>. Anything under
 # /command/with-contenv inherits from there — that includes svc-postgres,
 # svc-omnigent-server, and init-admin-claim.
@@ -42,15 +45,26 @@ optget() {
 # --- Admin identity (feeds init-admin-claim + omnigent-server bootstrap) ----
 # There is no default password. Releases up to 0.1.15 pre-filled one that
 # anyone could read in this repository, and init-admin-claim turns whatever is
-# configured here into the admin account on first boot. An empty password
-# therefore stops the add-on (every later service depends on this one) instead
-# of falling back silently. An install that still uses the retired default
-# keeps running, but is warned at every start.
+# configured here into the admin account on first boot, and only then.
+#   - New install (no database yet): an empty password stops the add-on (every
+#     later service depends on this one) instead of falling back silently.
+#   - Existing install (database present): the account already exists, so the
+#     option is not read again. An empty value is the normal state of an install
+#     that never saved the option, because the default it relied on is gone from
+#     config.yaml. It keeps running, with a warning, and the account keeps the
+#     password it has. init-admin-claim stops the add-on if that account is
+#     missing after all.
+# An install that still uses the retired default keeps running, but is warned at
+# every start.
 ADMIN_USERNAME="$(optget admin_username 'woow')"
 ADMIN_PASSWORD="$(optget admin_password '')"
 if [ -z "${ADMIN_PASSWORD}" ]; then
-    log "FATAL: admin_password is empty. Set a strong password on the add-on Configuration tab, then start the add-on again."
-    exit 1
+    if [ -f "${PG_VERSION_FILE}" ]; then
+        log "WARNING: admin_password is empty. The existing admin account keeps the password it has. If this install was created by release 0.1.15 or earlier it may still use the default those releases documented publicly: sign in and change it (see DOCS.md, section Security), then put the new password in this option."
+    else
+        log "FATAL: admin_password is empty. Set a strong password on the add-on Configuration tab, then start the add-on again."
+        exit 1
+    fi
 fi
 # sha256 of the retired default, so the value itself is no longer in the tree.
 RETIRED_DEFAULT_SHA256="e0919cec1e5a7cec9e68fff36ae0fec69070339e8849c0e672d82b4e048f42a9"
