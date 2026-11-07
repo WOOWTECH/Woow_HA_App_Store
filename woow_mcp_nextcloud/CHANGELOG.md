@@ -1,3 +1,10 @@
+## 0.4.12 — images published and verified
+
+- Names with an ordinary `%` (PR #70): files, folders and calendars whose name or id contains `%` (for example `100%-off.txt`, `%18 KDV.xlsx`, `frame_%04d.png`) can be read, written and listed, as on the PaaS server; 0.4.11 refused every request for them with `BACKEND_DESTINATION_DENIED`, and a depth-2 `get_file_tree` left out such a folder's contents. Names whose literal text a further decode would turn into path structure (`a%2fb`, `%2e%2e`, `%23 notes`) or that other servers decode differently (`10%uface.txt`, `%` followed by fullwidth digits) stay refused. httpcore's `target` request extension is refused.
+- Documentation: the size limits are corrected (texts up to 1 MiB, uploads up to 10 MiB, 16 MiB per MCP request; the "256 KiB per request" line dated from 0.1.x) and the `%` limitations are rewritten.
+- Documentation: DOCS states that the add-on publishes tools only (no prompts or resources) and what the PaaS server publishes besides; the owner decided on 2026-11-07 to keep it so.
+- Exact-source image `ghcr.io/woowtech/amd64-mcp-nextcloud@sha256:5551395ddd2637e63776eb2fe30d8e239e9f1d06b7261b40146b8581dbcc08ef` passed P1–P5, anonymous verification and fresh remote layer/diffID checks. See ../../docs/provenance/release-0.4.12-images.json and ../../docs/operations/release-decision-0.4.12.md. Stable Release/Store distribution and actual HAOS acceptance remain separate evidence.
+
 ## 0.4.11 — images published and verified
 
 - Remove the experimental label (PR #59): the manifest declares `stage: stable` and the store description no longer starts with "Experimental;" (the image `io.hass.description` label follows). Runtime, tools, permissions and dependencies are unchanged from 0.4.10.

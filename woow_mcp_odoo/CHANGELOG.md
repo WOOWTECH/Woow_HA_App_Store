@@ -1,3 +1,13 @@
+## 0.4.12 — images published and verified
+
+- The readiness probe now tells a login Odoo itself refused from a server that cannot be reached: `BACKEND_AUTH_REJECTED` (fixed text, no URL, user or password) for a false uid, an AccessDenied fault or an unknown database, `BACKEND_UNAVAILABLE` for everything else. `health_check` stays gated; the backend state stays "unreachable" (PR #65).
+- Tool calls wait up to 30 s for Odoo, as the PaaS server does (it was 5 s): a read Odoo finishes in 6–30 s no longer fails with `BACKEND_TIMEOUT`. The add-on still serves Odoo tools one at a time, so a read Odoo never answers can hold the worker for about 91 s (three attempts of 30 s) before it fails with `BACKEND_TIMEOUT`, and other calls get `BACKEND_BUSY` meanwhile; writes are tried once. The readiness probe keeps its 5 s (PR #65).
+- With "Allow Unreviewed Methods" off, `execute_method` runs every method of the reviewed read list (`read_group`, `web_search_read`, `web_read`, `search_fetch`, `web_read_group`, `web_name_search`, `read_progress_bar`, `formatted_read_group` and `formatted_read_grouping_sets` were refused before), exactly as the PaaS server does; `health_check` reports 41 tools (the private readiness probe is no longer counted) (PR #66).
+- Admin API: `PUT api/odoo/write-switches` with a `null` body answers 400 (it was 503 `state unavailable`) (PR #66).
+- Shared backend policy (PR #70): a request path may carry a literal `%` as long as no decoder in front of or inside the backend can read more structure into it than the first decode gave; httpcore's `target` request extension is refused. Odoo's XML-RPC paths are fixed, so no Odoo call changes.
+- Documentation: DOCS states that the add-on publishes tools only (no prompts or resources) and what the PaaS server publishes besides; the owner decided on 2026-11-07 to keep it so.
+- Exact-source image `ghcr.io/woowtech/amd64-mcp-odoo@sha256:0c196747e6addadbbd1d2b802673d964a673dbfa3efdfbe48e0e6fec1da82121` passed P1–P5, anonymous verification and fresh remote layer/diffID checks. See ../../docs/provenance/release-0.4.12-images.json and ../../docs/operations/release-decision-0.4.12.md. Stable Release/Store distribution and actual HAOS acceptance remain separate evidence.
+
 ## 0.4.11 — images published and verified
 
 - Remove the experimental label (PR #59): the manifest declares `stage: stable` and the store description no longer starts with "Experimental;" (the image `io.hass.description` label follows). Runtime, tools, permissions and dependencies are unchanged from 0.4.10.

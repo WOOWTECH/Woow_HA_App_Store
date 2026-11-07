@@ -30,12 +30,14 @@ protection mode 保持 on，無新增 host mounts、Docker socket 或 capabiliti
 
 本產品 runtime：**n8n-mcp 2.96.2 / Node 26.12.1**（0.4.0 起 Node 26；0.3.4 是 Node 22.23.4，之前 n8n-mcp 2.91.0 / Node 22.23.2，28 個工具相同）。**0.2.1 起完整版**（負責人 2026-10-15 決定）：上游 28 個工具全部開放，與原始 MCP server 及 PaaS 版功能一致；tools/list 用子程序自己的 inputSchema（經 provider-safe 正規化），tools/call 參數原樣轉給子程序驗證，輸出不再截斷或投影。管理類工具（workflow、executions、credentials、data table、資料夾、版本、agents 等）需先設定 n8n 網址與 API key。原生版本歷史、資料表欄位操作、`n8n_test_workflow` prepare／pinned／direct、`n8n_explore_node_resources`、`n8n_manage_agents` 另需選填的 **MCP Access Token**（0.2.1 起，管理面板「後端連線設定」；n8n 設定 → Instance-level MCP）。子程序以 `WEBHOOK_SECURITY_MODE=permissive` 執行（0.2.1 起，使用者決定關閉 webhook／URL SSRF 防護）：可連 HA 內網的 n8n，**MCP 也能經 n8n-mcp 連到 add-on 能到的任何內網位址**（上游只保留擋雲端 metadata 主機名）。逐名清單與分類見[工具表](https://github.com/WOOWTECH/Woow_ha_mcp_addons/blob/claude-delivery/docs/tool-surface.md)，轉送規則與保留的安全層見[工具範圍](https://github.com/WOOWTECH/Woow_ha_mcp_addons/blob/claude-delivery/docs/tool-expansion.md)。子程序新增但尚未分類的工具一律拒絕。
 
+**MCP 提供的內容**：這個 add-on 透過 MCP 只提供工具（tools）：`initialize` 宣告的能力只有 `tools`，`prompts/list`、`resources/list` 等請求回 -32601（Method not found）。子程序自己的 server instructions 不轉送。WOOW PaaS 的 n8n MCP 另外提供 resources；負責人 2026-11-07 決定維持只提供工具。
+
 ## 後端與設定主權
 
 一個 Add-on 只有一組後端：**backend_url、backend_key（API base 不附 /api/v1）**。
 後端憑證／URL、token、policy、顯式 client endpoint 由 GUI/state 擁有；HA options
 目前為空，不放 credentials、不覆寫 state。UI 支援保留／完整替換／確認清除與三維健康，
-**本地串接不代表已通過 HA**。第一個核准試點，僅受限非正式 workflow key；sql.js fallback，npm ci --ignore-scripts；沒有 runtime npm download。
+**本地串接不代表已通過 HA**。第一個核准試點，僅受限非正式 workflow key；better-sqlite3 原生模組（固定 sha256 的 Node 26 預建檔，建置期取得）與 FTS5，npm ci --ignore-scripts；沒有 runtime npm download。
 
 工具頁依實際 metadata 顯示每個工具的停用開關與寫入授權（寫入工具一個 grant，混合工具每個寫入 operation 一個）；保存取代全部
 `enabled_write_tools` 並 `writes_enabled:false`，disabled 優先；失配／過期契約停止保存。
@@ -72,5 +74,5 @@ backup，不能只降 image 或改 schema。依 [更新備份回復](https://git
 
 source/license/secret、image 已通過 gate；管理員 Ingress、同 HA client 本機工具、
 CPU/RSS/latency 已有 HA 證據。仍需真 n8n 後端與受限 credentials、non-admin、LAN client、
-stream、backup/restore、升版證據。第一個核准試點，僅受限非正式 workflow key；sql.js fallback，npm ci --ignore-scripts；沒有 runtime npm download。
+stream、backup/restore、升版證據。第一個核准試點，僅受限非正式 workflow key；better-sqlite3 原生模組（固定 sha256 的 Node 26 預建檔，建置期取得）與 FTS5，npm ci --ignore-scripts；沒有 runtime npm download。
 [發佈關卡](https://github.com/WOOWTECH/Woow_ha_mcp_addons/blob/claude-delivery/docs/operations/release.md) 預設關閉；其他產品通過不能替本產品背書。

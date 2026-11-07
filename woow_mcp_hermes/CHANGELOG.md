@@ -1,3 +1,11 @@
+## 0.4.12 — images published and verified
+
+- `hermes_mcp` action `add` refuses a cloud-metadata URL with the PaaS server's own sentence, `INVALID_INPUT: url blocked by SSRF protection: Cloud metadata endpoint blocked` (it was `BACKEND_DESTINATION_DENIED`): the PaaS metadata list, its IPv6 spellings and its tunnelled-IPv4 forms (mapped, translated, NAT64, 6to4, Teredo); a number form that resolves to a metadata address (`2852039166`, `0xa9fea9fe`) reads `Hostname resolves to a blocked address (Cloud metadata endpoint blocked)`, as on PaaS (PR #68).
+- Behaviour change: the unique-local metadata addresses `fd20:ce::254` and `fd00:a9fe:a9fe::1` could be registered as MCP servers in 0.4.11 (they were treated as LAN addresses); they are refused now, as on PaaS. Other refused classes (link-local, CGNAT, `0.0.0.0`, credentials in the URL) keep `BACKEND_DESTINATION_DENIED`, and so does a host name that only resolves to a metadata address (PR #68).
+- Shared backend policy (PR #70): a request path may carry a literal `%` as long as no decoder in front of or inside the backend can read more structure into it than the first decode gave; httpcore's `target` request extension is refused. Hermes builds its request paths from validated segments, so no Hermes call changes.
+- Documentation: DOCS states that the add-on publishes tools only (no prompts or resources) and what the PaaS server publishes besides; the owner decided on 2026-11-07 to keep it so.
+- Exact-source image `ghcr.io/woowtech/amd64-mcp-hermes@sha256:93a962efed8e9fc8d1c5944b374cae314475eba8e850ddc43a676a077bf1bb73` passed P1–P5, anonymous verification and fresh remote layer/diffID checks. See ../../docs/provenance/release-0.4.12-images.json and ../../docs/operations/release-decision-0.4.12.md. Stable Release/Store distribution and actual HAOS acceptance remain separate evidence.
+
 ## 0.4.11 — images published and verified
 
 - Carry merged PR #58: every MCP-visible Hermes error reads `CODE: text` (`BACKEND_UNAVAILABLE`, `BACKEND_AUTH_REJECTED`, `BACKEND_REDIRECT_REJECTED`, `BACKEND_TIMEOUT`, `BACKEND_HTTP_ERROR`, `BACKEND_BUSY`, `BACKEND_STREAM_ERROR`, `BACKEND_UNEXPECTED_RESPONSE`, `INVALID_INPUT`, `NOT_FOUND`, `CONFIRMATION_REQUIRED`, `CONFIG_NOT_APPLIED`, `CHAT_TURN_FAILED` and the existing outcome-unknown codes), the same table as the PaaS woow-mcp-server.

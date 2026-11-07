@@ -16,6 +16,8 @@ MCP 端點（Bearer token）不經這項檢查，不受影響。新的 Core 版�
 
 本產品 runtime：**vendored SDK MCP 2.3.0**（0.4.0 起；0.3.4 是 1.30.0，之前 1.28.1；與 PaaS 版 hermes_mcp_server（woow-mcp-server 471efdf）相同，只多出站與錯誤防護，以及 `hermes_mcp` add 拒絕 loopback 網址；工具失敗的錯誤文字與 1.x 相同）。**0.2.1 起完整版**（負責人 2026-10-15 決定）：上游 11 個工具全部開放，與原始 MCP server 及 PaaS 版功能一致；tools/list 用子程序自己的 inputSchema（經 provider-safe 正規化），tools/call 參數原樣轉給子程序驗證，輸出不再截斷或投影。server 本身的保護仍在：`hermes_mcp` 拒絕 stdio／command transport，`hermes_config` 拒絕危險設定鍵。逐名清單與分類見[工具表](https://github.com/WOOWTECH/Woow_ha_mcp_addons/blob/claude-delivery/docs/tool-surface.md)，轉送規則與保留的安全層見[工具範圍](https://github.com/WOOWTECH/Woow_ha_mcp_addons/blob/claude-delivery/docs/tool-expansion.md)。子程序新增但尚未分類的工具一律拒絕。
 
+**MCP 提供的內容**：這個 add-on 透過 MCP 只提供工具（tools）：`initialize` 宣告的能力只有 `tools`，`prompts/list`、`resources/list` 等請求回 -32601（Method not found）。負責人 2026-11-07 決定維持只提供工具。
+
 ## 後端與設定主權
 
 一個 Add-on 只有一組後端：**gateway_url、gateway_api_key；可選 dashboard_url、dashboard_username、dashboard_password 必須整組提供**。

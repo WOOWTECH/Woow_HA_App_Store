@@ -16,6 +16,8 @@ MCP 端點（Bearer token）不經這項檢查，不受影響。新的 Core 版�
 
 本產品 runtime：**FastMCP 4.1.3 / MCP SDK 2.3.0**（0.4.0 起；0.3.4 是 FastMCP 3.4.11 / SDK 1.30.0，之前 FastMCP 3.4.5）**/ pinned public vendor**（與 Woow_litellm_mcp_server 4d41903 相同，只多出站與錯誤防護）。**0.2.1 起完整版**（負責人 2026-10-15 決定）：上游 40 個工具全部開放，與原始 MCP server 及 PaaS 版功能一致；tools/list 用子程序自己的 inputSchema（經 provider-safe 正規化），tools/call 參數原樣轉給子程序驗證，輸出不再截斷或投影。子程序 `LITELLM_MCP_READONLY=false`；`litellm_chat_completion` 等呼叫模型的工具會產生費用。逐名清單與分類見[工具表](https://github.com/WOOWTECH/Woow_ha_mcp_addons/blob/claude-delivery/docs/tool-surface.md)，轉送規則與保留的安全層見[工具範圍](https://github.com/WOOWTECH/Woow_ha_mcp_addons/blob/claude-delivery/docs/tool-expansion.md)。子程序新增但尚未分類的工具一律拒絕。
 
+**MCP 提供的內容**：這個 add-on 透過 MCP 只提供工具（tools）：`initialize` 宣告的能力只有 `tools`，`prompts/list`、`resources/list` 等請求回 -32601（Method not found）。子程序自己的 server instructions 不轉送（WOOW PaaS 的 LiteLLM MCP 會送出）；負責人 2026-11-07 決定維持只提供工具。
+
 ## 後端與設定主權
 
 一個 Add-on 只有一組後端：**url、master_key**。

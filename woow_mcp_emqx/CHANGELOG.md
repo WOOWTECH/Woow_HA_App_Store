@@ -1,3 +1,9 @@
+## 0.4.12 — images published and verified
+
+- A client id, topic, rule id, trace name or user id that contains an ordinary `%` (sent as `%25`) now reaches the broker; 0.4.11 refused every such call before sending it. Names whose literal text a further decode would turn into path structure (for example `a%2fb`) stay refused. httpcore's `target` request extension is refused (shared backend policy, PR #70).
+- Documentation: DOCS states that the add-on publishes tools only (no prompts or resources) and what the PaaS server publishes besides; the owner decided on 2026-11-07 to keep it so.
+- Exact-source image `ghcr.io/woowtech/amd64-mcp-emqx@sha256:08b29d1545e0bf982fcfeed91f809e25b78df6b1997ba6f98d5bcb11b5e01b81` passed P1–P5, anonymous verification and fresh remote layer/diffID checks. See ../../docs/provenance/release-0.4.12-images.json and ../../docs/operations/release-decision-0.4.12.md. Stable Release/Store distribution and actual HAOS acceptance remain separate evidence.
+
 ## 0.4.11 — images published and verified
 
 - Remove the experimental label (PR #59): the manifest declares `stage: stable` and the store description no longer starts with "Experimental;" (the image `io.hass.description` label follows). Runtime, tools, permissions and dependencies are unchanged from 0.4.10.

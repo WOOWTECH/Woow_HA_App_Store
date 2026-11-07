@@ -40,6 +40,8 @@ MCP 端點（Bearer token）不經這項檢查，不受影響。新的 Core 版�
 `delete_file_checked` 才 `NEXTCLOUD_MCP_ALLOW_DELETE=true`，其他沒開放的工具列入 `NEXTCLOUD_MCP_DISABLED_TOOLS`，
 子程序根本不註冊；gateway 另外檢查每個呼叫的工具名、停用與寫入授權。
 
+**MCP 提供的內容**：這個 add-on 透過 MCP 只提供工具（tools）：`initialize` 宣告的能力只有 `tools`，`prompts/list`、`resources/list` 等請求回 -32601（Method not found）。`initialize` 另外送出一段固定的 server instructions（只能用管理員設定的那一個帳號、路徑規則），與 WOOW PaaS 的 Nextcloud MCP 相同。負責人 2026-11-07 決定維持只提供工具。
+
 ## 後端與設定主權
 
 一個 Add-on 只有一個 Nextcloud 帳號：**url（Nextcloud 根網址）、username、app_password**。
@@ -76,11 +78,16 @@ MCP 端點（Bearer token）不經這項檢查，不受影響。新的 Core 版�
 
 ## 已知限制
 
-- gateway 每個 MCP 請求最多 256 KiB：`create_text_file`／`update_text_file` 的內容與 `upload_file` 的 base64 都要小於此值。
-- 檔名或路徑含 `%` 的檔案會被 `backend_policy` 拒絕（`BACKEND_DESTINATION_DENIED`）；直接讀寫這種檔案或資料夾都會失敗。
-  `get_file_tree` 往下列子資料夾（depth 2–3）時，遇到名稱含 `%` 的子資料夾會略過它、不中斷整個列表，並把 `truncated` 設為 true。
-- `list_tasks` 不指定行事曆時，遇到 gateway 拒絕（例如 id 含 `%`）或無權讀取（403／404）的行事曆會略過，結果多一個
-  `skipped_calendars` 計數。直接指定時：被 gateway 拒絕的行事曆（例如 id 含 `%`）回 `BACKEND_DESTINATION_DENIED`，
+- 大小上限：`create_text_file`／`update_text_file` 的內容與 `read_text_file`、`get_file_content` 讀的文字檔最多 1 MiB（UTF-8，
+  子程序的 `NEXTCLOUD_MCP_MAX_TEXT_BYTES`），`upload_file` 的檔案解碼後最多 10 MiB（`NEXTCLOUD_MCP_MAX_UPLOAD_BYTES`）；gateway
+  每個 MCP 請求最多 16 MiB，10 MiB 檔案的 base64 約 13.4 MiB，在限制內。
+- 檔名、資料夾名稱與行事曆 id 可以含一般的 `%`（例如 `100%-off.txt`、`%18 KDV.xlsx`、`frame_%04d.png`）。會被 `backend_policy`
+  拒絕（`BACKEND_DESTINATION_DENIED`）的只有：名稱本身再解碼一次就會變成 `/`、`\`、`.`／`..`、`?`、`#`、NUL 或換行的寫法（例如
+  `a%2fb`、`%2e%2e`、`%23 notes`），以及其他伺服器會當成跳脫字元的寫法（`%u` 加四個十六進位字，例如 `10%uface.txt`；`%` 後面接
+  全形或其他文字的數字，例如 `%２０`）。直接讀寫這種檔案或資料夾都會失敗。`get_file_tree` 往下列子資料夾（depth 2–3）時遇到這種
+  子資料夾會略過它、不中斷整個列表，並把 `truncated` 設為 true。
+- `list_tasks` 不指定行事曆時，遇到 gateway 拒絕（例如 id 是 `a%2fb`）或無權讀取（403／404）的行事曆會略過，結果多一個
+  `skipped_calendars` 計數。直接指定時：被 gateway 拒絕的行事曆回 `BACKEND_DESTINATION_DENIED`，
   無權讀取或已不存在的回 `BACKEND_HTTP_ERROR status=403` 或 `status=404`。
 - 單一任務物件巢狀超過 32 層（或超過 1 MiB）會略過，計入 `skipped_large_objects`。
 - 不能建立資料夾、不能修改任務、不展開重複任務；`list_tasks` 描述截 500 字。

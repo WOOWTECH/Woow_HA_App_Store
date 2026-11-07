@@ -1,3 +1,12 @@
+## 0.4.12 — images published and verified
+
+- `n8n-mcp` now runs on the native SQLite engine (better-sqlite3 12.11.1, the same as the PaaS image) instead of the sql.js fallback (PR #69). Behaviour changes: `search_nodes` ranks results the way the PaaS server does (for "webhook" the core Webhook node comes first; community nodes used to rank ahead of core ones); its `source: "core"` filter now works (it was ignored); the replies no longer carry a `mode` field; the version counters of `n8n_workflow_versions` (ids and the "deleted" counts of prune/clear) are real database values instead of constants.
+- The workflow version history lives inside the container (`/tmp/woow-n8n-mcp/nodes.db`, a private copy of the catalog) and is not part of the add-on's data or backups: it starts empty after the add-on is recreated or updated (the PaaS server keeps it on a volume) (PR #69).
+- Build note for operators: the image build downloads one pinned file from github.com (the better-sqlite3 prebuilt for Node 26; URL, size and sha256 in `packaging/inputs.json`, checked by `packaging/native_addon.mjs`; no upstream signature exists, the pin is the only check). The builder needs egress to github.com and its redirect host (PR #69).
+- `n8n_delete_workflow` now says that a published (active) workflow cannot be deleted and how to deactivate it first, the same sentence the PaaS server has (PR #67).
+- Documentation: DOCS states that the add-on publishes tools only (no prompts or resources) and what the PaaS server publishes besides; the owner decided on 2026-11-07 to keep it so.
+- Exact-source image `ghcr.io/woowtech/amd64-mcp-n8n@sha256:a25bbfb488a475eaa7dfc83b06fbd5f2bc1b8d78b25c682018548ac92c8987d2` passed P1–P5, anonymous verification and fresh remote layer/diffID checks. See ../../docs/provenance/release-0.4.12-images.json and ../../docs/operations/release-decision-0.4.12.md. Stable Release/Store distribution and actual HAOS acceptance remain separate evidence.
+
 ## 0.4.11 — images published and verified
 
 - Remove the experimental label (PR #59): the manifest declares `stage: stable` and the store description no longer starts with "Experimental;" (the image `io.hass.description` label follows). Runtime, tools, permissions and dependencies are unchanged from 0.4.10.
