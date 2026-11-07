@@ -17,10 +17,8 @@ DB_URI="${DATABASE_URL:-postgresql+psycopg://omnigent:woowtech@127.0.0.1:5432/om
 BIND_HOST="${HOST:-0.0.0.0}"
 BIND_PORT="${PORT:-8000}"
 
-# Don't set --admin-password here — the admin username also needs to be
-# controllable, and upstream's --admin-password only sets password with
-# username "admin". Instead let init-admin-claim POST /auth/setup with
-# BOTH configured values after this server binds.
+# init-addon-config supplies OMNIGENT_ACCOUNTS_INIT_ADMIN_USERNAME and PASSWORD.
+# Omnigent creates the admin before serving requests, so no setup window opens.
 # --no-open because we're headless (no user-facing browser to redeem).
 exec omnigent server \
     --host "${BIND_HOST}" \

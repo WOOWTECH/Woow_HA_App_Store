@@ -1,5 +1,5 @@
 name: Woow Omnigent
-version: 0.1.17
+version: 0.1.18
 slug: woow-omnigent
 image: ghcr.io/woowtech/woow-ha-omnigent-{arch}
 description: >-
@@ -42,7 +42,6 @@ map:
 backup: cold
 backup_exclude:
   - "**/logs/**"
-  - "**/pg_wal/**"
 schema:
   # --- Admin identity ------------------------------------------------------
   admin_username: str

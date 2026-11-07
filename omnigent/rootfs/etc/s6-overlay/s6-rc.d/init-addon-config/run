@@ -8,11 +8,12 @@
 # (`Unable to access the API, forbidden`). The Supervisor writes the same
 # options.json to disk at boot, so we bypass the API entirely.
 set -e
+umask 077
 
 OPTIONS_FILE=/data/options.json
 CONFIG_ENV=/var/run/omnigent.env
 # init-postgres creates this file on the first boot. Its presence means an earlier boot already got as
-# far as creating the database, and init-admin-claim created the admin account then.
+# far as creating the database; the server seeded the admin before serving requests.
 PG_VERSION_FILE=/data/postgres/PG_VERSION
 # s6-overlay v3 reads /run/s6/container_environment/<VAR>. Anything under
 # /command/with-contenv inherits from there — that includes svc-postgres,
@@ -20,6 +21,7 @@ PG_VERSION_FILE=/data/postgres/PG_VERSION
 S6_ENV_DIR=/run/s6/container_environment
 mkdir -p "${S6_ENV_DIR}"
 : > "${CONFIG_ENV}"
+chmod 600 "${CONFIG_ENV}"
 
 log() { echo "[init-addon-config] $*" >&2; }
 
@@ -31,7 +33,10 @@ fi
 # --- Helpers ---------------------------------------------------------------
 set_env() {
     key="$1"; value="$2"
-    printf '%s=%s\n' "${key}" "${value}" >> "${CONFIG_ENV}"
+    # This file is sourced by later services. Quote values as shell data:
+    # a password containing $(...) or quotes must never execute as shell code.
+    quoted=$(printf '%s' "${value}" | jq -Rrs '@sh')
+    printf 'export %s=%s\n' "${key}" "${quoted}" >> "${CONFIG_ENV}"
     printf '%s' "${value}" > "${S6_ENV_DIR}/${key}"
 }
 # jq-with-default that never emits the literal string "null".
@@ -42,18 +47,18 @@ optget() {
     printf '%s' "${v}"
 }
 
-# --- Admin identity (feeds init-admin-claim + omnigent-server bootstrap) ----
+# --- Admin identity (feeds omnigent-server bootstrap) ----
 # There is no default password. Releases up to 0.1.15 pre-filled one that
-# anyone could read in this repository, and init-admin-claim turns whatever is
-# configured here into the admin account on first boot, and only then.
+# anyone could read in this repository. The server pre-seeds the configured
+# account before it accepts requests, on first boot only.
 #   - New install (no database yet): an empty password stops the add-on (every
 #     later service depends on this one) instead of falling back silently.
 #   - Existing install (database present): the account already exists, so the
 #     option is not read again. An empty value is the normal state of an install
 #     that never saved the option, because the default it relied on is gone from
 #     config.yaml. It keeps running, with a warning, and the account keeps the
-#     password it has. init-admin-claim stops the add-on if that account is
-#     missing after all.
+#     password it has. init-omnigent-config verifies that account before the
+#     server starts.
 # An install that still uses the retired default keeps running, but is warned at
 # every start.
 ADMIN_USERNAME="$(optget admin_username 'woow')"
@@ -73,6 +78,9 @@ if [ "$(printf '%s' "${ADMIN_PASSWORD}" | sha256sum | cut -d' ' -f1)" = "${RETIR
 fi
 set_env OMNIGENT_ADMIN_USERNAME "${ADMIN_USERNAME}"
 set_env OMNIGENT_ADMIN_PASSWORD "${ADMIN_PASSWORD}"
+set_env OMNIGENT_ACCOUNTS_INIT_ADMIN_USERNAME "${ADMIN_USERNAME}"
+# An empty value on an existing installation must not create a new account.
+[ -z "${ADMIN_PASSWORD}" ] || set_env OMNIGENT_ACCOUNTS_INIT_ADMIN_PASSWORD "${ADMIN_PASSWORD}"
 
 # --- Base URL --------------------------------------------------------------
 # Auto-derive from LAN if user didn't set one. Runners use this in their

@@ -25,8 +25,8 @@ omnigent host --server http://homeassistant.local:8000
 2. `init-postgres` initdbs the cluster + creates `omnigent` role/db (idempotent)
 3. `svc-postgres` starts the postmaster on `127.0.0.1:5432`
 4. `svc-omnigent-server` starts on `0.0.0.0:8000`
-5. `init-admin-claim` POSTs `/auth/setup` with the configured admin creds
-   (409 on re-run = fine, we exit clean)
+5. `svc-omnigent-server` pre-seeds the configured admin before serving;
+   `init-admin-claim` verifies that setup is complete
 6. `nginx` serves the HA Ingress panel on port 8080
 
 ## Access modes

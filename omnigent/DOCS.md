@@ -20,7 +20,7 @@ admin. The Ingress panel appears in the HA sidebar once ready.
 
 | Option           | Default              | Purpose                                                                                        |
 |------------------|----------------------|------------------------------------------------------------------------------------------------|
-| `admin_username` | `woow`               | Local admin created via `POST /auth/setup` on first boot                                       |
+| `admin_username` | `woow`               | Local admin pre-seeded before the server accepts requests on first boot                       |
 | `admin_password` | *(required)*         | Password of the admin account, used for the web UI. A new install does not start while it is empty; an existing install does, and keeps the account's current password |
 | `base_url`       | *(empty)*            | Public URL runners dial in on. Empty = `http://homeassistant.local:8000`                       |
 | `features`       | *(empty)*            | Comma-separated feature flags forwarded as `OMNIGENT_FEATURES=…`                               |
@@ -56,7 +56,6 @@ above and then fill in the option.
 ### Suggested `features`
 
 - `usage_page` — enable the Usage report tab
-- `web_harness_setup` — expose the per-host harness config UI
 - `harness_install` — allow one-click harness install from the web
 
 ### Example `env_vars` for OpenRouter or OpenAI keys
@@ -94,9 +93,9 @@ the invite links match the public hostname.
 
 ## Backups
 
-Add-on backups include `/data` — that's the Postgres cluster, artifacts,
-admin credentials, and omnigent state. `pg_wal` + logs are excluded via
-`backup_exclude`.
+Add-on backups are cold and include `/data` — the full Postgres cluster
+**including `pg_wal`**, artifacts, admin credentials, and Omnigent state.
+Only logs are excluded. The WAL is needed to restore the database safely.
 
 Restoring a backup restores the DB and admin claim; runners re-register
 themselves on next handshake.
@@ -121,9 +120,10 @@ but you're using the wrong password. Check `admin_username` /
 runner. Register at least one from the LAN or over a Cloudflared route
 (see *Connecting a runner*).
 
-**`POST /auth/setup` returns 500** — usually means Postgres never came
-up. Check the add-on logs; `init-postgres` errors appear at the top of
-each boot.
+**The server still needs setup** — check the add-on logs for an admin
+bootstrap error. New installs require `admin_password`; the server creates
+the account before it accepts requests. An older install with an empty
+option is checked against its existing database before the server starts.
 
 **Runner registers but chat hangs** — pi extension conflict. Wipe the
 runner's `~/.pi-agent/plugins/` and remove `openai-codex` from

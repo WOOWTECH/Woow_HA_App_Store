@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.1.18 — 2026-11-08
+
+- Pre-seed the admin before the server accepts requests. The post-start
+  `/auth/setup` claim is replaced by a verification step. An older install
+  with an empty password option must already have its admin in the database;
+  it is checked before the server binds.
+- Include PostgreSQL `pg_wal` in cold Supervisor backups so the cluster can
+  recover when restored. Logs remain excluded.
+- Remove the unsupported `web_harness_setup` feature from the documentation.
+- Quote values written to the shell-sourced environment file, so special
+  characters in passwords stay data and cannot execute shell commands.
+
 ## 0.1.17 — 2026-11-07
 
 Fix: an existing install no longer stops after the update to 0.1.16.
