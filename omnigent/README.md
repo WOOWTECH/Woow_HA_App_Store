@@ -1,6 +1,6 @@
 # Woow Omnigent — HAOS add-on
 
-Runs [Omnigent](https://github.com/omnigent-ai/omnigent) 0.12.0 as a Home
+Runs [Omnigent](https://github.com/omnigent-ai/omnigent) 0.20.0 as a Home
 Assistant OS add-on.
 
 **Server-only build.** No pi / claude / codex CLI is bundled — external
@@ -14,7 +14,7 @@ omnigent host --server http://homeassistant.local:8000
 
 | Component        | Version | Notes                                                     |
 |------------------|---------|-----------------------------------------------------------|
-| omnigent         | 0.12.0  | pip-installed from PyPI                                   |
+| omnigent         | 0.20.0  | pip-installed from PyPI                                   |
 | PostgreSQL       | 16      | bundled — loopback only, persisted in `/data/postgres`    |
 | nginx            | latest  | HA Ingress path rewriter for the React SPA                |
 | s6-overlay       | 3.2.1.0 | via `ghcr.io/hassio-addons/base`                          |

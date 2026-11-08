@@ -1,7 +1,7 @@
 # Woow Omnigent HAOS add-on image.
 #
 # What's inside:
-#   - omnigent==0.12.0            (upstream orchestration server)
+#   - omnigent==0.20.0            (upstream orchestration server)
 #   - Postgres 16                 (bundled — no MariaDB add-on dependency)
 #   - nginx                       (HA Ingress path rewriter for the React SPA)
 #   - s6-overlay v3.2.1.0         (supervises the three long-lived processes)
@@ -26,7 +26,7 @@ ARG BUILD_ARCH=amd64
 ARG BUILD_VERSION
 ARG BUILD_DATE
 
-ARG OMNIGENT_VERSION=0.12.0
+ARG OMNIGENT_VERSION=0.20.0
 # Alpine 3.24 ships both postgresql16 and postgresql17. We pin to 16 to
 # match the k3s + podman deployments' StatefulSet postgres major version
 # (so backups + WAL streams are interchangeable if we ever move the DB).
@@ -90,55 +90,13 @@ RUN apk add --no-cache --upgrade musl \
  && apk del .build-deps
 RUN rm -rf /root/.omnigent /data/omnigent-home/.omnigent 2>/dev/null || true
 
-# --- HA Ingress auth-guard patches -------------------------------------------
-# omnigent's React SPA has two auth-guard fragments in its minified bundle
-# that break HA Ingress because they assume the SPA is served at the root
-# path. We patch them here (bundle files, on disk) rather than in nginx
-# sub_filter because nginx parses `${...}` in sub_filter arguments as its
-# own variable syntax and refuses to load the config.
-#
-#   Y() in identity.js: `e===\`/login\`` etc. — pathname equality check.
-#     Fails when pathname is `/api/hassio_ingress/<slug>/login` because
-#     that's not literally `/login`. Broaden to endsWith / indexOf so
-#     the ingress-prefixed path still counts as being on /login.
-#
-#   q(e) in identity.js: `location.href=\`${e}?return_to=${t}\``. `e` is
-#     `/login` (bare). Prefix it with window.__INGRESS_PATH__ at
-#     construction time so the redirect stays inside the ingress iframe.
-#
-# The `find ... -exec sed` scans every JS chunk because Rolldown's code-
-# splitting doesn't always keep these fragments in the same file across
-# builds. Byte-for-byte matches on the current omnigent 0.12.0 output.
-# Use `#` as sed delimiter — JS has neither `#` nor other awkward chars
-# in these fragments, and `|` conflicts with the `||` operators in the
-# actual JS code.
-#
-# Three-patch pipeline that PAIRS with the `history.replaceState()` prefix
-# strip performed by ingress-shim.js on first script exec. After the shim
-# runs, `location.pathname` returns `/login` (etc.) — omnigent's router
-# then matches routes correctly WITHOUT needing a basename hookup that
-# the bundled router library doesn't expose. Sed handles the two spots
-# where the bundle would still emit unprefixed URLs to the browser:
-#
-#   1. `q(e)` builds a `location.href = "/login?return_to=<encoded
-#      pathname>"` string. We prefix BOTH the target (`/login` →
-#      ingress-prefixed) AND the return_to encoding (so post-login
-#      navigation lands back inside the ingress).
-#
-#   2. `Y()` equality check: after the shim strips pathname to `/login`,
-#      the original strict `===` check works, but we broaden anyway with
-#      endsWith to be safe against re-strip races on lazy chunks.
-RUN find /usr/lib/python3.12/site-packages/omnigent/server/static/web-ui/assets \
-        -name '*.js' -exec sed -i \
-        -e 's#e===`/login`||e===`/register`||e.startsWith(`/auth/login`)#e===`/login`||e===`/register`||e.startsWith(`/auth/login`)||e.endsWith(`/login`)||e.endsWith(`/register`)||e.indexOf(`/auth/login`)!==-1#g' \
-        -e 's#let t=encodeURIComponent(window.location.pathname+window.location.search)#let t=encodeURIComponent((window.__INGRESS_PATH__||"")+window.location.pathname+window.location.search)#g' \
-        -e 's#window.location.href=`${e}?return_to=${t}`#window.location.href=(window.__INGRESS_PATH__||"")+e+"?return_to="+t#g' \
-        -e 's#Fe=function(e){return`/`+e}#Fe=function(e){return(window.__INGRESS_PATH__||"")+"/"+e}#g' \
-        {} + \
- && echo "auth-guard sed patches applied. verify:" \
- && grep -R -l 'window.__INGRESS_PATH__' \
-        /usr/lib/python3.12/site-packages/omnigent/server/static/web-ui/assets/ \
-        | head -3
+# --- HA Ingress native base-path support ------------------------------------
+# Omnigent 0.20.0 reads window.__OMNIGENT_BASE_PATH__ for API, WebSocket,
+# navigation and auth redirects. The nginx HTML injection supplies it from
+# Supervisor's validated X-Ingress-Path. Fail the build if upstream removes
+# this contract, so a new version cannot silently break the HA panel.
+RUN grep -R -q '__OMNIGENT_BASE_PATH__' \
+        /usr/lib/python3.12/site-packages/omnigent/server/static/web-ui/assets/
 
 # --- Rootfs overlay: s6 services + nginx config + init scripts ---------------
 COPY rootfs/ /
@@ -160,13 +118,13 @@ RUN chmod +x \
 # --- Labels ------------------------------------------------------------------
 LABEL \
     io.hass.name="Woow Omnigent" \
-    io.hass.description="Omnigent 0.12.0 orchestration server for HAOS" \
+    io.hass.description="Omnigent 0.20.0 orchestration server for HAOS" \
     io.hass.arch="${BUILD_ARCH}" \
     io.hass.type="addon" \
     io.hass.version="${BUILD_VERSION}" \
     maintainer="WOOWTECH <woowtech@designsmart.com.tw>" \
     org.opencontainers.image.title="Woow HA Omnigent" \
-    org.opencontainers.image.description="Omnigent 0.12.0 orchestration server bundled as a HAOS add-on" \
+    org.opencontainers.image.description="Omnigent 0.20.0 orchestration server bundled as a HAOS add-on" \
     org.opencontainers.image.source="https://github.com/WOOWTECH/Woow_ha_omnigent_addon" \
     org.opencontainers.image.licenses="MIT" \
     org.opencontainers.image.version="${BUILD_VERSION}" \

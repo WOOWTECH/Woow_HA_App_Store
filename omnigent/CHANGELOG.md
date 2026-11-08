@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.19 — candidate
+
+- Upgrade the bundled Omnigent server from 0.12.0 to 0.20.0 for the
+  Hermes–Omnigent plugin 0.20 contract.
+- Use Omnigent's native `__OMNIGENT_BASE_PATH__` for HA Ingress navigation
+  and remove the old JavaScript auth-guard patches.
+- An isolated 0.12.0 → 0.20.0 PostgreSQL upgrade preserved admin login;
+  HAOS ingress and runner integration still require staged verification.
+
 ## 0.1.18 — 2026-11-08
 
 - Pre-seed the admin before the server accepts requests. The post-start

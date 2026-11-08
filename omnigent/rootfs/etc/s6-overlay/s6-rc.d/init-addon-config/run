@@ -92,7 +92,7 @@ fi
 set_env OMNIGENT_ACCOUNTS_BASE_URL "${BASE_URL}"
 
 # --- Feature flags ---------------------------------------------------------
-# Default to enabling every feature omnigent 0.12.0 knows about, matching
+# Default to enabling every feature omnigent 0.20.0 knows about, matching
 # the k3s + podman deployments. Users can override via the add-on
 # `features:` option (comma-separated list). Known keys: usage_page,
 # harness_install. Unknown keys make omnigent-server refuse to boot.

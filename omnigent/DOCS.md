@@ -1,6 +1,6 @@
 # Woow Omnigent
 
-Omnigent 0.12.0 orchestration server, packaged as a HAOS add-on. Bundles a
+Omnigent 0.20.0 orchestration server, packaged as a HAOS add-on. Bundles a
 private Postgres 16 so the add-on is self-contained — no MariaDB add-on
 dependency, no external database wiring.
 
@@ -79,7 +79,7 @@ machine on the same network:
 ```bash
 # Install pi + omnigent runner
 npm install -g @earendil-works/pi-coding-agent@0.85.1
-pip install omnigent==0.12.0
+pip install omnigent==0.20.0
 
 # Register as a host — this opens a tunnel back to the addon
 omnigent host --server http://homeassistant.local:8000
@@ -127,7 +127,7 @@ option is checked against its existing database before the server starts.
 
 **Runner registers but chat hangs** — pi extension conflict. Wipe the
 runner's `~/.pi-agent/plugins/` and remove `openai-codex` from
-`~/.pi-agent/auth.json`, then reconnect. See upstream 0.12.0 notes in
+`~/.pi-agent/auth.json`, then reconnect. See upstream 0.20.0 notes in
 the k3s addon's `docs/plans/`.
 
 ## Uninstall
@@ -140,3 +140,18 @@ rm -rf /addon_configs/*_woow_omnigent
 ```
 
 (Backups keep working — install again to restore.)
+
+## Hermes skills across Omnigent conversations
+
+This add-on runs the Omnigent **server**. To create and reuse Hermes skills,
+install the `hermes-omnigent-plugin` 0.20.0 release candidate in the Hermes
+runtime on the same host as each Omnigent Hermes runner. The runner must keep
+its Hermes profile skills directory persistent and writable. This server image
+alone does not install Hermes or the plugin.
+
+Acceptance after the plugin is released: in one Omnigent Hermes conversation,
+explicitly create a skill with `skill_manage(create)`; in a second conversation,
+call `skill_view` for that skill and use it; then confirm native Hermes can see
+and use the same skill. The plugin's skill ledger remains scoped to the
+conversation, so ledger entries are not the cross-conversation proof. HAOS
+runtime verification is pending.
