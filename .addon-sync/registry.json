@@ -365,15 +365,18 @@
       ]
     },
     "WOOWTECH/Woow_ha_frigate_add_on": {
+      "upgrade_comparison": {
+        "scan_published_image": "#91: mirror; the image users install is the GHCR copy config.yaml names (ghcr.io/woowtech/ha-mirror-*), copied by image-mirror inside mirror-sync before the upgrade comparison; category 4 scans that image at the comparison target's version and at the new one"
+      },
       "default_branch": "main",
       "required_workflows": [],
       "observe_workflow_names": [
         "image-mirror",
         "mirror-sync"
       ],
-      "ref_policy": "main",
+      "ref_policy": "release",
       "branch_rules": {
-        "exempt": "mirror: mirror-sync pushes the default branch; checked before release by pipeline #91"
+        "exempt": "mirror: mirror-sync pushes the default branch; upgrade comparison runs before each Release (#91)"
       },
       "components": [
         {
