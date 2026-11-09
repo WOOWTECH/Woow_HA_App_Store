@@ -1478,6 +1478,8 @@ class PublishedImageScan(StepHarness):
         self.assertIn('WOOWTECH/Woow_ha_music_assistant_add_on',mirrors)
         self.assertIn('WOOWTECH/Woow_ha_jellyfin_add_on',mirrors)
         self.assertIn('WOOWTECH/Woow_ha_frigate_add_on',mirrors)
+        self.assertIn('WOOWTECH/Woow_ha_dnsmasq_dhcp_add_on',mirrors)
+        self.assertIn('WOOWTECH/Woow_ha_matter_hub_add_on',mirrors)
         self.assertIn('#147',approved['WOOWTECH/Woow_ha_knxd_add_on']);self.assertIn('#148',approved['WOOWTECH/Woow_ha_mcp_addons'])
         for repo in mirrors:self.assertIn('#91',approved[repo],repo)
     @needs_shell
