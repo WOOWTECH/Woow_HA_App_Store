@@ -335,7 +335,10 @@
           "config_file": "config.yaml",
           "store_path": "dnsmasq-dhcp",
           "channel": "stable",
-          "enabled": true
+          "enabled": true,
+          "upgrade_comparison": {
+            "skip_upgrade_test": "#175, temporary (owner, 2026-11-09): dnsmasq-dhcp's config.yaml asks for privileged: [NET_ADMIN], which the upgrade runtime does not apply (no --cap-add), so even the comparison target 5.1.2 exits after about 1 second with \"dnsmasq: process is missing required capability NET_ADMIN\" and never counts as started (run 42562061272); categories 1 and 4 still run; remove when #175 lands"
+          }
         }
       ]
     },
@@ -541,7 +544,10 @@
           "config_file": "config.yaml",
           "store_path": "hamh",
           "channel": "stable",
-          "enabled": true
+          "enabled": true,
+          "upgrade_comparison": {
+            "skip_upgrade_test": "#174, temporary (owner, 2026-11-09): hamh needs the HA Core API (homeassistant_api), which the mock Supervisor does not provide, so even the comparison target 2.0.58 never counts as started: its HomeAssistantClient retried http://supervisor/core 60 times until the 300 s ingress probe ran out (run 42562061272); categories 1 and 4 still run; remove when #174 lands"
+          }
         }
       ]
     },
