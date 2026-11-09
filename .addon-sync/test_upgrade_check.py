@@ -1469,10 +1469,15 @@ class PublishedImageScan(StepHarness):
     APPROVED={'upgrade_comparison':{'scan_published_image':'#147: knxd ships the third-party image config.yaml names'}}
     SBOMS=('plan',"SBOMs of the comparison targets' images")
     OLD,NEW='ghcr.io/da-anda/addon-amd64:1.0.0','ghcr.io/da-anda/addon-amd64:1.1.0'
-    def test_registry_approves_it_for_knxd_and_mcp_addons(self):
+    def test_registry_approves_it_for_knxd_mcp_addons_and_the_mirrors(self):
         approved=registry_approvals('scan_published_image')
-        self.assertEqual(sorted(approved),['WOOWTECH/Woow_ha_knxd_add_on','WOOWTECH/Woow_ha_mcp_addons'])
+        # Mirror 來源 (branch_rules.exempt "mirror: ...", pipeline #91) ship the GHCR copy their config.yaml names.
+        providers=json.loads((StepHarness.STORE/'.addon-sync/registry.json').read_text(encoding='utf-8'))['providers']
+        mirrors={repo for repo in approved if providers[repo].get('branch_rules',{}).get('exempt','').startswith('mirror:')}
+        self.assertEqual(sorted(set(approved)-mirrors),['WOOWTECH/Woow_ha_knxd_add_on','WOOWTECH/Woow_ha_mcp_addons'])
+        self.assertIn('WOOWTECH/Woow_ha_music_assistant_add_on',mirrors)
         self.assertIn('#147',approved['WOOWTECH/Woow_ha_knxd_add_on']);self.assertIn('#148',approved['WOOWTECH/Woow_ha_mcp_addons'])
+        for repo in mirrors:self.assertIn('#91',approved[repo],repo)
     @needs_shell
     def test_both_sides_are_the_published_image_at_their_version(self):
         r,plan,out=self.run_step('plan',extra=self.APPROVED)
@@ -2436,9 +2441,11 @@ class UpgradeTestSkipCommand(unittest.TestCase):
         # Owner, 2026-11-04 (pipeline #140): each skip names its ticket. 2026-11-05 (#158): pi_agent runs (host_network);
         # woow_lan_gateway's skip is permanent (pipeline .out-of-scope/lan-gateway-upgrade-test-on-runner.md).
         # 2026-11-06 (#164): woow-tailscale's temporary skip is removed; 0.1.4 is its Stable Release and rebuilds.
+        # 2026-11-06 (#170): music_assistant's skip is temporary, until the mock Supervisor gives it the HA Core API (#174).
         registry=json.loads((StepHarness.STORE/'.addon-sync/registry.json').read_text(encoding='utf-8'))
         approved={(repo,c['id']):u.upgrade_test_skip(c) for repo,p in registry['providers'].items() for c in p['components'] if u.upgrade_test_skip(c)}
-        expected={('WOOWTECH/woow-lan-gateway','woow_lan_gateway'):('#158','permanent')}
+        expected={('WOOWTECH/woow-lan-gateway','woow_lan_gateway'):('#158','permanent'),
+            ('WOOWTECH/Woow_ha_music_assistant_add_on','music_assistant'):('#174','temporary')}
         self.assertEqual({k:re.match(r'#\d+',v).group() for k,v in approved.items()},{k:ticket for k,(ticket,_) in expected.items()})
         for k,(_,kind) in expected.items():
             with self.subTest(k):
