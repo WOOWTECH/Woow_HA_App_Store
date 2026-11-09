@@ -335,7 +335,10 @@
           "config_file": "config.yaml",
           "store_path": "dnsmasq-dhcp",
           "channel": "stable",
-          "enabled": true
+          "enabled": true,
+          "upgrade_comparison": {
+            "data_check_due": "2027-01-19"
+          }
         }
       ]
     },
@@ -388,7 +391,10 @@
           "config_file": "config.yaml",
           "store_path": "frigate",
           "channel": "stable",
-          "enabled": true
+          "enabled": true,
+          "upgrade_comparison": {
+            "data_check_due": "2026-12-29"
+          }
         }
       ]
     },
@@ -471,7 +477,10 @@
           "config_file": "config.yaml",
           "store_path": "jellyfin",
           "channel": "stable",
-          "enabled": true
+          "enabled": true,
+          "upgrade_comparison": {
+            "data_check_due": "2026-12-08"
+          }
         }
       ]
     },
@@ -543,7 +552,8 @@
           "channel": "stable",
           "enabled": true,
           "upgrade_comparison": {
-            "ha_core": true
+            "ha_core": true,
+            "data_check_due": "2026-12-29"
           }
         }
       ]
@@ -660,7 +670,8 @@
           "channel": "stable",
           "enabled": true,
           "upgrade_comparison": {
-            "ha_core": true
+            "ha_core": true,
+            "data_check_due": "2026-12-29"
           }
         },
         {
