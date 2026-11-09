@@ -22,9 +22,16 @@ other host services) are not modelled. Each version's own config.yaml
 not accept (CAPABILITIES), or a `privileged` that is not a list of strings, is
 the PR's fault: the test fails before any container starts, and the reason
 names the add-on, the version and the value (Supervisor would refuse to
-install it). devices, apparmor, full_access (and udev, usb, uart,
-kernel_modules, realtime, which make Supervisor add devices or capabilities
-of its own) are not applied. Each
+install it). No other Supervisor setting is applied (#181): devices, usb,
+uart, udev, video, gpio, tmpfs, audio, a custom AppArmor profile
+(apparmor.txt; apparmor), full_access, kernel_modules, realtime, docker_api,
+host_dbus, host_pid, host_ipc and host_uts (Supervisor's devices and cgroup
+rules, capabilities, ulimits, tmpfs and mounts for them). unapplied_settings()
+lists the ones each version's config.yaml declares with a value other than the
+default or false, as a warning in the report only: it never changes the
+result or the exit code. The rule: the first time an add-on fails to start
+because of one of them, open an issue to implement that setting the Supervisor
+way; do not add skip_upgrade_test. Each
 version must start, judged as upgrade_check.startup_probe says from the
 Supervisor's address, and then stay up for stable_seconds; the add-on's
 upgrade-check/settings.yaml may override the time limits.
@@ -181,13 +188,15 @@ image, method, started, detail, answer, logs, hooks: [{hook, phase, passed,
 exit_code, detail, checks: [{name, result, detail}], output}], supervisor:
 {unmocked: [{path, count, methods}], broken_fixtures: [same]}}], map_warnings:
 {old: [...], new: [...]}, options: {from_repo: [options.yaml keys], generated:
-[dotted names of the generated passwords], warnings: [option_warnings()]}}. exit_code is None when the hook timed out or could
+[dotted names of the generated passwords], warnings: [option_warnings()]}}, unapplied_settings:
+{old: [...], new: [...]} (unapplied_settings() of each config.yaml; only the new version's
+directory is checked out, so apparmor.txt is looked for there only). exit_code is None when the hook timed out or could
 not be started (a symlink out of upgrade-check/). supervisor lists the
 add-on's own Supervisor calls during that phase (start to stop) that answered
 404 (unmocked) or 500 (a fixture that is not valid JSON); calls of the hooks
 and of the runtime are not in it. map_warnings are upgrade_check.map_warnings()
 of each config.yaml: map entries Supervisor ignores (or why `map` could not be
-read). Both are informational. With --ha-core (#174) the result also has
+read). All three are informational. With --ha-core (#174) the result also has
 ha_core: {image, started, seconds (docker run to RUNNING; None when it did not
 start), detail, logs (its last lines when it did not start)}.
 """
@@ -496,6 +505,32 @@ def capabilities(config, name='the add-on', label='this version'):
         raise PrivilegedError(f'{where}, but {", ".join(map(repr, unknown))} is not a capability Supervisor accepts there, so Supervisor would '
             f'refuse to install it (it accepts {", ".join(CAPABILITIES)})')
     return list(dict.fromkeys(value))
+
+# #181: the config.yaml settings for which Supervisor gives an add-on devices, mounts, capabilities or namespaces
+# (supervisor/docker/app.py, home-assistant/supervisor e0fa127) and the runtime does not. All default to false or empty;
+# apparmor (default true) is listed only for a custom profile, apparmor.txt beside config.yaml.
+UNAPPLIED_SETTINGS = ('devices', 'usb', 'uart', 'udev', 'video', 'gpio', 'tmpfs', 'audio', 'full_access', 'kernel_modules', 'realtime',
+    'docker_api', 'host_dbus', 'host_pid', 'host_ipc', 'host_uts')
+UNAPPLIED_LIST_ITEMS = 5
+
+def unapplied_settings(config, profile=None):
+    """The Supervisor settings this version's config.yaml declares that the runtime does not apply (#181), as report
+    lines: the key and its value, in UNAPPLIED_SETTINGS order. Defaults and false values (false, null, empty) are left
+    out. `profile`: this version's apparmor.txt path, when its directory is at hand; a file there is listed unless
+    apparmor is false (Supervisor then runs the add-on unconfined). Never raises: it is a warning only."""
+    out = []
+    for key in UNAPPLIED_SETTINGS:
+        value = config.get(key)
+        if value is None or value is False or value in ('', [], {}):continue
+        if isinstance(value, list) and len(value) > UNAPPLIED_LIST_ITEMS:
+            shown = ', '.join(json.dumps(v, default=str) for v in value[:UNAPPLIED_LIST_ITEMS])
+            out.append(f'{key}: {len(value)} entries ({shown}, … and {len(value) - UNAPPLIED_LIST_ITEMS} more)')
+        else:out.append(f'{key}: {json.dumps(value, default=str)}')
+    if profile is not None and config.get('apparmor', True) is not False:
+        try:custom = pathlib.Path(profile).is_file()
+        except OSError:custom = False
+        if custom:out.append('apparmor: custom profile apparmor.txt')
+    return out
 
 def addon_ip(config):
     """The add-on's address as Supervisor gives it (DockerAddon.ip_address): the hassio bridge gateway for a
@@ -808,6 +843,8 @@ def upgrade_test(name, addon_dir, old_image, old_config, new_image, new_config, 
     env = UpgradeTestEnv(work, hooks_dir.resolve() if hooks_dir.is_dir() else None, ha_core); phases = []; env.words = words
     result = {'name': name, 'passed': False, 'reason': '', 'hooks': present, 'data_checked': False, 'phases': phases,
         'map_warnings': {'old': _map_warnings(old_config), 'new': _map_warnings(new_config)},
+        # #181: only the PR's directory is checked out, so only the new version's apparmor.txt can be seen.
+        'unapplied_settings': {'old': unapplied_settings(old_config), 'new': unapplied_settings(new_config, pathlib.Path(addon_dir) / 'apparmor.txt')},
         'options': {'from_repo': sorted(given or {}), 'generated': sorted(generated),
             'warnings': option_warnings(given, configs, (old_image, new_image))}}
     # #175: a privileged value Supervisor would refuse is the PR's fault: the test fails before any container starts.
@@ -974,7 +1011,8 @@ def _options_lines(options):
     return out + [f'- **Warning**: {markdown_cell(w)}.' for w in options.get('warnings', [])]
 
 def _supervisor_sections(result):
-    """Report lines for the unmocked Supervisor calls, broken fixtures and ignored map entries (informational)."""
+    """Report lines for the unmocked Supervisor calls, broken fixtures, ignored map entries and unapplied Supervisor
+    settings (#181) (informational)."""
     r = []
     # Paths come from the add-on: a backquote must not end the code span.
     code = lambda v: markdown_cell(v).replace('`', "'")
@@ -999,6 +1037,19 @@ def _supervisor_sections(result):
         else:
             r += [f'- {PHASE_LABEL["new"]}: {markdown_cell(w)}' for w in new]
             r += [f'- {PHASE_LABEL["old"]}: {markdown_cell(w)}' for w in old]
+    # #181: a warning only; the result and the exit code never depend on it.
+    unapplied = result.get('unapplied_settings') or {}
+    old, new = unapplied.get('old', []), unapplied.get('new', [])
+    if old or new:
+        r += ['', '**Supervisor settings not applied (未套用的 Supervisor 設定)**: config.yaml declares these, but the upgrade test does not '
+            'apply them as Supervisor would (warning only, the result does not depend on it). If the add-on does not start because of one, '
+            'open an issue to implement it the Supervisor way; do not add skip_upgrade_test. '
+            '（只提醒，不影響結果；addon 因其中某項起不來時，開票照 Supervisor 的方式實作，不加 skip_upgrade_test。）', '']
+        span = lambda w: '`' + markdown_cell(w).replace('`', "'") + '`'
+        if old == new:r += [f'- both versions: {span(w)}' for w in new]
+        else:
+            r += [f'- {PHASE_LABEL["new"]}: {span(w)}' for w in new]
+            r += [f'- {PHASE_LABEL["old"]}: {span(w)}' for w in old]
     return r
 
 def main(argv=None):

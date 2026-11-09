@@ -399,10 +399,12 @@ class Privileged(unittest.TestCase):
     def test_every_capability_supervisor_accepts_is_applied(self):
         env, container, args = self.args(self.config(privileged=list(rt.CAPABILITIES)))
         self.assertEqual(self.caps(args), list(rt.CAPABILITIES))
-    def run_stubbed(self, old, new):
-        """upgrade_test() with the docker side stubbed: (result, [(phase, its --cap-add values)] of the versions started)."""
+    def run_stubbed(self, old, new, profile=False):
+        """upgrade_test() with the docker side stubbed: (result, [(phase, its --cap-add values)] of the versions started).
+        `profile`: the add-on's directory has an apparmor.txt (#181)."""
         work = pathlib.Path(tempfile.mkdtemp()); self.addCleanup(shutil.rmtree, work, True)
         (work / 'addon/upgrade-check').mkdir(parents=True)
+        if profile:(work / 'addon/apparmor.txt').write_text('profile fake {}\n', encoding='utf-8')
         (work / 'addon/upgrade-check/settings.yaml').write_text('stable_seconds: 1\n', encoding='utf-8')
         started, opened = [], []
         def docker(*args, check=True):
@@ -434,6 +436,17 @@ class Privileged(unittest.TestCase):
                 self.assertFalse(result['passed']); self.assertEqual((started, opened, result['phases']), ([], [], []))
                 self.assertIn(f'the config.yaml of fake, {label}, has privileged: {json.dumps(value)}', result['reason'])
                 self.assertIn(why, result['reason']); self.assertIn('Supervisor would refuse to install it', result['reason'])
+    def test_unapplied_settings_are_listed_per_version_and_change_nothing(self):
+        # #181: declared settings the runtime does not apply are recorded per version; the test runs and passes as without them.
+        old = {'usb': True, 'full_access': False, 'devices': ['/dev/ttyUSB0']}
+        new = {'usb': True, 'video': True, 'host_dbus': True, 'apparmor': True, 'privileged': ['NET_ADMIN']}
+        result, started, _ = self.run_stubbed(old, new, profile=True)
+        self.assertTrue(result['passed'], result['reason'])
+        self.assertEqual(started, [('old', []), ('new', ['NET_ADMIN'])])
+        self.assertEqual(result['unapplied_settings'], {'old': ['devices: ["/dev/ttyUSB0"]', 'usb: true'],
+            'new': ['usb: true', 'video: true', 'host_dbus: true', 'apparmor: custom profile apparmor.txt']})
+        result, _, _ = self.run_stubbed({}, {})
+        self.assertTrue(result['passed']); self.assertEqual(result['unapplied_settings'], {'old': [], 'new': []})
     def test_the_prs_fault_exits_1_with_the_reason_not_as_a_tool_error(self):
         work = pathlib.Path(tempfile.mkdtemp()); self.addCleanup(shutil.rmtree, work, True)
         (work / 'addon').mkdir()
@@ -446,6 +459,35 @@ class Privileged(unittest.TestCase):
         result = json.loads((work / 'reports/fake.json').read_text(encoding='utf-8'))
         self.assertEqual(code, 1, out.getvalue()); self.assertNotIn('could not run', result['reason'])
         self.assertIn("::error title=Upgrade test::fake: the config.yaml of fake, the new version (1.0.0), has privileged: [\"NET_ADMN\"]", out.getvalue())
+
+class UnappliedSettings(unittest.TestCase):
+    """#181: unapplied_settings() lists the Supervisor settings a config.yaml declares that the runtime does not apply."""
+    def test_declared_settings_are_listed_in_order_with_their_values(self):
+        config = {'host_uts': True, 'devices': ['/dev/net/tun'], 'usb': True, 'uart': True, 'udev': True, 'video': True, 'gpio': True,
+            'tmpfs': True, 'audio': True, 'full_access': True, 'kernel_modules': True, 'realtime': True, 'docker_api': True,
+            'host_dbus': True, 'host_pid': True, 'host_ipc': True}
+        self.assertEqual(rt.unapplied_settings(config), ['devices: ["/dev/net/tun"]'] + [f'{k}: true' for k in rt.UNAPPLIED_SETTINGS[1:]])
+    def test_defaults_and_false_values_are_left_out(self):
+        config = {'devices': [], 'usb': False, 'uart': False, 'full_access': False, 'tmpfs': None, 'audio': '', 'apparmor': True,
+            'privileged': ['NET_ADMIN'], 'host_network': True, 'map': ['config:rw'], 'slug': 'x'}
+        self.assertEqual(rt.unapplied_settings(config), [])
+        self.assertEqual(rt.unapplied_settings({}), [])
+    def test_a_custom_apparmor_profile_is_listed_unless_apparmor_is_false(self):
+        work = pathlib.Path(tempfile.mkdtemp()); self.addCleanup(shutil.rmtree, work, True)
+        profile = work / 'apparmor.txt'
+        self.assertEqual(rt.unapplied_settings({}, profile), [])
+        profile.write_text('profile x {}\n', encoding='utf-8')
+        self.assertEqual(rt.unapplied_settings({}, profile), ['apparmor: custom profile apparmor.txt'])
+        self.assertEqual(rt.unapplied_settings({'apparmor': True}, profile), ['apparmor: custom profile apparmor.txt'])
+        self.assertEqual(rt.unapplied_settings({'apparmor': False}, profile), [])
+        # Without the version's directory (the comparison target), apparmor.txt cannot be seen.
+        self.assertEqual(rt.unapplied_settings({}), [])
+    def test_a_long_device_list_is_shortened(self):
+        devices = [f'/dev/d{i}' for i in range(97)]
+        self.assertEqual(rt.unapplied_settings({'devices': devices}),
+            ['devices: 97 entries ("/dev/d0", "/dev/d1", "/dev/d2", "/dev/d3", "/dev/d4", … and 92 more)'])
+    def test_other_values_are_shown_as_given(self):
+        self.assertEqual(rt.unapplied_settings({'tmpfs': 'size=64m', 'video': 'yes'}), ['video: "yes"', 'tmpfs: "size=64m"'])
 
 class HaCoreLifecycle(unittest.TestCase):
     """#174 without Docker: the docker and docker exec commands are recorded, core-setup is stood in for."""
@@ -1199,6 +1241,36 @@ class Report(unittest.TestCase):
         # A tool error's result, or one from before #142, has no supervisor or map_warnings.
         r = self.result(); [p.pop('supervisor') for p in r['phases']]
         self.assertNotIn('Unmocked', rt.report(r)); self.assertNotIn('Map entries', rt.report(r)); self.assertNotIn('Test options', rt.report(r))
+        self.assertNotIn('Supervisor settings not applied', rt.report(r))
+    def test_unapplied_settings_are_listed_per_version(self):
+        # #181: each version lists its own; the same list on both is written once; none: no section.
+        title = '**Supervisor settings not applied (未套用的 Supervisor 設定)**'
+        text = rt.report(self.result(unapplied_settings={'old': ['usb: true'], 'new': ['usb: true', 'video: true']}))
+        self.assertIn(title, text); self.assertIn('do not add skip_upgrade_test', text); self.assertIn('不加 skip_upgrade_test', text)
+        self.assertIn('- the new version: `usb: true`\n- the new version: `video: true`\n- the comparison target: `usb: true`', text)
+        text = rt.report(self.result(unapplied_settings={'old': [], 'new': ['apparmor: custom profile apparmor.txt']}))
+        self.assertIn('- the new version: `apparmor: custom profile apparmor.txt`', text); self.assertNotIn('comparison target:', text)
+        text = rt.report(self.result(unapplied_settings={'old': ['host_dbus: true'], 'new': ['host_dbus: true']}))
+        self.assertIn('- both versions: `host_dbus: true`', text); self.assertEqual(text.count('host_dbus'), 1)
+        self.assertNotIn('the new version:', text)
+        for empty in ({'old': [], 'new': []}, None):
+            with self.subTest(empty):self.assertNotIn('Supervisor settings not applied', rt.report(self.result(unapplied_settings=empty)))
+        # A backquote from config.yaml cannot end the code span; a | cannot break the line.
+        text = rt.report(self.result(unapplied_settings={'old': [], 'new': ['tmpfs: "a`b|c"']}))
+        self.assertIn('- the new version: `tmpfs: "a\'b\\|c"`', text)
+    def test_unapplied_settings_never_change_the_result_or_exit_code(self):
+        # #181: main() exits as the result says, and the step summary has the section.
+        work = pathlib.Path(tempfile.mkdtemp()); self.addCleanup(shutil.rmtree, work, True)
+        for side in ('old', 'new'):(work / f'{side}.yaml').write_text('slug: fake\nversion: 1.0.0\nusb: true\n', encoding='utf-8')
+        args = ['--name', 'fake', '--addon-dir', str(work), '--report-dir', str(work / 'reports'), '--summary', str(work / 'summary.md'),
+            '--old-image', 'old:1', '--old-config', str(work / 'old.yaml'), '--new-image', 'new:1', '--new-config', str(work / 'new.yaml')]
+        for passed, code in ((True, 0), (False, 1)):
+            with self.subTest(passed=passed):
+                r = self.result(passed=passed, reason='' if passed else 'it did not start', unapplied_settings={'old': ['usb: true'], 'new': ['usb: true']})
+                with mock.patch.object(rt, 'upgrade_test', return_value=r), mock.patch.object(rt, 'compare_smoke', side_effect=lambda x: x), \
+                        contextlib.redirect_stdout(io.StringIO()):self.assertEqual(rt.main(args), code)
+                self.assertEqual(json.loads((work / 'reports/fake.json').read_text(encoding='utf-8'))['passed'], passed)
+        self.assertEqual((work / 'summary.md').read_text(encoding='utf-8').count('Supervisor settings not applied'), 2)
     def test_test_options_are_named_without_values(self):
         text = rt.report(self.result(options={'from_repo': ['a|b'], 'generated': ['db.pw']}))
         self.assertIn(r'Test options (測試用的 options): upgrade-check/options.yaml sets `a\|b`; random passwords for `db.pw` (the same on both versions).', text)
