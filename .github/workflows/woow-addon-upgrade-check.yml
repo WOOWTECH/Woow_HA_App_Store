@@ -672,7 +672,8 @@ jobs:
     # hooks = 52 minutes (plus its builds), so 150 is not a bound for several such add-ons: a job that runs out of
     # time fails compare (runtime did not succeed), it never passes. The Syft SBOM after each build (#146) adds little:
     # on the apporo pilot (one HA Core add-on, 2026-11-06) both builds with their SBOMs took 2 minutes and the whole job
-    # 4.5, so five such add-ons stay far below 150.
+    # 4.5, so five such add-ons stay far below 150. An add-on the registry flags ha_core (#174) adds its test HA Core: the
+    # image pull (about 650 MB compressed, once per run) and at most 180 s to RUNNING.
     timeout-minutes: 150
     env:
       # Every fail (log.sh) of this job is also written here; "Record why the runtime job failed" hands it to compare.
@@ -726,7 +727,7 @@ jobs:
         # job builds for it get SBOMs for compare's category 4; an add-on whose test the registry skips is built only for
         # them: test false, sbom true), artifact, old_ref (the comparison target's prebuilt image to pull; "" = rebuilt),
         # old_src (the target's tag or commit to rebuild it from, #144), new_src and new_ref (with new_src published, the new
-        # image to pull; else "").
+        # image to pull; else ""), ha_core (#174: the registry's upgrade_comparison.ha_core, from provider.json).
         # new_src, where the new image comes from; every later step compares it with one of these names, never with "":
         #   artifact   the caller's addon-image artifact: "Wait for the new images" and "Load the new images"
         #   pr         built from the PR checkout (#144): "Build the images of add-ons built on the device"
@@ -783,9 +784,10 @@ jobs:
             jq -n --arg name "${id}" --arg not_run "${not_run}" --arg note "${note}" '{name: $name, passed: null, not_run: $not_run, note: $note}' > "runtime-reports/${id}.json"
             echo "- ${id}: upgrade test not run (${note})" >> "$GITHUB_STEP_SUMMARY"
           fi
+          ha_core="$(jq --arg id "${id}" 'any(.components[]; .id == $id and .ha_core == true)' provider.json)"
           jq -nc --arg id "${id}" --arg addon_dir "source/$(dirname "${notes}")" --arg new "${new}" --argjson test "$([ -z "${note}" ] && echo true || echo false)" \
             --argjson sbom "${sbom}" --arg artifact "${artifact}" --arg old_ref "${old_ref}" --arg old_src "${old_src}" --arg new_src "${new_src}" --arg new_ref "${new_ref}" \
-            '$ARGS.named' >> upgrade.jsonl
+            --argjson ha_core "${ha_core}" '$ARGS.named' >> upgrade.jsonl
         done < plan.jsonl
         if [ -n "$(jq -r 'select(.test) | .id' upgrade.jsonl)" ]; then echo "run=true" >> "$GITHUB_OUTPUT"; else echo "run=false" >> "$GITHUB_OUTPUT"; fi
         if [ -n "$(jq -r 'select((.test or .sbom) and (.old_src != "" or .new_src == "pr")) | .id' upgrade.jsonl)" ]; then echo "build=true" >> "$GITHUB_OUTPUT"; else echo "build=false" >> "$GITHUB_OUTPUT"; fi
@@ -976,9 +978,11 @@ jobs:
           # The new image: the published one pulled by its ref (#154, so the report names it), else the caller's artifact or
           # the image built here, both upgrade-comparison/<id>:new.
           new_image="upgrade-comparison/${id}:new"; if [ "${new_src}" = published ]; then new_image="${new_ref}"; fi
+          # #174: a real HA Core behind the mock Supervisor, only for add-ons the registry flags upgrade_comparison.ha_core.
+          fields "${row}" ha_core='ha_core // false'; core=(); [ "${ha_core}" != true ] || core=(--ha-core)
           rc=0; python3 tooling/.addon-sync/upgrade_runtime.py --name "${id}" --addon-dir "${addon_dir}" \
             --old-image "${old_image}" --old-config "$RUNNER_TEMP/${id}.old.yaml" --new-image "${new_image}" --new-config "${new}" \
-            --report-dir runtime-reports --summary "$GITHUB_STEP_SUMMARY" || rc=$?
+            --report-dir runtime-reports --summary "$GITHUB_STEP_SUMMARY" "${core[@]}" || rc=$?
           [ "${rc}" = 0 ] || status=1
           # Images built on the device (#144) are removed once tested, so the next add-on's builds have the disk. The
           # build cache is kept: add-ons of one repository share their base image (apporo: one HA Core for five).

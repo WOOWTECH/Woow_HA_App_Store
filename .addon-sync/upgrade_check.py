@@ -329,7 +329,8 @@ def components(registry, repo):
     instead of the PR build's SBOM (scan_published_image, #147/#148: a repository whose shipped image is the published one its config names, not one its PR builds; '' when
     not approved; never together with the skip) and, for each add-on it releases (addon_sync.publishes_releases: a retired or prerelease add-on
     is not compared), the repository paths of its config and upgrade-notes.yaml (config, notes) and, while a config move
-    is in progress, of the location it left (previous_config, previous_notes; '' when none). The workflow reads the
+    is in progress, of the location it left (previous_config, previous_notes; '' when none), and whether its upgrade
+    test runs a real HA Core (ha_core, #174). The workflow reads the
     previous ones at a commit that does not have the registry's path, as addon_sync.locate does."""
     provider=find_provider(registry,repo)
     def paths(comp):
@@ -343,9 +344,10 @@ def components(registry, repo):
     skip,published=approved.get('skip_vulnerability_scan',''),approved.get('scan_published_image','')
     if skip and published:raise ValueError(f'{repo}: the Store registry gives both skip_vulnerability_scan and scan_published_image; category 4 is either skipped or scans the published image, keep one')
     # #141: every add-on's data-check deadline is checked on every PR of the repository, also one whose upgrade test does not run.
-    for c in provider['components']:due_date(c,f'{repo} ')
+    # #174: so is every add-on's ha_core flag.
+    for c in provider['components']:due_date(c,f'{repo} ');ha_core(c,f'{repo} ')
     return {'ref_policy':provider['ref_policy'],'skip_vulnerability_scan':skip,'scan_published_image':published,
-        'components':[{'id':c['id'],**paths(c)} for c in provider['components'] if publishes_releases(c)]}
+        'components':[{'id':c['id'],**paths(c),'ha_core':ha_core(c)} for c in provider['components'] if publishes_releases(c)]}
 
 def upgrade_comparison(component, prefix=''):
     """The upgrade_comparison mapping of `component` (its Store registry entry), {} when it has none. A ValueError
@@ -356,6 +358,18 @@ def upgrade_comparison(component, prefix=''):
     if not isinstance(given,dict):
         raise ValueError(f'the Store registry entry for {prefix}{component.get("id")} is malformed: upgrade_comparison must be a mapping, not {given!r}')
     return given
+
+CORE_KEY='ha_core'
+
+def ha_core(component, prefix=''):
+    """Whether the upgrade test of `component` (its Store registry entry) starts a real HA Core behind the mock
+    Supervisor (#174, upgrade_runtime.py --ha-core): upgrade_comparison.ha_core, false when absent. Only this flag
+    turns it on, never homeassistant_api in config.yaml. A ValueError naming the add-on (after `prefix`) when it is
+    not true or false, or upgrade_comparison is not a mapping; components() checks every add-on with it on every PR."""
+    value=upgrade_comparison(component,prefix).get(CORE_KEY,False)
+    if not isinstance(value,bool):
+        raise ValueError(f'the Store registry entry for {prefix}{component.get("id")} is malformed: upgrade_comparison.{CORE_KEY} must be true or false, not {value!r}')
+    return value
 
 DUE_KEY='data_check_due'
 
