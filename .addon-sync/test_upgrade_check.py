@@ -508,8 +508,8 @@ class ComponentsCommand(unittest.TestCase):
         comps=[{'id':'a','source_path':'.','config_file':'config.yaml'},{'id':'b','source_path':'addons/b','config_file':'config.yml'}]
         code,out=self.main({'providers':{'WOOWTECH/r':{'ref_policy':'main','components':comps,'upgrade_comparison':{'skip_vulnerability_scan':'#1: why'}}}})
         self.assertEqual(code,0);self.assertEqual(json.loads(out),{'ref_policy':'main','skip_vulnerability_scan':'#1: why','scan_published_image':'','components':[
-            {'id':'a','config':'config.yaml','notes':'upgrade-notes.yaml','previous_config':'','previous_notes':''},
-            {'id':'b','config':'addons/b/config.yml','notes':'addons/b/upgrade-notes.yaml','previous_config':'','previous_notes':''}]})
+            {'id':'a','config':'config.yaml','notes':'upgrade-notes.yaml','previous_config':'','previous_notes':'','ha_core':False},
+            {'id':'b','config':'addons/b/config.yml','notes':'addons/b/upgrade-notes.yaml','previous_config':'','previous_notes':'','ha_core':False}]})
         code,out=self.main({'providers':{'WOOWTECH/r':{'ref_policy':'release','components':comps}}})
         self.assertEqual(json.loads(out)['skip_vulnerability_scan'],'')
     def test_approved_published_image_scan(self):
@@ -758,7 +758,9 @@ class StepHarness(unittest.TestCase):
         import os,subprocess
         (tmp/'tooling/.addon-sync/upgrade_runtime.py').write_text('import argparse,json,pathlib\np=argparse.ArgumentParser()\n'
             "for o in ('--name','--addon-dir','--old-image','--old-config','--new-image','--new-config','--report-dir','--summary'):p.add_argument(o)\n"
-            "a=p.parse_args();pathlib.Path(a.report_dir,a.name+'.json').write_text(json.dumps({'name':a.name,'passed':True,'old_image':a.old_image,'new_image':a.new_image}))\n")
+            "p.add_argument('--ha-core',action='store_true')\n"
+            "a=p.parse_args();pathlib.Path(a.report_dir,a.name+'.json').write_text(json.dumps({'name':a.name,'passed':True,'old_image':a.old_image,'new_image':a.new_image,"
+            "**({'ha_core':True} if a.ha_core else {})}))\n")
         env=dict(os.environ,PATH=f"{tmp/'bin'}{os.pathsep}{os.environ['PATH']}",RUNNER_TEMP=str(tmp),GITHUB_STEP_SUMMARY=str(tmp/'summary'),**env)
         runs=[]
         for step in steps:
@@ -2448,11 +2450,10 @@ class UpgradeTestSkipCommand(unittest.TestCase):
         # 2026-11-06 (#170): music_assistant's skip is temporary, until the mock Supervisor gives it the HA Core API (#174).
         # 2026-11-09 (#171): hamh's skip is temporary, until #174 too; dnsmasq-dhcp's is temporary, until the runtime applies privileged (#175).
         # 2026-11-09 (#175): dnsmasq-dhcp's skip is removed; the runtime applies privileged as --cap-add.
+        # 2026-11-09 (#174): music_assistant's and hamh's skips are removed; they are flagged ha_core instead (HaCoreFlag).
         registry=json.loads((StepHarness.STORE/'.addon-sync/registry.json').read_text(encoding='utf-8'))
         approved={(repo,c['id']):u.upgrade_test_skip(c) for repo,p in registry['providers'].items() for c in p['components'] if u.upgrade_test_skip(c)}
-        expected={('WOOWTECH/woow-lan-gateway','woow_lan_gateway'):('#158','permanent'),
-            ('WOOWTECH/Woow_ha_music_assistant_add_on','music_assistant'):('#174','temporary'),
-            ('WOOWTECH/Woow_ha_matter_hub_add_on','hamh'):('#174','temporary')}
+        expected={('WOOWTECH/woow-lan-gateway','woow_lan_gateway'):('#158','permanent')}
         self.assertEqual({k:re.match(r'#\d+',v).group() for k,v in approved.items()},{k:ticket for k,(ticket,_) in expected.items()})
         for k,(_,kind) in expected.items():
             with self.subTest(k):
@@ -2461,6 +2462,52 @@ class UpgradeTestSkipCommand(unittest.TestCase):
                 if kind=='permanent':self.assertNotIn('remove',approved[k].lower())
         for p in registry['providers'].values():
             with self.subTest('provider level'):self.assertNotIn('skip_upgrade_test',p.get('upgrade_comparison') or {})
+
+class HaCoreFlag(StepHarness):
+    """#174: upgrade_comparison.ha_core (a boolean, false when absent) in a component's Store registry entry makes its
+    upgrade test start a real HA Core behind the mock Supervisor (upgrade_runtime.py --ha-core); homeassistant_api in
+    config.yaml alone never does. components() checks it on every add-on and hands it to the workflow."""
+    def test_the_flag_is_true_or_false(self):
+        self.assertIs(u.ha_core({'id':'a'}),False);self.assertIs(u.ha_core({'id':'a','upgrade_comparison':{}}),False)
+        self.assertIs(u.ha_core({'id':'a','upgrade_comparison':{'ha_core':True}}),True)
+        self.assertIs(u.ha_core({'id':'a','upgrade_comparison':{'ha_core':False}}),False)
+        for bad in ('true',1,None,[True]):
+            with self.subTest(bad),self.assertRaisesRegex(ValueError,'the Store registry entry for a is malformed: upgrade_comparison.ha_core must be true or false'):
+                u.ha_core({'id':'a','upgrade_comparison':{'ha_core':bad}})
+        with self.assertRaisesRegex(ValueError,'upgrade_comparison must be a mapping'):u.ha_core({'id':'a','upgrade_comparison':True})
+    def test_components_hands_the_flag_over_and_checks_every_add_on(self):
+        comp=lambda i,**kw:{'id':i,'source_path':i,'config_file':'config.yaml',**kw}
+        registry=lambda c:{'providers':{'WOOWTECH/r':{'ref_policy':'release','components':[comp('a',upgrade_comparison={'ha_core':True}),comp('b'),c]}}}
+        out=u.components(registry(comp('c')),'WOOWTECH/r')
+        self.assertEqual([(c['id'],c['ha_core']) for c in out['components']],[('a',True),('b',False),('c',False)])
+        # Like data_check_due, a malformed flag fails every PR of the repository, even on an add-on that is not compared.
+        bad=comp('c',channel='prerelease',upgrade_comparison={'ha_core':'yes'})
+        with self.assertRaisesRegex(ValueError,'the Store registry entry for WOOWTECH/r c is malformed: upgrade_comparison.ha_core'):u.components(registry(bad),'WOOWTECH/r')
+    def test_registry_flags_exactly_the_add_ons_the_owner_did(self):
+        # Owner, 2026-11-09 (#174): music_assistant and hamh need HA Core; frigate (homeassistant_api too) does not.
+        registry=json.loads((self.STORE/'.addon-sync/registry.json').read_text(encoding='utf-8'))
+        flagged={(repo,c['id']) for repo,p in registry['providers'].items() for c in p['components'] if u.ha_core(c)}
+        self.assertEqual(flagged,{('WOOWTECH/Woow_ha_music_assistant_add_on','music_assistant'),('WOOWTECH/Woow_ha_matter_hub_add_on','hamh')})
+        for p in registry['providers'].values():
+            with self.subTest('provider level'):self.assertNotIn('ha_core',p.get('upgrade_comparison') or {})
+    @needs_shell
+    def test_the_plan_and_run_steps_pass_ha_core_only_for_flagged_add_ons(self):
+        comps=[{'id':'t','source_path':'addon','config_file':'config.yaml','upgrade_comparison':{'ha_core':True}}]
+        for extra,flag in (({'components':comps},True),(None,False)):
+            with self.subTest(flag):
+                r,_,_=self.run_step(('plan','upgrade'),sbom='upgrade-comparison-sbom-*',image_artifact='upgrade-comparison-image-*',extra=extra)
+                self.assertEqual(r.returncode,0,r.stdout+r.stderr)
+                (row,)=[json.loads(l) for l in (self.tmp/'upgrade.jsonl').read_text().splitlines()];self.assertIs(row['ha_core'],flag)
+        # A row without the key (an older plan) is unflagged.
+        tmp=pathlib.Path(tempfile.mkdtemp());self.addCleanup(shutil.rmtree,tmp)
+        (tmp/'tooling/.addon-sync').mkdir(parents=True);(tmp/'runtime-reports').mkdir()
+        for name in ('log.sh','fields.sh'):shutil.copy(self.STORE/'.addon-sync'/name,tmp/'tooling/.addon-sync'/name)
+        rows=[{'id':i,'addon_dir':f'source/{i}','new':f'{i}.yaml','old_ref':f'ghcr.io/o/{i}-amd64:1.0.0','artifact':'x','test':True,**extra}
+            for i,extra in (('a',{'ha_core':True}),('b',{'ha_core':False}),('c',{}))]
+        (tmp/'upgrade.jsonl').write_text(''.join(json.dumps(r)+'\n' for r in rows))
+        (run,)=self.run_runtime_steps(tmp,('Run the upgrade tests',))
+        self.assertEqual(run.returncode,0,run.stdout+run.stderr)
+        self.assertEqual({p.stem:json.loads(p.read_text()).get('ha_core',False) for p in (tmp/'runtime-reports').iterdir()},{'a':True,'b':False,'c':False})
 
 class UpgradeTestSkipStep(StepHarness):
     """The runtime job's 'Skip the upgrade tests the registry approves' (#140): an approved add-on gets a result with the

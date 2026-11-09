@@ -543,7 +543,7 @@
           "channel": "stable",
           "enabled": true,
           "upgrade_comparison": {
-            "skip_upgrade_test": "#174, temporary (owner, 2026-11-09): hamh needs the HA Core API (homeassistant_api), which the mock Supervisor does not provide, so even the comparison target 2.0.58 never counts as started: its HomeAssistantClient retried http://supervisor/core 60 times until the 300 s ingress probe ran out (run 42562061272); categories 1 and 4 still run; remove when #174 lands"
+            "ha_core": true
           }
         }
       ]
@@ -660,7 +660,7 @@
           "channel": "stable",
           "enabled": true,
           "upgrade_comparison": {
-            "skip_upgrade_test": "#174, temporary (owner, 2026-11-06): music_assistant needs the HA Core API (homeassistant_api; its ingress index checks the user's HA admin role through the Home Assistant provider), which the mock Supervisor does not provide, so even the comparison target 2.10.9 answers HTTP 500 and never counts as started (run 42201544824); categories 1 and 4 still run; remove when #174 lands"
+            "ha_core": true
           }
         },
         {

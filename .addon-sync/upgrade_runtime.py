@@ -114,6 +114,33 @@ Neither fails the test. upgrade-check/supervisor/ must not be, or hold, a
 symlink out of upgrade-check/ (only that directory is mounted): that is a tool
 error before any container starts.
 
+HA Core (#174): --ha-core (the workflow passes it for a component the Store
+registry flags upgrade_comparison.ha_core; config.yaml's homeassistant_api alone
+never does) starts one real HA Core for the whole test: CORE_IMAGE, the
+official image at mock_supervisor.VERSIONS['homeassistant'] (the version the
+mock's /core/info reports; one constant, bumped by hand), on the mock network
+at CORE_IP. No `homeassistant` host name is added; only the mock talks to it.
+Its config directory is <work>/ha-core, not one of the add-on's data
+directories. It starts after the mock and before the comparison target, and
+runs, never restarted, until the test ends. The runtime writes the mock's
+core.json (its URL) and runs mock_supervisor.py core-setup in the mock's
+container: the headless onboarding of version_control's rebuild_real.py (an
+owner user and its refresh token, no long-lived token), then the wait for
+RUNNING. That wait is CORE_WAIT (180 s) from docker run, after the image is
+pulled, and is not part of either version's startup_timeout. When the image
+cannot be pulled or run, HA Core exits, onboarding fails or the wait runs out,
+the upgrade test fails (never skips) with the reason CORE_FAILED, distinct from
+a version that did not start, and the report has HA Core's last log lines. The
+mock then forwards the add-on's /core/api... and /homeassistant/api... calls
+(REST and websocket) to it with the owner's token (mock_supervisor.py
+documents the paths, 502 before RUNNING and 401 for GET /core without a
+token); without --ha-core those paths answer 404 as before. With HA Core the
+startup probe (and the fetch of its answer) also sends the owner's
+X-Remote-User-ID, X-Remote-User-Name and X-Remote-User-Display-Name, as
+Supervisor's ingress does: music_assistant's ingress checks that user's
+system-admin group through HA Core. "Started" keeps its meaning (the startup
+probe passes); nothing on the HA side is checked.
+
 Writes <report-dir>/<name>.json and <name>.md, appends the report to
 --summary and exits 1 when the upgrade test fails (::error with the reason),
 2 on a usage or tool error. Needs Docker; both images must be local or pullable.
@@ -160,7 +187,9 @@ add-on's own Supervisor calls during that phase (start to stop) that answered
 404 (unmocked) or 500 (a fixture that is not valid JSON); calls of the hooks
 and of the runtime are not in it. map_warnings are upgrade_check.map_warnings()
 of each config.yaml: map entries Supervisor ignores (or why `map` could not be
-read). Both are informational.
+read). Both are informational. With --ha-core (#174) the result also has
+ha_core: {image, started, seconds (docker run to RUNNING; None when it did not
+start), detail, logs (its last lines when it did not start)}.
 """
 from __future__ import annotations
 import argparse, json, os, pathlib, re, secrets, shutil, string, subprocess, sys, tempfile, time
@@ -188,6 +217,12 @@ IN_MOCK = {'hooks': '/upgrade-check', 'data': '/upgrade-data', 'reports': '/hook
 CHECK_RESULTS = ('pass', 'fail', 'skip')
 # How many unmocked paths the report lists per version, the most called first.
 UNMOCKED_ROWS = 30
+# #174: the test HA Core (module docstring): its image and address on the mock network, how long it has to reach
+# RUNNING, and the reason when it does not.
+CORE_IMAGE = f'{mock_supervisor.CORE_IMAGE}:{mock_supervisor.VERSIONS["homeassistant"]}'
+CORE_IP = '172.30.32.20'
+CORE_URL, CORE_WAIT = f'http://{CORE_IP}:8123', 180
+CORE_FAILED = 'the test HA Core did not start (測試用 HA Core 沒有啟動)'
 
 class DockerError(RuntimeError):
     """A docker command that failed: its exit code and output."""
@@ -520,9 +555,12 @@ def _map_warnings(config):
 
 class UpgradeTestEnv:
     """One upgrade test's network, mock Supervisor and data directories, removed by close(). `hooks`: the add-on's
-    upgrade-check/ directory, mounted read-only in the mock Supervisor's container (None when it has none)."""
-    def __init__(self, work, hooks=None):
-        self.work, self.hooks = pathlib.Path(work), hooks
+    upgrade-check/ directory, mounted read-only in the mock Supervisor's container (None when it has none). `ha_core`:
+    the test also has a real HA Core (#174, start_core())."""
+    def __init__(self, work, hooks=None, ha_core=False):
+        self.work, self.hooks, self.ha_core = pathlib.Path(work), hooks, ha_core
+        # #174: the startup probe's X-Remote-User-* headers, the owner's once start_core() onboarded HA Core.
+        self.probe_headers = {}
         # #157: the passwords masked in hook output before it is cut to its last lines (upgrade_test sets them).
         self.words = []
         self.prefix = f'upgrade-test-{secrets.token_hex(4)}'
@@ -531,7 +569,9 @@ class UpgradeTestEnv:
         self.ingress_token = secrets.token_urlsafe()
         self.state, self.data = self.work / 'supervisor', self.work / 'dirs'
         self.reports, self.hook_state, self.smoke_state = self.work / 'hook-reports', self.work / 'hook-state', self.work / 'smoke-state'
-        for d in (self.state, self.data, self.reports, self.hook_state, self.smoke_state):d.mkdir(parents=True)
+        # #174: the test HA Core's container and its config directory (never one of the add-on's data directories).
+        self.core, self.core_config = f'{self.prefix}-core', self.work / 'ha-core'
+        for d in (self.state, self.data, self.reports, self.hook_state, self.smoke_state, self.core_config):d.mkdir(parents=True)
     def open(self):
         docker('network', 'create', '--subnet', SUBNET, '--gateway', GATEWAY, self.net)
         binds = [(TOOLING, '/tooling', True), (self.state, '/state', False), (self.data, IN_MOCK['data'], False),
@@ -554,15 +594,51 @@ class UpgradeTestEnv:
                 why = f'({down})' if down else f'within {MOCK_WAIT} s'
                 raise RuntimeError(f'the mock Supervisor did not answer {why}; its last log lines: {_logs(self.supervisor, 20).strip()[-1000:]}')
             time.sleep(0.5)
+    def start_core(self):
+        """#174: start the test HA Core and have the mock onboard it and wait for RUNNING (mock_supervisor.py core-setup):
+        (started, detail, seconds from docker run to RUNNING or None, its last log lines when it did not start). Its
+        image is pulled first, so CORE_WAIT counts from docker run. A docker failure that is not the image's is a tool
+        error (DockerError), as for an add-on (#140)."""
+        (self.state / mock_supervisor.CORE_FILE).write_text(json.dumps({'url': CORE_URL}), encoding='utf-8')
+        if subprocess.run(['docker', 'image', 'inspect', CORE_IMAGE], capture_output=True).returncode:
+            try:docker('pull', '--quiet', '--platform', 'linux/amd64', CORE_IMAGE)
+            except DockerError as e:return False, f'cannot pull {CORE_IMAGE}: {e}', None, ''
+        started = time.monotonic()
+        try:
+            docker('run', '-d', '--name', self.core, '--network', self.net, '--ip', CORE_IP, '-e', 'TZ=UTC',
+                '--mount', f'type=bind,source={self.core_config},target=/config', CORE_IMAGE)
+        except DockerError as e:
+            if not image_fault(e):raise
+            return False, str(e), None, _logs(self.core, 60)[-4000:]
+        setup = subprocess.Popen(['docker', 'exec', self.supervisor, 'python', '/tooling/mock_supervisor.py', 'core-setup', '--core', CORE_URL,
+            '--state', '/state', '--timeout', str(CORE_WAIT)], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding='utf-8', errors='replace')
+        why = ''
+        while setup.poll() is None:
+            # HA Core that exits fails at once; the extra minute only guards a hung docker exec.
+            why = _down(self.core) or (f'core-setup did not end within {CORE_WAIT + 60} s' if time.monotonic() - started > CORE_WAIT + 60 else '')
+            if why:
+                setup.kill(); break
+            time.sleep(1)
+        output = setup.communicate()[0].strip()
+        if not why and setup.returncode:why = output.splitlines()[-1] if output else f'core-setup exited with code {setup.returncode}'
+        if why:return False, why, None, _logs(self.core, 60)[-4000:]
+        core = json.loads((self.state / mock_supervisor.CORE_FILE).read_text(encoding='utf-8'))
+        self.probe_headers = {'X-Remote-User-ID': core['user_id'], 'X-Remote-User-Name': core['user_name'],
+            'X-Remote-User-Display-Name': core['display_name']}
+        seconds = round(time.monotonic() - started)
+        return True, f'onboarded (owner {core["user_name"]}) and RUNNING {seconds} s after it started', seconds, ''
     def probe(self, url, below, timeout=5):
-        """One check of `url` from the Supervisor's address (mock_supervisor.py probe; `below` None for tcp)."""
+        """One check of `url` from the Supervisor's address (mock_supervisor.py probe; `below` None for tcp), with
+        probe_headers (#174) when it is http(s)."""
         limit = [] if below is None else ['--below', str(below)]
+        headers = [a for k, v in self.probe_headers.items() for a in ('--header', f'{k}: {v}')] if url.startswith('http') else []
         return subprocess.run(['docker', 'exec', self.supervisor, 'python', '/tooling/mock_supervisor.py', 'probe', '--url', url, *limit,
-            '--timeout', str(timeout)], capture_output=True).returncode == 0
+            '--timeout', str(timeout), *headers], capture_output=True).returncode == 0
     def fetch(self, url):
-        """The first 200 characters of what `url` answers from the Supervisor's address ('' when it does not)."""
-        code = (f'import urllib.request,ssl;print(urllib.request.urlopen({url!r},timeout=5,context=ssl._create_unverified_context())'
-            '.read()[:200].decode(errors="replace"))')
+        """The first 200 characters of what `url` answers from the Supervisor's address ('' when it does not), asked
+        as probe() asks it."""
+        code = (f'import urllib.request,ssl;print(urllib.request.urlopen(urllib.request.Request({url!r},headers={self.probe_headers!r}),'
+            'timeout=5,context=ssl._create_unverified_context()).read()[:200].decode(errors="replace"))')
         return docker('exec', self.supervisor, 'python', '-c', code, check=False).strip()
     def start(self, phase, image, config, options):
         """Start one version on the shared directories with `options` as /data/options.json (build_test_options()); its
@@ -637,7 +713,7 @@ class UpgradeTestEnv:
         docker('stop', '-t', str(config.get('timeout', 10)), container, check=False)
         docker('rm', '-f', container, check=False)
     def close(self):
-        docker('rm', '-f', f'{self.prefix}-old', f'{self.prefix}-new', self.supervisor, check=False)
+        docker('rm', '-f', f'{self.prefix}-old', f'{self.prefix}-new', self.supervisor, self.core, check=False)
         docker('network', 'rm', self.net, check=False)
         # Containers write as root: remove what they left through a container, then the rest.
         docker('run', '--rm', '--mount', f'type=bind,source={self.work},target=/w', '--entrypoint', 'sh', MOCK_IMAGE, '-c', 'rm -rf /w/* /w/.[!.]*', check=False)
@@ -715,8 +791,8 @@ TOOL_ERRORS = (OSError, ValueError, TypeError, AttributeError, RuntimeError, yam
 class MaskedError(Exception):
     """A bug's exception (not a TOOL_ERRORS one) whose message held a password: its type name and masked message."""
 
-def upgrade_test(name, addon_dir, old_image, old_config, new_image, new_config, work):
-    """The result described in the module docstring."""
+def upgrade_test(name, addon_dir, old_image, old_config, new_image, new_config, work, ha_core=False):
+    """The result described in the module docstring; `ha_core`: start the test HA Core first (#174)."""
     hooks_dir = pathlib.Path(addon_dir) / 'upgrade-check'
     settings_path = hooks_dir / 'settings.yaml'
     settings = yaml.safe_load(settings_path.read_text(encoding='utf-8')) if settings_path.exists() else None
@@ -729,7 +805,7 @@ def upgrade_test(name, addon_dir, old_image, old_config, new_image, new_config, 
     if given:check_test_options(given, configs)
     built, generated = build_test_options(configs, given)
     options, words = dict(zip(('old', 'new'), built)), mask_words(generated, given, configs)
-    env = UpgradeTestEnv(work, hooks_dir.resolve() if hooks_dir.is_dir() else None); phases = []; env.words = words
+    env = UpgradeTestEnv(work, hooks_dir.resolve() if hooks_dir.is_dir() else None, ha_core); phases = []; env.words = words
     result = {'name': name, 'passed': False, 'reason': '', 'hooks': present, 'data_checked': False, 'phases': phases,
         'map_warnings': {'old': _map_warnings(old_config), 'new': _map_warnings(new_config)},
         'options': {'from_repo': sorted(given or {}), 'generated': sorted(generated),
@@ -742,6 +818,14 @@ def upgrade_test(name, addon_dir, old_image, old_config, new_image, new_config, 
         return result
     try:
         env.open()
+        if ha_core:
+            # #174: one HA Core for both versions, RUNNING before the comparison target starts; if it is not, the test
+            # fails with its own reason (no version ran).
+            ok, detail, seconds, logs = env.start_core()
+            result['ha_core'] = {'image': CORE_IMAGE, 'started': ok, 'seconds': seconds, 'detail': detail, 'logs': mask(logs, words)}
+            if not ok:
+                result['reason'] = f'{CORE_FAILED}: {detail}'
+                return result
         for phase, image, config in (('old', old_image, old_config), ('new', new_image, new_config)):
             probe = startup_probe(config, settings)
             label = f'{PHASE_LABEL[phase]} ({config.get("version")})'
@@ -791,6 +875,8 @@ def upgrade_test(name, addon_dir, old_image, old_config, new_image, new_config, 
         if isinstance(e, TOOL_ERRORS):raise RuntimeError(masked) from None
         raise MaskedError(f'{type(e).__name__}: {masked}').with_traceback(e.__traceback__) from None
     finally:
+        # #174: HA Core's last log lines at the end of a test where it started (start_core() keeps them when it did not).
+        if (result.get('ha_core') or {}).get('started'):result['ha_core']['logs'] = mask(_logs(env.core, 60), words)[-4000:]
         env.close()
         # #157: the report never shows a password (details, reasons); the returned dict is this one.
         result.update(mask_result(result, words))
@@ -843,8 +929,14 @@ def report(result):
     else:data = STARTUP_ONLY
     passed = ('**Passed**: the new version starts on the data of the comparison target' +
         ((', and verify finds the data seed wrote.' if 'seed' in hooks else ', and verify passes on it.') if checked else '.'))
-    r = [f'#### Upgrade test: {result["name"]}', '', passed if result['passed'] else f'**Failed**: {markdown_cell(result["reason"])}.', '', data, '',
-        '| version | image | judged by | started | detail |', '|---|---|---|---|---|']
+    r = [f'#### Upgrade test: {result["name"]}', '', passed if result['passed'] else f'**Failed**: {markdown_cell(result["reason"])}.', '', data, '']
+    core = result.get('ha_core')
+    if core:
+        # #174: the real HA Core behind the mock Supervisor, shared by both versions.
+        state = 'started' if core['started'] else '**did not start**'
+        r += [f'Test HA Core (測試用 HA Core) `{markdown_cell(core["image"])}`: {state}: {markdown_cell(core["detail"])}.' +
+            (" The add-on's /core/api calls reach it through the mock Supervisor with the owner's token." if core['started'] else ''), '']
+    r += ['| version | image | judged by | started | detail |', '|---|---|---|---|---|']
     r += [f'| {PHASE_LABEL[p["phase"]]} {markdown_cell(p["version"])} | `{markdown_cell(p["image"])}` | {p["method"]} | {"yes" if p["started"] else "**no**"} | {markdown_cell(p["detail"])} |'
         for p in result['phases']]
     r += _options_lines(result.get('options') or {})
@@ -861,6 +953,9 @@ def report(result):
             r += [f'| {version} | {h["hook"]} | {markdown_cell(c["name"])} | {"**fail**" if c["result"] == "fail" else c["result"]} | {markdown_cell(c["detail"])} |'
                 for c in h['checks']]
     r += _supervisor_sections(result)
+    # HA Core's log helps when it, or a version that needs it, did not start.
+    if core and (not core['started'] or (core.get('logs') and not all(p['started'] for p in result['phases']))):
+        r += ['', '<details><summary>Last log lines of the test HA Core</summary>', '', '```', core['logs'].replace('```', "'''"), '```', '', '</details>']
     for p in result['phases']:
         for h in p.get('hooks', []):
             if not h['passed']:
@@ -913,12 +1008,13 @@ def main(argv=None):
     p.add_argument('--old-image', required=True); p.add_argument('--old-config', required=True, help="the comparison target's config.yaml")
     p.add_argument('--new-image', required=True); p.add_argument('--new-config', required=True, help="the PR's config.yaml")
     p.add_argument('--report-dir', required=True); p.add_argument('--summary', help='Markdown file the report is appended to')
+    p.add_argument('--ha-core', action='store_true', help="start the test HA Core behind the mock Supervisor (#174; the registry's upgrade_comparison.ha_core)")
     a = p.parse_args(argv)
     out = pathlib.Path(a.report_dir); out.mkdir(parents=True, exist_ok=True)
     try:
         old, new = (yaml.safe_load(pathlib.Path(f).read_text(encoding='utf-8')) or {} for f in (a.old_config, a.new_config))
         work = tempfile.mkdtemp(prefix='upgrade-test-')
-        try:result = compare_smoke(upgrade_test(a.name, a.addon_dir, a.old_image, old, a.new_image, new, work))
+        try:result = compare_smoke(upgrade_test(a.name, a.addon_dir, a.old_image, old, a.new_image, new, work, a.ha_core))
         finally:shutil.rmtree(work, ignore_errors=True)
     except TOOL_ERRORS as e:
         # compare reads the result file, so a tool error still leaves one with the reason.

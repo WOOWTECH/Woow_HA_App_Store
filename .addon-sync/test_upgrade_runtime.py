@@ -41,6 +41,20 @@ os.makedirs(D + '/items', exist_ok=True)
 class H(http.server.BaseHTTPRequestHandler):
     # The add-on's own API for the data hooks: PUT /items/<key> stores the body in /data, GET /items/<key> reads it.
     def do_GET(self):
+        if os.environ['MODE'] == 'ha-core' and self.path == '/':
+            # #174: like music_assistant's ingress index, the user Supervisor's ingress names must be an HA admin, asked
+            # through the mock's HA Core websocket (as hamh connects: <base>/api/websocket), and HA Core's REST API
+            # must answer RUNNING; else 500, so the ingress probe fails.
+            sys.path.insert(0, '/'); import mock_supervisor as m
+            try:
+                sock, reader = m.ws_connect('http://supervisor/core', os.environ['SUPERVISOR_TOKEN'])
+                users = m.ws_call(sock, reader, {'type': 'config/auth/list'}); sock.close()
+                admin = any(u['id'] == self.headers.get('X-Remote-User-ID') and 'system-admin' in u['group_ids'] for u in users)
+                config = json.load(urllib.request.urlopen(urllib.request.Request('http://supervisor/core/api/config', headers=req.headers), timeout=10))
+                ok = admin and config['state'] == 'RUNNING'
+            except Exception as e:
+                print('HA Core check failed:', repr(e), flush=True); ok = False
+            self.send_response(200 if ok else 500); self.end_headers(); self.wfile.write(b'admin' if ok else b'no'); return
         item = D + '/items/' + self.path[7:] if self.path.startswith('/items/') else ''
         if item and os.path.exists(item):
             self.send_response(200); self.end_headers(); self.wfile.write(open(item, 'rb').read()); return
@@ -433,6 +447,103 @@ class Privileged(unittest.TestCase):
         self.assertEqual(code, 1, out.getvalue()); self.assertNotIn('could not run', result['reason'])
         self.assertIn("::error title=Upgrade test::fake: the config.yaml of fake, the new version (1.0.0), has privileged: [\"NET_ADMN\"]", out.getvalue())
 
+class HaCoreLifecycle(unittest.TestCase):
+    """#174 without Docker: the docker and docker exec commands are recorded, core-setup is stood in for."""
+    OWNER = {'url': rt.CORE_URL, 'client_id': rt.CORE_URL + '/', 'refresh_token': 'r', 'user_id': 'uid-1', 'user_name': 'upgrade-test',
+        'display_name': 'Upgrade Test'}
+    def env(self, ha_core):
+        env = rt.UpgradeTestEnv(tempfile.mkdtemp(), None, ha_core); self.addCleanup(shutil.rmtree, env.work); return env
+    def start_core(self, env, returncode=0, output='', down=''):
+        """env.start_core() with core-setup exiting `returncode` (writing the owner on 0); (its result, the commands run)."""
+        commands = []
+        class Setup:
+            def __init__(self, args, **kw):
+                commands.append(args); self.returncode = returncode
+                if returncode == 0:(env.state / 'core.json').write_text(json.dumps(HaCoreLifecycle.OWNER), encoding='utf-8')
+            def poll(self):return self.returncode
+            def communicate(self):return output, None
+            def kill(self):self.returncode = -9
+        run = lambda args, **kw:commands.append(args) or subprocess.CompletedProcess(args, 0, b'', b'')
+        with mock.patch.object(rt, 'docker', side_effect=lambda *a, **k:commands.append(['docker', *a]) or ''), \
+                mock.patch.object(rt.subprocess, 'Popen', Setup), mock.patch.object(rt.subprocess, 'run', run), \
+                mock.patch.object(rt, '_down', return_value=down), mock.patch.object(rt, '_logs', return_value='core log'):
+            return env.start_core(), commands
+    def probe_args(self, env, url):
+        with mock.patch.object(rt.subprocess, 'run', return_value=subprocess.CompletedProcess([], 0)) as run:env.probe(url, 500)
+        return run.call_args.args[0]
+    def test_ha_core_runs_on_the_mock_network_with_its_own_config_and_is_onboarded_by_the_mock(self):
+        env = self.env(True)
+        (ok, detail, seconds, logs), commands = self.start_core(env)
+        self.assertEqual((ok, logs), (True, '')); self.assertIn('onboarded (owner upgrade-test) and RUNNING', detail); self.assertIsInstance(seconds, int)
+        run = next(c for c in commands if c[:2] == ['docker', 'run'])
+        self.assertEqual(run, ['docker', 'run', '-d', '--name', env.core, '--network', env.net, '--ip', '172.30.32.20', '-e', 'TZ=UTC',
+            '--mount', f'type=bind,source={env.work / "ha-core"},target=/config', rt.CORE_IMAGE])
+        # The image is the version the mock's /core/info reports; its config is no data directory of the add-on.
+        self.assertEqual(rt.CORE_IMAGE, f'ghcr.io/home-assistant/qemux86-64-homeassistant:{rt.mock_supervisor.VERSIONS["homeassistant"]}')
+        self.assertFalse((env.work / 'ha-core').is_relative_to(env.data))
+        setup = next(c for c in commands if 'core-setup' in c)
+        self.assertEqual(setup, ['docker', 'exec', env.supervisor, 'python', '/tooling/mock_supervisor.py', 'core-setup', '--core', 'http://172.30.32.20:8123',
+            '--state', '/state', '--timeout', '180'])
+    def test_the_probe_sends_the_owner_only_for_a_flagged_component(self):
+        flagged, plain = self.env(True), self.env(False)
+        self.start_core(flagged)
+        args = self.probe_args(flagged, 'http://172.30.32.1:8094/')
+        self.assertEqual(args[args.index('--header'):], ['--header', 'X-Remote-User-ID: uid-1', '--header', 'X-Remote-User-Name: upgrade-test',
+            '--header', 'X-Remote-User-Display-Name: Upgrade Test'])
+        self.assertNotIn('--header', self.probe_args(flagged, 'tcp://172.30.32.1:1883'))
+        self.assertNotIn('--header', self.probe_args(plain, 'http://172.30.32.1:8094/'))
+        self.assertEqual(plain.probe_headers, {})
+    def test_the_180_s_wait_running_out_is_ha_core_not_starting(self):
+        env = self.env(True)
+        (ok, detail, seconds, logs), _ = self.start_core(env, 1, 'HA Core did not reach RUNNING within 180 s (it is STARTING)')
+        self.assertEqual((ok, detail, seconds, logs), (False, 'HA Core did not reach RUNNING within 180 s (it is STARTING)', None, 'core log'))
+        self.assertEqual(env.probe_headers, {})
+        (ok, detail, _, _), _ = self.start_core(self.env(True), 1, '')
+        self.assertEqual((ok, detail), (False, 'core-setup exited with code 1'))
+        # HA Core's container exiting ends the wait at once, with why.
+        (ok, detail, _, _), _ = self.start_core(self.env(True), None, down='the container exited with code 2')
+        self.assertEqual((ok, detail), (False, 'the container exited with code 2'))
+    def stub(self, core_result):
+        """An UpgradeTestEnv stand-in whose start_core() returns `core_result`; calls: what upgrade_test asked of it."""
+        calls = []
+        class Env:
+            prefix = 'upgrade-test-stub'
+            core = 'upgrade-test-stub-core'
+            def __init__(self, *a):calls.append(('init', a[2] if len(a) > 2 else False))
+            def open(self):pass
+            def start_core(self):calls.append('start_core'); return core_result
+            def start(self, phase, *a):calls.append(phase); return f'stub-{phase}'
+            def probe(self, url, below, timeout=5):return True
+            def fetch(self, url):return ''
+            def stop(self, *a):pass
+            def supervisor_calls(self):return {'unmocked': [], 'broken_fixtures': []}
+            def close(self):pass
+        return Env, calls
+    def upgrade_test(self, ha_core, core_result=(True, 'RUNNING', 40, '')):
+        work = pathlib.Path(tempfile.mkdtemp()); self.addCleanup(shutil.rmtree, work, True)
+        (work / 'addon/upgrade-check').mkdir(parents=True)
+        (work / 'addon/upgrade-check/settings.yaml').write_text('stable_seconds: 1\n', encoding='utf-8')
+        Env, calls = self.stub(core_result)
+        config = lambda v:{'slug': 'fake', 'version': v, 'ingress': True, 'ingress_port': 8099}
+        with mock.patch.object(rt, 'UpgradeTestEnv', Env), mock.patch.object(rt, '_down', return_value=''), mock.patch.object(rt, '_logs', return_value='core end log'):
+            return rt.upgrade_test('fake', str(work / 'addon'), 'old:1', config('1.0.0'), 'new:1', config('1.1.0'), str(work / 'w'), ha_core), calls
+    def test_ha_core_starts_once_before_the_comparison_target(self):
+        result, calls = self.upgrade_test(True)
+        self.assertTrue(result['passed'], result['reason']); self.assertEqual(calls, [('init', True), 'start_core', 'old', 'new'])
+        self.assertEqual(result['ha_core'], {'image': rt.CORE_IMAGE, 'started': True, 'seconds': 40, 'detail': 'RUNNING', 'logs': 'core end log'})
+        self.assertIn('Test HA Core (測試用 HA Core)', rt.report(result))
+    def test_ha_core_that_does_not_start_fails_before_any_version_with_its_own_reason(self):
+        result, calls = self.upgrade_test(True, (False, 'HA Core did not reach RUNNING within 180 s (it is STARTING)', None, 'boot log'))
+        self.assertFalse(result['passed']); self.assertEqual(calls, [('init', True), 'start_core']); self.assertEqual(result['phases'], [])
+        self.assertEqual(result['reason'], 'the test HA Core did not start (測試用 HA Core 沒有啟動): HA Core did not reach RUNNING within 180 s (it is STARTING)')
+        text = rt.report(rt.compare_smoke(result))
+        self.assertIn('**Failed**: the test HA Core did not start', text); self.assertIn('**did not start**', text)
+        self.assertIn('Last log lines of the test HA Core', text); self.assertIn('boot log', text)
+    def test_unflagged_components_never_start_ha_core(self):
+        result, calls = self.upgrade_test(False)
+        self.assertTrue(result['passed']); self.assertEqual(calls, [('init', False), 'old', 'new']); self.assertNotIn('ha_core', result)
+        self.assertNotIn('HA Core', rt.report(result))
+
 @unittest.skipUnless(docker_ok(), 'needs a Docker daemon (present on GitHub runners)')
 class Runtime(unittest.TestCase):
     @classmethod
@@ -441,8 +552,17 @@ class Runtime(unittest.TestCase):
         build = pathlib.Path(tempfile.mkdtemp())
         try:
             (build / 'run.py').write_text(FAKE, encoding='utf-8')
-            for mode in ('good', 'crash', 'answer-then-crash', 'forget', 'regress', 'needs-net-admin'):
-                (build / 'Dockerfile').write_text(f'FROM {rt.MOCK_IMAGE}\nENV MODE={mode}\nCOPY run.py /run.py\nCMD ["python", "-u", "/run.py"]\n')
+            # The ha-core fake add-on (#174) talks websocket with mock_supervisor's frame code; fake_ha_core.py is the
+            # standard-library HA Core the runtime starts in place of the real image (never pulled in tests).
+            for name in ('mock_supervisor.py', 'fake_ha_core.py'):shutil.copy(rt.TOOLING / name, build / name)
+            for mode in ('good', 'crash', 'answer-then-crash', 'forget', 'regress', 'needs-net-admin', 'ha-core'):
+                (build / 'Dockerfile').write_text(f'FROM {rt.MOCK_IMAGE}\nENV MODE={mode}\nCOPY run.py mock_supervisor.py /\nCMD ["python", "-u", "/run.py"]\n')
+                tag = f'local/upgrade-test-fake-{mode}:{uuid.uuid4().hex[:8]}'
+                subprocess.run(['docker', 'build', '-q', '-t', tag, str(build)], check=True, capture_output=True)
+                cls.images[mode] = tag
+            for mode, args in (('core-running', ''), ('core-never', ', "--never-running"')):
+                (build / 'Dockerfile').write_text(f'FROM {rt.MOCK_IMAGE}\nCOPY fake_ha_core.py mock_supervisor.py /\n'
+                    f'CMD ["python", "-u", "/fake_ha_core.py"{args}]\n')
                 tag = f'local/upgrade-test-fake-{mode}:{uuid.uuid4().hex[:8]}'
                 subprocess.run(['docker', 'build', '-q', '-t', tag, str(build)], check=True, capture_output=True)
                 cls.images[mode] = tag
@@ -464,13 +584,58 @@ class Runtime(unittest.TestCase):
     def hook(self, name, text):
         (self.dir / 'addon/upgrade-check').mkdir(exist_ok=True)
         path = self.dir / f'addon/upgrade-check/{name}'; path.write_text(text, encoding='utf-8', newline='\n'); path.chmod(0o755)
-    def run_test(self, old, new, sides=None, **cfg):
-        # sides: config.yaml keys of one version only ({'old': {...}, 'new': {...}}).
+    def run_test(self, old, new, sides=None, ha_core=False, **cfg):
+        # sides: config.yaml keys of one version only ({'old': {...}, 'new': {...}}). ha_core: --ha-core (#174).
         side = lambda s: self.config(s, **{**cfg, **(sides or {}).get(s, {})})
         args = ['--name', 'fake', '--addon-dir', str(self.dir / 'addon'), '--report-dir', str(self.reports), '--summary', str(self.dir / 'summary.md'),
-            '--old-image', self.images[old], '--old-config', side('old'), '--new-image', self.images[new], '--new-config', side('new')]
+            '--old-image', self.images[old], '--old-config', side('old'), '--new-image', self.images[new], '--new-config', side('new'),
+            *(['--ha-core'] if ha_core else [])]
         with contextlib.redirect_stdout(io.StringIO()) as out:code = rt.main(args)
         return code, json.loads((self.reports / 'fake.json').read_text(encoding='utf-8')), out.getvalue()
+    def test_flagged_add_on_that_needs_ha_core_starts_with_the_test_ha_core(self):
+        # #174: the fake add-on's ingress answers 200 only when the probe's X-Remote-User-ID is an admin in HA Core (asked
+        # over the mock's websocket) and HA Core's REST API is RUNNING, as music_assistant's ingress index needs.
+        self.settings(stable_seconds=3); seen = []; close = rt.UpgradeTestEnv.close
+        def keep(env):
+            seen.append((env.state / 'requests.log').read_text(encoding='utf-8')); close(env)
+        with mock.patch.object(rt, 'CORE_IMAGE', self.images['core-running']), mock.patch.object(rt.UpgradeTestEnv, 'close', keep):
+            code, result, out = self.run_test('ha-core', 'ha-core', ha_core=True, ingress=True, ingress_port=8099)
+        self.assertEqual(code, 0, out + json.dumps(result, indent=1)); self.assertTrue(result['passed'])
+        self.assertEqual([(p['started'], p['method']) for p in result['phases']], [(True, 'ingress'), (True, 'ingress')])
+        core = result['ha_core']
+        self.assertEqual((core['image'], core['started']), (self.images['core-running'], True)); self.assertIsInstance(core['logs'], str)
+        self.assertIsInstance(core['seconds'], int); self.assertIn('onboarded (owner upgrade-test) and RUNNING', core['detail'])
+        self.assertEqual([p['answer'] for p in result['phases']], ['admin', 'admin'])
+        log = seen[0].splitlines()
+        # Every probe and the fetch of its answer asked HA Core through the mock: at least twice per version.
+        self.assertGreaterEqual(log.count('GET /core/api/websocket 101 ha_core'), 4); self.assertGreaterEqual(log.count('GET /core/api/config 200 ha_core'), 4)
+        self.assertEqual([l for l in log if 'ha_core' in l and ' 200 ' not in l and ' 101 ' not in l], [])
+        # HA Core's answers are not unmocked Supervisor calls.
+        self.assertEqual([p['supervisor'] for p in result['phases']], [{'unmocked': [], 'broken_fixtures': []}] * 2)
+        self.assertIn('Test HA Core (測試用 HA Core)', (self.dir / 'summary.md').read_text(encoding='utf-8')); self.assertEqual(leftovers(), [])
+    def test_the_same_add_on_without_the_flag_gets_no_ha_core(self):
+        # Unflagged: no HA Core, /core/api... is 404 and the probe sends no X-Remote-User-*: the comparison target fails.
+        self.settings(startup_timeout=8, stable_seconds=3)
+        code, result, out = self.run_test('ha-core', 'ha-core', ingress=True, ingress_port=8099)
+        self.assertEqual(code, 1); self.assertNotIn('ha_core', result)
+        self.assertIn('the comparison target (1.0.0) did not start: the ingress http://172.30.33.10:8099/ did not answer below HTTP 500', result['reason'])
+        self.assertIn('HA Core check failed', result['phases'][0]['logs'])
+    def test_ha_core_that_never_runs_fails_the_test_with_its_own_reason(self):
+        with mock.patch.object(rt, 'CORE_IMAGE', self.images['core-never']), mock.patch.object(rt, 'CORE_WAIT', 6):
+            code, result, out = self.run_test('ha-core', 'ha-core', ha_core=True, ingress=True, ingress_port=8099)
+        self.assertEqual(code, 1); self.assertEqual(result['phases'], [])
+        self.assertEqual(result['reason'], f'{rt.CORE_FAILED}: HA Core did not reach RUNNING within 6 s (it is STARTING)')
+        self.assertEqual((result['ha_core']['started'], result['ha_core']['seconds']), (False, None))
+        self.assertIn(f'::error title=Upgrade test::fake: {rt.CORE_FAILED}', out)
+        summary = (self.dir / 'summary.md').read_text(encoding='utf-8')
+        self.assertIn('**did not start**', summary); self.assertIn('Last log lines of the test HA Core', summary); self.assertEqual(leftovers(), [])
+    def test_ha_core_that_exits_fails_at_once(self):
+        # An entrypoint that exits: the runtime sees the container down instead of waiting out CORE_WAIT.
+        with mock.patch.object(rt, 'CORE_IMAGE', self.images['crash']):
+            code, result, out = self.run_test('ha-core', 'ha-core', ha_core=True, ingress=True, ingress_port=8099)
+        self.assertEqual(code, 1); self.assertEqual(result['phases'], [])
+        self.assertRegex(result['reason'], re.escape(rt.CORE_FAILED) + r': the container exited with code \d+')
+        self.assertEqual(leftovers(), [])
     def test_new_version_that_starts_on_the_old_data_passes(self):
         self.settings(stable_seconds=8)
         code, result, out = self.run_test('good', 'good', watchdog='http://[HOST]:[PORT:8080]/health')
