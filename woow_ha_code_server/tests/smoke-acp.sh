@@ -34,6 +34,8 @@ if CX test -f "${SETTINGS}"; then
         fi
     }
     check_jq 'acp.agents.pi.command == "pi-code"'            '.["acp.agents"].pi.command == "pi-code"'
+    check_jq 'acp.agents.claude.command == "claude-agent-acp"' '.["acp.agents"].claude.command == "claude-agent-acp"'
+    check_jq 'acp.agents.codex.command == "codex-acp"'       '.["acp.agents"].codex.command == "codex-acp"'
     check_jq 'security.workspace.trust.enabled == false'      '.["security.workspace.trust.enabled"] == false'
     check_jq 'security.workspace.trust.startupPrompt == "never"' '.["security.workspace.trust.startupPrompt"] == "never"'
     check_jq 'security.workspace.trust.banner == "never"'      '.["security.workspace.trust.banner"] == "never"'
@@ -49,6 +51,20 @@ if CX test -f "${SETTINGS}"; then
     check_jq 'extensions.autoUpdate == "off"'                  '.["extensions.autoUpdate"] == "off"'
 else
     bad "settings.json missing at ${SETTINGS}"
+fi
+
+# Expand CODEX_HOME inside the add-on shell, not on the test host.
+# shellcheck disable=SC2016
+if CX sh -lc 'command -v codex >/dev/null && command -v codex-acp >/dev/null && test "$CODEX_HOME" = /data/pi-agent/codex'; then
+    ok "Codex CLI and ACP adapter share the persistent state path"
+else
+    bad "Codex CLI, ACP adapter, or persistent state path missing"
+fi
+CODEX_VERSION="$(CX sh -lc 'codex --version' 2>/dev/null | awk 'NR==1 {print $2}')"
+if [ "${CODEX_VERSION}" = "0.167.0" ]; then
+    ok "Codex CLI = 0.167.0"
+else
+    bad "Codex CLI = ${CODEX_VERSION:-unavailable} (expected 0.167.0)"
 fi
 
 echo

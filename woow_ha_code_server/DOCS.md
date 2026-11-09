@@ -17,6 +17,7 @@ pi's state (login, sessions, skills, model config) is **private to this add-on**
    pi login
    ```
    This writes the credential (an OAuth pair) into this add-on's own `/data/pi-agent/auth.json`. Nothing is pre-configured — there is no shared provider key to inherit from anywhere.
+   To use the separate Codex agent, run `codex login --device-auth` in the same terminal; its credential lives in `/data/pi-agent/codex` and is included in add-on backups.
 4. Bottom status bar should show the ACP adapter connected; the right-side chat panel now talks to that login.
 
 ## Configuration

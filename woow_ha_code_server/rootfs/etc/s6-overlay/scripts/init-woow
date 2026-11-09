@@ -120,6 +120,7 @@ PI_DEFAULT_MODEL="$(bashio::config 'pi_default_model' '')" \
 PI_AGENT_DATA_DIR="${DATA}" \
     /usr/local/bin/pi-seed
 chmod 700 "${DATA}"
+chmod 700 "${DATA}/codex"
 # 0.1.6's inherited code-server run script sent the IDE extension host to
 # /data/claude while the terminal used ${DATA}/claude. Import a legacy IDE
 # login only if the canonical directory is empty; never overwrite terminal
@@ -173,6 +174,7 @@ printf '%s' "${DATA}"        > /run/s6/container_environment/PI_CODING_AGENT_DIR
 printf '%s' "0"              > /run/s6/container_environment/PI_TELEMETRY
 printf '%s' "1"              > /run/s6/container_environment/PI_SKIP_VERSION_CHECK
 printf '%s' "${DATA}/claude" > /run/s6/container_environment/CLAUDE_CONFIG_DIR
+printf '%s' "${DATA}/codex"  > /run/s6/container_environment/CODEX_HOME
 printf '%s' "1"              > /run/s6/container_environment/DISABLE_AUTOUPDATER
 # Optional API key for Claude Code (contract §7 item 7). Unset = log in with
 # `claude` in the terminal instead; nothing is required to start.

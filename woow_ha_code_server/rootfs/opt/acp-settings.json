@@ -9,6 +9,11 @@
             "command": "claude-agent-acp",
             "args": [],
             "env": {}
+        },
+        "codex": {
+            "command": "codex-acp",
+            "args": [],
+            "env": {}
         }
     },
     "security.workspace.trust.enabled": false,

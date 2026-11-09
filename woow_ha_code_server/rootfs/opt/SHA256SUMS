@@ -2,3 +2,4 @@
 8be97cdabbf7998db582b64382e5e4c5bc01ef494b967d6131c35772c60d4116  /etc/profile.d/pi.sh
 bbba98a7a123b76950c9f9f6ebd1250e01dcfa098b8353574722d4867ea5b18a  /usr/local/bin/pi-seed
 40cb570db992ef5bc64c8712cbf325d260268643ae2860ce51c104b6b4deb6b8  /etc/profile.d/claude.sh
+4509db156ee4602b3627e979e9e1d82049e833072fd8130aa2c52678e4dee126  /etc/profile.d/codex.sh

@@ -9,6 +9,7 @@ ENV LANG=C.UTF-8 \
     PI_TELEMETRY=0 \
     PI_SKIP_VERSION_CHECK=1 \
     CLAUDE_CONFIG_DIR=/data/pi-agent/claude \
+    CODEX_HOME=/data/pi-agent/codex \
     DISABLE_AUTOUPDATER=1
 
 # The upstream vscode run script resets CLAUDE_CONFIG_DIR to /data/claude just
@@ -95,6 +96,20 @@ RUN set -euo pipefail; \
     test -x "$(command -v claude-agent-acp)"; \
     /opt/node22/bin/npm ls -g --prefix /opt/node22 --depth 0 "@agentclientprotocol/claude-agent-acp" \
       | grep -q "@${CLAUDE_AGENT_ACP_VERSION}"
+
+# A separate Codex CLI and ACP sidebar agent share a private login in the
+# add-on's backed-up /data/pi-agent volume. This is distinct from Pi's
+# openai-codex OAuth credential. Pin both packages for repeatable builds.
+ARG CODEX_CLI_VERSION=0.167.0
+ARG CODEX_ACP_VERSION=2.6.0
+RUN set -euo pipefail; \
+    /opt/node22/bin/npm install -g --omit=dev --no-fund --no-audit --prefix /opt/node22 \
+      "@openai/codex@${CODEX_CLI_VERSION}" \
+      "@agentclientprotocol/codex-acp@${CODEX_ACP_VERSION}"; \
+    ln -sf /opt/node22/bin/codex /usr/local/bin/codex; \
+    ln -sf /opt/node22/bin/codex-acp /usr/local/bin/codex-acp; \
+    test "$(codex --version)" = "codex-cli ${CODEX_CLI_VERSION}"; \
+    test "$(codex-acp --version)" = "@agentclientprotocol/codex-acp ${CODEX_ACP_VERSION}"
 
 # --- Stop silent Unicode-space path corruption -------------------------------
 # pi folds U+00A0, U+2000-200A, U+202F, U+205F and U+3000 to an ASCII space on
@@ -206,7 +221,9 @@ RUN mkdir -p /opt/pi-agent-skel/home/.pi/agent \
              /opt/pi-agent-skel/skills \
              /opt/pi-agent-skel/npm-global/bin \
              /opt/pi-agent-skel/claude \
- && touch /opt/pi-agent-skel/.woow-pi-store
+             /opt/pi-agent-skel/codex \
+ && touch /opt/pi-agent-skel/.woow-pi-store \
+ && chmod 700 /opt/pi-agent-skel/codex
 
 COPY rootfs/ /
 RUN chmod +x /usr/local/bin/pi-code /usr/local/bin/pi-seed \

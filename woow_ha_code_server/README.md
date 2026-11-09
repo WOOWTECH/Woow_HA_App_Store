@@ -24,6 +24,7 @@ pi's state here is **private to this add-on** — not shared with the separate `
 | **IDE** | code-server 4.139.1 layered on `hassio-addons/vscode:7.2.0` — HA/YAML/MDI extensions, `ha` CLI, oh-my-zsh all still present |
 | **Agent** | pi 0.99.1 in the ACP right-side chat panel, and as `pi` on every terminal PATH |
 | **Claude Code** | Claude Code 2.1.285: `claude` on every terminal PATH, a second **Claude Code** agent in the ACP chat panel (`claude-agent-acp` 0.84.0), and the official extension. Sign in once with `claude` in the terminal, or set the optional `anthropic_api_key` option; state lives in `/data/pi-agent/claude` |
+| **Codex** | Codex CLI 0.167.0 in every terminal and `codex-acp` 2.6.0 as a separate ACP sidebar agent. Sign in with `codex login`; both use the backed-up `/data/pi-agent/codex` directory. Pi's `openai-codex` login remains separate. |
 | **Workspace** | Configurable `config_path` (default `/share/projects`) |
 | **Persistence** | pi state in this add-on's own `/data/pi-agent`; IDE settings in `/data/vscode` (both Supervisor-managed, both backed up) |
 | **Fallback** | If the chat webview ever doesn't render for you: a seeded terminal `pi` task (always available) and an optional direct HTTP-Basic-gated port (opt-in) |
@@ -49,7 +50,7 @@ Via the WOOWTECH HA App Store, or directly:
 1. HA → Settings → Add-ons → Add-on Store → ⋮ → Repositories → add `https://github.com/WOOWTECH/Woow_ha_code_server_add_on`.
 2. Install **Woow Code Server**, start it.
 3. Open the Web UI from the sidebar.
-4. Open a terminal and run `pi login` — this add-on's pi has no credentials until you do this once.
+4. Open a terminal and run `pi login` for Pi and `codex login --device-auth` for the separate Codex agent. Each has its own private credential under `/data/pi-agent`.
 
 Full checklist: [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
 

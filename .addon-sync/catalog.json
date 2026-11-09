@@ -952,24 +952,24 @@
     "woow_ha_code_server": {
       "id": "woow_ha_code_server",
       "name": "Woow Code Server",
-      "version": "0.1.7",
+      "version": "0.1.8",
       "repository": "WOOWTECH/Woow_ha_code_server_add_on",
-      "source_sha": "b9b83366531060acf8865311f765d944411310d7",
+      "source_sha": "b729d6fdc2e143a5016e4ccbfaa4c00712fc7fe2",
       "source_path": ".",
       "config_file": "config.yaml",
-      "config_sha256": "sha256:b81d80242e2cfc105409e1e6868ac240e6b3bec193ef65cce6994ff8639013dd",
-      "archive_sha256": "sha256:f3eebf6d4f9017b4e2c79116ec0bc37f5da4416e6547ac231e1c3b280b4a6287",
-      "context_fingerprint": "sha256:93223863586bfe4438a98917dd372da3a5aaee44375f8fcf38b9eb95cd0026cf",
-      "material_fingerprint": "sha256:41932f6b0470fed94385c4d3d78bbcbc326a802c8c34d868e904f4dd5def274e",
+      "config_sha256": "sha256:8719aa108433405209e84536b070112a6f871df7cb6652aae98f34c6f3d66ab7",
+      "archive_sha256": "sha256:4ecd180860cfa7d24b87cf3e70b7257b56c202547ffeeaf408b182a504b9ae60",
+      "context_fingerprint": "sha256:0bb3ef6a10fb9ae09cd85338b76d5575e8ca1368ca4a9b3adcdef26ddebb4a87",
+      "material_fingerprint": "sha256:e521b4ea4175979e81fb8cf3b28221ee3e2793d03c2566ddd35a69d0e937cd97",
       "architectures": [
         "amd64",
         "aarch64"
       ],
       "config": {
         "name": "Woow Code Server",
-        "version": "0.1.7",
+        "version": "0.1.8",
         "slug": "woow_ha_code_server",
-        "description": "code-server 4.139.1 with the pi coding agent (0.99.1) and Claude Code (2.1.285), pi-acp and the ACP Client chat sidebar baked in — WOOWTECH build layered on the Home Assistant Community vscode add-on",
+        "description": "code-server 4.139.1 with Pi (0.99.1), Claude Code (2.1.285), and Codex (0.167.0) as terminal and ACP sidebar agents — WOOWTECH build layered on the Home Assistant Community vscode add-on",
         "url": "https://github.com/WOOWTECH/Woow_ha_code_server_add_on",
         "arch": [
           "amd64",
@@ -1078,21 +1078,21 @@
       "source_build_supported": true,
       "images": {
         "amd64": {
-          "reference": "ghcr.io/woowtech/woow-ha-code-server-amd64:0.1.7",
-          "index_digest": "sha256:4f0fe6cbf0cca9ca4c34e1da86eae2700116b00d9f7abae544320eaf58f7e9cd",
-          "digest": "sha256:4f0fe6cbf0cca9ca4c34e1da86eae2700116b00d9f7abae544320eaf58f7e9cd",
-          "source_revision": "b9b83366531060acf8865311f765d944411310d7"
+          "reference": "ghcr.io/woowtech/woow-ha-code-server-amd64:0.1.8",
+          "index_digest": "sha256:b76c3b07736392c68a27a632b4432bf8e2104b147e17fdf03f11042b3664b78e",
+          "digest": "sha256:b76c3b07736392c68a27a632b4432bf8e2104b147e17fdf03f11042b3664b78e",
+          "source_revision": "b729d6fdc2e143a5016e4ccbfaa4c00712fc7fe2"
         },
         "aarch64": {
-          "reference": "ghcr.io/woowtech/woow-ha-code-server-aarch64:0.1.7",
-          "index_digest": "sha256:59373d05f311863a932744568e24c505b2a661c723a4972a50f3d8ee072f4621",
-          "digest": "sha256:59373d05f311863a932744568e24c505b2a661c723a4972a50f3d8ee072f4621",
-          "source_revision": "b9b83366531060acf8865311f765d944411310d7"
+          "reference": "ghcr.io/woowtech/woow-ha-code-server-aarch64:0.1.8",
+          "index_digest": "sha256:f2963a1211ea727c45ba007bb08309a777b0ff9e69dd430ca9376a3fcd5b38e6",
+          "digest": "sha256:f2963a1211ea727c45ba007bb08309a777b0ff9e69dd430ca9376a3fcd5b38e6",
+          "source_revision": "b729d6fdc2e143a5016e4ccbfaa4c00712fc7fe2"
         }
       },
       "delivery": "published-image",
       "validation": "manifest+architecture-images+configured-CI",
-      "publisher_run_id": "42624760319",
+      "publisher_run_id": "42646812340",
       "channel": "stable",
       "store_path": "woow_ha_code_server"
     },
@@ -3631,5 +3631,5 @@
       "store_path": "woow_mcp_nextcloud"
     }
   },
-  "catalog_id": "sha256:75fd619eb75273533a2fecc7d4597571ab2d91d42393fadb556cf946d9955199"
+  "catalog_id": "sha256:96373fc9d3542517f30fd11089774acf298cfdf17ccf4500462e2b8c22acd168"
 }
