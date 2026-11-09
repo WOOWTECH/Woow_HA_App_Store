@@ -432,13 +432,25 @@ class ComparisonTargetCommand(unittest.TestCase):
             with self.subTest(tag_version):
                 with self.assertRaisesRegex(ValueError,f'^the comparison target v1.3 has no version in addon/config.yaml; {fix}, then re-run this check$'):
                     u.check_target('1.4','v1.3','addon/config.yaml',None,tag_version)
-    def main(self,releases,component,components=('t',),version='99.0.0'):
+    def main(self,releases,component,components=('t',),version='99.0.0',on_base=False):
         d=pathlib.Path(tempfile.mkdtemp());self.addCleanup(shutil.rmtree,d)
         (d/'registry.json').write_text(json.dumps({'providers':{'WOOWTECH/r':{'components':[{'id':c} for c in components]}}}))
         stdin=releases if isinstance(releases,str) else json.dumps([r if isinstance(r,dict) else {'tag_name':r,'draft':False,'prerelease':False} for r in releases])
         with contextlib.redirect_stdout(io.StringIO()) as out,unittest.mock.patch('sys.stdin',io.StringIO(stdin)):
-            code=u.main(['comparison-target','--registry',str(d/'registry.json'),'--repo','WOOWTECH/r','--component',component,'--version',version])
+            code=u.main(['comparison-target','--registry',str(d/'registry.json'),'--repo','WOOWTECH/r','--component',component,'--version',version,
+                *(['--on-base'] if on_base else [])])
         return code,out.getvalue()
+    def test_an_add_on_on_the_pr_base_without_a_stable_release_fails(self):
+        # #135: with a stable Release it is compared; without one only a new add-on (no config on the PR base) passes uncompared.
+        self.assertEqual(self.main(['v1.2.0'],'t',on_base=True),(0,'v1.2.0\t1.2.0\n'))
+        self.assertEqual(self.main([],'t'),(0,''))
+        for releases,tag in [([],'v<version>'),(['nightly',{'tag_name':'v2.0.0','draft':False,'prerelease':True}],'v<version>'),(['t_2-v1.0.0'],'t-v<version>')]:
+            with self.subTest(releases):
+                code,out=self.main(releases,'t',('t','t_2'),on_base=True) if tag.startswith('t-') else self.main(releases,'t',on_base=True)
+                self.assertEqual(code,2)
+                self.assertEqual(out,'::error title=Upgrade comparison failed::t is on the PR base (not a new add-on) but has no stable Release, so this PR has '
+                    f'nothing to be compared with; publish a seed Release first ({tag}, the version on the default branch, from its release job; '
+                    'Store README, seed Release), then re-run this check\n')
     def test_prints_the_tag_of_the_latest_stable_release(self):
         # And its version, tab-separated: the plan step checks that the config at the tag says the same version.
         self.assertEqual(self.main(['v1.2.0rc1','v1.2.0','v1.1.0'],'t'),(0,'v1.2.0\t1.2.0\n'))
@@ -685,7 +697,7 @@ class StepHarness(unittest.TestCase):
     def step(self,ident):return next(s for j in ('compare','runtime') for s in self.wf['jobs'][j]['steps'] if ident in (s.get('id'),s.get('name')))
     def run_step(self,ident,*,policy='release',extra=None,releases=('v1.0.0',),old_config=True,new_config=True,skip='',sbom='',version='1.1.0',old=None,old_path='',
             new_path='addon/config.yaml',new=None,files=None,raw_version=None,history=None,changed=1,gh_fail='',images=(),vulnerable='',image_artifact='',
-            tarball=None,build_fail='',news=None,syft_fail='',sha='',keep_going=False,results=None,runtime='success'):
+            tarball=None,build_fail='',news=None,syft_fail='',sha='',keep_going=False,results=None,runtime='success',on_base=None):
         """ident: one step, or a tuple run in order until one fails. new_path: where the PR has the config; new: changes to it;
         files: more files of the PR checkout; raw_version: {'old'/'new': the version line's YAML as written, e.g. 1.10 unquoted}.
         history: the PR base's history, newest first, [(sha, {path: changes to the config, or None for no file})]; the first
@@ -701,7 +713,8 @@ class StepHarness(unittest.TestCase):
         news: {add-on id: changes to its PR config} for a changed add-on of a multi-add-on provider whose PR config is not t's.
         sha: the workflow input sha (sha mode, #167); keep_going: run every step of a tuple even after one fails, as sha mode
         does (self.runs has each step's CompletedProcess); results: {id: the runtime job's runtime-reports/<id>.json};
-        runtime: the runtime job's result (RUNTIME_RESULT).
+        runtime: the runtime job's result (RUNTIME_RESULT). on_base: what the detect step reports in changed.jsonl (#135);
+        default: the PR base has the config (old_config), never in sha mode.
         self.tmp is the job's directory (also RUNNER_TEMP); self.plans is every line of plan.jsonl."""
         import os,subprocess
         tmp=self.tmp=pathlib.Path(tempfile.mkdtemp());self.addCleanup(shutil.rmtree,tmp)
@@ -725,7 +738,7 @@ class StepHarness(unittest.TestCase):
         (tmp/'provider.json').write_text(provider.getvalue())
         for cid,changes in (news or {}).items():(tmp/f'{cid}.new.yaml').write_text(dump(dict(cfg,version=version,**changes),'new'))
         def new_of(cid):return str(tmp/(f'{cid}.new.yaml' if cid in (news or {}) else 't.new.yaml'))
-        (tmp/'changed.jsonl').write_text(''.join(json.dumps(dict(c,version=version,new=new_of(c['id'])))+'\n' for c in json.loads(provider.getvalue())['components'][:changed]))
+        (tmp/'changed.jsonl').write_text(''.join(json.dumps(dict(c,version=version,new=new_of(c['id']),on_base=bool(old_config) and not sha if on_base is None else on_base))+'\n' for c in json.loads(provider.getvalue())['components'][:changed]))
         if history is not None:
             (tmp/'history.json').write_text(json.dumps([{'sha':sha,'date':f'2026-01-01T00:{59-i:02d}:00Z','files':{p:dump(dict(cfg,**c),'old')
                 for p,c in at.items() if c is not None}} for i,(sha,at) in enumerate(history)]))
@@ -901,7 +914,7 @@ class UpgradeTestPlan(StepHarness):
         self.assertEqual((row['old_ref'],row['old_src'],row['new_src']),('ghcr.io/da-anda/addon-amd64:1.0.0','','pr'));self.assertIn('wait=false',out)
     @needs_shell
     def test_device_built_add_on_without_a_comparison_target_is_not_tested(self):
-        r,(row,),out=self.plan(new={'image':None},old={'image':None},sbom='',releases=())
+        r,(row,),out=self.plan(new={'image':None},old={'image':None},sbom='',releases=(),old_config=False)
         self.assertEqual(r.returncode,0,r.stdout+r.stderr);self.assertFalse(row['test']);self.assertIn('run=false',out)
         self.assertEqual((self.note()['note'],self.note()['not_run']),('no comparison target','no_target'))
     @needs_shell
@@ -1089,7 +1102,7 @@ class DeviceBuiltVulnerabilityComparison(StepHarness):
             with self.subTest(output):self.assertIn(output,out)
     @needs_shell
     def test_without_a_comparison_target_there_is_nothing_to_scan(self):
-        r,plan,out=self.run_step('plan',releases=(),**self.DEVICE)
+        r,plan,out=self.run_step('plan',releases=(),old_config=False,**self.DEVICE)
         self.assertEqual(r.returncode,0,r.stdout+r.stderr)
         self.assertEqual((plan['note'],plan['rebuilt_old'],plan['rebuilt_new']),('no comparison target',False,False))
         for output in ('scan=false','rebuilt=false'):
@@ -1604,6 +1617,13 @@ class ShaMode(StepHarness):
         self.assertIn('- t: passed, startup only: data was not checked (只檢查啟動，沒有檢查資料)',summary)
         self.assertIn('- t: passed\n',summary)
     @needs_shell
+    def test_without_a_stable_release_there_is_no_comparison_target(self):
+        # #135 needs a PR base to tell a new add-on from one users run; sha mode has none, so its first Release is not compared.
+        self.run_step(('detect','plan'),sha=self.SHA,extra=self.APPROVED,releases=())
+        self.assertEqual([r.returncode for r in self.runs],[0,0],''.join(r.stdout+r.stderr for r in self.runs))
+        self.assertEqual(json.loads((self.tmp/'changed.jsonl').read_text())['on_base'],False)
+        self.assertEqual(self.plans[0]['note'],'no comparison target');self.assertNotIn('seed Release',self.runs[1].stdout)
+    @needs_shell
     def test_an_undeclared_breaking_change_fails(self):
         code,passed,log,summary=self.sha(new=self.NO_WORKERS)
         self.assertEqual((code,passed),(1,[]),log)
@@ -1736,6 +1756,33 @@ class ComparisonTarget(StepHarness):
     def test_no_stable_release_has_no_comparison_target(self):
         r,plan,_=self.run_step('plan',releases=(),old_config=False)
         self.assertEqual(r.returncode,0,r.stdout+r.stderr);self.assertEqual([plan['target'],plan['ref'],plan['note']],['','','no comparison target'])
+        self.assertIn('t: no stable Release yet, a new add-on',r.stdout)
+    SEED='t is on the PR base (not a new add-on) but has no stable Release, so this PR has nothing to be compared with; publish a seed Release first (v<version>'
+    @needs_shell
+    def test_an_add_on_on_the_pr_base_without_a_stable_release_fails(self):
+        # #135: e.g. the registry switched to ref_policy release before the seed Release; it must not pass uncompared.
+        r,plan,out=self.run_step(('detect','plan'),releases=(),skip='x',extra={'upgrade_comparison':{'skip_vulnerability_scan':'x'}})
+        self.assertEqual(r.returncode,1,r.stdout+r.stderr);self.assertEqual(plan,{});self.assertNotIn('scan=',out)
+        self.assertEqual(json.loads((self.tmp/'changed.jsonl').read_text())['on_base'],True)
+        self.assertIn('::error title=Upgrade comparison failed::'+self.SEED,r.stdout)
+        # A draft or a prerelease is no stable Release either.
+        r,plan,_=self.run_step('plan',releases=({'tag_name':'v1.0.0','draft':False,'prerelease':True},),skip='x')
+        self.assertEqual(r.returncode,1,r.stdout+r.stderr);self.assertIn(self.SEED,r.stdout)
+    @needs_shell
+    def test_with_a_stable_release_an_add_on_on_the_pr_base_is_compared(self):
+        r,plan,_=self.run_step(('detect','plan'),skip='x',extra={'upgrade_comparison':{'skip_vulnerability_scan':'x'}})
+        self.assertEqual(r.returncode,0,r.stdout+r.stderr);self.assertEqual(plan['target'],'v1.0.0');self.assertIn('t: comparing 1.1.0 with v1.0.0',r.stdout)
+    @needs_shell
+    def test_a_new_add_on_without_a_stable_release_passes(self):
+        # No config on the PR base (the detect step's on_base false): a new add-on, nothing to compare, as before #135.
+        r,plan,_=self.run_step(('detect','plan'),releases=(),old_config=False)
+        self.assertEqual(r.returncode,0,r.stdout+r.stderr);self.assertEqual(json.loads((self.tmp/'changed.jsonl').read_text())['on_base'],False)
+        self.assertEqual([plan['target'],plan['note']],['','no comparison target']);self.assertIn('t: no stable Release yet, a new add-on',r.stdout)
+    @needs_shell
+    def test_ref_policy_main_does_not_look_for_a_stable_release(self):
+        # Unchanged by #135: the target is the commit on the PR base where its version first appeared, Releases or none.
+        r,plan,_=self.run_step(('detect','plan'),policy='main',releases=(),skip='x',extra={'upgrade_comparison':{'skip_vulnerability_scan':'x'}})
+        self.assertEqual(r.returncode,0,r.stdout+r.stderr);self.assertEqual(plan['target'],'b');self.assertNotIn('seed Release',r.stdout)
     @needs_shell
     def test_config_deleted_or_moved_by_the_pr_fails(self):
         # Spec: a tool error fails the check; a registry add-on whose config the PR removes is not "unchanged".

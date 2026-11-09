@@ -281,7 +281,10 @@ jobs:
               || fail_output "${before}"
           fi
           if [ "${current}" != "${before}" ]; then
-            jq -c --arg version "${current}" --arg notes "${notes}" --arg new "${new}" '. + {version: $version, notes: $notes, new: $new}' <<<"${component}" >> changed.jsonl
+            # on_base (#135): the PR base has its config, so it is not a new add-on (always false in sha mode: no PR base).
+            on_base=false; [ ! -s "${base}" ] || on_base=true
+            jq -c --arg version "${current}" --arg notes "${notes}" --arg new "${new}" --argjson on_base "${on_base}" \
+              '. + {version: $version, notes: $notes, new: $new, on_base: $on_base}' <<<"${component}" >> changed.jsonl
           else
             echo "- ${id}: version ${current} unchanged" >> "$GITHUB_STEP_SUMMARY"
           fi
@@ -316,7 +319,7 @@ jobs:
         # SBOM), note (why there is no scan; "" = scanned).
         : > plan.jsonl; status=0
         while IFS= read -r component; do
-          fields "${component}" id=id path=config previous=previous_config notes=notes version=version new=new
+          fields "${component}" id=id path=config previous=previous_config notes=notes version=version new=new on_base=on_base
           old="$RUNNER_TEMP/${id}.old.yaml"; rm -f "$old"; touch "$old"; target=""; target_version=""; ref=""; note=""
           if [ "${policy}" = "main" ]; then
             # ref_policy main: the Store follows the default branch, so users run the PR base's version; the target is the
@@ -324,7 +327,9 @@ jobs:
             target="$(version_since "${BASE_SHA}" "${path}" "${previous}" "${id}")" || fail_output "${target}"
           else
             # Stable-Release filter, tag rule, ordering and "the version must be newer" are the Release notes' (addon_sync).
-            latest="$(python3 tooling/.addon-sync/upgrade_check.py comparison-target --registry tooling/.addon-sync/registry.json --repo "${REPO}" --component "${id}" --version "${version}" <<<"${releases}")" \
+            # No stable Release is "no comparison target" only for a new add-on: one on the PR base fails (--on-base, #135).
+            base_flag=(); [ "${on_base}" != true ] || base_flag=(--on-base)
+            latest="$(python3 tooling/.addon-sync/upgrade_check.py comparison-target --registry tooling/.addon-sync/registry.json --repo "${REPO}" --component "${id}" --version "${version}" "${base_flag[@]}" <<<"${releases}")" \
               || fail_output "${latest}"
             IFS=$'\t' read -r target target_version <<<"${latest}"
           fi
@@ -351,7 +356,7 @@ jobs:
               status=1; continue
             fi
           else
-            echo "${id}: no stable Release yet"
+            echo "${id}: no stable Release yet, a new add-on"
           fi
           # Category 4: needs a comparison target; then both images' SBOMs are mandatory, each side from where its image is
           # (#146): an image built on the device (no image in that side's config) from the runtime job, which rebuilds it

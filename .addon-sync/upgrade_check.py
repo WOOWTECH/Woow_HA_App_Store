@@ -697,6 +697,12 @@ def _comparison_target(a):
         releases=json.load(sys.stdin)
         if not isinstance(releases,list):raise ValueError('stdin is not a JSON array of Releases')
         target=comparison_target(stable_versions(provider,comp,releases),a.version)
+    if target is None and a.on_base:
+        # #135: no stable Release is "no comparison target" only for a new add-on. One already on the PR base (users run
+        # its catalog version) would pass uncompared, e.g. while the registry has ref_policy release before its seed Release.
+        with _failing(ValueError):raise ValueError(f'{a.component} is on the PR base (not a new add-on) but has no stable Release, so this PR '
+            f'has nothing to be compared with; publish a seed Release first ({release_tag(provider,comp,"<version>")}, the version '
+            'on the default branch, from its release job; Store README, seed Release), then re-run this check')
     if target is not None:print(release_tag(provider,comp,target)+'\t'+target)
     return 0
 
@@ -799,10 +805,11 @@ def main(argv=None):
     n.add_argument('--notes',required=True,help='upgrade-notes.yaml at the released commit (may be absent)')
     n.add_argument('--version',required=True,help='version being released')
     n.add_argument('--released',nargs='*',default=[],help='versions that already have a stable Release')
-    t=sub.add_parser('comparison-target',help="read the repository's Releases (GitHub API JSON array) on stdin, print the tag of the add-on's latest stable Release and its version, tab-separated (nothing when none); fails unless --version is newer")
+    t=sub.add_parser('comparison-target',help="read the repository's Releases (GitHub API JSON array) on stdin, print the tag of the add-on's latest stable Release and its version, tab-separated (nothing when none, a failure with --on-base); fails unless --version is newer")
     t.add_argument('--registry',required=True,help='Store registry.json');t.add_argument('--repo',required=True,help='source repository, owner/name')
     t.add_argument('--component',required=True,help='add-on id in the registry')
     t.add_argument('--version',required=True,help="the PR's version: it must be newer than the target, as for the Release notes")
+    t.add_argument('--on-base',action='store_true',help="the add-on's config is on the PR base: fail when it has no stable Release (#135; only a new add-on has no target)")
     g=sub.add_parser('check-target',help="fail unless the comparison target's config gives the version its tag does and --version is newer (check_target)")
     g.add_argument('--name',required=True,help='add-on id, for the error');g.add_argument('--version',required=True,help="the PR's version")
     g.add_argument('--target',required=True,help="the target's tag, or under ref_policy main the commit where the PR base's version first appeared");g.add_argument('--tag-version',default='',help="the target's version by its tag; '' when it has none")
