@@ -6,7 +6,7 @@
 
 | | |
 |---|---|
-| Version | **1.2 (2026-10-01)** — the **k3s leg becomes the WOOW PaaS code-server cloud service** (per-tenant chart + a thin PaaS layer on the podman image); no §2 value changes. Changes are listed in §9. 1.1 (2026-09-30) moved the baseline to code-server 4.139.1, pi 0.99.1, pi-acp 0.0.34 and added Claude Code; 1.0 was 2026-09-10. |
+| Version | **1.3 candidate (2026-11-10)** — adds Codex CLI/ACP, deployment-private shared skills and MCP, and common migration checks. Runtime deployment and account authorization are tracked separately; this contract states the required behavior. |
 | Baseline | `Woow_podman_code_server_package` @ `2df94fc` — parity is levelled **UP** to this feature set |
 | Targets | `Woow_podman_code_server_package`, `Woow_ha_code_server_add_on`, `Woow_k3s_code_server_package` (since 1.2 a read-only mirror of the WOOW PaaS code-server cloud service; source of truth on the internal Gitea) |
 | Authority | Where this file and a recon report, a README, or `docs/K3S_BLUEPRINT.md` disagree, **this file wins.** `docs/K3S_BLUEPRINT.md` is stale (StatefulSet / ingress-nginx / oauth2-proxy / Velero) and is superseded here by the realized `Woow_k3s_pi_agent_package` + `opendesign-2.0.0` house style. |
@@ -46,7 +46,9 @@ These are identical on every platform. A target that cannot reach one of these v
 | `ACP_CLIENT_VERSION` | `0.2.0` | `formulahendry.acp-client`, fetched from **open-vsx only**. |
 | `NODE_MAJOR` | `22` | pi runs as a subprocess and needs Node ≥ 22. code-server's own bundled Node is never touched. |
 | Extension gallery | `https://open-vsx.org/vscode/gallery` / `https://open-vsx.org/vscode/item` | MS Marketplace ToS forbids third-party clients. Never `marketplace.visualstudio.com`. |
-| Installed extension set | exactly `formulahendry.acp-client@0.2.0` + `anthropic.claude-code@2.1.285` (+ whatever the platform's base image already ships) | Two ACP adapters are pre-configured: `pi` and `claude`. Codex / Gemini stay visible-but-unwired, deliberately. |
+| Installed extension set | exactly `formulahendry.acp-client@0.2.0` + `anthropic.claude-code@2.1.285` (+ whatever the platform's base image already ships) | Three ACP adapters are pre-configured: `pi`, `claude`, and `codex`. See THREE_AGENTS.md for shared skills/MCP and separate authorization. |
+
+Codex CLI `0.167.0` and Codex ACP `2.6.0` are pinned in the shared npm lockfile. The three-agent candidate adds deployment-private shared skills and MCP; this contract is a requirement, not a claim that a running tenant has been upgraded.
 
 ### 2.2 pi data directory layout (identical on all three)
 
@@ -77,6 +79,8 @@ Image also ships `/opt/pi-agent-skel/` — the canonical empty skeleton (`home/.
 | `PI_TELEMETRY` | `0` | container env + `pi.sh` + `pi-code` |
 | `PI_SKIP_VERSION_CHECK` | `1` | container env + `pi.sh` + `pi-code` |
 | `CLAUDE_CONFIG_DIR` | `/data/pi-agent/claude` | container env **and** `/etc/profile.d/claude.sh` (1.1). Must reach the code-server process so the extension host, the sidebar adapter and the Claude Code extension all inherit it. |
+| `CODEX_HOME` | `/data/pi-agent/codex` | container env + `codex.sh`; ACP and terminal use one private Codex state |
+| `CODEX_PATH` | `/opt/woow-agent-tools/node_modules/.bin/codex` | ACP uses the same pinned CLI as the terminal |
 | `DISABLE_AUTOUPDATER` | `1` | container env + `claude.sh` (1.1) |
 | `TZ` | `Asia/Taipei` | container env |
 | `LANG`, `LC_ALL` | `C.UTF-8` | container env |
@@ -87,11 +91,11 @@ Image also ships `/opt/pi-agent-skel/` — the canonical empty skeleton (`home/.
 
 ### 2.4 Shared files — byte-identical across the three repos
 
-Each repo vendors these at the same paths. CI in every repo asserts the sha256 against `rootfs/SHA256SUMS` published by **`Woow_podman_code_server_package` (source of truth)**. A change lands in all three repos in the same PR set.
+Podman and HA vendor the common files at the same paths and check `rootfs/opt/SHA256SUMS`. PaaS inherits those files from its digest-pinned Podman base. The manifest also covers `codex-code`, `woow-agent-sync`, `codex.sh`, and the shared tools/lockfile. Changes must reach all three source sets.
 
 | Path | sha256 (current) | Role |
 |---|---|---|
-| `/usr/local/bin/pi-code` | `3c39a8ad4934210fb34fffdf5a6fb9640994c843845f4ed5c48cce508ec64e73` | the **only** ACP entrypoint. exits `78` if `$PI_AGENT_DATA_DIR` is not a dir; exports `HOME`, `PI_CODING_AGENT_DIR`, `PI_TELEMETRY`, `PI_SKIP_VERSION_CHECK`, and `GIT_CONFIG_GLOBAL` (pointed at the **login** HOME's `.gitconfig`, captured before `HOME` is overwritten — see P45); `exec pi-acp "$@"`. |
+| `/usr/local/bin/pi-code` | `3c39a8ad4934210fb34fffdf5a6fb9640994c843845f4ed5c48cce508ec64e73` | the Pi ACP entrypoint. exits `78` if `$PI_AGENT_DATA_DIR` is not a dir; exports `HOME`, `PI_CODING_AGENT_DIR`, `PI_TELEMETRY`, `PI_SKIP_VERSION_CHECK`, and `GIT_CONFIG_GLOBAL` (pointed at the **login** HOME's `.gitconfig`, captured before `HOME` is overwritten — see P45); `exec pi-acp "$@"`. |
 | `/etc/profile.d/pi.sh` | `8be97cdabbf7998db582b64382e5e4c5bc01ef494b967d6131c35772c60d4116` | terminal-pi env. Exports the three PI_* vars, deliberately **not** `HOME`. |
 | `/usr/local/bin/pi-seed` | `bbba98a7a123b76950c9f9f6ebd1250e01dcfa098b8353574722d4867ea5b18a` | idempotent `cp -an /opt/pi-agent-skel/. "$PI_AGENT_DATA_DIR"/` + `chmod 700` + optional `settings.json` defaults from `PI_DEFAULT_PROVIDER`/`PI_DEFAULT_MODEL`. Never overwrites. |
 | `/etc/profile.d/claude.sh` | `40cb570db992ef5bc64c8712cbf325d260268643ae2860ce51c104b6b4deb6b8` | terminal-claude env (1.1): `CLAUDE_CONFIG_DIR` + `DISABLE_AUTOUPDATER`. |
@@ -105,7 +109,8 @@ Seven keys are load-bearing and must be present with these exact values, whateve
 {
   "acp.agents": {
     "pi":     { "command": "pi-code",          "args": [], "env": {} },
-    "claude": { "command": "claude-agent-acp", "args": [], "env": {} }
+    "claude": { "command": "claude-agent-acp", "args": [], "env": {} },
+    "codex":  { "command": "codex-code", "args": [], "env": {} }
   },
   "security.workspace.trust.enabled": false,
   "security.workspace.trust.startupPrompt": "never",
@@ -129,6 +134,9 @@ Cosmetic, podman only since 1.2 (HA and k3s merge only the seven keys; see §6):
 | `claude-agent-acp` | claude-agent-acp 0.84.0 | all three (1.1) |
 | `pi-code` | `/usr/local/bin/pi-code` | all three |
 | `pi-seed` | `/usr/local/bin/pi-seed` | all three |
+| `codex` / `codex-acp` | Codex CLI 0.167.0 / ACP 2.6.0 | all three |
+| `codex-code` | `/usr/local/bin/codex-code` | all three |
+| `woow-agent-sync` | shared skills/MCP migration | all three |
 | `node` | Node 22.x | all three |
 | `pi-ha` | symlink → `pi` | **HA only**, muscle-memory compatibility with the current live add-on. Not a distinct behaviour. |
 

@@ -11,7 +11,7 @@
             "env": {}
         },
         "codex": {
-            "command": "codex-acp",
+            "command": "codex-code",
             "args": [],
             "env": {}
         }

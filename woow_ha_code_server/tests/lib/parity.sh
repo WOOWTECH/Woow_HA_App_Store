@@ -24,7 +24,8 @@
 case "${PARITY_TARGET}" in
 podman)
     CODE_SERVER_HOST="${CODE_SERVER_HOST:-127.0.0.1}"
-    PORT="${CODE_SERVER_PORT:-8443}"
+    # scripts/install.sh default (127.0.0.1:18443); tests/smoke.sh passes the configured one.
+    PORT="${CODE_SERVER_PORT:-18443}"
     BASE="${CODE_SERVER_BASE:-http://${CODE_SERVER_HOST}:${PORT}}"
     SETTINGS="/home/coder/.local/share/code-server/User/settings.json"
     # Overridable so a freshly built image can be smoke-tested in a throwaway
@@ -33,7 +34,8 @@ podman)
     CX()       { podman exec -u coder "${PODMAN_CONTAINER}" "$@"; }
     CX_ROOT()  { podman exec "${PODMAN_CONTAINER}" "$@"; }
     LIVENESS() { podman inspect --format '{{.State.Health.Status}}' "${PODMAN_CONTAINER}" 2>/dev/null; }
-    EXT_INSTALLED() { CX code-server --list-extensions 2>/dev/null | grep -qi '^formulahendry\.acp-client$'; }
+    EXT_INSTALLED() { CX sh -c 'ls /usr/lib/code-server/lib/vscode/extensions/ 2>/dev/null' | grep -qi '^formulahendry\.acp-client-0\.2\.0'; }
+    CLAUDE_EXT_INSTALLED() { CX sh -c 'ls /usr/lib/code-server/lib/vscode/extensions/ 2>/dev/null' | grep -qi '^anthropic\.claude-code-2\.1\.285'; }
     ;;
 ha)
     : "${SSHHA:?set SSHHA to the ssh helper, e.g. /path/to/sshha.sh}"
@@ -65,6 +67,7 @@ ha)
     CX_ROOT()  { CX "$@"; }
     LIVENESS() { "${SSHHA}" "docker inspect --format '{{.State.Status}}' ${HA_ADDON_CONTAINER}" 2>/dev/null | tr -d '\r'; }
     EXT_INSTALLED() { CX_ROOT sh -c 'ls /usr/local/lib/code-server/lib/vscode/extensions/ 2>/dev/null' | grep -qi '^formulahendry\.acp-client-'; }
+    CLAUDE_EXT_INSTALLED() { CX_ROOT sh -c 'ls /usr/local/lib/code-server/lib/vscode/extensions/ 2>/dev/null' | grep -qi '^anthropic\.claude-code-2\.1\.285$'; }
     ;;
 k3s)
     # The k3s leg is the WOOW PaaS code-server cloud service (PARITY_CONTRACT
@@ -84,6 +87,7 @@ k3s)
     # The PaaS image keeps the pinned extensions in the built-in dir (the user
     # extensions dir is on the tenant volume), which --list-extensions skips.
     EXT_INSTALLED() { CX sh -c 'ls /usr/lib/code-server/lib/vscode/extensions/ 2>/dev/null' | grep -qi '^formulahendry\.acp-client-'; }
+    CLAUDE_EXT_INSTALLED() { CX sh -c 'ls /usr/lib/code-server/lib/vscode/extensions/ 2>/dev/null' | grep -qi '^anthropic\.claude-code-2\.1\.285'; }
     ;;
 *)
     echo "Unknown PARITY_TARGET=${PARITY_TARGET} (want podman|ha|k3s)" >&2

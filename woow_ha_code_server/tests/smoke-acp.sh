@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
+# shellcheck source-path=SCRIPTDIR
 # Smoke test: the ACP Client extension is installed and settings.json
 # carries all seven required keys from PARITY_CONTRACT.md §2.5 — the
 # acp.agents wiring plus the four workspace-trust keys the extension
 # needs to activate its view container at all.
 set -uo pipefail
 
+# shellcheck source=lib/parity.sh
 . "$(dirname "$0")/lib/parity.sh"
 
 EXPECTED_EXT="formulahendry.acp-client"
@@ -18,6 +20,49 @@ if EXT_INSTALLED; then
     ok "extension installed: ${EXPECTED_EXT}"
 else
     bad "extension NOT installed (checked via EXT_INSTALLED for PARITY_TARGET=${PARITY_TARGET})"
+fi
+if CLAUDE_EXT_INSTALLED; then
+    ok "Claude Code extension installed at 2.1.285"
+else
+    bad "Claude Code extension missing or at the wrong version"
+fi
+if CX sh -lc 'command -v claude-agent-acp >/dev/null && command -v claude >/dev/null'; then
+    ok "Claude Code and claude-agent-acp are on PATH"
+else
+    bad "Claude Code or claude-agent-acp missing from PATH"
+fi
+# Expand CODEX_HOME inside the container's login shell, not on the host.
+# shellcheck disable=SC2016
+if CX sh -lc 'command -v codex-acp >/dev/null && command -v codex >/dev/null && test "$CODEX_HOME" = /data/pi-agent/codex'; then
+    ok "Codex CLI and ACP adapter share the persistent state path"
+else
+    bad "Codex CLI, ACP adapter, or persistent state path missing"
+fi
+CODEX_VERSION="$(CX sh -lc 'codex --version' 2>/dev/null | awk 'NR==1 {print $2}')"
+if [ "${CODEX_VERSION}" = "0.167.0" ]; then
+    ok "Codex CLI = 0.167.0"
+else
+    bad "Codex CLI = ${CODEX_VERSION:-unavailable} (expected 0.167.0)"
+fi
+CLAUDE_VERSION="$(CX sh -lc 'claude --version' 2>/dev/null | awk 'NR==1 {print $1}')"
+if [ "${CLAUDE_VERSION}" = "2.1.285" ]; then
+    ok "Claude Code CLI = 2.1.285"
+else
+    bad "Claude Code CLI = ${CLAUDE_VERSION:-unavailable} (expected 2.1.285)"
+fi
+
+# Expansions intentionally run inside the container.
+# shellcheck disable=SC2016
+if CX sh -lc 'test "$(codex --version)" = "codex-cli 0.167.0" && command -v codex-acp >/dev/null && command -v codex-code >/dev/null'; then
+    ok "Codex CLI 0.167.0 and ACP adapter installed"
+else
+    bad "Codex CLI or ACP adapter missing"
+fi
+# shellcheck disable=SC2016
+if CX sh -lc 'data=${PI_AGENT_DATA_DIR:-${PI_CODING_AGENT_DIR:-/data/pi-agent}}; test "$(readlink -f "$CLAUDE_CONFIG_DIR/skills")" = "$(readlink -f "$data/skills")" && test "$(readlink -f "$CODEX_HOME/skills")" = "$(readlink -f "$data/skills")"'; then
+    ok "Pi, Claude and Codex resolve the same skills directory"
+else
+    bad "agent skills directories are not shared"
 fi
 
 echo
@@ -33,9 +78,9 @@ if CX test -f "${SETTINGS}"; then
             bad "${desc}"
         fi
     }
+    check_jq 'acp.agents.codex.command == "codex-code"' '.["acp.agents"].codex.command == "codex-code"'
     check_jq 'acp.agents.pi.command == "pi-code"'            '.["acp.agents"].pi.command == "pi-code"'
     check_jq 'acp.agents.claude.command == "claude-agent-acp"' '.["acp.agents"].claude.command == "claude-agent-acp"'
-    check_jq 'acp.agents.codex.command == "codex-acp"'       '.["acp.agents"].codex.command == "codex-acp"'
     check_jq 'security.workspace.trust.enabled == false'      '.["security.workspace.trust.enabled"] == false'
     check_jq 'security.workspace.trust.startupPrompt == "never"' '.["security.workspace.trust.startupPrompt"] == "never"'
     check_jq 'security.workspace.trust.banner == "never"'      '.["security.workspace.trust.banner"] == "never"'
@@ -51,20 +96,6 @@ if CX test -f "${SETTINGS}"; then
     check_jq 'extensions.autoUpdate == "off"'                  '.["extensions.autoUpdate"] == "off"'
 else
     bad "settings.json missing at ${SETTINGS}"
-fi
-
-# Expand CODEX_HOME inside the add-on shell, not on the test host.
-# shellcheck disable=SC2016
-if CX sh -lc 'command -v codex >/dev/null && command -v codex-acp >/dev/null && test "$CODEX_HOME" = /data/pi-agent/codex'; then
-    ok "Codex CLI and ACP adapter share the persistent state path"
-else
-    bad "Codex CLI, ACP adapter, or persistent state path missing"
-fi
-CODEX_VERSION="$(CX sh -lc 'codex --version' 2>/dev/null | awk 'NR==1 {print $2}')"
-if [ "${CODEX_VERSION}" = "0.167.0" ]; then
-    ok "Codex CLI = 0.167.0"
-else
-    bad "Codex CLI = ${CODEX_VERSION:-unavailable} (expected 0.167.0)"
 fi
 
 echo

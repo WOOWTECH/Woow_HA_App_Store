@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.9
+
+- Codex CLI 0.167.0 與 Codex ACP 2.6.0 的相依套件改用固定 lockfile；ACP 面板使用相同 CLI。
+- 三代理共用 skills 與 MCP 來源；升級保留原資料、模型登入及設定備份。
+- 不支援的 MCP 權限或 OAuth 選項會阻擋遷移，不會靜默遺失。
+
+
 ## 0.1.6
 
 - **PARITY_CONTRACT 1.1 — same-day bump with the podman package and the k3s chart.** code-server **4.139.1** (base `hassio-addons/vscode` 7.0.0 → **7.2.0**; its rootfs and s6 layout are unchanged), pi **0.99.1**, pi-acp **0.0.34**. The Unicode-space patch still applies to both `path-utils.js` copies and `f1-verify.mjs` runs in the build.

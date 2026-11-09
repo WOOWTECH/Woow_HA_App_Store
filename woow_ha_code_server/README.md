@@ -1,5 +1,8 @@
 # Woow Code Server (Home Assistant Add-on)
 
+三代理版本：預裝 Pi、Claude Code、Codex；skills 與 MCP 共同設定及登入方式見 [THREE_AGENTS.md](THREE_AGENTS.md)。
+
+
 [![HA add-on](https://img.shields.io/badge/Home%20Assistant-Add--on-41BDF5)](https://www.home-assistant.io/)
 [![code-server](https://img.shields.io/badge/code--server-4.139.1-blueviolet)](https://github.com/coder/code-server)
 [![pi-coding-agent](https://img.shields.io/badge/pi--coding--agent-0.99.1-blue)](https://www.npmjs.com/package/@earendil-works/pi-coding-agent)
@@ -49,7 +52,7 @@ Via the WOOWTECH HA App Store, or directly:
 
 1. HA → Settings → Add-ons → Add-on Store → ⋮ → Repositories → add `https://github.com/WOOWTECH/Woow_ha_code_server_add_on`.
 2. Install **Woow Code Server**, start it.
-3. Open the Web UI from the sidebar.
+3. Open the Web UI from the sidebar using your Home Assistant HTTPS address; an HTTP LAN address cannot load the ACP chat webview.
 4. Open a terminal and run `pi login` for Pi and `codex login --device-auth` for the separate Codex agent. Each has its own private credential under `/data/pi-agent`.
 
 Full checklist: [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
