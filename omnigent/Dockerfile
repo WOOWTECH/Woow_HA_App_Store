@@ -1,7 +1,7 @@
 # Woow Omnigent HAOS add-on image.
 #
 # What's inside:
-#   - omnigent==0.20.0            (upstream orchestration server)
+#   - omnigent==0.21.0            (upstream orchestration server)
 #   - Postgres 16                 (bundled — no MariaDB add-on dependency)
 #   - nginx                       (HA Ingress path rewriter for the React SPA)
 #   - s6-overlay v3.2.1.0         (supervises the three long-lived processes)
@@ -26,10 +26,10 @@ ARG BUILD_ARCH=amd64
 ARG BUILD_VERSION
 ARG BUILD_DATE
 
-ARG OMNIGENT_VERSION=0.20.0
-# Alpine 3.24 ships both postgresql16 and postgresql17. We pin to 16 to
-# match the k3s + podman deployments' StatefulSet postgres major version
-# (so backups + WAL streams are interchangeable if we ever move the DB).
+ARG OMNIGENT_VERSION=0.21.0
+# Alpine 3.24 同時提供 postgresql16 與 postgresql17。固定用 16，和其他
+# Omnigent 部署的 Postgres major version 一致（日後搬資料庫時，備份與
+# WAL 可以互通）。
 ARG POSTGRES_VERSION=16
 
 ENV LANG=C.UTF-8 \
@@ -91,7 +91,7 @@ RUN apk add --no-cache --upgrade musl \
 RUN rm -rf /root/.omnigent /data/omnigent-home/.omnigent 2>/dev/null || true
 
 # --- HA Ingress native base-path support ------------------------------------
-# Omnigent 0.20.0 reads window.__OMNIGENT_BASE_PATH__ for API, WebSocket,
+# Omnigent 0.21.0 reads window.__OMNIGENT_BASE_PATH__ for API, WebSocket,
 # navigation and auth redirects. The nginx HTML injection supplies it from
 # Supervisor's validated X-Ingress-Path. Fail the build if upstream removes
 # this contract, so a new version cannot silently break the HA panel.
@@ -118,13 +118,13 @@ RUN chmod +x \
 # --- Labels ------------------------------------------------------------------
 LABEL \
     io.hass.name="Woow Omnigent" \
-    io.hass.description="Omnigent 0.20.0 orchestration server for HAOS" \
+    io.hass.description="Omnigent 0.21.0 orchestration server for HAOS" \
     io.hass.arch="${BUILD_ARCH}" \
     io.hass.type="addon" \
     io.hass.version="${BUILD_VERSION}" \
     maintainer="WOOWTECH <woowtech@designsmart.com.tw>" \
     org.opencontainers.image.title="Woow HA Omnigent" \
-    org.opencontainers.image.description="Omnigent 0.20.0 orchestration server bundled as a HAOS add-on" \
+    org.opencontainers.image.description="Omnigent 0.21.0 orchestration server bundled as a HAOS add-on" \
     org.opencontainers.image.source="https://github.com/WOOWTECH/Woow_ha_omnigent_addon" \
     org.opencontainers.image.licenses="MIT" \
     org.opencontainers.image.version="${BUILD_VERSION}" \

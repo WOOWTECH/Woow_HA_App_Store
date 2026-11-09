@@ -1,6 +1,28 @@
 # Changelog
 
-## 0.1.19 — candidate
+## 0.1.20
+
+**Take a backup of this add-on before you update.** This update runs a
+database migration that cannot be undone, and the store does not offer older
+versions. To go back, restore the backup you took before the update.
+
+- Upgrade the bundled Omnigent server from 0.20.0 to 0.21.0. Upstream
+  highlights: a compact Pull Requests list with checks and merge actions,
+  clearer tool calls in chats, model controls for side chats, and sessions
+  that recover on their own after a host restarts. See the upstream release
+  notes for the full list.
+- Database migration: scheduled tasks gain a session mode. Existing tasks keep
+  starting a new session on every run.
+- Runners: a runner on omnigent 0.20.0 still connects, including the one the
+  Hermes Omnigent plugin (v0.1.0-rc.20) installs. `omnigent opencode` on a
+  runner now needs OpenCode 2.0; OpenCode 1.x is no longer supported.
+- The documentation lists the real default of the `features` option
+  (`usage_page,harness_install`) and the features Omnigent 0.21.0 turns on by
+  default.
+- The store's upgrade test now checks data: a scheduled task and an invited
+  member created on the previous release must still be there, unchanged.
+
+## 0.1.19 — 2026-11-08
 
 - Upgrade the bundled Omnigent server from 0.12.0 to 0.20.0 for the
   Hermes–Omnigent plugin 0.20 contract.
@@ -80,7 +102,7 @@ Two coordinated fixes:
 ## 0.1.14 — 2026-09-06
 
 🎉 **HA Ingress panel now 100% functional.** Full feature parity with
-the k3s reference deployment (`omnigent.woowtech.io`) achieved through
+a standalone Omnigent deployment, achieved through
 the HA sidebar `Woow Omnigent` panel — no LAN / CF tunnel needed for
 end users.
 
@@ -308,4 +330,4 @@ Concrete changes shipped in this release:
 - `env_vars` schema field for arbitrary passthrough (e.g. API keys).
 - **Not bundled:** pi / claude / codex CLI, omnigent runner — external
   hosts register themselves. Rationale: keeps the addon image <400 MB
-  and matches how the k3s deployment already works.
+  and matches how other Omnigent deployments already work.

@@ -1,0 +1,5 @@
+#!/usr/bin/env python3
+"""升級測試 hook：在比對對象上寫入資料（見 omnigent_upgrade.py）。"""
+import omnigent_upgrade
+
+omnigent_upgrade.main("seed")

@@ -92,10 +92,10 @@ fi
 set_env OMNIGENT_ACCOUNTS_BASE_URL "${BASE_URL}"
 
 # --- Feature flags ---------------------------------------------------------
-# Default to enabling every feature omnigent 0.20.0 knows about, matching
-# the k3s + podman deployments. Users can override via the add-on
-# `features:` option (comma-separated list). Known keys: usage_page,
-# harness_install. Unknown keys make omnigent-server refuse to boot.
+# 預設 usage_page,harness_install，不是 omnigent
+# 認得的全部 feature。使用者可用 add-on 的 `features:` 選項覆寫（逗號分隔）。
+# omnigent 0.21.0 預設開啟的 feature 不必列出，要關閉寫 -<name>。
+# 不認得的名稱會讓 omnigent-server 拒絕啟動。
 FEATURES="$(optget features 'usage_page,harness_install')"
 [ -n "${FEATURES}" ] && set_env OMNIGENT_FEATURES "${FEATURES}"
 

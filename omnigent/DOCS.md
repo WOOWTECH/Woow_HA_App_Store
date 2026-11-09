@@ -1,6 +1,6 @@
 # Woow Omnigent
 
-Omnigent 0.20.0 orchestration server, packaged as a HAOS add-on. Bundles a
+Omnigent 0.21.0 orchestration server, packaged as a HAOS add-on. Bundles a
 private Postgres 16 so the add-on is self-contained — no MariaDB add-on
 dependency, no external database wiring.
 
@@ -23,7 +23,7 @@ admin. The Ingress panel appears in the HA sidebar once ready.
 | `admin_username` | `woow`               | Local admin pre-seeded before the server accepts requests on first boot                       |
 | `admin_password` | *(required)*         | Password of the admin account, used for the web UI. A new install does not start while it is empty; an existing install does, and keeps the account's current password |
 | `base_url`       | *(empty)*            | Public URL runners dial in on. Empty = `http://homeassistant.local:8000`                       |
-| `features`       | *(empty)*            | Comma-separated feature flags forwarded as `OMNIGENT_FEATURES=…`                               |
+| `features`       | `usage_page,harness_install` | Comma-separated feature flags forwarded as `OMNIGENT_FEATURES=…`                       |
 | `env_vars`       | `[]`                 | Arbitrary passthrough — each item `{key, value}` becomes an env var (key must match `^[A-Z]…`) |
 
 ## Security
@@ -58,6 +58,10 @@ above and then fill in the option.
 - `usage_page` — enable the Usage report tab
 - `harness_install` — allow one-click harness install from the web
 
+Omnigent 0.21.0 also turns on `session_orchestration`, `claude_osc_status`
+and `codex_plan_at_launch` by default. You do not need to list them; write
+`-<name>` to turn one off. An unknown name stops the server from starting.
+
 ### Example `env_vars` for OpenRouter or OpenAI keys
 
 ```yaml
@@ -79,11 +83,16 @@ machine on the same network:
 ```bash
 # Install pi + omnigent runner
 npm install -g @earendil-works/pi-coding-agent@0.85.1
-pip install omnigent==0.20.0
+pip install omnigent==0.21.0
 
 # Register as a host — this opens a tunnel back to the addon
 omnigent host --server http://homeassistant.local:8000
 ```
+
+Keep runners on the server's version when you can. A runner on omnigent
+0.20.0 still connects to this 0.21.0 server (the host protocol is unchanged).
+Since 0.21.0, `omnigent opencode` on a runner needs OpenCode 2.0 (2.0.18 or a
+later 2.0.x); OpenCode 1.x (`opencode-ai`) is no longer supported.
 
 For remote runners over the internet, pair with the **Cloudflared** HA
 add-on: create a tunnel route
@@ -127,8 +136,7 @@ option is checked against its existing database before the server starts.
 
 **Runner registers but chat hangs** — pi extension conflict. Wipe the
 runner's `~/.pi-agent/plugins/` and remove `openai-codex` from
-`~/.pi-agent/auth.json`, then reconnect. See upstream 0.20.0 notes in
-the k3s addon's `docs/plans/`.
+`~/.pi-agent/auth.json`, then reconnect.
 
 ## Uninstall
 
@@ -144,8 +152,10 @@ rm -rf /addon_configs/*_woow_omnigent
 ## Hermes skills across Omnigent conversations
 
 This add-on runs the Omnigent **server**. To create and reuse Hermes skills,
-install the `hermes-omnigent-plugin` 0.20.0 release candidate in the Hermes
-runtime on the same host as each Omnigent Hermes runner. The runner must keep
+install the Hermes Omnigent plugin (`hermes-omnigent-plugin`, v0.1.0-rc.20 or
+later) in the Hermes runtime on the same host as each Omnigent Hermes runner.
+The plugin installs its own private Omnigent 0.20.0 for the runner, and that
+runner connects to this 0.21.0 server. The runner must keep
 its Hermes profile skills directory persistent and writable. This server image
 alone does not install Hermes or the plugin.
 

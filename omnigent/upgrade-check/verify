@@ -1,0 +1,5 @@
+#!/usr/bin/env python3
+"""升級測試 hook：在新版本上讀回 seed 寫入的資料（見 omnigent_upgrade.py）。"""
+import omnigent_upgrade
+
+omnigent_upgrade.main("verify")
