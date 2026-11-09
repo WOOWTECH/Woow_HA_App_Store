@@ -2180,10 +2180,11 @@ class DataCheckDueCommand(unittest.TestCase):
         self.assertEqual(u.data_check_due(comp,False,datetime.date(2026,12,9))[0],False)
         self.assertIsNone(u.data_check_due(comp,True,datetime.date(2026,12,9)));self.assertIsNone(u.data_check_due({'id':'a'},False,datetime.date(2026,12,9)))
     def test_registry_due_dates_are_the_owners(self):
-        # Owner, pipeline #90 (#141): the add-ons with a database and their deadlines; none at provider level.
+        # Owner, pipeline #90 (#141; the mirrors: pipeline #176-#180): the add-ons with a database and their deadlines; none at provider level.
         registry=json.loads((StepHarness.STORE/'.addon-sync/registry.json').read_text(encoding='utf-8'))
         due={c['id']:c['upgrade_comparison']['data_check_due'] for p in registry['providers'].values() for c in p['components'] if u.DUE_KEY in (c.get('upgrade_comparison') or {})}
-        self.assertEqual(due,{'woow-n8n':'2026-11-17','odoo18ce':'2026-12-08','woow-nextcloud-office':'2026-12-08','woow-immich':'2026-12-29','woow-headscale':'2026-12-29'})
+        self.assertEqual(due,{'woow-n8n':'2026-11-17','odoo18ce':'2026-12-08','woow-nextcloud-office':'2026-12-08','woow-immich':'2026-12-29','woow-headscale':'2026-12-29',
+                             'jellyfin':'2026-12-08','frigate':'2026-12-29','music_assistant':'2026-12-29','hamh':'2026-12-29','dnsmasq-dhcp':'2027-01-19'})
         for comp in (c for p in registry['providers'].values() for c in p['components']):
             with self.subTest(comp['id']):u.data_check_due(comp,False,datetime.date(2026,11,4))  # every date parses
         for p in registry['providers'].values():self.assertNotIn(u.DUE_KEY,p.get('upgrade_comparison') or {})
