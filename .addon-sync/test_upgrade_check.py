@@ -587,7 +587,7 @@ class ReusableWorkflow(unittest.TestCase):
         self.assertEqual(self.wf['on']['workflow_call']['inputs']['sbom_wait_minutes']['default'],40)
         self.assertGreater(self.wf['jobs']['compare']['timeout-minutes'],40)
     def test_ref_policy_main_compares_with_where_the_base_version_first_appeared(self):
-        # apporo_ha_multi_ha_core has no stable Release: the Store follows main (#121), and the
+        # Under ref_policy main the Store follows main (#121), and the
         # target is the commit on the PR base where its version first appeared (#129; MainFirstVersion runs it).
         plan=self.step('Find the comparison targets')
         self.assertRegex(plan,r'if \[ "\$\{policy\}" = "main" \]; then\s+(#.*\s+)*target="\$\(version_since "\$\{BASE_SHA\}" ')
@@ -946,7 +946,7 @@ class DeviceBuiltImages(StepHarness):
         self.assertNotIn('log_level',yaml.safe_load(old['files']['config.yaml']))  # c's tree, not the PR base b's
     @needs_shell
     def test_add_ons_sharing_a_comparison_target_download_it_once(self):
-        # A multi-add-on repository under ref_policy main (apporo): each add-on's target is the same commit here.
+        # A multi-add-on repository under ref_policy main: each add-on's target is the same commit here.
         comps=[{'id':i,'source_path':'addon','config_file':'config.yaml'} for i in ('t','u')]
         p='addon/config.yaml';history=[('b',{p:{'version':'2.0','image':None}}),('o',{p:{'version':'1.9','image':None}})]
         r=self.build(policy='main',history=history,version='2.1',extra={'components':comps},changed=2)
