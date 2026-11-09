@@ -1475,7 +1475,11 @@ class PublishedImageScan(StepHarness):
         providers=json.loads((StepHarness.STORE/'.addon-sync/registry.json').read_text(encoding='utf-8'))['providers']
         mirrors={repo for repo in approved if providers[repo].get('branch_rules',{}).get('exempt','').startswith('mirror:')}
         self.assertEqual(sorted(set(approved)-mirrors),['WOOWTECH/Woow_ha_knxd_add_on','WOOWTECH/Woow_ha_mcp_addons'])
-        for repo in ['WOOWTECH/Woow_ha_music_assistant_add_on','WOOWTECH/Woow_ha_dnsmasq_dhcp_add_on','WOOWTECH/Woow_ha_matter_hub_add_on']:self.assertIn(repo,mirrors)
+        self.assertIn('WOOWTECH/Woow_ha_music_assistant_add_on',mirrors)
+        self.assertIn('WOOWTECH/Woow_ha_jellyfin_add_on',mirrors)
+        self.assertIn('WOOWTECH/Woow_ha_frigate_add_on',mirrors)
+        self.assertIn('WOOWTECH/Woow_ha_dnsmasq_dhcp_add_on',mirrors)
+        self.assertIn('WOOWTECH/Woow_ha_matter_hub_add_on',mirrors)
         self.assertIn('#147',approved['WOOWTECH/Woow_ha_knxd_add_on']);self.assertIn('#148',approved['WOOWTECH/Woow_ha_mcp_addons'])
         for repo in mirrors:self.assertIn('#91',approved[repo],repo)
     @needs_shell

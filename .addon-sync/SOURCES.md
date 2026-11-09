@@ -30,7 +30,7 @@
 | [Woow_ha_code_server_add_on](https://github.com/WOOWTECH/Woow_ha_code_server_add_on) | 正式 Release（`main`） | `.` | `woow_ha_code_server`／stable | `woow_ha_code_server` | ✓ | `build.yml`；各架構映像 digest | 預建映像（amd64、aarch64） | 已同步 |
 | [Woow_ha_dnsmasq_dhcp_add_on](https://github.com/WOOWTECH/Woow_ha_dnsmasq_dhcp_add_on) | 正式 Release（`main`） | `dnsmasq-dhcp` | `dnsmasq-dhcp`／stable | `dnsmasq-dhcp` | ✓ | —；各架構映像 digest | 預建映像（aarch64、amd64） | 已同步 |
 | [Woow_ha_emqx](https://github.com/WOOWTECH/Woow_ha_emqx) | 正式 Release（`main`） | `emqx` | `woow-emqx`／stable | `emqx` | ✓ | `release.yml`（amd64 建置）、`release-train.yml` | 本機建置（aarch64、amd64） | 已同步 |
-| [Woow_ha_frigate_add_on](https://github.com/WOOWTECH/Woow_ha_frigate_add_on) | 預設分支（`main`） | `frigate` | `frigate`／stable | `frigate` | ✓ | —；各架構映像 digest | 預建映像（amd64、aarch64） | 已同步 |
+| [Woow_ha_frigate_add_on](https://github.com/WOOWTECH/Woow_ha_frigate_add_on) | 正式 Release（`main`） | `frigate` | `frigate`／stable | `frigate` | ✓ | —；各架構映像 digest | 預建映像（amd64、aarch64） | 已同步 |
 | [Woow_ha_hermes_add_on](https://github.com/WOOWTECH/Woow_ha_hermes_add_on) | 正式 Release（`main`） | `hermes` | `woow-hermes`／stable | `woow-hermes` | ✓ | `publish-hermes-addon-images.yml`、`release-train.yml`；各架構映像 digest | 預建映像（amd64） | 已同步 |
 | [Woow_ha_immich](https://github.com/WOOWTECH/Woow_ha_immich) | 正式 Release（`main`） | `woow-immich` | `woow-immich`／stable | `woow-immich` | ✓ | `release.yml`（amd64 建置） | 本機建置（aarch64、amd64） | 已同步 |
 | [Woow_ha_jellyfin_add_on](https://github.com/WOOWTECH/Woow_ha_jellyfin_add_on) | 正式 Release（`main`） | `jellyfin` | `jellyfin`／stable | `jellyfin` | ✓ | —；各架構映像 digest | 預建映像（aarch64、amd64） | 已同步 |
