@@ -88,7 +88,7 @@
           "channel": "stable",
           "enabled": true,
           "upgrade_comparison": {
-            "skip_upgrade_test": "#158, permanent (owner, 2026-11-05): a fail-closed NAT gateway for the Enrollment LAN; the upgrade test runs it on the host network, but to start it also needs NET_ADMIN, the fixed interfaces enp2s0 and enp1s0, nftables and IPv4 forwarding already enabled by the host, which a GitHub runner cannot give it, and a fake network would not test NAT or fail-closed behaviour. On-device testing on the Enrollment LAN covers it (pipeline .out-of-scope/lan-gateway-upgrade-test-on-runner.md)"
+            "skip_upgrade_test": "#158, permanent (owner, 2026-11-05): a fail-closed NAT gateway for the Enrollment LAN; the upgrade test runs it on the host network and gives it NET_ADMIN (#175), but to start it also needs the fixed interfaces enp2s0 and enp1s0, nftables and IPv4 forwarding already enabled by the host, which a GitHub runner cannot give it, and a fake network would not test NAT or fail-closed behaviour. On-device testing on the Enrollment LAN covers it (pipeline .out-of-scope/lan-gateway-upgrade-test-on-runner.md)"
           }
         }
       ]
@@ -335,10 +335,7 @@
           "config_file": "config.yaml",
           "store_path": "dnsmasq-dhcp",
           "channel": "stable",
-          "enabled": true,
-          "upgrade_comparison": {
-            "skip_upgrade_test": "#175, temporary (owner, 2026-11-09): dnsmasq-dhcp's config.yaml asks for privileged: [NET_ADMIN], which the upgrade runtime does not apply (no --cap-add), so even the comparison target 5.1.2 exits after about 1 second with \"dnsmasq: process is missing required capability NET_ADMIN\" and never counts as started (run 42562061272); categories 1 and 4 still run; remove when #175 lands"
-          }
+          "enabled": true
         }
       ]
     },
