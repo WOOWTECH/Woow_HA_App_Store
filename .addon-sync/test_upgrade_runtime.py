@@ -9,8 +9,12 @@ import upgrade_runtime as rt
 from upgrade_check import ASSIGNED_INGRESS_PORT
 
 FAKE = r'''
-import json, os, sys, time, urllib.error, urllib.request, http.server
-req = urllib.request.Request('http://supervisor/addons/self/info', headers={'Authorization': 'Bearer ' + os.environ['SUPERVISOR_TOKEN']})
+import json, os, re, sys, time, urllib.error, urllib.request, http.server
+# Like dnsmasq-dhcp (#175): exits 0 at once without the capability its config.yaml's privileged asks for (NET_ADMIN, bit 12).
+caps = int(re.search(r'CapEff:\s*(\w+)', open('/proc/self/status').read()).group(1), 16)
+print('NET_ADMIN', 'present' if caps & 1 << 12 else 'absent', flush=True)
+if os.environ['MODE'] == 'needs-net-admin' and not caps & 1 << 12:sys.exit(0)
+req =urllib.request.Request('http://supervisor/addons/self/info', headers={'Authorization': 'Bearer ' + os.environ['SUPERVISOR_TOKEN']})
 info = json.load(urllib.request.urlopen(req, timeout=10))['data']
 assert info['slug'] == 'fake', info
 # Like headscale, the add-on's private data may be mounted at the path of a `data` map entry.
@@ -350,6 +354,85 @@ class HostNetwork(unittest.TestCase):
         self.assertTrue(result['passed'], result['reason'])
         self.assertEqual(urls, ['http://172.30.32.1:8080/health', 'http://172.30.33.10:8080/health'])
 
+class Privileged(unittest.TestCase):
+    """#175: each version runs with one --cap-add per entry of its own config.yaml privileged, as Supervisor does; a value
+    Supervisor would refuse fails the add-on's test before any container starts. No Docker: the docker command is recorded."""
+    def config(self, **extra):
+        return {'slug': 'fake', 'version': '1.0.0', **extra}
+    def args(self, config):
+        env = rt.UpgradeTestEnv(tempfile.mkdtemp()); self.addCleanup(shutil.rmtree, env.work)
+        with mock.patch.object(rt, 'docker', return_value='') as docker:container = env.start('old', 'image:1', config, {})
+        return env, container, list(docker.call_args.args)
+    def caps(self, args):
+        return [args[i + 1] for i, a in enumerate(args) if a == '--cap-add']
+    def test_one_capability_gets_one_cap_add(self):
+        env, container, args = self.args(self.config(privileged=['NET_ADMIN']))
+        self.assertEqual(self.caps(args), ['NET_ADMIN'])
+        self.assertEqual(args[:10], ['run', '-d', '--name', container, '--network', env.net, '--ip', '172.30.33.10', '--init', '--cap-add'])
+    def test_each_entry_gets_its_own_flag(self):
+        env, container, args = self.args(self.config(privileged=['NET_ADMIN', 'NET_RAW', 'SYS_ADMIN']))
+        self.assertEqual(self.caps(args), ['NET_ADMIN', 'NET_RAW', 'SYS_ADMIN']); self.assertEqual(args.count('--cap-add'), 3)
+    def test_without_privileged_no_capability_and_the_arguments_are_unchanged(self):
+        for value in ({}, {'privileged': []}):
+            with self.subTest(value):
+                env, container, args = self.args(self.config(**value))
+                self.assertEqual(args, ['run', '-d', '--name', container, '--network', env.net, '--ip', '172.30.33.10', '--init',
+                    '--add-host', 'supervisor:172.30.32.2', '--add-host', 'hassio:172.30.32.2', '-e', f'SUPERVISOR_TOKEN={env.token}',
+                    '-e', f'HASSIO_TOKEN={env.token}', '-e', 'TZ=UTC', '--mount', f'type=bind,source={env.data.as_posix()}/data,target=/data', 'image:1'])
+    def test_host_network_and_privileged_apply_independently(self):
+        env, container, args = self.args(self.config(host_network=True, privileged=['NET_ADMIN']))
+        self.assertEqual(args[:6], ['run', '-d', '--name', container, '--network', 'host']); self.assertEqual(self.caps(args), ['NET_ADMIN'])
+    def test_every_capability_supervisor_accepts_is_applied(self):
+        env, container, args = self.args(self.config(privileged=list(rt.CAPABILITIES)))
+        self.assertEqual(self.caps(args), list(rt.CAPABILITIES))
+    def run_stubbed(self, old, new):
+        """upgrade_test() with the docker side stubbed: (result, [(phase, its --cap-add values)] of the versions started)."""
+        work = pathlib.Path(tempfile.mkdtemp()); self.addCleanup(shutil.rmtree, work, True)
+        (work / 'addon/upgrade-check').mkdir(parents=True)
+        (work / 'addon/upgrade-check/settings.yaml').write_text('stable_seconds: 1\n', encoding='utf-8')
+        started, opened = [], []
+        def docker(*args, check=True):
+            if args[0] == 'run' and args[3].endswith(('-old', '-new')):started.append((args[3][-3:], self.caps(list(args))))
+            if args[0] == 'network' and args[1] == 'create':opened.append(args)
+            return ''
+        with mock.patch.object(rt, 'docker', docker), mock.patch.object(rt.UpgradeTestEnv, 'probe', return_value=True), \
+                mock.patch.object(rt, '_down', return_value=''), mock.patch.object(rt, '_logs', return_value=''), \
+                mock.patch.object(rt.UpgradeTestEnv, 'supervisor_calls', return_value={'unmocked': [], 'broken_fixtures': []}):
+            result = rt.upgrade_test('fake', str(work / 'addon'), 'old:1', {'slug': 'fake', 'version': '1.0.0', **old}, 'new:1',
+                {'slug': 'fake', 'version': '1.1.0', **new}, str(work / 'w'))
+        return result, started, opened
+    def test_old_and_new_versions_each_use_their_own_list(self):
+        result, started, _ = self.run_stubbed({'privileged': ['NET_ADMIN']}, {'privileged': ['SYS_ADMIN', 'NET_RAW']})
+        self.assertTrue(result['passed'], result['reason'])
+        self.assertEqual(started, [('old', ['NET_ADMIN']), ('new', ['SYS_ADMIN', 'NET_RAW'])])
+        result, started, _ = self.run_stubbed({}, {'privileged': ['NET_ADMIN']})
+        self.assertEqual(started, [('old', []), ('new', ['NET_ADMIN'])])
+    def test_a_value_supervisor_would_refuse_fails_as_the_prs_fault_before_any_container_starts(self):
+        cases = ((('old', 'the comparison target (1.0.0)'), ['NET_ADMIN', 'NET_ADMN'], "'NET_ADMN'"),
+            (('new', 'the new version (1.1.0)'), ['net_admin'], "'net_admin'"),
+            (('new', 'the new version (1.1.0)'), 'NET_ADMIN', 'not a list of capability names'),
+            (('old', 'the comparison target (1.0.0)'), [['NET_ADMIN']], 'not a list of capability names'),
+            (('new', 'the new version (1.1.0)'), None, 'not a list of capability names'))
+        for (side, label), value, why in cases:
+            with self.subTest(side=side, value=value):
+                sides = {'old': {}, 'new': {}}; sides[side] = {'privileged': value}
+                result, started, opened = self.run_stubbed(sides['old'], sides['new'])
+                self.assertFalse(result['passed']); self.assertEqual((started, opened, result['phases']), ([], [], []))
+                self.assertIn(f'the config.yaml of fake, {label}, has privileged: {json.dumps(value)}', result['reason'])
+                self.assertIn(why, result['reason']); self.assertIn('Supervisor would refuse to install it', result['reason'])
+    def test_the_prs_fault_exits_1_with_the_reason_not_as_a_tool_error(self):
+        work = pathlib.Path(tempfile.mkdtemp()); self.addCleanup(shutil.rmtree, work, True)
+        (work / 'addon').mkdir()
+        for side, value in (('old', {}), ('new', {'privileged': ['NET_ADMN']})):
+            (work / f'{side}.yaml').write_text(yaml.safe_dump({'slug': 'fake', 'version': '1.0.0', **value}), encoding='utf-8')
+        args = ['--name', 'fake', '--addon-dir', str(work / 'addon'), '--report-dir', str(work / 'reports'), '--old-image', 'old:1',
+            '--old-config', str(work / 'old.yaml'), '--new-image', 'new:1', '--new-config', str(work / 'new.yaml')]
+        with mock.patch.object(rt, 'docker', side_effect=AssertionError('no docker command may run')), \
+                contextlib.redirect_stdout(io.StringIO()) as out:code = rt.main(args)
+        result = json.loads((work / 'reports/fake.json').read_text(encoding='utf-8'))
+        self.assertEqual(code, 1, out.getvalue()); self.assertNotIn('could not run', result['reason'])
+        self.assertIn("::error title=Upgrade test::fake: the config.yaml of fake, the new version (1.0.0), has privileged: [\"NET_ADMN\"]", out.getvalue())
+
 @unittest.skipUnless(docker_ok(), 'needs a Docker daemon (present on GitHub runners)')
 class Runtime(unittest.TestCase):
     @classmethod
@@ -358,7 +441,7 @@ class Runtime(unittest.TestCase):
         build = pathlib.Path(tempfile.mkdtemp())
         try:
             (build / 'run.py').write_text(FAKE, encoding='utf-8')
-            for mode in ('good', 'crash', 'answer-then-crash', 'forget', 'regress'):
+            for mode in ('good', 'crash', 'answer-then-crash', 'forget', 'regress', 'needs-net-admin'):
                 (build / 'Dockerfile').write_text(f'FROM {rt.MOCK_IMAGE}\nENV MODE={mode}\nCOPY run.py /run.py\nCMD ["python", "-u", "/run.py"]\n')
                 tag = f'local/upgrade-test-fake-{mode}:{uuid.uuid4().hex[:8]}'
                 subprocess.run(['docker', 'build', '-q', '-t', tag, str(build)], check=True, capture_output=True)
@@ -545,6 +628,25 @@ class Runtime(unittest.TestCase):
         self.assertEqual((modes[0], modes[1].startswith('upgrade-test-')), ('host', True))
         self.assertEqual([p['detail'].split(' answered')[0] for p in result['phases']],
             ['the watchdog http://172.30.32.1:8080/health', 'the watchdog http://172.30.33.10:8080/health'])
+    def test_an_add_on_that_needs_its_privileged_capability_gets_it(self):
+        # #175, dnsmasq-dhcp: the fake exits 0 at once without NET_ADMIN; privileged: [NET_ADMIN] gives it, on the bridge
+        # and with host_network alike.
+        self.settings(stable_seconds=3)
+        code, result, out = self.run_test('needs-net-admin', 'needs-net-admin', privileged=['NET_ADMIN'], sides={'old': {'host_network': True}})
+        self.assertEqual(code, 0, out + json.dumps(result, indent=1)); self.assertEqual([p['started'] for p in result['phases']], [True, True])
+        for p in result['phases']:self.assertIn('NET_ADMIN present', p['logs'])
+        self.assertEqual(leftovers(), [])
+    def test_without_privileged_the_capability_is_absent_and_such_an_add_on_does_not_start(self):
+        self.settings(stable_seconds=3)
+        code, result, out = self.run_test('needs-net-admin', 'needs-net-admin')
+        self.assertEqual(code, 1); self.assertEqual([(p['phase'], p['started']) for p in result['phases']], [('old', False)])
+        self.assertIn('the comparison target (1.0.0) did not start: the container exited with code 0', result['reason'])
+        self.assertIn('NET_ADMIN absent', result['phases'][0]['logs'])
+    def test_each_version_gets_the_capabilities_of_its_own_config(self):
+        self.settings(stable_seconds=3)
+        code, result, out = self.run_test('good', 'good', sides={'old': {'privileged': ['NET_ADMIN']}})
+        self.assertEqual(code, 0, out + json.dumps(result, indent=1))
+        self.assertEqual([('NET_ADMIN present' in p['logs'], 'NET_ADMIN absent' in p['logs']) for p in result['phases']], [(True, False), (False, True)])
     def test_settings_that_are_not_a_mapping_fail_with_the_reason(self):
         (self.dir / 'addon/upgrade-check').mkdir()
         (self.dir / 'addon/upgrade-check/settings.yaml').write_text('- 5\n', encoding='utf-8')

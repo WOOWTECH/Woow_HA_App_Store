@@ -16,7 +16,15 @@ it is the docker bridge's address), and its address is that gateway
 (Supervisor's DockerAddon.ip_address): [HOST] in the startup probe, ADDON_URL,
 ADDON_HOST and the mock's /addons/self/info ip_address. It still resolves
 supervisor and hassio to the mock. Other host-network effects (host ports,
-other host services) are not modelled, and privileged is not applied. Each
+other host services) are not modelled. Each version's own config.yaml
+`privileged` list is applied as Supervisor applies it (#175): one docker
+--cap-add per entry, independently of host_network. An entry Supervisor does
+not accept (CAPABILITIES), or a `privileged` that is not a list of strings, is
+the PR's fault: the test fails before any container starts, and the reason
+names the add-on, the version and the value (Supervisor would refuse to
+install it). devices, apparmor, full_access (and udev, usb, uart,
+kernel_modules, realtime, which make Supervisor add devices or capabilities
+of its own) are not applied. Each
 version must start, judged as upgrade_check.startup_probe says from the
 Supervisor's address, and then stay up for stable_seconds; the add-on's
 upgrade-check/settings.yaml may override the time limits.
@@ -429,6 +437,31 @@ def host_network(config):
     """Whether this version runs in the host's network namespace: config.yaml's host_network is true (#158)."""
     return config.get('host_network') is True
 
+# #175: the capabilities Supervisor's add-on schema accepts in `privileged`: supervisor/apps/validate.py
+# `vol.Optional(ATTR_PRIVILEGED): [vol.Coerce(Capabilities)]`, with Capabilities in supervisor/docker/const.py
+# (home-assistant/supervisor e0fa127aeaeb7995e39e8c570097a29e77a1e169, 2026-11-06). Supervisor passes them to docker as
+# cap_add (supervisor/docker/app.py DockerApp.capabilities); the ones it adds from other keys are not modelled.
+CAPABILITIES = ('AUDIT_WRITE', 'BPF', 'CHECKPOINT_RESTORE', 'DAC_READ_SEARCH', 'IPC_LOCK', 'MKNOD', 'NET_ADMIN', 'NET_RAW', 'PERFMON',
+    'SETFCAP', 'SYS_ADMIN', 'SYS_MODULE', 'SYS_NICE', 'SYS_PTRACE', 'SYS_RAWIO', 'SYS_RESOURCE', 'SYS_TIME')
+
+class PrivilegedError(ValueError):
+    """A version's config.yaml `privileged` that Supervisor would refuse: the PR's fault, not a tool error (#175)."""
+
+def capabilities(config, name='the add-on', label='this version'):
+    """The capabilities this version runs with: its config.yaml `privileged` list, in order, each once (none without
+    the key). PrivilegedError naming the add-on `name`, the version `label` and the value when it is not a list of
+    strings or holds an entry outside CAPABILITIES (#175)."""
+    if 'privileged' not in config:return []
+    value = config['privileged']
+    where = f'the config.yaml of {name}, {label}, has privileged: {json.dumps(value, default=str)}'
+    if not isinstance(value, list) or not all(isinstance(v, str) for v in value):
+        raise PrivilegedError(f'{where}, which is not a list of capability names, so Supervisor would refuse to install it')
+    unknown = [v for v in value if v not in CAPABILITIES]
+    if unknown:
+        raise PrivilegedError(f'{where}, but {", ".join(map(repr, unknown))} is not a capability Supervisor accepts there, so Supervisor would '
+            f'refuse to install it (it accepts {", ".join(CAPABILITIES)})')
+    return list(dict.fromkeys(value))
+
 def addon_ip(config):
     """The add-on's address as Supervisor gives it (DockerAddon.ip_address): the hassio bridge gateway for a
     host-network add-on, else its address on the bridge (#158)."""
@@ -546,7 +579,9 @@ class UpgradeTestEnv:
         init = [] if config.get('init') is False else ['--init']
         # #158: host_network as Supervisor runs it, in the host's namespace (it holds the bridge gateway); else on the bridge.
         network = ['--network', 'host'] if host_network(config) else ['--network', self.net, '--ip', ADDON_IP]
-        docker('run', '-d', '--name', container, *network, *init,
+        # #175: config.yaml's privileged as Supervisor applies it (upgrade_test() checked it before any container started).
+        caps = [a for cap in capabilities(config) for a in ('--cap-add', cap)]
+        docker('run', '-d', '--name', container, *network, *init, *caps,
             '--add-host', f'supervisor:{SUPERVISOR_IP}', '--add-host', f'hassio:{SUPERVISOR_IP}',
             '-e', f'SUPERVISOR_TOKEN={self.token}', '-e', f'HASSIO_TOKEN={self.token}', '-e', 'TZ=UTC', *args, image)
         return container
@@ -699,6 +734,12 @@ def upgrade_test(name, addon_dir, old_image, old_config, new_image, new_config, 
         'map_warnings': {'old': _map_warnings(old_config), 'new': _map_warnings(new_config)},
         'options': {'from_repo': sorted(given or {}), 'generated': sorted(generated),
             'warnings': option_warnings(given, configs, (old_image, new_image))}}
+    # #175: a privileged value Supervisor would refuse is the PR's fault: the test fails before any container starts.
+    try:
+        for phase, config in zip(('old', 'new'), configs):capabilities(config, name, f'{PHASE_LABEL[phase]} ({config.get("version")})')
+    except PrivilegedError as e:
+        result['reason'] = str(e)
+        return result
     try:
         env.open()
         for phase, image, config in (('old', old_image, old_config), ('new', new_image, new_config)):
