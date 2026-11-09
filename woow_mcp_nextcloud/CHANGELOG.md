@@ -1,3 +1,8 @@
+## 0.4.13 — images published and verified
+
+- Read ETags have compression suffixes removed, so conditional writes using them work against a compressed GET. The admin panel explains app passwords and the child restart after a tool-policy save.
+- Exact-source image `ghcr.io/woowtech/amd64-mcp-nextcloud@sha256:4c24074798f09ac2bf60a424e6bb5a53daac24251615c77dde30c65d40d93e90` passed P1–P5, anonymous and remote layer checks. See ../../docs/provenance/release-0.4.13-images.json and ../../docs/operations/release-decision-0.4.13.md. HAOS acceptance remains separate.
+
 ## 0.4.12 — images published and verified
 
 - Names with an ordinary `%` (PR #70): files, folders and calendars whose name or id contains `%` (for example `100%-off.txt`, `%18 KDV.xlsx`, `frame_%04d.png`) can be read, written and listed, as on the PaaS server; 0.4.11 refused every request for them with `BACKEND_DESTINATION_DENIED`, and a depth-2 `get_file_tree` left out such a folder's contents. Names whose literal text a further decode would turn into path structure (`a%2fb`, `%2e%2e`, `%23 notes`) or that other servers decode differently (`10%uface.txt`, `%` followed by fullwidth digits) stay refused. httpcore's `target` request extension is refused.

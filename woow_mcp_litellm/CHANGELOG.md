@@ -1,3 +1,8 @@
+## 0.4.13 — images published and verified
+
+- Tool arguments used in URL paths are encoded as single segments; unsafe dot segments are refused. The admin panel explains the master-key field and the child restart after a tool-policy save. Enterprise-only key rotation remains unverified by owner decision.
+- Exact-source image `ghcr.io/woowtech/amd64-mcp-litellm@sha256:628e4f32d199639bd5b7dbff3579c3424804ce852fb5c54a4eaff313af7192ca` passed P1–P5, anonymous and remote layer checks. See ../../docs/provenance/release-0.4.13-images.json and ../../docs/operations/release-decision-0.4.13.md. HAOS acceptance remains separate.
+
 ## 0.4.12 — images published and verified
 
 - A plugin name or model id that contains an ordinary `%` (sent as `%25`) now reaches LiteLLM; 0.4.11 refused every such call before sending it. Names whose literal text a further decode would turn into path structure stay refused. httpcore's `target` request extension is refused (shared backend policy, PR #70).

@@ -1,3 +1,8 @@
+## 0.4.13 — images published and verified
+
+- The shared save-time backend URL check rejects newly saved destinations that the runtime would refuse. Existing saved settings remain editable.
+- Exact-source image `ghcr.io/woowtech/amd64-mcp-n8n@sha256:846d02c97dd64a14c0ac1d976c8d5bacece8267e104a306a7121e430a358928c` passed P1–P5, anonymous and remote layer checks. See ../../docs/provenance/release-0.4.13-images.json and ../../docs/operations/release-decision-0.4.13.md. HAOS acceptance remains separate.
+
 ## 0.4.12 — images published and verified
 
 - `n8n-mcp` now runs on the native SQLite engine (better-sqlite3 12.11.1, the same as the PaaS image) instead of the sql.js fallback (PR #69). Behaviour changes: `search_nodes` ranks results the way the PaaS server does (for "webhook" the core Webhook node comes first; community nodes used to rank ahead of core ones); its `source: "core"` filter now works (it was ignored); the replies no longer carry a `mode` field; the version counters of `n8n_workflow_versions` (ids and the "deleted" counts of prune/clear) are real database values instead of constants.

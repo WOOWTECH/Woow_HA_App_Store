@@ -1,3 +1,8 @@
+## 0.4.13 — images published and verified
+
+- The shared gateway rejects a dot segment in an outbound URL before httpx can normalize it. Newly saved backend URLs must pass the runtime destination policy.
+- Exact-source image `ghcr.io/woowtech/amd64-mcp-hermes@sha256:6a10ffe19dcf7b4a61e3be0fb22d9b39ab65f4a00c14a69cd200f4f6bc130eea` passed P1–P5, anonymous and remote layer checks. See ../../docs/provenance/release-0.4.13-images.json and ../../docs/operations/release-decision-0.4.13.md. HAOS acceptance remains separate.
+
 ## 0.4.12 — images published and verified
 
 - `hermes_mcp` action `add` refuses a cloud-metadata URL with the PaaS server's own sentence, `INVALID_INPUT: url blocked by SSRF protection: Cloud metadata endpoint blocked` (it was `BACKEND_DESTINATION_DENIED`): the PaaS metadata list, its IPv6 spellings and its tunnelled-IPv4 forms (mapped, translated, NAT64, 6to4, Teredo); a number form that resolves to a metadata address (`2852039166`, `0xa9fea9fe`) reads `Hostname resolves to a blocked address (Cloud metadata endpoint blocked)`, as on PaaS (PR #68).
