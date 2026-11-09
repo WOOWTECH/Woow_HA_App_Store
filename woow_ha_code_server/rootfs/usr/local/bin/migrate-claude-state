@@ -1,0 +1,35 @@
+#!/bin/sh
+# 0.1.6 sent IDE Claude state to /data/claude while terminals used the Pi
+# volume. Bring an existing IDE login forward only when the canonical target
+# is empty. Keep the legacy source for rollback and never overwrite a login.
+set -eu
+canonical=${CLAUDE_CANONICAL_DIR:-/data/pi-agent/claude}
+legacy=${CLAUDE_LEGACY_DIR:-/data/claude}
+
+if [ -L "$canonical" ]; then
+    echo "canonical Claude state path is a symlink" >&2
+    exit 1
+fi
+mkdir -p "$canonical"
+chmod 700 "$canonical"
+if [ ! -d "$legacy" ] || [ -L "$legacy" ] ||
+   [ -z "$(find "$legacy" -mindepth 1 -maxdepth 1 -print -quit)" ]; then
+    echo unchanged
+    exit 0
+fi
+if [ -n "$(find "$canonical" -mindepth 1 -maxdepth 1 -print -quit)" ]; then
+    echo retained
+    exit 0
+fi
+
+staging=$(mktemp -d "${canonical}.migrate.XXXXXX")
+trap 'rm -rf "$staging"' EXIT
+cp -a "$legacy"/. "$staging"/
+chmod 700 "$staging"
+if ! rmdir "$canonical"; then
+    echo retained
+    exit 0
+fi
+mv "$staging" "$canonical"
+trap - EXIT
+echo copied

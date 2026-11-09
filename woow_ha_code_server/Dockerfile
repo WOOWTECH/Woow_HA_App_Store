@@ -11,6 +11,17 @@ ENV LANG=C.UTF-8 \
     CLAUDE_CONFIG_DIR=/data/pi-agent/claude \
     DISABLE_AUTOUPDATER=1
 
+# The upstream vscode run script resets CLAUDE_CONFIG_DIR to /data/claude just
+# before exec'ing code-server. That overrides both the image ENV and the s6
+# environment published by init-woow, splitting the terminal's Claude login
+# from the extension host and ACP adapter. Patch the one pinned upstream line;
+# fail the build if the upstream script changes so the state path is reviewed.
+RUN set -euo pipefail; \
+    run=/etc/s6-overlay/s6-rc.d/code-server/run; \
+    grep -Fxq 'export CLAUDE_CONFIG_DIR="/data/claude"' "$run"; \
+    sed -i 's|^export CLAUDE_CONFIG_DIR="/data/claude"$|export CLAUDE_CONFIG_DIR="/data/pi-agent/claude"|' "$run"; \
+    grep -Fxq 'export CLAUDE_CONFIG_DIR="/data/pi-agent/claude"' "$run"
+
 # --- nginx (F2 fallback only) + xz-utils (Node tarball below) --------------
 # nginx: the upstream vscode image ships no nginx at all — code-server is
 # reached purely through HA Supervisor ingress, and that stays true by
@@ -199,6 +210,7 @@ RUN mkdir -p /opt/pi-agent-skel/home/.pi/agent \
 
 COPY rootfs/ /
 RUN chmod +x /usr/local/bin/pi-code /usr/local/bin/pi-seed \
+             /usr/local/bin/migrate-claude-state \
              /etc/s6-overlay/scripts/init-woow \
              /etc/s6-overlay/s6-rc.d/nginx-direct/run \
  && sha256sum -c /opt/SHA256SUMS

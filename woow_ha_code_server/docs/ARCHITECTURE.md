@@ -2,7 +2,7 @@
 
 ## Process model
 
-This add-on layers on `ghcr.io/hassio-addons/vscode/{amd64,aarch64}:7.2.0` and adds exactly one node to its s6-rc service graph. Everything else — `init-user`, `init-mysql`, `init-mosquitto`, `init-code-server`, `code-server` — is upstream, unmodified.
+This add-on layers on `ghcr.io/hassio-addons/vscode/{amd64,aarch64}:7.2.0` and adds exactly one node to its s6-rc service graph. The services remain upstream; the image changes one assignment in the upstream `code-server/run` script so `CLAUDE_CONFIG_DIR=/data/pi-agent/claude` reaches the IDE and its extension host. The Dockerfile verifies the exact upstream line before patching it.
 
 ```
                     ┌──────────────┐

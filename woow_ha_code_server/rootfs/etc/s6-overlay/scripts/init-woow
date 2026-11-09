@@ -120,10 +120,16 @@ PI_DEFAULT_MODEL="$(bashio::config 'pi_default_model' '')" \
 PI_AGENT_DATA_DIR="${DATA}" \
     /usr/local/bin/pi-seed
 chmod 700 "${DATA}"
-# Claude Code state (PARITY_CONTRACT.md 1.1): pi-seed copies the skeleton dir;
-# lock it down like the pi store itself — it holds the claude login.
-mkdir -p "${DATA}/claude"
-chmod 700 "${DATA}/claude"
+# 0.1.6's inherited code-server run script sent the IDE extension host to
+# /data/claude while the terminal used ${DATA}/claude. Import a legacy IDE
+# login only if the canonical directory is empty; never overwrite terminal
+# credentials, and retain the old directory so a rollback can still use it.
+CLAUDE_MIGRATION=$(/usr/local/bin/migrate-claude-state)
+case "$CLAUDE_MIGRATION" in
+    copied) bashio::log.info "init-woow: copied legacy Claude state into the shared Pi volume" ;;
+    retained) bashio::log.warning "init-woow: both Claude state paths have data; keeping the canonical state and retaining legacy data" ;;
+    unchanged) : ;;
+esac
 bashio::log.info "init-woow: pi state store seeded at ${DATA}"
 
 # --- 6. ~/.pi link -----------------------------------------------------------

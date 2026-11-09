@@ -30,7 +30,7 @@ pi's state here is **private to this add-on** — not shared with the separate `
 
 ## How the pi wiring works — 30 seconds
 
-A new s6-rc oneshot, `init-woow`, runs **before** upstream's own `init-code-server` (a dependency edge this add-on adds, without touching any upstream file). It seeds `/data/pi-agent` from the same skeleton the podman package and k3s chart use, merges the ACP + workspace-trust keys into `settings.json` with an idempotent `jq` merge, and publishes the `PI_*` environment to every later service — including code-server's own extension host and every integrated terminal (verified directly against the running process's `/proc/<pid>/environ`, not just claimed).
+A new s6-rc oneshot, `init-woow`, runs **before** upstream's own `init-code-server` (a dependency edge this add-on adds). It seeds `/data/pi-agent` from the same skeleton the podman package and k3s chart use, merges the ACP + workspace-trust keys into `settings.json` with an idempotent `jq` merge, and publishes the `PI_*` environment to every later service — including code-server's own extension host and every integrated terminal. Since 0.1.7, the image also patches one upstream `code-server/run` assignment so the IDE's Claude state uses `/data/pi-agent/claude`, matching the terminal and ACP adapter. If 0.1.6 left a login under `/data/claude`, startup copies it into an empty canonical directory and retains the original for rollback.
 
 ```
 init-woow (new)  →  init-code-server (upstream)  →  code-server (upstream, longrun)

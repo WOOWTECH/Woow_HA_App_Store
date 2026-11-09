@@ -952,22 +952,22 @@
     "woow_ha_code_server": {
       "id": "woow_ha_code_server",
       "name": "Woow Code Server",
-      "version": "0.1.6",
+      "version": "0.1.7",
       "repository": "WOOWTECH/Woow_ha_code_server_add_on",
-      "source_sha": "14cfd949c92505cec48dbe502080298da5cc36d5",
+      "source_sha": "b9b83366531060acf8865311f765d944411310d7",
       "source_path": ".",
       "config_file": "config.yaml",
-      "config_sha256": "sha256:aa7bcaf1fb3d5daac04cf4d9030d676e25394417abe87d468bf33bf3b368c60b",
-      "archive_sha256": "sha256:ee36c3498eccc838c14d1590c5222dd9fa5f44008acbea9063010db8070b63ee",
-      "context_fingerprint": "sha256:369e2e7bbed05dcf9e13e9d4a3bda319811015dd40fbb5e51ad62da8d9fd7af4",
-      "material_fingerprint": "sha256:49cb566b25dce2db697a5a37482e00695044b93e515766669dc829660f246348",
+      "config_sha256": "sha256:b81d80242e2cfc105409e1e6868ac240e6b3bec193ef65cce6994ff8639013dd",
+      "archive_sha256": "sha256:f3eebf6d4f9017b4e2c79116ec0bc37f5da4416e6547ac231e1c3b280b4a6287",
+      "context_fingerprint": "sha256:93223863586bfe4438a98917dd372da3a5aaee44375f8fcf38b9eb95cd0026cf",
+      "material_fingerprint": "sha256:41932f6b0470fed94385c4d3d78bbcbc326a802c8c34d868e904f4dd5def274e",
       "architectures": [
         "amd64",
         "aarch64"
       ],
       "config": {
         "name": "Woow Code Server",
-        "version": "0.1.6",
+        "version": "0.1.7",
         "slug": "woow_ha_code_server",
         "description": "code-server 4.139.1 with the pi coding agent (0.99.1) and Claude Code (2.1.285), pi-acp and the ACP Client chat sidebar baked in — WOOWTECH build layered on the Home Assistant Community vscode add-on",
         "url": "https://github.com/WOOWTECH/Woow_ha_code_server_add_on",
@@ -1078,21 +1078,21 @@
       "source_build_supported": true,
       "images": {
         "amd64": {
-          "reference": "ghcr.io/woowtech/woow-ha-code-server-amd64:0.1.6",
-          "index_digest": "sha256:6fc9cb57a8e34898bded261c9d6c00a8361f8c034d11824acb90a37b74b1b879",
-          "digest": "sha256:6fc9cb57a8e34898bded261c9d6c00a8361f8c034d11824acb90a37b74b1b879",
-          "source_revision": "ce35422ee4c589a3cbf920656510ae1b3783fe2e"
+          "reference": "ghcr.io/woowtech/woow-ha-code-server-amd64:0.1.7",
+          "index_digest": "sha256:4f0fe6cbf0cca9ca4c34e1da86eae2700116b00d9f7abae544320eaf58f7e9cd",
+          "digest": "sha256:4f0fe6cbf0cca9ca4c34e1da86eae2700116b00d9f7abae544320eaf58f7e9cd",
+          "source_revision": "b9b83366531060acf8865311f765d944411310d7"
         },
         "aarch64": {
-          "reference": "ghcr.io/woowtech/woow-ha-code-server-aarch64:0.1.6",
-          "index_digest": "sha256:9322345b83de6b54fd5042c1f70926126b6dd0e46600ae3f341317670cca5d50",
-          "digest": "sha256:9322345b83de6b54fd5042c1f70926126b6dd0e46600ae3f341317670cca5d50",
-          "source_revision": "ce35422ee4c589a3cbf920656510ae1b3783fe2e"
+          "reference": "ghcr.io/woowtech/woow-ha-code-server-aarch64:0.1.7",
+          "index_digest": "sha256:59373d05f311863a932744568e24c505b2a661c723a4972a50f3d8ee072f4621",
+          "digest": "sha256:59373d05f311863a932744568e24c505b2a661c723a4972a50f3d8ee072f4621",
+          "source_revision": "b9b83366531060acf8865311f765d944411310d7"
         }
       },
       "delivery": "published-image",
       "validation": "manifest+architecture-images+configured-CI",
-      "publisher_run_id": "37410125463",
+      "publisher_run_id": "42624760319",
       "channel": "stable",
       "store_path": "woow_ha_code_server"
     },
@@ -3631,5 +3631,5 @@
       "store_path": "woow_mcp_nextcloud"
     }
   },
-  "catalog_id": "sha256:8769b960493064323788329d15624e2caebd6995c6c4c34a16badd95dff287e1"
+  "catalog_id": "sha256:75fd619eb75273533a2fecc7d4597571ab2d91d42393fadb556cf946d9955199"
 }
