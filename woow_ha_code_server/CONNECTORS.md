@@ -72,8 +72,22 @@ Omnigent 會列出已設定原生授權的自訂 provider，模型 ID 保留完�
 `provider/model` 路徑。登入完成後重載即時模型目錄，再驗證真實回覆。
 
 三代理共用 `/data/pi-agent/skills` 及 `/data/pi-agent/shared/mcp.json`。
-修改 MCP 後執行 `woow-agent-sync`，再開新的代理對話。原生 Claude、Codex、Pi
-仍保有自己的登入及個別設定；不會把供應商憑證複製到其他部署。
+修改 MCP 後，在擴充面板或命令選單選擇 **Refresh shared MCP**，輸入原對話 ID。
+此操作會同步共用設定，保留原對話與模型／權限／登入設定，並移除已從共用 registry
+刪除的工具。Paseo 的 Claude、Codex、Pi 會在閒置時恢復同一個原生 session；
+若有執行中回合或待處理授權，更新會拒絕且不打斷對話。已回收的 session 請先在
+Paseo 開啟原對話再更新。舊 daemon 需由操作人員安排閒置升級，按鈕不會重啟服務。
+Omnigent Codex 使用原生 MCP reload，顯示已排入下一個回合邊界；工具成功執行須另行驗證。
+Omnigent Pi 在同一個原生程序內準備新的 MCP 連線，確認仍閒置後替換工具目錄；
+失敗會保留原工具，成功會回報目錄已更新，並不表示已逐項驗證工具執行。
+升級前已開啟的 Pi 對話需要先由操作人員安排一次閒置的原生 `/reload`，載入新版
+橋接擴充；未載入時會明確拒絕，不會自動重啟或另開對話。詳見
+[Pi 原生更新與既有對話準備](connectors/omnigent/pi_mcp_refresh.md)。
+Omnigent Claude Code 2.1.285 使用原生佇列的 `/reload-plugins --force`，並以停用的無功能定義淘汰已刪除工具，避免舊工具繼續可用。
+介面會區分排隊中、原生 reload 已完成與送出狀態不明；reload 完成不等於工具目錄或實際調用已驗證。
+原生程序已停止的既有對話，須先由操作人員以 [嚴格接回流程](connectors/omnigent/claude_strict_resume.md) 驗證並恢復原檔案；更新按鈕不會自行另開對話。
+同步／恢復失敗會顯示錯誤，不會另開對話或宣稱已驗證工具。
+原生 Claude、Codex、Pi 仍保有自己的登入及個別設定；不會把供應商憑證複製到其他部署。
 Omnigent 的私人 session home 會繼承本部署的共用工具設定。
 完整共用設定格式見 [THREE_AGENTS.md](THREE_AGENTS.md)。
 
@@ -87,7 +101,7 @@ Omnigent 的私人 session home 會繼承本部署的共用工具設定。
 runtime 狀態位於 `/data/pi-agent/connectors/`，隨既有資料卷備份。
 請勿把此目錄加入 Git、映像或公開故障報告。
 
-實作來源、版本及限制見 [研究設計](https://github.com/WOOWTECH/Woow_podman_code_server_package/blob/feat/paseo-omnigent-extensions/docs/plans/2026-11-10-paseo-omnigent-extensions.md)、
+實作來源、版本及限制見 [研究設計](docs/plans/2026-11-10-paseo-omnigent-extensions.md)、
 [Paseo runtime](connectors/paseo/README.md)、[Omnigent runtime](connectors/omnigent/README.md)。
 單元測試或主機在線不代表三代理真實對話、模型切換及工具調用均已通過；
 部署驗收必須記錄各環境的實際結果。

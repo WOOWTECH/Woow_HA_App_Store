@@ -1,0 +1,423 @@
+[
+  {
+    "name": "reconcile two differently shared expenses",
+    "input": {
+      "members": [
+        "A",
+        "B",
+        "C"
+      ],
+      "expenses": [
+        {
+          "id": "Dinner",
+          "paidBy": "A",
+          "amountCents": 3000
+        },
+        {
+          "id": "Taxi",
+          "paidBy": "B",
+          "amountCents": 1500,
+          "split": [
+            {
+              "member": "A",
+              "weight": 1
+            },
+            {
+              "member": "B",
+              "weight": 1
+            }
+          ]
+        }
+      ]
+    },
+    "expected": {
+      "expenses": [
+        {
+          "id": "Dinner",
+          "paidBy": "A",
+          "amountCents": 3000,
+          "shares": [
+            {
+              "member": "A",
+              "amountCents": 1000
+            },
+            {
+              "member": "B",
+              "amountCents": 1000
+            },
+            {
+              "member": "C",
+              "amountCents": 1000
+            }
+          ]
+        },
+        {
+          "id": "Taxi",
+          "paidBy": "B",
+          "amountCents": 1500,
+          "shares": [
+            {
+              "member": "A",
+              "amountCents": 750
+            },
+            {
+              "member": "B",
+              "amountCents": 750
+            }
+          ]
+        }
+      ],
+      "balances": [
+        {
+          "member": "A",
+          "paidCents": 3000,
+          "owedCents": 1750,
+          "balanceCents": 1250
+        },
+        {
+          "member": "B",
+          "paidCents": 1500,
+          "owedCents": 1750,
+          "balanceCents": -250
+        },
+        {
+          "member": "C",
+          "paidCents": 0,
+          "owedCents": 1000,
+          "balanceCents": -1000
+        }
+      ],
+      "settlements": [
+        {
+          "from": "B",
+          "to": "A",
+          "amountCents": 250
+        },
+        {
+          "from": "C",
+          "to": "A",
+          "amountCents": 1000
+        }
+      ],
+      "totalCents": 4500
+    }
+  },
+  {
+    "name": "indivisible cent awarded by member order",
+    "input": {
+      "members": [
+        "A",
+        "B",
+        "C"
+      ],
+      "expenses": [
+        {
+          "id": "E",
+          "paidBy": "A",
+          "amountCents": 100
+        }
+      ]
+    },
+    "expected": {
+      "expenses": [
+        {
+          "id": "E",
+          "paidBy": "A",
+          "amountCents": 100,
+          "shares": [
+            {
+              "member": "A",
+              "amountCents": 34
+            },
+            {
+              "member": "B",
+              "amountCents": 33
+            },
+            {
+              "member": "C",
+              "amountCents": 33
+            }
+          ]
+        }
+      ],
+      "balances": [
+        {
+          "member": "A",
+          "paidCents": 100,
+          "owedCents": 34,
+          "balanceCents": 66
+        },
+        {
+          "member": "B",
+          "paidCents": 0,
+          "owedCents": 33,
+          "balanceCents": -33
+        },
+        {
+          "member": "C",
+          "paidCents": 0,
+          "owedCents": 33,
+          "balanceCents": -33
+        }
+      ],
+      "settlements": [
+        {
+          "from": "B",
+          "to": "A",
+          "amountCents": 33
+        },
+        {
+          "from": "C",
+          "to": "A",
+          "amountCents": 33
+        }
+      ],
+      "totalCents": 100
+    }
+  },
+  {
+    "name": "weighted split uses largest remainder",
+    "input": {
+      "members": [
+        "A",
+        "B",
+        "C"
+      ],
+      "expenses": [
+        {
+          "id": "E",
+          "paidBy": "A",
+          "amountCents": 100,
+          "split": [
+            {
+              "member": "C",
+              "weight": 2
+            },
+            {
+              "member": "B",
+              "weight": 1
+            }
+          ]
+        }
+      ]
+    },
+    "expected": {
+      "expenses": [
+        {
+          "id": "E",
+          "paidBy": "A",
+          "amountCents": 100,
+          "shares": [
+            {
+              "member": "B",
+              "amountCents": 33
+            },
+            {
+              "member": "C",
+              "amountCents": 67
+            }
+          ]
+        }
+      ],
+      "balances": [
+        {
+          "member": "A",
+          "paidCents": 100,
+          "owedCents": 0,
+          "balanceCents": 100
+        },
+        {
+          "member": "B",
+          "paidCents": 0,
+          "owedCents": 33,
+          "balanceCents": -33
+        },
+        {
+          "member": "C",
+          "paidCents": 0,
+          "owedCents": 67,
+          "balanceCents": -67
+        }
+      ],
+      "settlements": [
+        {
+          "from": "B",
+          "to": "A",
+          "amountCents": 33
+        },
+        {
+          "from": "C",
+          "to": "A",
+          "amountCents": 67
+        }
+      ],
+      "totalCents": 100
+    }
+  },
+  {
+    "name": "empty ledger balances to zero",
+    "input": {
+      "members": [
+        "A",
+        "B"
+      ],
+      "expenses": []
+    },
+    "expected": {
+      "expenses": [],
+      "balances": [
+        {
+          "member": "A",
+          "paidCents": 0,
+          "owedCents": 0,
+          "balanceCents": 0
+        },
+        {
+          "member": "B",
+          "paidCents": 0,
+          "owedCents": 0,
+          "balanceCents": 0
+        }
+      ],
+      "settlements": [],
+      "totalCents": 0
+    }
+  },
+  {
+    "name": "self-only expense needs no transfer",
+    "input": {
+      "members": [
+        "A",
+        "B"
+      ],
+      "expenses": [
+        {
+          "id": "E",
+          "paidBy": "A",
+          "amountCents": 123,
+          "split": [
+            {
+              "member": "A",
+              "weight": 1
+            }
+          ]
+        }
+      ]
+    },
+    "expected": {
+      "expenses": [
+        {
+          "id": "E",
+          "paidBy": "A",
+          "amountCents": 123,
+          "shares": [
+            {
+              "member": "A",
+              "amountCents": 123
+            }
+          ]
+        }
+      ],
+      "balances": [
+        {
+          "member": "A",
+          "paidCents": 123,
+          "owedCents": 123,
+          "balanceCents": 0
+        },
+        {
+          "member": "B",
+          "paidCents": 0,
+          "owedCents": 0,
+          "balanceCents": 0
+        }
+      ],
+      "settlements": [],
+      "totalCents": 123
+    }
+  },
+  {
+    "name": "unknown payer rejected",
+    "input": {
+      "members": [
+        "A"
+      ],
+      "expenses": [
+        {
+          "id": "E",
+          "paidBy": "B",
+          "amountCents": 100
+        }
+      ]
+    },
+    "error": true,
+    "errorIncludes": "unknown member"
+  },
+  {
+    "name": "fractional currency rejected",
+    "input": {
+      "members": [
+        "A"
+      ],
+      "expenses": [
+        {
+          "id": "E",
+          "paidBy": "A",
+          "amountCents": 1.5
+        }
+      ]
+    },
+    "error": true,
+    "errorIncludes": "amountCents"
+  },
+  {
+    "name": "duplicate split member rejected",
+    "input": {
+      "members": [
+        "A"
+      ],
+      "expenses": [
+        {
+          "id": "E",
+          "paidBy": "A",
+          "amountCents": 100,
+          "split": [
+            {
+              "member": "A",
+              "weight": 1
+            },
+            {
+              "member": "A",
+              "weight": 1
+            }
+          ]
+        }
+      ]
+    },
+    "error": true,
+    "errorIncludes": "duplicate"
+  },
+  {
+    "name": "zero split weight rejected",
+    "input": {
+      "members": [
+        "A"
+      ],
+      "expenses": [
+        {
+          "id": "E",
+          "paidBy": "A",
+          "amountCents": 100,
+          "split": [
+            {
+              "member": "A",
+              "weight": 0
+            }
+          ]
+        }
+      ]
+    },
+    "error": true,
+    "errorIncludes": "weight"
+  }
+]

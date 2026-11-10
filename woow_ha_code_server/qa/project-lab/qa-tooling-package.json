@@ -1,0 +1,7 @@
+{
+  "name": "woow-50-projects-qa",
+  "private": true,
+  "devDependencies": {
+    "playwright-core": "1.61.1"
+  }
+}

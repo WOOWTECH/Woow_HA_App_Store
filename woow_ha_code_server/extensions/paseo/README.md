@@ -22,6 +22,23 @@ This is a normal installed extension, not a built-in. It appears in **Extensions
 
 Change models within the selected agent’s Web conversation. A different agent may need a new conversation; this extension does not claim cross-agent context transfer. Switching the UI’s selected agent or seeing “online” does not prove that an assistant replied.
 
+## Download workspace files
+
+In the paired Paseo browser, open **Explorer → Files**, right-click a file,
+and choose **Download**. ZIP files download through the same action even when
+the file pane says **Binary preview unavailable**. Text files retain their
+original bytes, including UTF-8 content.
+
+Ask the agent to use workspace-relative links, such as
+`[Download ZIP](downloads/all-projects.zip)`. The chat link opens the workspace
+file; the Explorer **Download** action saves it. This uses Paseo's paired file
+transport and does not require a code-server preview or an SSH tunnel.
+
+For Home Assistant, a public `/<addon>/proxy/...` URL is not a substitute for a
+workspace file link. Browsing an app through code-server's port preview uses the
+normal authenticated HA ingress flow; downloading a workspace artifact can use
+Paseo directly.
+
 ## Runtime requirement
 
 The matching **WOOW connector runtime must be installed in the same code-server container**. The default executable is `/usr/local/bin/woow-connectors`; the VSIX contains the UI/client, not the Paseo daemon or Omnigent SDK. A missing runtime reports `RUNTIME_UNAVAILABLE` and cannot connect. Use the WOOW code-server image with connector support, or have the deployment administrator install its matching runtime bundle.
@@ -52,3 +69,9 @@ The command palette exposes configuration, status, models, start/stop, restore, 
 ## License and implementation
 
 MIT, Copyright 2026 WOOWTECH. This VS Code client is an independent implementation against the `woow-connectors` JSON contract. Existing WOOW Pi/Hermes/OD integrations informed the architecture; their host-specific UI code is not bundled in this extension. Runtime dependency licenses and provenance belong to the separately packaged runtime.
+
+## Refresh shared tools in an existing conversation
+
+Select **Refresh shared MCP** in the connection panel or command palette and enter the original conversation ID. The action synchronizes shared definitions, including removals, and keeps the same conversation and native persistence. Busy conversations are refused without interruption. Errors remain visible; success means configuration reload/resume was accepted, not that a model has executed a tool.
+
+Paseo resumes the saved Claude/Codex/Pi session only when idle. Open an unloaded original conversation first. An older daemon must be upgraded by an operator after its sessions are idle; this action never restarts the daemon.

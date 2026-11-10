@@ -1,0 +1,286 @@
+[
+  {
+    "name": "physical booking overlap",
+    "input": {
+      "reservations": [
+        {
+          "id": "A",
+          "resource": "Room",
+          "start": "2026-11-10T09:00Z",
+          "end": "2026-11-10T10:00Z"
+        },
+        {
+          "id": "B",
+          "resource": "Room",
+          "start": "2026-11-10T09:30Z",
+          "end": "2026-11-10T11:00Z"
+        }
+      ]
+    },
+    "expected": {
+      "valid": false,
+      "conflicts": [
+        {
+          "resource": "Room",
+          "firstId": "A",
+          "secondId": "B",
+          "kind": "overlap",
+          "conflictStart": "2026-11-10T09:30Z",
+          "conflictEnd": "2026-11-10T10:00Z",
+          "conflictMinutes": 30
+        }
+      ],
+      "resourceCount": 1,
+      "reservationCount": 2
+    }
+  },
+  {
+    "name": "adjacent bookings without turnaround are valid",
+    "input": {
+      "reservations": [
+        {
+          "id": "A",
+          "resource": "Room",
+          "start": "2026-11-10T09:00Z",
+          "end": "2026-11-10T10:00Z"
+        },
+        {
+          "id": "B",
+          "resource": "Room",
+          "start": "2026-11-10T10:00Z",
+          "end": "2026-11-10T11:00Z"
+        }
+      ]
+    },
+    "expected": {
+      "valid": true,
+      "conflicts": [],
+      "resourceCount": 1,
+      "reservationCount": 2
+    }
+  },
+  {
+    "name": "adjacent booking violates cleanup buffer",
+    "input": {
+      "turnaroundMinutes": 15,
+      "reservations": [
+        {
+          "id": "A",
+          "resource": "Room",
+          "start": "2026-11-10T09:00Z",
+          "end": "2026-11-10T10:00Z"
+        },
+        {
+          "id": "B",
+          "resource": "Room",
+          "start": "2026-11-10T10:00Z",
+          "end": "2026-11-10T11:00Z"
+        }
+      ]
+    },
+    "expected": {
+      "valid": false,
+      "conflicts": [
+        {
+          "resource": "Room",
+          "firstId": "A",
+          "secondId": "B",
+          "kind": "turnaround",
+          "conflictStart": "2026-11-10T10:00Z",
+          "conflictEnd": "2026-11-10T10:15Z",
+          "conflictMinutes": 15
+        }
+      ],
+      "resourceCount": 1,
+      "reservationCount": 2
+    }
+  },
+  {
+    "name": "different resources may overlap",
+    "input": {
+      "reservations": [
+        {
+          "id": "A",
+          "resource": "Room1",
+          "start": "2026-11-10T09:00Z",
+          "end": "2026-11-10T10:00Z"
+        },
+        {
+          "id": "B",
+          "resource": "Room2",
+          "start": "2026-11-10T09:00Z",
+          "end": "2026-11-10T10:00Z"
+        }
+      ]
+    },
+    "expected": {
+      "valid": true,
+      "conflicts": [],
+      "resourceCount": 2,
+      "reservationCount": 2
+    }
+  },
+  {
+    "name": "all three colliding pairs found regardless of input order",
+    "input": {
+      "reservations": [
+        {
+          "id": "C",
+          "resource": "Room",
+          "start": "2026-11-10T09:45Z",
+          "end": "2026-11-10T10:15Z"
+        },
+        {
+          "id": "A",
+          "resource": "Room",
+          "start": "2026-11-10T09:00Z",
+          "end": "2026-11-10T11:00Z"
+        },
+        {
+          "id": "B",
+          "resource": "Room",
+          "start": "2026-11-10T09:30Z",
+          "end": "2026-11-10T10:00Z"
+        }
+      ]
+    },
+    "expected": {
+      "valid": false,
+      "conflicts": [
+        {
+          "resource": "Room",
+          "firstId": "A",
+          "secondId": "B",
+          "kind": "overlap",
+          "conflictStart": "2026-11-10T09:30Z",
+          "conflictEnd": "2026-11-10T10:00Z",
+          "conflictMinutes": 30
+        },
+        {
+          "resource": "Room",
+          "firstId": "A",
+          "secondId": "C",
+          "kind": "overlap",
+          "conflictStart": "2026-11-10T09:45Z",
+          "conflictEnd": "2026-11-10T10:15Z",
+          "conflictMinutes": 30
+        },
+        {
+          "resource": "Room",
+          "firstId": "B",
+          "secondId": "C",
+          "kind": "overlap",
+          "conflictStart": "2026-11-10T09:45Z",
+          "conflictEnd": "2026-11-10T10:00Z",
+          "conflictMinutes": 15
+        }
+      ],
+      "resourceCount": 1,
+      "reservationCount": 3
+    }
+  },
+  {
+    "name": "exact turnaround boundary valid",
+    "input": {
+      "turnaroundMinutes": 15,
+      "reservations": [
+        {
+          "id": "A",
+          "resource": "Room",
+          "start": "2026-11-10T09:00Z",
+          "end": "2026-11-10T10:00Z"
+        },
+        {
+          "id": "B",
+          "resource": "Room",
+          "start": "2026-11-10T10:15Z",
+          "end": "2026-11-10T11:00Z"
+        }
+      ]
+    },
+    "expected": {
+      "valid": true,
+      "conflicts": [],
+      "resourceCount": 1,
+      "reservationCount": 2
+    }
+  },
+  {
+    "name": "empty schedule",
+    "input": {
+      "reservations": []
+    },
+    "expected": {
+      "valid": true,
+      "conflicts": [],
+      "resourceCount": 0,
+      "reservationCount": 0
+    }
+  },
+  {
+    "name": "invalid calendar day rejected",
+    "input": {
+      "reservations": [
+        {
+          "id": "A",
+          "resource": "Room",
+          "start": "2026-02-30T09:00Z",
+          "end": "2026-03-02T10:00Z"
+        }
+      ]
+    },
+    "error": true,
+    "errorIncludes": "valid calendar"
+  },
+  {
+    "name": "UTC zone required",
+    "input": {
+      "reservations": [
+        {
+          "id": "A",
+          "resource": "Room",
+          "start": "2026-11-10T09:00",
+          "end": "2026-11-10T10:00Z"
+        }
+      ]
+    },
+    "error": true,
+    "errorIncludes": "UTC"
+  },
+  {
+    "name": "reversed reservation rejected",
+    "input": {
+      "reservations": [
+        {
+          "id": "A",
+          "resource": "Room",
+          "start": "2026-11-10T10:00Z",
+          "end": "2026-11-10T09:00Z"
+        }
+      ]
+    },
+    "error": true,
+    "errorIncludes": "after start"
+  },
+  {
+    "name": "duplicate booking IDs rejected",
+    "input": {
+      "reservations": [
+        {
+          "id": "A",
+          "resource": "Room",
+          "start": "2026-11-10T09:00Z",
+          "end": "2026-11-10T10:00Z"
+        },
+        {
+          "id": "A",
+          "resource": "Room",
+          "start": "2026-11-10T09:00Z",
+          "end": "2026-11-10T10:00Z"
+        }
+      ]
+    },
+    "error": true,
+    "errorIncludes": "duplicate"
+  }
+]

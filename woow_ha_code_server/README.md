@@ -128,3 +128,7 @@ MIT
 ### Codex container sandbox compatibility
 
 Native Codex and the ACP adapter use the same scoped bubblewrap compatibility launcher. See [sandbox setup and isolation verification](security/codex/README.md) for optional host profiles and the live probe. Existing sandbox and login settings are retained.
+
+## 50-project regression and application lab
+
+The opt-in [qa/project-lab/README.md](qa/project-lab/README.md) contains 50 runnable prototypes, 510 functional fixtures, HTTP/UTF-8 regressions, extracted-download execution, and configurable browser/IDE tooling. CI runs local acceptance without model credentials. Historical three-platform results and remaining limitations are documented separately. The suite is source-only and does not change image versions or start services automatically.

@@ -1,0 +1,196 @@
+[
+  {
+    "name": "word counts deterministic ties",
+    "input": {
+      "text": "Blue sky, blue sea. Sky!",
+      "stopWords": []
+    },
+    "expected": {
+      "totalTokens": 5,
+      "matchedTerms": 5,
+      "uniqueTerms": 3,
+      "frequencies": [
+        {
+          "term": "blue",
+          "count": 2,
+          "percent": 40
+        },
+        {
+          "term": "sky",
+          "count": 2,
+          "percent": 40
+        },
+        {
+          "term": "sea",
+          "count": 1,
+          "percent": 20
+        }
+      ]
+    }
+  },
+  {
+    "name": "stop words use matching normalization",
+    "input": {
+      "text": "The cat and the cat.",
+      "stopWords": [
+        "THE",
+        "and"
+      ]
+    },
+    "expected": {
+      "totalTokens": 5,
+      "matchedTerms": 2,
+      "uniqueTerms": 1,
+      "frequencies": [
+        {
+          "term": "cat",
+          "count": 2,
+          "percent": 100
+        }
+      ]
+    }
+  },
+  {
+    "name": "bigrams do not bridge excluded stop words",
+    "input": {
+      "text": "red and blue red blue",
+      "stopWords": [
+        "and"
+      ],
+      "ngramSize": 2
+    },
+    "expected": {
+      "totalTokens": 5,
+      "matchedTerms": 2,
+      "uniqueTerms": 2,
+      "frequencies": [
+        {
+          "term": "blue red",
+          "count": 1,
+          "percent": 50
+        },
+        {
+          "term": "red blue",
+          "count": 1,
+          "percent": 50
+        }
+      ]
+    }
+  },
+  {
+    "name": "Unicode case and apostrophe normalization",
+    "input": {
+      "text": "Café café CAFÉ don't don’t"
+    },
+    "expected": {
+      "totalTokens": 5,
+      "matchedTerms": 5,
+      "uniqueTerms": 2,
+      "frequencies": [
+        {
+          "term": "café",
+          "count": 3,
+          "percent": 60
+        },
+        {
+          "term": "don't",
+          "count": 2,
+          "percent": 40
+        }
+      ]
+    }
+  },
+  {
+    "name": "case sensitive counts",
+    "input": {
+      "text": "A a A",
+      "caseSensitive": true
+    },
+    "expected": {
+      "totalTokens": 3,
+      "matchedTerms": 3,
+      "uniqueTerms": 2,
+      "frequencies": [
+        {
+          "term": "A",
+          "count": 2,
+          "percent": 66.666667
+        },
+        {
+          "term": "a",
+          "count": 1,
+          "percent": 33.333333
+        }
+      ]
+    }
+  },
+  {
+    "name": "top limit does not change percentage denominator",
+    "input": {
+      "text": "to go apple berry apple",
+      "minLength": 3,
+      "top": 1
+    },
+    "expected": {
+      "totalTokens": 5,
+      "matchedTerms": 3,
+      "uniqueTerms": 2,
+      "frequencies": [
+        {
+          "term": "apple",
+          "count": 2,
+          "percent": 66.666667
+        }
+      ]
+    }
+  },
+  {
+    "name": "empty text",
+    "input": {
+      "text": ""
+    },
+    "expected": {
+      "totalTokens": 0,
+      "matchedTerms": 0,
+      "uniqueTerms": 0,
+      "frequencies": []
+    }
+  },
+  {
+    "name": "non-string text rejected",
+    "input": {
+      "text": 42
+    },
+    "error": true,
+    "errorContains": "text must be a string"
+  },
+  {
+    "name": "multiword stop word rejected",
+    "input": {
+      "text": "a",
+      "stopWords": [
+        "two words"
+      ]
+    },
+    "error": true,
+    "errorContains": "must be a single word"
+  },
+  {
+    "name": "zero ngram size rejected",
+    "input": {
+      "text": "a",
+      "ngramSize": 0
+    },
+    "error": true,
+    "errorContains": "ngramSize must be a finite number"
+  },
+  {
+    "name": "oversized top rejected",
+    "input": {
+      "text": "a",
+      "top": 101
+    },
+    "error": true,
+    "errorContains": "top must be a finite number"
+  }
+]

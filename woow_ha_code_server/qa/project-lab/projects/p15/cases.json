@@ -1,0 +1,356 @@
+[
+  {
+    "name": "priority first then overdue response targets",
+    "input": {
+      "tickets": [
+        {
+          "id": "A",
+          "impact": "one",
+          "urgency": "low",
+          "ageHours": 0
+        },
+        {
+          "id": "B",
+          "impact": "many",
+          "urgency": "high",
+          "ageHours": 5
+        },
+        {
+          "id": "C",
+          "impact": "all",
+          "urgency": "high",
+          "ageHours": 0
+        }
+      ]
+    },
+    "expected": {
+      "queue": [
+        {
+          "id": "C",
+          "score": 80,
+          "priority": "P1",
+          "slaHours": 1,
+          "elapsedHours": 0,
+          "remainingHours": 1,
+          "slaState": "within_sla",
+          "reasons": [
+            "impact:all",
+            "urgency:high"
+          ]
+        },
+        {
+          "id": "B",
+          "score": 60,
+          "priority": "P2",
+          "slaHours": 4,
+          "elapsedHours": 5,
+          "remainingHours": -1,
+          "slaState": "breached",
+          "reasons": [
+            "impact:many",
+            "urgency:high"
+          ]
+        },
+        {
+          "id": "A",
+          "score": 10,
+          "priority": "P4",
+          "slaHours": 72,
+          "elapsedHours": 0,
+          "remainingHours": 72,
+          "slaState": "within_sla",
+          "reasons": [
+            "impact:one",
+            "urgency:low"
+          ]
+        }
+      ],
+      "counts": {
+        "P1": 1,
+        "P2": 1,
+        "P3": 0,
+        "P4": 1
+      },
+      "breachedCount": 1,
+      "dueCount": 0
+    }
+  },
+  {
+    "name": "security plus outage escalation",
+    "input": {
+      "tickets": [
+        {
+          "id": "A",
+          "impact": "one",
+          "urgency": "normal",
+          "ageHours": 1,
+          "outage": true,
+          "securityIncident": true
+        }
+      ]
+    },
+    "expected": {
+      "queue": [
+        {
+          "id": "A",
+          "score": 85,
+          "priority": "P1",
+          "slaHours": 1,
+          "elapsedHours": 1,
+          "remainingHours": 0,
+          "slaState": "due",
+          "reasons": [
+            "impact:one",
+            "urgency:normal",
+            "outage",
+            "security_incident"
+          ]
+        }
+      ],
+      "counts": {
+        "P1": 1,
+        "P2": 0,
+        "P3": 0,
+        "P4": 0
+      },
+      "breachedCount": 0,
+      "dueCount": 1
+    }
+  },
+  {
+    "name": "exact P3 threshold and due boundary",
+    "input": {
+      "tickets": [
+        {
+          "id": "A",
+          "impact": "one",
+          "urgency": "normal",
+          "ageHours": 24
+        }
+      ]
+    },
+    "expected": {
+      "queue": [
+        {
+          "id": "A",
+          "score": 25,
+          "priority": "P3",
+          "slaHours": 24,
+          "elapsedHours": 24,
+          "remainingHours": 0,
+          "slaState": "due",
+          "reasons": [
+            "impact:one",
+            "urgency:normal"
+          ]
+        }
+      ],
+      "counts": {
+        "P1": 0,
+        "P2": 0,
+        "P3": 1,
+        "P4": 0
+      },
+      "breachedCount": 0,
+      "dueCount": 1
+    }
+  },
+  {
+    "name": "same priority most overdue then lexical tie",
+    "input": {
+      "tickets": [
+        {
+          "id": "Z",
+          "impact": "many",
+          "urgency": "low",
+          "ageHours": 25
+        },
+        {
+          "id": "B",
+          "impact": "many",
+          "urgency": "low",
+          "ageHours": 30
+        },
+        {
+          "id": "A",
+          "impact": "many",
+          "urgency": "low",
+          "ageHours": 30
+        }
+      ]
+    },
+    "expected": {
+      "queue": [
+        {
+          "id": "A",
+          "score": 30,
+          "priority": "P3",
+          "slaHours": 24,
+          "elapsedHours": 30,
+          "remainingHours": -6,
+          "slaState": "breached",
+          "reasons": [
+            "impact:many",
+            "urgency:low"
+          ]
+        },
+        {
+          "id": "B",
+          "score": 30,
+          "priority": "P3",
+          "slaHours": 24,
+          "elapsedHours": 30,
+          "remainingHours": -6,
+          "slaState": "breached",
+          "reasons": [
+            "impact:many",
+            "urgency:low"
+          ]
+        },
+        {
+          "id": "Z",
+          "score": 30,
+          "priority": "P3",
+          "slaHours": 24,
+          "elapsedHours": 25,
+          "remainingHours": -1,
+          "slaState": "breached",
+          "reasons": [
+            "impact:many",
+            "urgency:low"
+          ]
+        }
+      ],
+      "counts": {
+        "P1": 0,
+        "P2": 0,
+        "P3": 3,
+        "P4": 0
+      },
+      "breachedCount": 3,
+      "dueCount": 0
+    }
+  },
+  {
+    "name": "empty queue",
+    "input": {
+      "tickets": []
+    },
+    "expected": {
+      "queue": [],
+      "counts": {
+        "P1": 0,
+        "P2": 0,
+        "P3": 0,
+        "P4": 0
+      },
+      "breachedCount": 0,
+      "dueCount": 0
+    }
+  },
+  {
+    "name": "exact P2 threshold",
+    "input": {
+      "tickets": [
+        {
+          "id": "A",
+          "impact": "all",
+          "urgency": "low",
+          "ageHours": 0
+        }
+      ]
+    },
+    "expected": {
+      "queue": [
+        {
+          "id": "A",
+          "score": 50,
+          "priority": "P2",
+          "slaHours": 4,
+          "elapsedHours": 0,
+          "remainingHours": 4,
+          "slaState": "within_sla",
+          "reasons": [
+            "impact:all",
+            "urgency:low"
+          ]
+        }
+      ],
+      "counts": {
+        "P1": 0,
+        "P2": 1,
+        "P3": 0,
+        "P4": 0
+      },
+      "breachedCount": 0,
+      "dueCount": 0
+    }
+  },
+  {
+    "name": "unknown urgency rejected",
+    "input": {
+      "tickets": [
+        {
+          "id": "A",
+          "impact": "one",
+          "urgency": "critical",
+          "ageHours": 0
+        }
+      ]
+    },
+    "error": true,
+    "errorIncludes": "urgency"
+  },
+  {
+    "name": "negative age rejected",
+    "input": {
+      "tickets": [
+        {
+          "id": "A",
+          "impact": "one",
+          "urgency": "low",
+          "ageHours": -1
+        }
+      ]
+    },
+    "error": true,
+    "errorIncludes": "ageHours"
+  },
+  {
+    "name": "truthy string flag rejected",
+    "input": {
+      "tickets": [
+        {
+          "id": "A",
+          "impact": "one",
+          "urgency": "low",
+          "ageHours": 0,
+          "outage": "false"
+        }
+      ]
+    },
+    "error": true,
+    "errorIncludes": "boolean"
+  },
+  {
+    "name": "duplicate ticket rejected",
+    "input": {
+      "tickets": [
+        {
+          "id": "A",
+          "impact": "one",
+          "urgency": "low",
+          "ageHours": 0
+        },
+        {
+          "id": "A",
+          "impact": "one",
+          "urgency": "low",
+          "ageHours": 0
+        }
+      ]
+    },
+    "error": true,
+    "errorIncludes": "duplicate"
+  }
+]

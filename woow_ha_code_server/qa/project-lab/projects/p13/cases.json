@@ -1,0 +1,319 @@
+[
+  {
+    "name": "two half-hour slots in shared hour",
+    "input": {
+      "durationMinutes": 30,
+      "stepMinutes": 30,
+      "participants": [
+        {
+          "name": "A",
+          "availability": [
+            {
+              "start": "09:00",
+              "end": "12:00"
+            }
+          ]
+        },
+        {
+          "name": "B",
+          "availability": [
+            {
+              "start": "10:00",
+              "end": "11:00"
+            }
+          ]
+        }
+      ]
+    },
+    "expected": {
+      "commonWindows": [
+        {
+          "start": "10:00",
+          "end": "11:00",
+          "durationMinutes": 60
+        }
+      ],
+      "slots": [
+        {
+          "start": "10:00",
+          "end": "10:30"
+        },
+        {
+          "start": "10:30",
+          "end": "11:00"
+        }
+      ],
+      "slotCount": 2
+    }
+  },
+  {
+    "name": "merge overlapping windows before intersection",
+    "input": {
+      "durationMinutes": 45,
+      "stepMinutes": 30,
+      "participants": [
+        {
+          "name": "A",
+          "availability": [
+            {
+              "start": "09:00",
+              "end": "10:00"
+            },
+            {
+              "start": "09:30",
+              "end": "11:00"
+            }
+          ]
+        },
+        {
+          "name": "B",
+          "availability": [
+            {
+              "start": "10:00",
+              "end": "12:00"
+            }
+          ]
+        }
+      ]
+    },
+    "expected": {
+      "commonWindows": [
+        {
+          "start": "10:00",
+          "end": "11:00",
+          "durationMinutes": 60
+        }
+      ],
+      "slots": [
+        {
+          "start": "10:00",
+          "end": "10:45"
+        }
+      ],
+      "slotCount": 1
+    }
+  },
+  {
+    "name": "touching endpoints are not an overlap",
+    "input": {
+      "durationMinutes": 15,
+      "participants": [
+        {
+          "name": "A",
+          "availability": [
+            {
+              "start": "09:00",
+              "end": "10:00"
+            }
+          ]
+        },
+        {
+          "name": "B",
+          "availability": [
+            {
+              "start": "10:00",
+              "end": "11:00"
+            }
+          ]
+        }
+      ]
+    },
+    "expected": {
+      "commonWindows": [],
+      "slots": [],
+      "slotCount": 0
+    }
+  },
+  {
+    "name": "align starts to midnight grid",
+    "input": {
+      "durationMinutes": 30,
+      "stepMinutes": 30,
+      "participants": [
+        {
+          "name": "A",
+          "availability": [
+            {
+              "start": "09:10",
+              "end": "10:20"
+            }
+          ]
+        }
+      ]
+    },
+    "expected": {
+      "commonWindows": [
+        {
+          "start": "09:10",
+          "end": "10:20",
+          "durationMinutes": 70
+        }
+      ],
+      "slots": [
+        {
+          "start": "09:30",
+          "end": "10:00"
+        }
+      ],
+      "slotCount": 1
+    }
+  },
+  {
+    "name": "unavailable participant blocks all slots",
+    "input": {
+      "durationMinutes": 30,
+      "participants": [
+        {
+          "name": "A",
+          "availability": [
+            {
+              "start": "09:00",
+              "end": "12:00"
+            }
+          ]
+        },
+        {
+          "name": "B",
+          "availability": []
+        }
+      ]
+    },
+    "expected": {
+      "commonWindows": [],
+      "slots": [],
+      "slotCount": 0
+    }
+  },
+  {
+    "name": "meeting may finish at midnight",
+    "input": {
+      "durationMinutes": 30,
+      "participants": [
+        {
+          "name": "A",
+          "availability": [
+            {
+              "start": "23:30",
+              "end": "24:00"
+            }
+          ]
+        }
+      ]
+    },
+    "expected": {
+      "commonWindows": [
+        {
+          "start": "23:30",
+          "end": "24:00",
+          "durationMinutes": 30
+        }
+      ],
+      "slots": [
+        {
+          "start": "23:30",
+          "end": "24:00"
+        }
+      ],
+      "slotCount": 1
+    }
+  },
+  {
+    "name": "short common window retained without slots",
+    "input": {
+      "durationMinutes": 60,
+      "participants": [
+        {
+          "name": "A",
+          "availability": [
+            {
+              "start": "09:00",
+              "end": "09:15"
+            }
+          ]
+        }
+      ]
+    },
+    "expected": {
+      "commonWindows": [
+        {
+          "start": "09:00",
+          "end": "09:15",
+          "durationMinutes": 15
+        }
+      ],
+      "slots": [],
+      "slotCount": 0
+    }
+  },
+  {
+    "name": "invalid clock rejected",
+    "input": {
+      "durationMinutes": 30,
+      "participants": [
+        {
+          "name": "A",
+          "availability": [
+            {
+              "start": "23:30",
+              "end": "24:01"
+            }
+          ]
+        }
+      ]
+    },
+    "error": true,
+    "errorIncludes": "HH:MM"
+  },
+  {
+    "name": "overnight interval rejected",
+    "input": {
+      "durationMinutes": 30,
+      "participants": [
+        {
+          "name": "A",
+          "availability": [
+            {
+              "start": "23:00",
+              "end": "01:00"
+            }
+          ]
+        }
+      ]
+    },
+    "error": true,
+    "errorIncludes": "after start"
+  },
+  {
+    "name": "duplicate participant rejected",
+    "input": {
+      "durationMinutes": 30,
+      "participants": [
+        {
+          "name": "A",
+          "availability": []
+        },
+        {
+          "name": "A",
+          "availability": []
+        }
+      ]
+    },
+    "error": true,
+    "errorIncludes": "duplicate"
+  },
+  {
+    "name": "zero step rejected",
+    "input": {
+      "durationMinutes": 30,
+      "stepMinutes": 0,
+      "participants": [
+        {
+          "name": "A",
+          "availability": []
+        }
+      ]
+    },
+    "error": true,
+    "errorIncludes": "stepMinutes"
+  }
+]

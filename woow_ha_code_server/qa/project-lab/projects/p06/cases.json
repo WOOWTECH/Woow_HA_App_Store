@@ -1,0 +1,271 @@
+[
+  {
+    "name": "severity counts and hour buckets",
+    "input": {
+      "log": "2026-01-01T10:00:00Z INFO Started\n2026-01-01T10:05:00Z ERROR Timeout\n2026-01-01T11:00:00Z WARN Retrying",
+      "bucketMinutes": 60
+    },
+    "expected": {
+      "totalLines": 3,
+      "accepted": 3,
+      "rejected": [],
+      "severityCounts": {
+        "TRACE": 0,
+        "DEBUG": 0,
+        "INFO": 1,
+        "WARN": 1,
+        "ERROR": 1,
+        "FATAL": 0
+      },
+      "first": "2026-01-01T10:00:00.000Z",
+      "last": "2026-01-01T11:00:00.000Z",
+      "buckets": [
+        {
+          "start": "2026-01-01T10:00:00.000Z",
+          "total": 2,
+          "counts": {
+            "TRACE": 0,
+            "DEBUG": 0,
+            "INFO": 1,
+            "WARN": 0,
+            "ERROR": 1,
+            "FATAL": 0
+          }
+        },
+        {
+          "start": "2026-01-01T11:00:00.000Z",
+          "total": 1,
+          "counts": {
+            "TRACE": 0,
+            "DEBUG": 0,
+            "INFO": 0,
+            "WARN": 1,
+            "ERROR": 0,
+            "FATAL": 0
+          }
+        }
+      ],
+      "topMessages": [
+        {
+          "message": "Retrying",
+          "count": 1
+        },
+        {
+          "message": "Started",
+          "count": 1
+        },
+        {
+          "message": "Timeout",
+          "count": 1
+        }
+      ]
+    }
+  },
+  {
+    "name": "unsorted timestamps aliases and malformed line",
+    "input": {
+      "log": "2026-01-01T01:01:00Z critical Same\njunk\n2026-01-01T00:00:00Z warning Same"
+    },
+    "expected": {
+      "totalLines": 3,
+      "accepted": 2,
+      "rejected": [
+        {
+          "line": 2,
+          "reason": "expected timestamp LEVEL message"
+        }
+      ],
+      "severityCounts": {
+        "TRACE": 0,
+        "DEBUG": 0,
+        "INFO": 0,
+        "WARN": 1,
+        "ERROR": 0,
+        "FATAL": 1
+      },
+      "first": "2026-01-01T00:00:00.000Z",
+      "last": "2026-01-01T01:01:00.000Z",
+      "buckets": [
+        {
+          "start": "2026-01-01T00:00:00.000Z",
+          "total": 1,
+          "counts": {
+            "TRACE": 0,
+            "DEBUG": 0,
+            "INFO": 0,
+            "WARN": 1,
+            "ERROR": 0,
+            "FATAL": 0
+          }
+        },
+        {
+          "start": "2026-01-01T01:00:00.000Z",
+          "total": 1,
+          "counts": {
+            "TRACE": 0,
+            "DEBUG": 0,
+            "INFO": 0,
+            "WARN": 0,
+            "ERROR": 0,
+            "FATAL": 1
+          }
+        }
+      ],
+      "topMessages": [
+        {
+          "message": "Same",
+          "count": 2
+        }
+      ]
+    }
+  },
+  {
+    "name": "fifteen-minute bucket boundary",
+    "input": {
+      "log": "2026-01-01T00:14:59Z INFO Ping\n2026-01-01T00:15:00Z DEBUG Ping",
+      "bucketMinutes": 15
+    },
+    "expected": {
+      "totalLines": 2,
+      "accepted": 2,
+      "rejected": [],
+      "severityCounts": {
+        "TRACE": 0,
+        "DEBUG": 1,
+        "INFO": 1,
+        "WARN": 0,
+        "ERROR": 0,
+        "FATAL": 0
+      },
+      "first": "2026-01-01T00:14:59.000Z",
+      "last": "2026-01-01T00:15:00.000Z",
+      "buckets": [
+        {
+          "start": "2026-01-01T00:00:00.000Z",
+          "total": 1,
+          "counts": {
+            "TRACE": 0,
+            "DEBUG": 0,
+            "INFO": 1,
+            "WARN": 0,
+            "ERROR": 0,
+            "FATAL": 0
+          }
+        },
+        {
+          "start": "2026-01-01T00:15:00.000Z",
+          "total": 1,
+          "counts": {
+            "TRACE": 0,
+            "DEBUG": 1,
+            "INFO": 0,
+            "WARN": 0,
+            "ERROR": 0,
+            "FATAL": 0
+          }
+        }
+      ],
+      "topMessages": [
+        {
+          "message": "Ping",
+          "count": 2
+        }
+      ]
+    }
+  },
+  {
+    "name": "blank log",
+    "input": {
+      "log": " \n\n"
+    },
+    "expected": {
+      "totalLines": 0,
+      "accepted": 0,
+      "rejected": [],
+      "severityCounts": {
+        "TRACE": 0,
+        "DEBUG": 0,
+        "INFO": 0,
+        "WARN": 0,
+        "ERROR": 0,
+        "FATAL": 0
+      },
+      "first": null,
+      "last": null,
+      "buckets": [],
+      "topMessages": []
+    }
+  },
+  {
+    "name": "invalid calendar date is reported",
+    "input": {
+      "log": "2026-02-30T00:00:00Z ERROR Invalid"
+    },
+    "expected": {
+      "totalLines": 1,
+      "accepted": 0,
+      "rejected": [
+        {
+          "line": 1,
+          "reason": "timestamp is not a valid UTC calendar timestamp"
+        }
+      ],
+      "severityCounts": {
+        "TRACE": 0,
+        "DEBUG": 0,
+        "INFO": 0,
+        "WARN": 0,
+        "ERROR": 0,
+        "FATAL": 0
+      },
+      "first": null,
+      "last": null,
+      "buckets": [],
+      "topMessages": []
+    }
+  },
+  {
+    "name": "strict mode rejects unknown severity",
+    "input": {
+      "log": "2026-01-01T00:00:00Z NOTICE hi",
+      "strict": true
+    },
+    "error": true,
+    "errorContains": "Line 1: unsupported severity NOTICE"
+  },
+  {
+    "name": "strict mode rejects impossible date",
+    "input": {
+      "log": "2026-02-30T00:00:00Z INFO hi",
+      "strict": true
+    },
+    "error": true,
+    "errorContains": "not a valid UTC calendar timestamp"
+  },
+  {
+    "name": "fractional bucket size rejected",
+    "input": {
+      "log": "",
+      "bucketMinutes": 1.5
+    },
+    "error": true,
+    "errorContains": "bucketMinutes must be an integer"
+  },
+  {
+    "name": "non-string log rejected",
+    "input": {
+      "log": 42
+    },
+    "error": true,
+    "errorContains": "log must be a string"
+  },
+  {
+    "name": "strict must be boolean",
+    "input": {
+      "log": "",
+      "strict": "true"
+    },
+    "error": true,
+    "errorContains": "strict must be boolean"
+  }
+]

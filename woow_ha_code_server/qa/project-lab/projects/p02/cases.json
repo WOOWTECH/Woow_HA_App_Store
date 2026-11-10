@@ -1,0 +1,239 @@
+[
+  {
+    "name": "nested edits and addition",
+    "input": {
+      "before": {
+        "count": 1,
+        "tags": [
+          "old"
+        ]
+      },
+      "after": {
+        "count": 2,
+        "tags": [
+          "new"
+        ],
+        "active": true
+      }
+    },
+    "expected": {
+      "equal": false,
+      "added": 1,
+      "removed": 0,
+      "replaced": 2,
+      "changes": [
+        {
+          "op": "add",
+          "path": "/active",
+          "after": true
+        },
+        {
+          "op": "replace",
+          "path": "/count",
+          "before": 1,
+          "after": 2
+        },
+        {
+          "op": "replace",
+          "path": "/tags/0",
+          "before": "old",
+          "after": "new"
+        }
+      ]
+    }
+  },
+  {
+    "name": "object order is immaterial",
+    "input": {
+      "before": {
+        "a": 1,
+        "b": [
+          null,
+          true
+        ]
+      },
+      "after": {
+        "b": [
+          null,
+          true
+        ],
+        "a": 1
+      }
+    },
+    "expected": {
+      "equal": true,
+      "added": 0,
+      "removed": 0,
+      "replaced": 0,
+      "changes": []
+    }
+  },
+  {
+    "name": "array removals descend to preserve indices",
+    "input": {
+      "before": [
+        1,
+        2,
+        3
+      ],
+      "after": [
+        1
+      ]
+    },
+    "expected": {
+      "equal": false,
+      "added": 0,
+      "removed": 2,
+      "replaced": 0,
+      "changes": [
+        {
+          "op": "remove",
+          "path": "/2",
+          "before": 3
+        },
+        {
+          "op": "remove",
+          "path": "/1",
+          "before": 2
+        }
+      ]
+    }
+  },
+  {
+    "name": "pointer escaping and sorted object changes",
+    "input": {
+      "before": {
+        "a/b": {
+          "~flag": false
+        },
+        "removed": null
+      },
+      "after": {
+        "a/b": {
+          "~flag": true
+        },
+        "new": []
+      }
+    },
+    "expected": {
+      "equal": false,
+      "added": 1,
+      "removed": 1,
+      "replaced": 1,
+      "changes": [
+        {
+          "op": "replace",
+          "path": "/a~1b/~0flag",
+          "before": false,
+          "after": true
+        },
+        {
+          "op": "add",
+          "path": "/new",
+          "after": []
+        },
+        {
+          "op": "remove",
+          "path": "/removed",
+          "before": null
+        }
+      ]
+    }
+  },
+  {
+    "name": "root type replacement",
+    "input": {
+      "before": null,
+      "after": {
+        "ok": true
+      }
+    },
+    "expected": {
+      "equal": false,
+      "added": 0,
+      "removed": 0,
+      "replaced": 1,
+      "changes": [
+        {
+          "op": "replace",
+          "path": "",
+          "before": null,
+          "after": {
+            "ok": true
+          }
+        }
+      ]
+    }
+  },
+  {
+    "name": "array additions ascend",
+    "input": {
+      "before": [],
+      "after": [
+        false,
+        null
+      ]
+    },
+    "expected": {
+      "equal": false,
+      "added": 2,
+      "removed": 0,
+      "replaced": 0,
+      "changes": [
+        {
+          "op": "add",
+          "path": "/0",
+          "after": false
+        },
+        {
+          "op": "add",
+          "path": "/1",
+          "after": null
+        }
+      ]
+    }
+  },
+  {
+    "name": "zero differs from false",
+    "input": {
+      "before": 0,
+      "after": false
+    },
+    "expected": {
+      "equal": false,
+      "added": 0,
+      "removed": 0,
+      "replaced": 1,
+      "changes": [
+        {
+          "op": "replace",
+          "path": "",
+          "before": 0,
+          "after": false
+        }
+      ]
+    }
+  },
+  {
+    "name": "missing before rejected",
+    "input": {
+      "after": {}
+    },
+    "error": true,
+    "errorContains": "before and after are required"
+  },
+  {
+    "name": "missing after rejected",
+    "input": {
+      "before": {}
+    },
+    "error": true,
+    "errorContains": "before and after are required"
+  },
+  {
+    "name": "null input rejected",
+    "input": null,
+    "error": true,
+    "errorContains": "input must be an object"
+  }
+]

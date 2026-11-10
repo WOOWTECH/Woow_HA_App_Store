@@ -1,0 +1,130 @@
+[
+  {
+    "name": "required supplied with default",
+    "input": {
+      "template": "APP_HOST=\nAPP_PORT=8080",
+      "values": {
+        "APP_HOST": "demo.local"
+      }
+    },
+    "expected": {
+      "valid": true,
+      "required": [
+        "APP_HOST"
+      ],
+      "missing": [],
+      "empty": [],
+      "unexpected": [],
+      "resolved": {
+        "APP_HOST": "demo.local",
+        "APP_PORT": "8080"
+      }
+    }
+  },
+  {
+    "name": "missing empty and unexpected are distinguished",
+    "input": {
+      "template": "A=\nB=\nC=fallback",
+      "values": {
+        "A": "  ",
+        "EXTRA": "demo"
+      }
+    },
+    "expected": {
+      "valid": false,
+      "required": [
+        "A",
+        "B"
+      ],
+      "missing": [
+        "B"
+      ],
+      "empty": [
+        "A"
+      ],
+      "unexpected": [
+        "EXTRA"
+      ],
+      "resolved": {
+        "C": "fallback"
+      }
+    }
+  },
+  {
+    "name": "quoted hash and optional empty override",
+    "input": {
+      "template": "# sample\nexport LABEL=\"a # b\" # comment\nMODE='demo'",
+      "values": {
+        "MODE": ""
+      }
+    },
+    "expected": {
+      "valid": true,
+      "required": [],
+      "missing": [],
+      "empty": [],
+      "unexpected": [],
+      "resolved": {
+        "LABEL": "a # b",
+        "MODE": ""
+      }
+    }
+  },
+  {
+    "name": "duplicate definitions rejected",
+    "input": {
+      "template": "A=one\nA=two",
+      "values": {}
+    },
+    "error": true,
+    "errorContains": "Duplicate"
+  },
+  {
+    "name": "malformed quote rejected",
+    "input": {
+      "template": "A=\"unfinished",
+      "values": {}
+    },
+    "error": true,
+    "errorContains": "quoted"
+  },
+  {
+    "name": "non-string value rejected",
+    "input": {
+      "template": "PORT=80",
+      "values": {
+        "PORT": 80
+      }
+    },
+    "error": true,
+    "errorContains": "string"
+  },
+  {
+    "name": "unsafe variable rejected",
+    "input": {
+      "template": "__proto__=demo",
+      "values": {}
+    },
+    "error": true,
+    "errorContains": "Invalid template"
+  },
+  {
+    "name": "comment after empty default remains required",
+    "input": {
+      "template": "HOST= # demo comment",
+      "values": {}
+    },
+    "expected": {
+      "valid": false,
+      "required": [
+        "HOST"
+      ],
+      "missing": [
+        "HOST"
+      ],
+      "empty": [],
+      "unexpected": [],
+      "resolved": {}
+    }
+  }
+]

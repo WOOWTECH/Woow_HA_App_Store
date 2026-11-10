@@ -1,0 +1,9 @@
+[
+  {"name":"deep merge records changed port and addition","input":{"base":{"service":{"port":80,"host":"demo"},"tags":["a"]},"overlay":{"service":{"port":81},"enabled":true}},"expected":{"merged":{"service":{"port":81,"host":"demo"},"tags":["a"],"enabled":true},"conflicts":[{"path":"/service/port","base":80,"overlay":81,"resolution":"overlay"}],"added":["/enabled"]}},
+  {"name":"base policy preserves array and null conflicts","input":{"base":{"a":[1,2],"b":null},"overlay":{"a":[3],"b":{},"c":4},"strategy":"base"},"expected":{"merged":{"a":[1,2],"b":null,"c":4},"conflicts":[{"path":"/a","base":[1,2],"overlay":[3],"resolution":"base"},{"path":"/b","base":null,"overlay":{},"resolution":"base"}],"added":["/c"]}},
+  {"name":"JSON pointer escaping and equal objects in arrays","input":{"base":{"a/b":{"~x":1},"list":[{"x":1,"y":2}]},"overlay":{"a/b":{"~x":2},"list":[{"y":2,"x":1}]}},"expected":{"merged":{"a/b":{"~x":2},"list":[{"x":1,"y":2}]},"conflicts":[{"path":"/a~1b/~0x","base":1,"overlay":2,"resolution":"overlay"}],"added":[]}},
+  {"name":"equal values are not conflicts","input":{"base":{"a":null,"b":false},"overlay":{"b":false,"a":null},"strategy":"error"},"expected":{"merged":{"a":null,"b":false},"conflicts":[],"added":[]}},
+  {"name":"error policy names conflict","input":{"base":{"x":1},"overlay":{"x":2},"strategy":"error"},"error":true,"errorContains":"/x"},
+  {"name":"unsafe key rejected","input":{"base":{},"overlay":{"__proto__":{"demo":true}}},"error":true,"errorContains":"Unsafe"},
+  {"name":"array root rejected","input":{"base":[],"overlay":{}},"error":true,"errorContains":"JSON objects"}
+]

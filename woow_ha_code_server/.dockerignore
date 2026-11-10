@@ -8,3 +8,4 @@ connectors/python
 connectors/bootstrap
 *.local.env
 *.bak.*
+connectors/omnigent/tests/vendor-fixture

@@ -1,0 +1,7 @@
+/downloads/
+/evidence/
+/node_modules/
+/tooling/
+**/__pycache__/
+**/*.pyc
+*.local.env

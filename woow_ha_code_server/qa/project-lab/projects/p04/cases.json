@@ -1,0 +1,390 @@
+[
+  {
+    "name": "sum and grand total",
+    "input": {
+      "records": [
+        {
+          "region": "East",
+          "sales": 10
+        },
+        {
+          "region": "West",
+          "sales": 8
+        },
+        {
+          "region": "East",
+          "sales": 20
+        }
+      ],
+      "groupBy": [
+        "region"
+      ],
+      "valueField": "sales",
+      "operation": "sum"
+    },
+    "expected": {
+      "operation": "sum",
+      "groupBy": [
+        "region"
+      ],
+      "groups": [
+        {
+          "key": {
+            "region": "East"
+          },
+          "count": 2,
+          "value": 30
+        },
+        {
+          "key": {
+            "region": "West"
+          },
+          "count": 1,
+          "value": 8
+        }
+      ],
+      "totals": {
+        "count": 3,
+        "value": 38
+      }
+    }
+  },
+  {
+    "name": "mean grand total is weighted by record count",
+    "input": {
+      "records": [
+        {
+          "g": "A",
+          "n": 10
+        },
+        {
+          "g": "A",
+          "n": 20
+        },
+        {
+          "g": "B",
+          "n": 9
+        }
+      ],
+      "groupBy": [
+        "g"
+      ],
+      "valueField": "n",
+      "operation": "mean"
+    },
+    "expected": {
+      "operation": "mean",
+      "groupBy": [
+        "g"
+      ],
+      "groups": [
+        {
+          "key": {
+            "g": "A"
+          },
+          "count": 2,
+          "value": 15
+        },
+        {
+          "key": {
+            "g": "B"
+          },
+          "count": 1,
+          "value": 9
+        }
+      ],
+      "totals": {
+        "count": 3,
+        "value": 13
+      }
+    }
+  },
+  {
+    "name": "count preserves numeric string and null dimensions",
+    "input": {
+      "records": [
+        {
+          "g": 1
+        },
+        {
+          "g": "1"
+        },
+        {
+          "g": null
+        }
+      ],
+      "groupBy": [
+        "g"
+      ],
+      "operation": "count"
+    },
+    "expected": {
+      "operation": "count",
+      "groupBy": [
+        "g"
+      ],
+      "groups": [
+        {
+          "key": {
+            "g": 1
+          },
+          "count": 1,
+          "value": 1
+        },
+        {
+          "key": {
+            "g": "1"
+          },
+          "count": 1,
+          "value": 1
+        },
+        {
+          "key": {
+            "g": null
+          },
+          "count": 1,
+          "value": 1
+        }
+      ],
+      "totals": {
+        "count": 3,
+        "value": 3
+      }
+    }
+  },
+  {
+    "name": "minimum over negative values",
+    "input": {
+      "records": [
+        {
+          "g": "A",
+          "n": -2
+        },
+        {
+          "g": "A",
+          "n": -7
+        },
+        {
+          "g": "B",
+          "n": -3
+        }
+      ],
+      "groupBy": [
+        "g"
+      ],
+      "valueField": "n",
+      "operation": "min"
+    },
+    "expected": {
+      "operation": "min",
+      "groupBy": [
+        "g"
+      ],
+      "groups": [
+        {
+          "key": {
+            "g": "A"
+          },
+          "count": 2,
+          "value": -7
+        },
+        {
+          "key": {
+            "g": "B"
+          },
+          "count": 1,
+          "value": -3
+        }
+      ],
+      "totals": {
+        "count": 3,
+        "value": -7
+      }
+    }
+  },
+  {
+    "name": "maximum over negative values",
+    "input": {
+      "records": [
+        {
+          "g": "A",
+          "n": -2
+        },
+        {
+          "g": "A",
+          "n": -7
+        },
+        {
+          "g": "B",
+          "n": -3
+        }
+      ],
+      "groupBy": [
+        "g"
+      ],
+      "valueField": "n",
+      "operation": "max"
+    },
+    "expected": {
+      "operation": "max",
+      "groupBy": [
+        "g"
+      ],
+      "groups": [
+        {
+          "key": {
+            "g": "A"
+          },
+          "count": 2,
+          "value": -2
+        },
+        {
+          "key": {
+            "g": "B"
+          },
+          "count": 1,
+          "value": -3
+        }
+      ],
+      "totals": {
+        "count": 3,
+        "value": -2
+      }
+    }
+  },
+  {
+    "name": "empty mean is null",
+    "input": {
+      "records": [],
+      "groupBy": [
+        "g"
+      ],
+      "valueField": "n",
+      "operation": "mean"
+    },
+    "expected": {
+      "operation": "mean",
+      "groupBy": [
+        "g"
+      ],
+      "groups": [],
+      "totals": {
+        "count": 0,
+        "value": null
+      }
+    }
+  },
+  {
+    "name": "rounding normalizes negative zero for JSON output",
+    "input": {
+      "records": [
+        {
+          "g": "A",
+          "n": -1e-08
+        }
+      ],
+      "groupBy": [
+        "g"
+      ],
+      "valueField": "n"
+    },
+    "expected": {
+      "operation": "sum",
+      "groupBy": [
+        "g"
+      ],
+      "groups": [
+        {
+          "key": {
+            "g": "A"
+          },
+          "count": 1,
+          "value": 0
+        }
+      ],
+      "totals": {
+        "count": 1,
+        "value": 0
+      }
+    }
+  },
+  {
+    "name": "numeric strings rejected",
+    "input": {
+      "records": [
+        {
+          "g": "A",
+          "n": "10"
+        }
+      ],
+      "groupBy": [
+        "g"
+      ],
+      "valueField": "n"
+    },
+    "error": true,
+    "errorContains": "must be a finite number"
+  },
+  {
+    "name": "missing group field rejected",
+    "input": {
+      "records": [
+        {
+          "n": 1
+        }
+      ],
+      "groupBy": [
+        "g"
+      ],
+      "valueField": "n"
+    },
+    "error": true,
+    "errorContains": "missing group field g"
+  },
+  {
+    "name": "duplicate dimensions rejected",
+    "input": {
+      "records": [],
+      "groupBy": [
+        "g",
+        "g"
+      ],
+      "operation": "count"
+    },
+    "error": true,
+    "errorContains": "groupBy fields must be unique"
+  },
+  {
+    "name": "unsupported operation rejected",
+    "input": {
+      "records": [],
+      "groupBy": [
+        "g"
+      ],
+      "operation": "median"
+    },
+    "error": true,
+    "errorContains": "operation must be one of"
+  },
+  {
+    "name": "aggregate overflow rejected",
+    "input": {
+      "records": [
+        {
+          "g": "A",
+          "n": 1e+308
+        },
+        {
+          "g": "A",
+          "n": 1e+308
+        }
+      ],
+      "groupBy": [
+        "g"
+      ],
+      "valueField": "n"
+    },
+    "error": true,
+    "errorContains": "aggregate sum exceeds"
+  }
+]

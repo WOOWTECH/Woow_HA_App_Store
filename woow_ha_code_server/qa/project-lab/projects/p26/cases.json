@@ -1,0 +1,9 @@
+[
+  {"name":"diamond has parallel middle level","input":{"nodes":["deploy","test","build","lint"],"edges":[["build","test"],["build","lint"],["test","deploy"],["lint","deploy"]]},"expected":{"acyclic":true,"order":["build","lint","test","deploy"],"levels":[["build"],["lint","test"],["deploy"]],"blocked":[],"cycle":[]}},
+  {"name":"cycle blocks downstream but independent node runs","input":{"nodes":["a","b","c","d"],"edges":[["a","b"],["b","a"],["b","d"]]},"expected":{"acyclic":false,"order":["c"],"levels":[["c"]],"blocked":["a","b","d"],"cycle":["a","b","a"]}},
+  {"name":"empty graph","input":{"nodes":[],"edges":[]},"expected":{"acyclic":true,"order":[],"levels":[],"blocked":[],"cycle":[]}},
+  {"name":"self loop","input":{"nodes":["a"],"edges":[["a","a"]]},"expected":{"acyclic":false,"order":[],"levels":[],"blocked":["a"],"cycle":["a","a"]}},
+  {"name":"unknown endpoint rejected","input":{"nodes":["a"],"edges":[["a","b"]]},"error":true,"errorContains":"declared"},
+  {"name":"duplicate nodes rejected","input":{"nodes":["a","a"],"edges":[]},"error":true,"errorContains":"Duplicate node"},
+  {"name":"duplicate edges rejected","input":{"nodes":["a","b"],"edges":[["a","b"],["a","b"]]},"error":true,"errorContains":"Duplicate edge"}
+]

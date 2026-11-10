@@ -1,0 +1,244 @@
+[
+  {
+    "name": "ordered negation overrides directory exclusion",
+    "input": {
+      "paths": [
+        "src/app.js",
+        "build/app.js",
+        "build/keep.txt",
+        "docs/debug.log"
+      ],
+      "patterns": [
+        "build/",
+        "*.log",
+        "!build/keep.txt"
+      ]
+    },
+    "expected": {
+      "results": [
+        {
+          "path": "src/app.js",
+          "ignored": false,
+          "matchedPattern": null,
+          "matchedRule": null
+        },
+        {
+          "path": "build/app.js",
+          "ignored": true,
+          "matchedPattern": "build/",
+          "matchedRule": 1
+        },
+        {
+          "path": "build/keep.txt",
+          "ignored": false,
+          "matchedPattern": "!build/keep.txt",
+          "matchedRule": 3
+        },
+        {
+          "path": "docs/debug.log",
+          "ignored": true,
+          "matchedPattern": "*.log",
+          "matchedRule": 2
+        }
+      ],
+      "ignored": [
+        "build/app.js",
+        "docs/debug.log"
+      ],
+      "included": [
+        "src/app.js",
+        "build/keep.txt"
+      ]
+    }
+  },
+  {
+    "name": "anchored and globstar patterns",
+    "input": {
+      "paths": [
+        "root.log",
+        "sub/root.log",
+        "src/a.js",
+        "src/deep/b.js"
+      ],
+      "patterns": [
+        "/root.log",
+        "src/**/?.js"
+      ]
+    },
+    "expected": {
+      "results": [
+        {
+          "path": "root.log",
+          "ignored": true,
+          "matchedPattern": "/root.log",
+          "matchedRule": 1
+        },
+        {
+          "path": "sub/root.log",
+          "ignored": false,
+          "matchedPattern": null,
+          "matchedRule": null
+        },
+        {
+          "path": "src/a.js",
+          "ignored": true,
+          "matchedPattern": "src/**/?.js",
+          "matchedRule": 2
+        },
+        {
+          "path": "src/deep/b.js",
+          "ignored": true,
+          "matchedPattern": "src/**/?.js",
+          "matchedRule": 2
+        }
+      ],
+      "ignored": [
+        "root.log",
+        "src/a.js",
+        "src/deep/b.js"
+      ],
+      "included": [
+        "sub/root.log"
+      ]
+    }
+  },
+  {
+    "name": "directory rule matches nested directory but not same-named file",
+    "input": {
+      "paths": [
+        "cache",
+        "a/cache/item",
+        ".hidden"
+      ],
+      "patterns": [
+        "# demo",
+        "cache/",
+        "*"
+      ]
+    },
+    "expected": {
+      "results": [
+        {
+          "path": "cache",
+          "ignored": true,
+          "matchedPattern": "*",
+          "matchedRule": 3
+        },
+        {
+          "path": "a/cache/item",
+          "ignored": true,
+          "matchedPattern": "*",
+          "matchedRule": 3
+        },
+        {
+          "path": ".hidden",
+          "ignored": true,
+          "matchedPattern": "*",
+          "matchedRule": 3
+        }
+      ],
+      "ignored": [
+        "cache",
+        "a/cache/item",
+        ".hidden"
+      ],
+      "included": []
+    }
+  },
+  {
+    "name": "empty rule set includes paths",
+    "input": {
+      "paths": [
+        "a.txt"
+      ],
+      "patterns": []
+    },
+    "expected": {
+      "results": [
+        {
+          "path": "a.txt",
+          "ignored": false,
+          "matchedPattern": null,
+          "matchedRule": null
+        }
+      ],
+      "ignored": [],
+      "included": [
+        "a.txt"
+      ]
+    }
+  },
+  {
+    "name": "reject parent traversal",
+    "input": {
+      "paths": [
+        "../private"
+      ],
+      "patterns": [
+        "*"
+      ]
+    },
+    "error": true,
+    "errorContains": "traversal"
+  },
+  {
+    "name": "reject traversal in patterns",
+    "input": {
+      "paths": [
+        "a"
+      ],
+      "patterns": [
+        "../*"
+      ]
+    },
+    "error": true,
+    "errorContains": "traversal"
+  },
+  {
+    "name": "reject unsupported character class",
+    "input": {
+      "paths": [
+        "a"
+      ],
+      "patterns": [
+        "[ab]"
+      ]
+    },
+    "error": true,
+    "errorContains": "glob syntax"
+  },
+  {
+    "name": "directory rule excludes descendants only",
+    "input": {
+      "paths": [
+        "cache",
+        "a/cache/item"
+      ],
+      "patterns": [
+        "cache/"
+      ]
+    },
+    "expected": {
+      "results": [
+        {
+          "path": "cache",
+          "ignored": false,
+          "matchedPattern": null,
+          "matchedRule": null
+        },
+        {
+          "path": "a/cache/item",
+          "ignored": true,
+          "matchedPattern": "cache/",
+          "matchedRule": 1
+        }
+      ],
+      "ignored": [
+        "a/cache/item"
+      ],
+      "included": [
+        "cache"
+      ]
+    }
+  }
+]

@@ -18,6 +18,25 @@ function write(p, body) {
   fs.writeFileSync(tmp, body, {mode:0o600}); fs.renameSync(tmp,p);
 }
 const writeJSON = (p,d) => write(p,JSON.stringify(d,null,2)+'\n');
+function withClaudeConfigLock(config, run) {
+  // Claude's proper-lockfile writer uses mkdir(<config>.lock). Match that
+  // protocol, never steal a native lock, and keep this section synchronous and
+  // short: skill migration and rendering must finish before acquiring it.
+  // All shared writers take shared/.sync-lock BEFORE this native lock.
+  const lock = config+'.lock';
+  try { fs.mkdirSync(lock,{mode:0o700}); }
+  catch (error) {
+    if (error.code === 'EEXIST') throw new Error('Claude config is being updated (.claude.json.lock); retry after it finishes.');
+    throw error;
+  }
+  const owned = fs.lstatSync(lock);
+  try { return run(); }
+  finally {
+    let current;
+    try { current = fs.lstatSync(lock); } catch (error) { if (error.code !== 'ENOENT') throw error; }
+    if (current?.dev === owned.dev && current?.ino === owned.ino) fs.rmdirSync(lock);
+  }
+}
 
 // Refuse a collision before moving anything; retain the original tree for rollback.
 function mergePlan(source, target, copies=[]) {
@@ -120,7 +139,8 @@ export function sync(env=process.env) {
     const piPath=`${data}/mcp.json`, claudePath=`${claudeDir}/.claude.json`, codexPath=`${codexDir}/config.toml`;
     const pi=json(piPath), claude=json(claudePath);
     const codex=fs.existsSync(codexPath)?parse(fs.readFileSync(codexPath,'utf8')):{};
-    const previous=json(statePath).servers||[], registry=json(registryPath);
+    const managed=json(statePath);
+    const previous=managed.servers||[], registry=json(registryPath);
     const servers=registry.mcpServers??{};
     // Import local, explicitly configured servers once. Account-only Claude cloud
     // connectors and each client's OAuth tokens are deliberately outside this registry.
@@ -146,14 +166,22 @@ export function sync(env=process.env) {
     for(const source of bridges) link(source,skills);
     const replace=(old,fresh)=>({...Object.fromEntries(Object.entries(old||{}).filter(([k])=>!previous.includes(k)&&!Object.hasOwn(servers,k))),...fresh});
     pi.mcpServers=replace(pi.mcpServers,rendered.pi);
-    claude.mcpServers=replace(claude.mcpServers,rendered.claude);
     codex.mcp_servers=replace(codex.mcp_servers,rendered.codex);
+    withClaudeConfigLock(claudePath,()=>{
+      // A native writer may have saved preferences since import planning. Read
+      // its latest document under its lock; never publish the earlier snapshot.
+      // Changed MCP definitions need a new import/validation pass instead.
+      const current=json(claudePath);
+      if (!same(current.mcpServers,claude.mcpServers)) throw new Error('Claude MCP definitions changed during sync; retry to import the current configuration.');
+      current.mcpServers=replace(current.mcpServers,rendered.claude);
+      writeJSON(claudePath,current);
+    });
     writeJSON(registryPath,{...registry,mcpServers:servers});
-    writeJSON(piPath,pi); writeJSON(claudePath,claude);
+    writeJSON(piPath,pi);
     // Preserve the user's entire original TOML in a private rollback copy. Parsing
     // and serialization preserve values, including unrelated models and profiles.
     if(!same(fs.existsSync(codexPath)?parse(fs.readFileSync(codexPath,'utf8')):{},codex)) write(codexPath,stringify(codex));
-    writeJSON(statePath,{servers:Object.keys(servers).sort()});
+    writeJSON(statePath,{servers:Object.keys(servers).sort(), managedServers:[...new Set([...(managed.managedServers||previous),...Object.keys(servers)])].sort()});
     const digest=crypto.createHash('sha256').update(JSON.stringify(sort(servers))).digest('hex');
     console.log(JSON.stringify({sharedSkills:skills,sharedMcp:registryPath,servers:Object.keys(servers).sort(),configurationHash:digest}));
   } finally {fs.rmdirSync(lock);}

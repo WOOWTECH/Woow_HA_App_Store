@@ -1,0 +1,7 @@
+FROM docker.io/library/node:22-alpine
+WORKDIR /app
+COPY --chown=node:node . .
+USER node
+ENV PORT=8080 BIND=0.0.0.0
+EXPOSE 8080
+CMD ["node", "main.mjs"]

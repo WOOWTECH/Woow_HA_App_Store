@@ -1,0 +1,10 @@
+{
+  "name": "woow-50-p44",
+  "private": true,
+  "version": "1.1.0",
+  "type": "module",
+  "scripts": {
+    "start": "node main.mjs",
+    "test": "node test.mjs"
+  }
+}

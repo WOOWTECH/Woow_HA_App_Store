@@ -1,0 +1,315 @@
+[
+  {
+    "name": "pack cost beats lower headline quantity quote",
+    "input": {
+      "quantity": 10,
+      "deadlineDays": 7,
+      "quotes": [
+        {
+          "supplier": "Atlas",
+          "unitPriceCents": 100,
+          "leadDays": 3,
+          "shippingCents": 100,
+          "taxBasisPoints": 500
+        },
+        {
+          "supplier": "Beacon",
+          "unitPriceCents": 95,
+          "leadDays": 5,
+          "packSize": 6
+        }
+      ]
+    },
+    "expected": {
+      "quantity": 10,
+      "ranking": [
+        {
+          "supplier": "Beacon",
+          "orderQuantity": 12,
+          "excessQuantity": 2,
+          "subtotalCents": 1140,
+          "discountCents": 0,
+          "shippingCents": 0,
+          "taxCents": 0,
+          "totalCents": 1140,
+          "effectiveUnitCostCents": 114,
+          "leadDays": 5,
+          "eligible": true
+        },
+        {
+          "supplier": "Atlas",
+          "orderQuantity": 10,
+          "excessQuantity": 0,
+          "subtotalCents": 1000,
+          "discountCents": 0,
+          "shippingCents": 100,
+          "taxCents": 55,
+          "totalCents": 1155,
+          "effectiveUnitCostCents": 116,
+          "leadDays": 3,
+          "eligible": true
+        }
+      ],
+      "recommendedSupplier": "Beacon"
+    }
+  },
+  {
+    "name": "discount then shipping and tax with cent rounding",
+    "input": {
+      "quantity": 3,
+      "deadlineDays": 2,
+      "quotes": [
+        {
+          "supplier": "A",
+          "unitPriceCents": 101,
+          "leadDays": 2,
+          "discountBasisPoints": 1000,
+          "shippingCents": 5,
+          "taxBasisPoints": 750
+        }
+      ]
+    },
+    "expected": {
+      "quantity": 3,
+      "ranking": [
+        {
+          "supplier": "A",
+          "orderQuantity": 3,
+          "excessQuantity": 0,
+          "subtotalCents": 303,
+          "discountCents": 30,
+          "shippingCents": 5,
+          "taxCents": 21,
+          "totalCents": 299,
+          "effectiveUnitCostCents": 100,
+          "leadDays": 2,
+          "eligible": true
+        }
+      ],
+      "recommendedSupplier": "A"
+    }
+  },
+  {
+    "name": "cheap late delivery is not recommended",
+    "input": {
+      "quantity": 2,
+      "deadlineDays": 3,
+      "quotes": [
+        {
+          "supplier": "Late",
+          "unitPriceCents": 1,
+          "leadDays": 4
+        },
+        {
+          "supplier": "Fast",
+          "unitPriceCents": 10,
+          "leadDays": 3
+        }
+      ]
+    },
+    "expected": {
+      "quantity": 2,
+      "ranking": [
+        {
+          "supplier": "Fast",
+          "orderQuantity": 2,
+          "excessQuantity": 0,
+          "subtotalCents": 20,
+          "discountCents": 0,
+          "shippingCents": 0,
+          "taxCents": 0,
+          "totalCents": 20,
+          "effectiveUnitCostCents": 10,
+          "leadDays": 3,
+          "eligible": true
+        },
+        {
+          "supplier": "Late",
+          "orderQuantity": 2,
+          "excessQuantity": 0,
+          "subtotalCents": 2,
+          "discountCents": 0,
+          "shippingCents": 0,
+          "taxCents": 0,
+          "totalCents": 2,
+          "effectiveUnitCostCents": 1,
+          "leadDays": 4,
+          "eligible": false
+        }
+      ],
+      "recommendedSupplier": "Fast"
+    }
+  },
+  {
+    "name": "all late means no recommendation",
+    "input": {
+      "quantity": 1,
+      "deadlineDays": 0,
+      "quotes": [
+        {
+          "supplier": "A",
+          "unitPriceCents": 100,
+          "leadDays": 1
+        }
+      ]
+    },
+    "expected": {
+      "quantity": 1,
+      "ranking": [
+        {
+          "supplier": "A",
+          "orderQuantity": 1,
+          "excessQuantity": 0,
+          "subtotalCents": 100,
+          "discountCents": 0,
+          "shippingCents": 0,
+          "taxCents": 0,
+          "totalCents": 100,
+          "effectiveUnitCostCents": 100,
+          "leadDays": 1,
+          "eligible": false
+        }
+      ],
+      "recommendedSupplier": null
+    }
+  },
+  {
+    "name": "minimum quantity and pack rounding both apply",
+    "input": {
+      "quantity": 3,
+      "deadlineDays": 5,
+      "quotes": [
+        {
+          "supplier": "A",
+          "unitPriceCents": 20,
+          "leadDays": 1,
+          "minimumQuantity": 10,
+          "packSize": 6
+        }
+      ]
+    },
+    "expected": {
+      "quantity": 3,
+      "ranking": [
+        {
+          "supplier": "A",
+          "orderQuantity": 12,
+          "excessQuantity": 9,
+          "subtotalCents": 240,
+          "discountCents": 0,
+          "shippingCents": 0,
+          "taxCents": 0,
+          "totalCents": 240,
+          "effectiveUnitCostCents": 80,
+          "leadDays": 1,
+          "eligible": true
+        }
+      ],
+      "recommendedSupplier": "A"
+    }
+  },
+  {
+    "name": "half cent discount rounds up exactly",
+    "input": {
+      "quantity": 1,
+      "deadlineDays": 0,
+      "quotes": [
+        {
+          "supplier": "Free",
+          "unitPriceCents": 1,
+          "leadDays": 0,
+          "discountBasisPoints": 5000
+        }
+      ]
+    },
+    "expected": {
+      "quantity": 1,
+      "ranking": [
+        {
+          "supplier": "Free",
+          "orderQuantity": 1,
+          "excessQuantity": 0,
+          "subtotalCents": 1,
+          "discountCents": 1,
+          "shippingCents": 0,
+          "taxCents": 0,
+          "totalCents": 0,
+          "effectiveUnitCostCents": 0,
+          "leadDays": 0,
+          "eligible": true
+        }
+      ],
+      "recommendedSupplier": "Free"
+    }
+  },
+  {
+    "name": "zero requested quantity rejected",
+    "input": {
+      "quantity": 0,
+      "deadlineDays": 1,
+      "quotes": [
+        {
+          "supplier": "A",
+          "unitPriceCents": 10,
+          "leadDays": 1
+        }
+      ]
+    },
+    "error": true,
+    "errorIncludes": "quantity"
+  },
+  {
+    "name": "excess discount rejected",
+    "input": {
+      "quantity": 1,
+      "deadlineDays": 1,
+      "quotes": [
+        {
+          "supplier": "A",
+          "unitPriceCents": 10,
+          "leadDays": 1,
+          "discountBasisPoints": 10001
+        }
+      ]
+    },
+    "error": true,
+    "errorIncludes": "discountBasisPoints"
+  },
+  {
+    "name": "duplicate supplier rejected",
+    "input": {
+      "quantity": 1,
+      "deadlineDays": 1,
+      "quotes": [
+        {
+          "supplier": "A",
+          "unitPriceCents": 10,
+          "leadDays": 1
+        },
+        {
+          "supplier": "A",
+          "unitPriceCents": 10,
+          "leadDays": 1
+        }
+      ]
+    },
+    "error": true,
+    "errorIncludes": "duplicate"
+  },
+  {
+    "name": "fractional price rejected",
+    "input": {
+      "quantity": 1,
+      "deadlineDays": 1,
+      "quotes": [
+        {
+          "supplier": "A",
+          "unitPriceCents": 0.5,
+          "leadDays": 1
+        }
+      ]
+    },
+    "error": true,
+    "errorIncludes": "unitPriceCents"
+  }
+]

@@ -1,0 +1,212 @@
+[
+  {
+    "name": "mile to metres",
+    "input": {
+      "value": 1,
+      "from": "mi",
+      "to": "m"
+    },
+    "expected": {
+      "dimension": "length",
+      "value": 1,
+      "from": "mi",
+      "to": "m",
+      "result": 1609.344
+    }
+  },
+  {
+    "name": "freezing Fahrenheit to Celsius",
+    "input": {
+      "value": 32,
+      "from": "F",
+      "to": "C"
+    },
+    "expected": {
+      "dimension": "temperature",
+      "value": 32,
+      "from": "F",
+      "to": "C",
+      "result": 0
+    }
+  },
+  {
+    "name": "boiling Celsius to Fahrenheit",
+    "input": {
+      "value": 100,
+      "from": "C",
+      "to": "F"
+    },
+    "expected": {
+      "dimension": "temperature",
+      "value": 100,
+      "from": "C",
+      "to": "F",
+      "result": 212
+    }
+  },
+  {
+    "name": "speed conversion",
+    "input": {
+      "value": 60,
+      "from": "mph",
+      "to": "km/h"
+    },
+    "expected": {
+      "dimension": "speed",
+      "value": 60,
+      "from": "mph",
+      "to": "km/h",
+      "result": 96.56064
+    }
+  },
+  {
+    "name": "absolute zero boundary",
+    "input": {
+      "value": -459.67,
+      "from": "F",
+      "to": "K"
+    },
+    "expected": {
+      "dimension": "temperature",
+      "value": -459.67,
+      "from": "F",
+      "to": "K",
+      "result": 0
+    }
+  },
+  {
+    "name": "litres to cubic metres",
+    "input": {
+      "value": 1500,
+      "from": "L",
+      "to": "m3"
+    },
+    "expected": {
+      "dimension": "volume",
+      "value": 1500,
+      "from": "L",
+      "to": "m3",
+      "result": 1.5
+    }
+  },
+  {
+    "name": "pounds to kilograms",
+    "input": {
+      "value": 2,
+      "from": "lb",
+      "to": "kg"
+    },
+    "expected": {
+      "dimension": "mass",
+      "value": 2,
+      "from": "lb",
+      "to": "kg",
+      "result": 0.90718474
+    }
+  },
+  {
+    "name": "hours to minutes",
+    "input": {
+      "value": 1.5,
+      "from": "h",
+      "to": "min"
+    },
+    "expected": {
+      "dimension": "time",
+      "value": 1.5,
+      "from": "h",
+      "to": "min",
+      "result": 90
+    }
+  },
+  {
+    "name": "dimension mismatch",
+    "input": {
+      "value": 1,
+      "from": "m",
+      "to": "kg"
+    },
+    "error": true,
+    "errorMessage": "incompatible dimensions"
+  },
+  {
+    "name": "below absolute zero",
+    "input": {
+      "value": -1,
+      "from": "K",
+      "to": "C"
+    },
+    "error": true,
+    "errorMessage": "absolute zero"
+  },
+  {
+    "name": "numeric string",
+    "input": {
+      "value": "10",
+      "from": "m",
+      "to": "cm"
+    },
+    "error": true,
+    "errorMessage": "finite number"
+  },
+  {
+    "name": "prototype key is not a unit",
+    "input": {
+      "value": 1,
+      "from": "toString",
+      "to": "m"
+    },
+    "error": true,
+    "errorMessage": "supported unit"
+  },
+  {
+    "name": "unbounded value",
+    "input": {
+      "value": 1000000000001,
+      "from": "m",
+      "to": "cm"
+    },
+    "error": true,
+    "errorMessage": "1e12"
+  },
+  {
+    "name": "one kilowatt-hour in joules",
+    "input": {
+      "value": 1,
+      "from": "kWh",
+      "to": "J"
+    },
+    "expected": {
+      "dimension": "energy",
+      "value": 1,
+      "from": "kWh",
+      "to": "J",
+      "result": 3600000
+    }
+  },
+  {
+    "name": "7200 joules in watt-hours",
+    "input": {
+      "value": 7200,
+      "from": "J",
+      "to": "Wh"
+    },
+    "expected": {
+      "dimension": "energy",
+      "value": 7200,
+      "from": "J",
+      "to": "Wh",
+      "result": 2
+    }
+  },
+  {
+    "name": "energy cannot convert to length",
+    "input": {
+      "value": 1,
+      "from": "J",
+      "to": "m"
+    },
+    "error": true,
+    "errorMessage": "incompatible dimensions"
+  }
+]

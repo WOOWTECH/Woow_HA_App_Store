@@ -1,7 +1,7 @@
 import * as runtime from './src/runtime.mjs';
 import { RuntimeError } from './src/state.mjs';
 
-export const allowedActions = Object.freeze(['status', 'configure', 'start', 'stop', 'restore', 'models', 'verify', 'pair', 'chat', 'continue', 'switchModel', 'archive', 'diagnostics']);
+export const allowedActions = Object.freeze(['status', 'configure', 'start', 'stop', 'restore', 'models', 'verify', 'pair', 'chat', 'continue', 'switchModel', 'archive', 'diagnostics', 'refreshMcp']);
 
 export function normalizeRequest(request) {
   const result = { ...request };
@@ -39,6 +39,7 @@ export async function handle(request) {
     if (request.timeoutMs !== undefined && (!Number.isInteger(request.timeoutMs) || request.timeoutMs < 1000 || request.timeoutMs > 600000)) throw new RuntimeError('INVALID_TIMEOUT');
     let result;
     switch (request.action) {
+      case 'refreshMcp': result = await runtime.refreshMcp(request); break;
       case 'status': result = await runtime.status(); break;
       case 'diagnostics': result = await runtime.diagnose(); break;
       case 'configure': result = await runtime.configure(request.settings ? { ...request.settings } : request); break;

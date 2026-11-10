@@ -1,0 +1,14 @@
+[
+  {"name":"stable bucket excludes lower rollout","input":{"flag":{"key":"a","rolloutPercent":50},"subject":{"id":"b"}},"expected":{"flag":"a","subject":"b","enabled":false,"reason":"rollout","rule":null,"bucket":5113}},
+  {"name":"strict threshold boundary","input":{"flag":{"key":"a","rolloutPercent":51.13},"subject":{"id":"b"}},"expected":{"flag":"a","subject":"b","enabled":false,"reason":"rollout","rule":null,"bucket":5113}},
+  {"name":"one basis point higher includes subject","input":{"flag":{"key":"a","rolloutPercent":51.14},"subject":{"id":"b"}},"expected":{"flag":"a","subject":"b","enabled":true,"reason":"rollout","rule":null,"bucket":5113}},
+  {"name":"deny wins over allow","input":{"flag":{"key":"a","rolloutPercent":100,"allow":["b"],"deny":["b"]},"subject":{"id":"b"}},"expected":{"flag":"a","subject":"b","enabled":false,"reason":"deny","rule":null,"bucket":5113}},
+  {"name":"global disabled wins over allow","input":{"flag":{"key":"a","enabled":false,"allow":["b"]},"subject":{"id":"b"}},"expected":{"flag":"a","subject":"b","enabled":false,"reason":"disabled","rule":null,"bucket":5113}},
+  {"name":"allow overrides zero rollout","input":{"flag":{"key":"a","rolloutPercent":0,"allow":["b"]},"subject":{"id":"b"}},"expected":{"flag":"a","subject":"b","enabled":true,"reason":"allow","rule":null,"bucket":5113}},
+  {"name":"first matching strict attribute rule wins","input":{"flag":{"key":"a","rules":[{"id":"wrong-type","attribute":"tier","equals":"2","enabled":false},{"id":"beta","attribute":"tier","equals":2,"enabled":true},{"id":"later","attribute":"tier","equals":2,"enabled":false}]},"subject":{"id":"b","attributes":{"tier":2}}},"expected":{"flag":"a","subject":"b","enabled":true,"reason":"rule","rule":"beta","bucket":5113}},
+  {"name":"second hand-calculated bucket","input":{"flag":{"key":"demo","rolloutPercent":40},"subject":{"id":"u1"}},"expected":{"flag":"demo","subject":"u1","enabled":true,"reason":"rollout","rule":null,"bucket":2355}},
+  {"name":"percentage out of range rejected","input":{"flag":{"key":"a","rolloutPercent":101},"subject":{"id":"b"}},"error":true,"errorPattern":"rolloutPercent"},
+  {"name":"excess precision rejected","input":{"flag":{"key":"a","rolloutPercent":1.001},"subject":{"id":"b"}},"error":true,"errorPattern":"decimal"},
+  {"name":"ambiguous separator rejected","input":{"flag":{"key":"a:b"},"subject":{"id":"c"}},"error":true,"errorPattern":"identifier"},
+  {"name":"nested attribute rejected","input":{"flag":{"key":"a"},"subject":{"id":"b","attributes":{"tier":{}}}},"error":true,"errorPattern":"scalar"}
+]

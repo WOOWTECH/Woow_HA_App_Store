@@ -1,0 +1,1950 @@
+[
+  {
+    "id": "p01",
+    "title": "CSV Profile and Anomaly Report",
+    "category": "Data quality",
+    "version": "1.1.0",
+    "description": "Parse quoted CSV, profile columns, detect blanks, mixed numeric values, duplicate rows and numeric outliers.",
+    "example": {
+      "csv": "name,amount\nAva,10\nBo,20\nAva,10\nCy,",
+      "zScoreThreshold": 3,
+      "delimiter": ","
+    },
+    "fields": [
+      {
+        "key": "csv",
+        "label": "CSV including headers",
+        "type": "textarea"
+      },
+      {
+        "key": "delimiter",
+        "label": "Delimiter (default comma)",
+        "type": "text"
+      },
+      {
+        "key": "zScoreThreshold",
+        "label": "Outlier z-score threshold",
+        "type": "number"
+      }
+    ]
+  },
+  {
+    "id": "p02",
+    "title": "JSON Structural Diff",
+    "category": "Data comparison",
+    "version": "1.1.0",
+    "description": "Compare nested JSON using escaped JSON Pointer paths and deterministic add, remove and replace operations.",
+    "example": {
+      "before": {
+        "count": 1,
+        "tags": [
+          "old"
+        ]
+      },
+      "after": {
+        "count": 2,
+        "tags": [
+          "new"
+        ],
+        "active": true
+      }
+    },
+    "fields": [
+      {
+        "key": "before",
+        "label": "Before JSON",
+        "type": "json"
+      },
+      {
+        "key": "after",
+        "label": "After JSON",
+        "type": "json"
+      }
+    ]
+  },
+  {
+    "id": "p03",
+    "title": "Record Deduplication",
+    "category": "Data cleaning",
+    "version": "1.1.0",
+    "description": "Group records by normalized composite keys; retain first or last records, or fill missing values from duplicates.",
+    "example": {
+      "records": [
+        {
+          "email": " Ava@example.test ",
+          "name": "Ava"
+        },
+        {
+          "email": "ava@example.test",
+          "phone": "1234"
+        },
+        {
+          "email": "bo@example.test",
+          "name": "Bo"
+        }
+      ],
+      "keys": [
+        "email"
+      ],
+      "mode": "merge"
+    },
+    "fields": [
+      {
+        "key": "records",
+        "label": "Records",
+        "type": "json"
+      },
+      {
+        "key": "keys",
+        "label": "Key fields",
+        "type": "json"
+      },
+      {
+        "key": "mode",
+        "label": "Retention mode",
+        "type": "select",
+        "options": [
+          "first",
+          "last",
+          "merge"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "p04",
+    "title": "Pivot Table Aggregation",
+    "category": "Data analysis",
+    "version": "1.1.0",
+    "description": "Group records by one or more dimensions and calculate counts, sums, means, minima or maxima with grand totals.",
+    "example": {
+      "records": [
+        {
+          "region": "East",
+          "sales": 10
+        },
+        {
+          "region": "West",
+          "sales": 8
+        },
+        {
+          "region": "East",
+          "sales": 20
+        }
+      ],
+      "groupBy": [
+        "region"
+      ],
+      "valueField": "sales",
+      "operation": "sum"
+    },
+    "fields": [
+      {
+        "key": "records",
+        "label": "Records",
+        "type": "json"
+      },
+      {
+        "key": "groupBy",
+        "label": "Grouping fields",
+        "type": "json"
+      },
+      {
+        "key": "valueField",
+        "label": "Numeric field",
+        "type": "text"
+      },
+      {
+        "key": "operation",
+        "label": "Aggregation",
+        "type": "select",
+        "options": [
+          "sum",
+          "mean",
+          "min",
+          "max",
+          "count"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "p05",
+    "title": "Deterministic Data Masking",
+    "category": "Data privacy demos",
+    "version": "1.1.0",
+    "description": "Apply repeatable SHA-256 tokens, partial redaction, or email display masks to selected synthetic record fields.",
+    "example": {
+      "records": [
+        {
+          "name": "Ava",
+          "email": "ava@example.test",
+          "phone": "5551234"
+        },
+        {
+          "name": "Ava",
+          "email": "ava@example.test",
+          "phone": "5559876"
+        }
+      ],
+      "rules": [
+        {
+          "field": "name",
+          "mode": "token"
+        },
+        {
+          "field": "email",
+          "mode": "email"
+        },
+        {
+          "field": "phone",
+          "mode": "redact",
+          "keepLast": 2
+        }
+      ]
+    },
+    "fields": [
+      {
+        "key": "records",
+        "label": "Synthetic records",
+        "type": "json"
+      },
+      {
+        "key": "rules",
+        "label": "Masking rules",
+        "type": "json"
+      },
+      {
+        "key": "salt",
+        "label": "Optional deterministic salt",
+        "type": "text"
+      }
+    ]
+  },
+  {
+    "id": "p06",
+    "title": "Log Severity and Timeline Analyzer",
+    "category": "Observability",
+    "version": "1.1.0",
+    "description": "Parse UTC log lines, normalize severity aliases, build time buckets, rank messages and report malformed lines.",
+    "example": {
+      "log": "2026-01-01T10:00:00Z INFO Started\n2026-01-01T10:05:00Z ERROR Timeout\n2026-01-01T11:00:00Z WARN Retrying",
+      "bucketMinutes": 60
+    },
+    "fields": [
+      {
+        "key": "log",
+        "label": "UTC timestamp LEVEL message, one per line",
+        "type": "textarea"
+      },
+      {
+        "key": "bucketMinutes",
+        "label": "Bucket size in minutes",
+        "type": "number"
+      }
+    ]
+  },
+  {
+    "id": "p07",
+    "title": "Time-Series Moving Averages and Anomalies",
+    "category": "Time series",
+    "version": "1.1.0",
+    "description": "Compute trailing averages and detect deviations against the preceding full window, including constant-baseline changes.",
+    "example": {
+      "points": [
+        {
+          "time": "2026-01-01T00:00:00Z",
+          "value": 10
+        },
+        {
+          "time": "2026-01-01T01:00:00Z",
+          "value": 10
+        },
+        {
+          "time": "2026-01-01T02:00:00Z",
+          "value": 10
+        },
+        {
+          "time": "2026-01-01T03:00:00Z",
+          "value": 30
+        }
+      ],
+      "window": 3,
+      "threshold": 3
+    },
+    "fields": [
+      {
+        "key": "points",
+        "label": "Chronological UTC points",
+        "type": "json"
+      },
+      {
+        "key": "window",
+        "label": "Window size",
+        "type": "number"
+      },
+      {
+        "key": "threshold",
+        "label": "Anomaly z-score threshold",
+        "type": "number"
+      }
+    ]
+  },
+  {
+    "id": "p08",
+    "title": "Record Schema Validator",
+    "category": "Data quality",
+    "version": "1.1.0",
+    "description": "Validate required fields, primitive types, ranges, lengths, enums and email/date formats with per-record diagnostics.",
+    "example": {
+      "schema": {
+        "name": {
+          "type": "string",
+          "required": true,
+          "minLength": 1
+        },
+        "age": {
+          "type": "integer",
+          "min": 0,
+          "max": 120
+        }
+      },
+      "records": [
+        {
+          "name": "Ava",
+          "age": 30
+        },
+        {
+          "name": "",
+          "age": -2
+        }
+      ],
+      "allowUnknown": false
+    },
+    "fields": [
+      {
+        "key": "schema",
+        "label": "Field rules",
+        "type": "json"
+      },
+      {
+        "key": "records",
+        "label": "Records",
+        "type": "json"
+      }
+    ]
+  },
+  {
+    "id": "p09",
+    "title": "Text Keyword Frequencies",
+    "category": "Text analysis",
+    "version": "1.1.0",
+    "description": "Count Unicode words or contiguous phrases with stop words, minimum lengths, deterministic rankings and percentages.",
+    "example": {
+      "text": "Blue sky, blue sea. Sky!",
+      "stopWords": [],
+      "ngramSize": 1,
+      "top": 10
+    },
+    "fields": [
+      {
+        "key": "text",
+        "label": "Text to analyze",
+        "type": "textarea"
+      },
+      {
+        "key": "stopWords",
+        "label": "Stop words",
+        "type": "json"
+      },
+      {
+        "key": "ngramSize",
+        "label": "Words per phrase (1–3)",
+        "type": "number"
+      },
+      {
+        "key": "top",
+        "label": "Maximum results",
+        "type": "number"
+      }
+    ]
+  },
+  {
+    "id": "p10",
+    "title": "Data Reconciliation by Key",
+    "category": "Data comparison",
+    "version": "1.1.0",
+    "description": "Reconcile two record sets by unique composite keys, with explicit missing values and optional numeric tolerance.",
+    "example": {
+      "left": [
+        {
+          "id": "A",
+          "quantity": 5
+        },
+        {
+          "id": "B",
+          "quantity": 2
+        }
+      ],
+      "right": [
+        {
+          "id": "A",
+          "quantity": 6
+        },
+        {
+          "id": "C",
+          "quantity": 9
+        }
+      ],
+      "keys": [
+        "id"
+      ],
+      "numericTolerance": 0
+    },
+    "fields": [
+      {
+        "key": "left",
+        "label": "Left records",
+        "type": "json"
+      },
+      {
+        "key": "right",
+        "label": "Right records",
+        "type": "json"
+      },
+      {
+        "key": "keys",
+        "label": "Key fields",
+        "type": "json"
+      },
+      {
+        "key": "numericTolerance",
+        "label": "Absolute numeric tolerance",
+        "type": "number"
+      }
+    ]
+  },
+  {
+    "id": "p11",
+    "title": "Inventory Reorder Planner",
+    "category": "Inventory",
+    "version": "1.1.0",
+    "description": "Calculate reorder triggers, review-period targets, and pack-rounded purchase quantities.",
+    "fields": [
+      {
+        "key": "reviewDays",
+        "label": "Review interval (days)",
+        "type": "number"
+      },
+      {
+        "key": "items",
+        "label": "Inventory items",
+        "type": "json"
+      }
+    ],
+    "example": {
+      "reviewDays": 7,
+      "items": [
+        {
+          "sku": "FILTER",
+          "onHand": 10,
+          "incoming": 5,
+          "dailyUsage": 5,
+          "leadDays": 3,
+          "safetyStock": 5,
+          "packSize": 12,
+          "minimumOrder": 24
+        },
+        {
+          "sku": "GLOVE",
+          "onHand": 80,
+          "dailyUsage": 4,
+          "leadDays": 5
+        }
+      ]
+    }
+  },
+  {
+    "id": "p12",
+    "title": "Kanban Transition Validator",
+    "category": "Workflow",
+    "version": "1.1.0",
+    "description": "Apply atomic task transitions while enforcing workflow edges and completed prerequisites.",
+    "fields": [
+      {
+        "key": "tasks",
+        "label": "Tasks",
+        "type": "json"
+      },
+      {
+        "key": "transitions",
+        "label": "Requested transitions",
+        "type": "json"
+      }
+    ],
+    "example": {
+      "tasks": [
+        {
+          "id": "DESIGN",
+          "status": "done"
+        },
+        {
+          "id": "BUILD",
+          "status": "ready",
+          "dependencies": [
+            "DESIGN"
+          ]
+        }
+      ],
+      "transitions": [
+        {
+          "id": "BUILD",
+          "to": "in_progress"
+        },
+        {
+          "id": "BUILD",
+          "to": "review"
+        },
+        {
+          "id": "BUILD",
+          "to": "done"
+        }
+      ]
+    }
+  },
+  {
+    "id": "p13",
+    "title": "Meeting Slot Overlap Finder",
+    "category": "Scheduling",
+    "version": "1.1.0",
+    "description": "Intersect everyone’s availability and find duration-fitting meeting starts on a shared time grid.",
+    "fields": [
+      {
+        "key": "durationMinutes",
+        "label": "Meeting duration (minutes)",
+        "type": "number"
+      },
+      {
+        "key": "stepMinutes",
+        "label": "Start grid (minutes)",
+        "type": "number"
+      },
+      {
+        "key": "participants",
+        "label": "Participant availability",
+        "type": "json"
+      }
+    ],
+    "example": {
+      "durationMinutes": 30,
+      "stepMinutes": 30,
+      "participants": [
+        {
+          "name": "Ada",
+          "availability": [
+            {
+              "start": "09:00",
+              "end": "12:00"
+            }
+          ]
+        },
+        {
+          "name": "Ben",
+          "availability": [
+            {
+              "start": "10:00",
+              "end": "11:00"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "id": "p14",
+    "title": "Expense Splitting Ledger",
+    "category": "Finance",
+    "version": "1.1.0",
+    "description": "Split integer-cent expenses by weights and reconcile exact member balances into suggested transfers.",
+    "fields": [
+      {
+        "key": "members",
+        "label": "Members",
+        "type": "json"
+      },
+      {
+        "key": "expenses",
+        "label": "Expenses (integer cents)",
+        "type": "json"
+      }
+    ],
+    "example": {
+      "members": [
+        "Ada",
+        "Ben",
+        "Chen"
+      ],
+      "expenses": [
+        {
+          "id": "Dinner",
+          "paidBy": "Ada",
+          "amountCents": 3000
+        },
+        {
+          "id": "Taxi",
+          "paidBy": "Ben",
+          "amountCents": 1500,
+          "split": [
+            {
+              "member": "Ada",
+              "weight": 1
+            },
+            {
+              "member": "Ben",
+              "weight": 1
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "id": "p15",
+    "title": "Service Ticket Priority Triage",
+    "category": "Service Operations",
+    "version": "1.1.0",
+    "description": "Explain ticket priority scores, apply response-time targets, and order the support queue.",
+    "fields": [
+      {
+        "key": "tickets",
+        "label": "Service tickets",
+        "type": "json"
+      }
+    ],
+    "example": {
+      "tickets": [
+        {
+          "id": "T-101",
+          "impact": "one",
+          "urgency": "low",
+          "ageHours": 0
+        },
+        {
+          "id": "T-102",
+          "impact": "many",
+          "urgency": "high",
+          "ageHours": 5
+        },
+        {
+          "id": "T-103",
+          "impact": "all",
+          "urgency": "high",
+          "ageHours": 0
+        }
+      ]
+    }
+  },
+  {
+    "id": "p16",
+    "title": "Reservation Collision Detector",
+    "category": "Reservations",
+    "version": "1.1.0",
+    "description": "Detect shared-resource booking overlaps and post-booking turnaround conflicts in UTC.",
+    "fields": [
+      {
+        "key": "turnaroundMinutes",
+        "label": "Turnaround after each booking (minutes)",
+        "type": "number"
+      },
+      {
+        "key": "reservations",
+        "label": "Reservations",
+        "type": "json"
+      }
+    ],
+    "example": {
+      "turnaroundMinutes": 15,
+      "reservations": [
+        {
+          "id": "R1",
+          "resource": "Room A",
+          "start": "2026-11-10T09:00Z",
+          "end": "2026-11-10T10:00Z"
+        },
+        {
+          "id": "R2",
+          "resource": "Room A",
+          "start": "2026-11-10T10:00Z",
+          "end": "2026-11-10T11:00Z"
+        }
+      ]
+    }
+  },
+  {
+    "id": "p17",
+    "title": "Procurement Quote Comparison",
+    "category": "Procurement",
+    "version": "1.1.0",
+    "description": "Compare delivered costs with order minimums, pack sizes, discounts, tax, and delivery eligibility.",
+    "fields": [
+      {
+        "key": "quantity",
+        "label": "Required quantity",
+        "type": "number"
+      },
+      {
+        "key": "deadlineDays",
+        "label": "Delivery deadline (days)",
+        "type": "number"
+      },
+      {
+        "key": "quotes",
+        "label": "Supplier quotes",
+        "type": "json"
+      }
+    ],
+    "example": {
+      "quantity": 10,
+      "deadlineDays": 7,
+      "quotes": [
+        {
+          "supplier": "Atlas",
+          "unitPriceCents": 100,
+          "shippingCents": 100,
+          "taxBasisPoints": 500,
+          "leadDays": 3
+        },
+        {
+          "supplier": "Beacon",
+          "unitPriceCents": 95,
+          "packSize": 6,
+          "leadDays": 5
+        }
+      ]
+    }
+  },
+  {
+    "id": "p18",
+    "title": "Fulfillment Allocation",
+    "category": "Fulfillment",
+    "version": "1.1.0",
+    "description": "Allocate scarce stock by order priority with atomic whole-order or partial-fulfillment policies.",
+    "fields": [
+      {
+        "key": "stock",
+        "label": "Available stock",
+        "type": "json"
+      },
+      {
+        "key": "orders",
+        "label": "Orders",
+        "type": "json"
+      }
+    ],
+    "example": {
+      "stock": [
+        {
+          "sku": "A",
+          "quantity": 5
+        },
+        {
+          "sku": "B",
+          "quantity": 2
+        }
+      ],
+      "orders": [
+        {
+          "id": "Standard",
+          "priority": 2,
+          "lines": [
+            {
+              "sku": "A",
+              "quantity": 4
+            }
+          ]
+        },
+        {
+          "id": "Urgent",
+          "priority": 1,
+          "lines": [
+            {
+              "sku": "A",
+              "quantity": 3
+            },
+            {
+              "sku": "B",
+              "quantity": 2
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "id": "p19",
+    "title": "Staff Coverage Matrix",
+    "category": "Workforce",
+    "version": "1.1.0",
+    "description": "Compare role demand with staffed intervals and quantify gaps in staff-minutes.",
+    "fields": [
+      {
+        "key": "requirements",
+        "label": "Role coverage requirements",
+        "type": "json"
+      },
+      {
+        "key": "shifts",
+        "label": "Staff shifts",
+        "type": "json"
+      }
+    ],
+    "example": {
+      "requirements": [
+        {
+          "role": "Support",
+          "start": "09:00",
+          "end": "11:00",
+          "minimumStaff": 2
+        }
+      ],
+      "shifts": [
+        {
+          "staff": "Ada",
+          "role": "Support",
+          "start": "09:00",
+          "end": "11:00"
+        },
+        {
+          "staff": "Ben",
+          "role": "Support",
+          "start": "10:00",
+          "end": "11:00"
+        }
+      ]
+    }
+  },
+  {
+    "id": "p20",
+    "title": "Milestone Dependency Scheduling",
+    "category": "Project Planning",
+    "version": "1.1.0",
+    "description": "Schedule a dependency graph on business days and calculate critical milestones and total slack.",
+    "fields": [
+      {
+        "key": "startDate",
+        "label": "Earliest project start (YYYY-MM-DD)",
+        "type": "text"
+      },
+      {
+        "key": "holidays",
+        "label": "Excluded holiday dates",
+        "type": "json"
+      },
+      {
+        "key": "milestones",
+        "label": "Milestones and dependencies",
+        "type": "json"
+      }
+    ],
+    "example": {
+      "startDate": "2026-11-09",
+      "holidays": [],
+      "milestones": [
+        {
+          "id": "Design",
+          "durationDays": 2
+        },
+        {
+          "id": "Build",
+          "durationDays": 3,
+          "dependsOn": [
+            "Design"
+          ]
+        },
+        {
+          "id": "Docs",
+          "durationDays": 1,
+          "dependsOn": [
+            "Design"
+          ]
+        },
+        {
+          "id": "Launch",
+          "durationDays": 1,
+          "dependsOn": [
+            "Build",
+            "Docs"
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "id": "p21",
+    "title": "HTTP Error Budget Analyzer",
+    "category": "Reliability",
+    "version": "1.1.0",
+    "description": "Aggregate supplied HTTP observations and measure consumption of a request-based error budget.",
+    "example": {
+      "observations": [
+        {
+          "status": 200,
+          "count": 995
+        },
+        {
+          "status": 500,
+          "count": 5
+        }
+      ],
+      "sloPercent": 99
+    },
+    "fields": [
+      {
+        "key": "observations",
+        "label": "HTTP observations",
+        "type": "json"
+      },
+      {
+        "key": "sloPercent",
+        "label": "Success SLO (%)",
+        "type": "number"
+      }
+    ]
+  },
+  {
+    "id": "p22",
+    "title": "Semver Compatibility Comparator",
+    "category": "Developer tools",
+    "version": "1.1.0",
+    "description": "Compare strict semantic versions and evaluate explicit comparator, caret, and tilde ranges.",
+    "example": {
+      "current": "1.4.0",
+      "candidate": "1.5.2",
+      "range": "^1.4.0"
+    },
+    "fields": [
+      {
+        "key": "current",
+        "label": "Current version",
+        "type": "text"
+      },
+      {
+        "key": "candidate",
+        "label": "Candidate version",
+        "type": "text"
+      },
+      {
+        "key": "range",
+        "label": "Allowed range",
+        "type": "text"
+      }
+    ]
+  },
+  {
+    "id": "p23",
+    "title": "Synthetic Environment Template Validator",
+    "category": "Configuration",
+    "version": "1.1.0",
+    "description": "Check supplied synthetic variables against a .env-style template without reading the host environment.",
+    "example": {
+      "template": "# Blank defaults are required\nAPP_HOST=\nAPP_PORT=8080\nMODE=demo",
+      "values": {
+        "APP_HOST": "demo.local",
+        "MODE": "test"
+      }
+    },
+    "fields": [
+      {
+        "key": "template",
+        "label": "Synthetic template",
+        "type": "textarea"
+      },
+      {
+        "key": "values",
+        "label": "Synthetic values",
+        "type": "json"
+      }
+    ]
+  },
+  {
+    "id": "p24",
+    "title": "Allowlisted URL Query Workshop",
+    "category": "Web tools",
+    "version": "1.1.0",
+    "description": "Parse or build HTTP URLs with exact hostname and query-key allowlists, preserving repeated values.",
+    "example": {
+      "mode": "build",
+      "url": "https://example.test/search?lang=en",
+      "allowedHosts": [
+        "example.test"
+      ],
+      "allowedKeys": [
+        "lang",
+        "q",
+        "tag"
+      ],
+      "params": {
+        "q": "blue sky",
+        "tag": [
+          "demo",
+          "tools"
+        ]
+      }
+    }
+  },
+  {
+    "id": "p25",
+    "title": "JSON Configuration Merge Inspector",
+    "category": "Configuration",
+    "version": "1.1.0",
+    "description": "Deep-merge JSON objects with explicit conflict policies and JSON Pointer paths for every change.",
+    "example": {
+      "base": {
+        "service": {
+          "port": 8080,
+          "mode": "demo"
+        },
+        "tags": [
+          "stable"
+        ]
+      },
+      "overlay": {
+        "service": {
+          "port": 9090
+        },
+        "logging": true
+      },
+      "strategy": "overlay"
+    },
+    "fields": [
+      {
+        "key": "base",
+        "label": "Base configuration",
+        "type": "json"
+      },
+      {
+        "key": "overlay",
+        "label": "Overlay configuration",
+        "type": "json"
+      },
+      {
+        "key": "strategy",
+        "label": "Conflict policy",
+        "type": "select",
+        "options": [
+          "overlay",
+          "base",
+          "error"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "p26",
+    "title": "Dependency Graph Planner",
+    "category": "Developer tools",
+    "version": "1.1.0",
+    "description": "Produce deterministic dependency levels, a topological order, and a concrete cycle when scheduling is blocked.",
+    "example": {
+      "nodes": [
+        "build",
+        "lint",
+        "test",
+        "deploy"
+      ],
+      "edges": [
+        [
+          "build",
+          "lint"
+        ],
+        [
+          "build",
+          "test"
+        ],
+        [
+          "lint",
+          "deploy"
+        ],
+        [
+          "test",
+          "deploy"
+        ]
+      ]
+    }
+  },
+  {
+    "id": "p27",
+    "title": "Release Note Grouper",
+    "category": "Developer tools",
+    "version": "1.1.0",
+    "description": "Group supplied commit messages into release notes and suggest a release increment from their declared intent.",
+    "example": {
+      "version": "1.5.0",
+      "commits": [
+        {
+          "id": "a1",
+          "message": "feat(search): add saved filters"
+        },
+        {
+          "id": "b2",
+          "message": "fix: preserve sort order"
+        },
+        {
+          "id": "c3",
+          "message": "docs: explain keyboard shortcuts"
+        }
+      ]
+    }
+  },
+  {
+    "id": "p28",
+    "title": "Path Ignore Rule Explorer",
+    "category": "Developer tools",
+    "version": "1.1.0",
+    "description": "Match supplied relative paths against ordered glob rules with negation, without accessing the filesystem.",
+    "example": {
+      "paths": [
+        "src/app.js",
+        "build/app.js",
+        "build/keep.txt",
+        "docs/debug.log"
+      ],
+      "patterns": [
+        "build/",
+        "*.log",
+        "!build/keep.txt"
+      ]
+    }
+  },
+  {
+    "id": "p29",
+    "title": "Token Bucket Rate-Limit Simulator",
+    "category": "Reliability",
+    "version": "1.1.0",
+    "description": "Simulate timestamped token costs, refill, burst limits, and earliest retry delays using fixed-point arithmetic.",
+    "example": {
+      "capacity": 5,
+      "refillPerSecond": 2,
+      "requests": [
+        {
+          "atMs": 0,
+          "cost": 4
+        },
+        {
+          "atMs": 500,
+          "cost": 3
+        },
+        {
+          "atMs": 1000,
+          "cost": 3
+        }
+      ]
+    },
+    "fields": [
+      {
+        "key": "capacity",
+        "label": "Bucket capacity",
+        "type": "number"
+      },
+      {
+        "key": "refillPerSecond",
+        "label": "Tokens refilled per second",
+        "type": "number"
+      },
+      {
+        "key": "requests",
+        "label": "Requests in time order",
+        "type": "json"
+      }
+    ]
+  },
+  {
+    "id": "p30",
+    "title": "Deterministic Pairwise Test Generator",
+    "category": "Testing",
+    "version": "1.1.0",
+    "description": "Build a reproducible test set covering every value pair across independent factors using deterministic greedy selection.",
+    "example": {
+      "factors": [
+        {
+          "name": "browser",
+          "values": [
+            "Chromium",
+            "Firefox"
+          ]
+        },
+        {
+          "name": "theme",
+          "values": [
+            "light",
+            "dark"
+          ]
+        },
+        {
+          "name": "account",
+          "values": [
+            "guest",
+            "member"
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "id": "p31",
+    "title": "Flashcard quiz scorer",
+    "category": "Learning",
+    "version": "1.1.0",
+    "description": "Grade weighted flashcards, accept answer aliases, and identify cards to review.",
+    "example": {
+      "cards": [
+        {
+          "id": "capital",
+          "prompt": "Capital of Japan?",
+          "answers": [
+            "Tokyo",
+            "東京"
+          ],
+          "weight": 2
+        },
+        {
+          "id": "sum",
+          "prompt": "7 + 8?",
+          "answers": [
+            "15"
+          ]
+        }
+      ],
+      "responses": {
+        "capital": " tokyo ",
+        "sum": "14"
+      },
+      "caseSensitive": false
+    },
+    "fields": [
+      {
+        "key": "cards",
+        "label": "Flashcards",
+        "type": "json"
+      },
+      {
+        "key": "responses",
+        "label": "Answers by card ID",
+        "type": "json"
+      }
+    ]
+  },
+  {
+    "id": "p32",
+    "title": "Spaced repetition review planner",
+    "category": "Learning",
+    "version": "1.1.0",
+    "description": "Apply a bounded SM-2 style update and schedule each reviewed card on a UTC date.",
+    "example": {
+      "reviewDate": "2026-11-10",
+      "cards": [
+        {
+          "id": "new-word",
+          "quality": 5
+        },
+        {
+          "id": "familiar-word",
+          "quality": 4,
+          "repetitions": 2,
+          "intervalDays": 6,
+          "easeFactor": 2.5
+        },
+        {
+          "id": "forgotten-word",
+          "quality": 1,
+          "repetitions": 4,
+          "intervalDays": 30,
+          "easeFactor": 2.2
+        }
+      ]
+    },
+    "fields": [
+      {
+        "key": "reviewDate",
+        "label": "Review date (YYYY-MM-DD)",
+        "type": "text"
+      },
+      {
+        "key": "cards",
+        "label": "Reviewed cards",
+        "type": "json"
+      }
+    ]
+  },
+  {
+    "id": "p33",
+    "title": "Dimension-aware unit converter",
+    "category": "Utilities",
+    "version": "1.1.0",
+    "description": "Convert lengths, masses, times, volumes, speeds, energies, and absolute temperatures; reject dimension mismatches.",
+    "example": {
+      "value": 60,
+      "from": "mph",
+      "to": "km/h"
+    },
+    "fields": [
+      {
+        "key": "value",
+        "label": "Value",
+        "type": "number"
+      },
+      {
+        "key": "from",
+        "label": "From unit",
+        "type": "select",
+        "options": [
+          "m",
+          "km",
+          "cm",
+          "mm",
+          "in",
+          "ft",
+          "yd",
+          "mi",
+          "kg",
+          "g",
+          "mg",
+          "lb",
+          "oz",
+          "s",
+          "min",
+          "h",
+          "day",
+          "L",
+          "mL",
+          "m3",
+          "us_gal",
+          "m/s",
+          "km/h",
+          "mph",
+          "J",
+          "kJ",
+          "Wh",
+          "kWh",
+          "C",
+          "F",
+          "K"
+        ]
+      },
+      {
+        "key": "to",
+        "label": "To unit",
+        "type": "select",
+        "options": [
+          "m",
+          "km",
+          "cm",
+          "mm",
+          "in",
+          "ft",
+          "yd",
+          "mi",
+          "kg",
+          "g",
+          "mg",
+          "lb",
+          "oz",
+          "s",
+          "min",
+          "h",
+          "day",
+          "L",
+          "mL",
+          "m3",
+          "us_gal",
+          "m/s",
+          "km/h",
+          "mph",
+          "J",
+          "kJ",
+          "Wh",
+          "kWh",
+          "C",
+          "F",
+          "K"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "p34",
+    "title": "Pomodoro work/rest planner",
+    "category": "Productivity",
+    "version": "1.1.0",
+    "description": "Build a work and break schedule with long breaks, totals, and midnight rollover.",
+    "example": {
+      "sessions": 4,
+      "workMinutes": 25,
+      "shortBreakMinutes": 5,
+      "longBreakMinutes": 15,
+      "longBreakEvery": 2,
+      "startTime": "09:00"
+    },
+    "fields": [
+      {
+        "key": "sessions",
+        "label": "Work sessions",
+        "type": "number"
+      },
+      {
+        "key": "workMinutes",
+        "label": "Work minutes",
+        "type": "number"
+      },
+      {
+        "key": "shortBreakMinutes",
+        "label": "Short break minutes",
+        "type": "number"
+      },
+      {
+        "key": "longBreakMinutes",
+        "label": "Long break minutes",
+        "type": "number"
+      },
+      {
+        "key": "longBreakEvery",
+        "label": "Long break every N sessions",
+        "type": "number"
+      },
+      {
+        "key": "startTime",
+        "label": "Start time (HH:MM)",
+        "type": "text"
+      }
+    ]
+  },
+  {
+    "id": "p35",
+    "title": "Reading-time and content structure report",
+    "category": "Writing",
+    "version": "1.1.0",
+    "description": "Count prose words, headings, lists, paragraphs, and fenced code; estimate reading time.",
+    "example": {
+      "text": "# A calmer workday\n\nStart with one important task. Give it your full attention.\n\n- Silence notifications\n- Take a short break\n\n## Reflection\n\nWrite down what helped today.",
+      "wpm": 200
+    },
+    "fields": [
+      {
+        "key": "text",
+        "label": "Text or basic Markdown",
+        "type": "textarea"
+      },
+      {
+        "key": "wpm",
+        "label": "Words per minute",
+        "type": "number"
+      }
+    ]
+  },
+  {
+    "id": "p36",
+    "title": "Accessibility contrast checker",
+    "category": "Design",
+    "version": "1.1.0",
+    "description": "Calculate opaque sRGB contrast and compare normal text, large text, and non-text thresholds.",
+    "example": {
+      "foreground": "#777777",
+      "background": "#FFFFFF"
+    },
+    "fields": [
+      {
+        "key": "foreground",
+        "label": "Foreground hex color",
+        "type": "text"
+      },
+      {
+        "key": "background",
+        "label": "Background hex color",
+        "type": "text"
+      }
+    ]
+  },
+  {
+    "id": "p37",
+    "title": "Color palette RGB/HSL transforms",
+    "category": "Design",
+    "version": "1.1.0",
+    "description": "Rotate hue, adjust saturation/lightness, and derive a complementary color with RGB and HSL values.",
+    "example": {
+      "color": "#336699",
+      "hueShift": 30,
+      "saturationDelta": 10,
+      "lightnessDelta": 5
+    },
+    "fields": [
+      {
+        "key": "color",
+        "label": "Hex color",
+        "type": "text"
+      },
+      {
+        "key": "hueShift",
+        "label": "Hue rotation (degrees)",
+        "type": "number"
+      },
+      {
+        "key": "saturationDelta",
+        "label": "Saturation adjustment (percentage points)",
+        "type": "number"
+      },
+      {
+        "key": "lightnessDelta",
+        "label": "Lightness adjustment (percentage points)",
+        "type": "number"
+      }
+    ]
+  },
+  {
+    "id": "p38",
+    "title": "Coordinate route distance estimator",
+    "category": "Travel",
+    "version": "1.1.0",
+    "description": "Estimate spherical great-circle route lengths and optional travel time, including closed loops.",
+    "example": {
+      "points": [
+        {
+          "lat": 25.033,
+          "lon": 121.5654
+        },
+        {
+          "lat": 25.0478,
+          "lon": 121.517
+        },
+        {
+          "lat": 25.1024,
+          "lon": 121.5485
+        }
+      ],
+      "unit": "km",
+      "closedLoop": true,
+      "speedKph": 5
+    },
+    "fields": [
+      {
+        "key": "points",
+        "label": "Latitude/longitude points",
+        "type": "json"
+      },
+      {
+        "key": "unit",
+        "label": "Distance unit",
+        "type": "select",
+        "options": [
+          "km",
+          "mi"
+        ]
+      },
+      {
+        "key": "speedKph",
+        "label": "Optional average speed (km/h)",
+        "type": "number"
+      }
+    ]
+  },
+  {
+    "id": "p39",
+    "title": "Safe arithmetic expression calculator",
+    "category": "Utilities",
+    "version": "1.1.0",
+    "description": "Parse decimal arithmetic with parentheses, unary signs, remainder, and right-associative powers.",
+    "example": {
+      "expression": "(12.5 + 7.5) * 3 - 2^3^2 / 16"
+    },
+    "fields": [
+      {
+        "key": "expression",
+        "label": "Arithmetic expression",
+        "type": "text"
+      }
+    ]
+  },
+  {
+    "id": "p40",
+    "title": "Weighted decision matrix",
+    "category": "Planning",
+    "version": "1.1.0",
+    "description": "Normalize benefit and cost criteria, apply weights, rank alternatives, and expose tied winners.",
+    "example": {
+      "criteria": [
+        {
+          "id": "price",
+          "weight": 3,
+          "direction": "cost"
+        },
+        {
+          "id": "battery",
+          "weight": 2,
+          "direction": "benefit"
+        }
+      ],
+      "alternatives": [
+        {
+          "name": "Laptop A",
+          "values": {
+            "price": 800,
+            "battery": 8
+          }
+        },
+        {
+          "name": "Laptop B",
+          "values": {
+            "price": 1000,
+            "battery": 12
+          }
+        },
+        {
+          "name": "Laptop C",
+          "values": {
+            "price": 900,
+            "battery": 10
+          }
+        }
+      ]
+    },
+    "fields": [
+      {
+        "key": "criteria",
+        "label": "Weighted criteria",
+        "type": "json"
+      },
+      {
+        "key": "alternatives",
+        "label": "Alternatives and values",
+        "type": "json"
+      }
+    ]
+  },
+  {
+    "id": "p41",
+    "title": "Workflow DAG simulator",
+    "category": "Workflow",
+    "description": "Schedule dependent tasks across bounded workers and propagate failures.",
+    "version": "1.1.0",
+    "example": {
+      "concurrency": 2,
+      "tasks": [
+        {
+          "id": "fetch",
+          "duration": 3
+        },
+        {
+          "id": "prepare",
+          "duration": 2
+        },
+        {
+          "id": "build",
+          "duration": 4,
+          "deps": [
+            "fetch",
+            "prepare"
+          ]
+        },
+        {
+          "id": "publish",
+          "duration": 1,
+          "deps": [
+            "build"
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "id": "p42",
+    "title": "Webhook validator and router",
+    "category": "Integration",
+    "description": "Validate synthetic event payloads and preview every matching route without sending requests.",
+    "version": "1.1.0",
+    "example": {
+      "event": {
+        "id": "evt-1",
+        "type": "order.created",
+        "payload": {
+          "amount": 120,
+          "region": "TW"
+        }
+      },
+      "schema": {
+        "required": [
+          "amount",
+          "region"
+        ],
+        "properties": {
+          "amount": "number",
+          "region": "string"
+        },
+        "allowUnknown": false
+      },
+      "routes": [
+        {
+          "name": "large-orders",
+          "eventType": "order.created",
+          "conditions": [
+            {
+              "field": "amount",
+              "op": "gte",
+              "value": 100
+            }
+          ]
+        },
+        {
+          "name": "taiwan",
+          "eventType": "*",
+          "conditions": [
+            {
+              "field": "region",
+              "op": "eq",
+              "value": "TW"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "id": "p43",
+    "title": "Retry and backoff scheduler",
+    "category": "Scheduling",
+    "description": "Simulate worker contention, retry limits, and capped exponential delays.",
+    "version": "1.1.0",
+    "example": {
+      "workers": 2,
+      "attemptDuration": 1,
+      "baseDelay": 2,
+      "factor": 2,
+      "maxDelay": 10,
+      "jobs": [
+        {
+          "id": "import",
+          "failuresBeforeSuccess": 2,
+          "maxAttempts": 4
+        },
+        {
+          "id": "notify",
+          "failuresBeforeSuccess": 0
+        }
+      ]
+    }
+  },
+  {
+    "id": "p44",
+    "title": "Offline RSS feed generator",
+    "category": "Publishing",
+    "description": "Build escaped RSS 2.0 XML from validated channel and article data.",
+    "version": "1.1.0",
+    "example": {
+      "channel": {
+        "title": "Studio & Notes",
+        "link": "https://example.invalid",
+        "description": "Offline project updates"
+      },
+      "items": [
+        {
+          "title": "Release <one>",
+          "link": "https://example.invalid/releases/one",
+          "description": "Small & useful tools.",
+          "publishedAt": "2024-01-01T00:00:00Z"
+        }
+      ]
+    }
+  },
+  {
+    "id": "p45",
+    "title": "Static site navigation and search builder",
+    "category": "Publishing",
+    "description": "Validate page hierarchies, build navigation and an inverted index, and rank offline searches.",
+    "version": "1.1.0",
+    "example": {
+      "pages": [
+        {
+          "path": "/",
+          "title": "Home",
+          "body": "Small useful tools",
+          "tags": [
+            "tools"
+          ]
+        },
+        {
+          "path": "/guide",
+          "parent": "/",
+          "title": "Tools Guide",
+          "body": "Learn to use the tools offline",
+          "tags": [
+            "help"
+          ]
+        }
+      ],
+      "query": "tools"
+    }
+  },
+  {
+    "id": "p46",
+    "title": "Backup manifest integrity verifier",
+    "category": "Data integrity",
+    "description": "Compare supplied file sizes and SHA-256 digests for missing, changed, and extra files.",
+    "version": "1.1.0",
+    "example": {
+      "expected": [
+        {
+          "path": "notes.txt",
+          "size": 3,
+          "sha256": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        }
+      ],
+      "actual": [
+        {
+          "path": "notes.txt",
+          "size": 3,
+          "sha256": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        }
+      ],
+      "allowExtra": false
+    }
+  },
+  {
+    "id": "p47",
+    "title": "Event stream window aggregation",
+    "category": "Analytics",
+    "description": "Aggregate keyed tumbling windows while tracking watermark-based late-event rejection.",
+    "version": "1.1.0",
+    "example": {
+      "windowMs": 1000,
+      "allowedLatenessMs": 200,
+      "events": [
+        {
+          "timestamp": 100,
+          "key": "sensor-a",
+          "value": 10
+        },
+        {
+          "timestamp": 1100,
+          "key": "sensor-a",
+          "value": 14
+        },
+        {
+          "timestamp": 950,
+          "key": "sensor-a",
+          "value": 12
+        },
+        {
+          "timestamp": 200,
+          "key": "sensor-a",
+          "value": 99
+        }
+      ]
+    }
+  },
+  {
+    "id": "p48",
+    "title": "Deterministic feature flag evaluator",
+    "category": "Configuration",
+    "description": "Evaluate kill switches, overrides, attribute rules and stable percentage rollouts.",
+    "version": "1.1.0",
+    "example": {
+      "flag": {
+        "key": "demo",
+        "enabled": true,
+        "rolloutPercent": 50,
+        "allow": [],
+        "deny": [],
+        "rules": [
+          {
+            "id": "beta-users",
+            "attribute": "group",
+            "equals": "beta",
+            "enabled": true
+          }
+        ]
+      },
+      "subject": {
+        "id": "u1",
+        "attributes": {
+          "group": "general"
+        }
+      }
+    }
+  },
+  {
+    "id": "p49",
+    "title": "Redaction-safe structured audit report",
+    "category": "Audit",
+    "description": "Summarize synthetic audit events with actor aliases and fully masked detail values.",
+    "version": "1.1.0",
+    "example": {
+      "events": [
+        {
+          "at": "2024-01-01T00:00:00Z",
+          "actor": "operator-a",
+          "action": "create",
+          "resource": "record",
+          "outcome": "success",
+          "details": {
+            "email": "sample-address",
+            "changes": [
+              {
+                "field": "tier",
+                "before": "basic",
+                "after": "plus"
+              }
+            ]
+          }
+        },
+        {
+          "at": "2024-01-01T00:01:00Z",
+          "actor": "operator-a",
+          "action": "update",
+          "resource": "policy",
+          "outcome": "denied",
+          "details": {
+            "reason": "synthetic policy denial"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": "p50",
+    "title": "Deployment manifest policy checker",
+    "category": "Deployment",
+    "description": "Check synthetic deployment configurations for resource, image and security policy violations.",
+    "version": "1.1.0",
+    "example": {
+      "deployment": {
+        "name": "demo",
+        "replicas": 2,
+        "strategy": {
+          "maxUnavailable": 0
+        },
+        "containers": [
+          {
+            "name": "web",
+            "image": "registry.example.invalid/demo@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "resources": {
+              "requests": {
+                "cpuMilli": 100,
+                "memoryMiB": 64
+              },
+              "limits": {
+                "cpuMilli": 500,
+                "memoryMiB": 128
+              }
+            },
+            "security": {
+              "runAsNonRoot": true,
+              "privileged": false,
+              "readOnlyRootFilesystem": true
+            },
+            "ports": [
+              8080
+            ]
+          }
+        ]
+      }
+    }
+  }
+]

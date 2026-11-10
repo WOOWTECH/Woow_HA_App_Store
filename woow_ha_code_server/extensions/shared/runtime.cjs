@@ -3,7 +3,7 @@ const { spawn } = require('node:child_process');
 const path = require('node:path');
 const { StringDecoder } = require('node:string_decoder');
 const DEFAULT_RUNTIME = '/usr/local/bin/woow-connectors';
-const ACTIONS = new Set(['status', 'configure', 'start', 'stop', 'restore', 'models', 'verify', 'pair', 'connect', 'disconnect']);
+const ACTIONS = new Set(['status', 'configure', 'start', 'stop', 'restore', 'models', 'verify', 'pair', 'connect', 'disconnect', 'refreshMcp']);
 const MAX_OUTPUT = 2 * 1024 * 1024;
 
 function failure(code, message) { return { ok: false, error: { code, message } }; }
@@ -59,7 +59,7 @@ function configureFields(connector, input) {
 }
 function validMessage(message) {
   if (!message || typeof message !== 'object' || Array.isArray(message) || Object.keys(message).some(k => !['action', 'fields'].includes(k))) return false;
-  if (!['status', 'configure', 'start', 'stop', 'restore', 'models', 'verify', 'pair', 'connect', 'disconnect', 'openWeb', 'settings'].includes(message.action)) return false;
+  if (!['status', 'configure', 'start', 'stop', 'restore', 'models', 'verify', 'pair', 'connect', 'disconnect', 'openWeb', 'settings', 'refreshMcp'].includes(message.action)) return false;
   if (message.action === 'configure') return !!message.fields && typeof message.fields === 'object' && !Array.isArray(message.fields);
   return message.fields === undefined;
 }
@@ -67,7 +67,7 @@ function createRuntime({ executable = DEFAULT_RUNTIME, spawnProcess = spawn, tim
   return async function invoke(request) {
     if (!request || !['paseo', 'omnigent'].includes(request.connector) || !ACTIONS.has(request.action)) return failure('INVALID_REQUEST', 'Unsupported connector action.');
     if (typeof executable !== 'string' || !path.isAbsolute(executable) || /[\x00\r\n]/.test(executable)) return failure('INVALID_RUNTIME_PATH', 'Use an absolute runtime executable path.');
-    const limit = timeoutMs ?? ({ verify: 420000, connect: 180000, models: 180000, start: 130000, restore: 130000 }[request.action] ?? 45000);
+    const limit = timeoutMs ?? ({ refreshMcp: 120000, verify: 420000, connect: 180000, models: 180000, start: 130000, restore: 130000 }[request.action] ?? 45000);
     return new Promise(resolve => {
       let child, timer, killTimer, done = false, out = '', size = 0;
       const decoder = new StringDecoder('utf8');

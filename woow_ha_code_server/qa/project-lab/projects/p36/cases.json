@@ -1,0 +1,139 @@
+[
+  {
+    "name": "black on white",
+    "input": {
+      "foreground": "#000",
+      "background": "#fff"
+    },
+    "expected": {
+      "foreground": "#000000",
+      "background": "#FFFFFF",
+      "foregroundLuminance": 0,
+      "backgroundLuminance": 1,
+      "contrastRatio": 21,
+      "passes": {
+        "aaNormal": true,
+        "aaaNormal": true,
+        "aaLarge": true,
+        "aaaLarge": true,
+        "nonText": true
+      },
+      "preferredTextOnBackground": "#000000"
+    }
+  },
+  {
+    "name": "white on black",
+    "input": {
+      "foreground": "FFFFFF",
+      "background": "000000"
+    },
+    "expected": {
+      "foreground": "#FFFFFF",
+      "background": "#000000",
+      "foregroundLuminance": 1,
+      "backgroundLuminance": 0,
+      "contrastRatio": 21,
+      "passes": {
+        "aaNormal": true,
+        "aaaNormal": true,
+        "aaLarge": true,
+        "aaaLarge": true,
+        "nonText": true
+      },
+      "preferredTextOnBackground": "#FFFFFF"
+    }
+  },
+  {
+    "name": "identical white",
+    "input": {
+      "foreground": "#FFFFFF",
+      "background": "#FFFFFF"
+    },
+    "expected": {
+      "foreground": "#FFFFFF",
+      "background": "#FFFFFF",
+      "foregroundLuminance": 1,
+      "backgroundLuminance": 1,
+      "contrastRatio": 1,
+      "passes": {
+        "aaNormal": false,
+        "aaaNormal": false,
+        "aaLarge": false,
+        "aaaLarge": false,
+        "nonText": false
+      },
+      "preferredTextOnBackground": "#000000"
+    }
+  },
+  {
+    "name": "red on white only meets large AA and non-text",
+    "input": {
+      "foreground": "#ff0000",
+      "background": "#ffffff"
+    },
+    "expected": {
+      "foreground": "#FF0000",
+      "background": "#FFFFFF",
+      "foregroundLuminance": 0.2126,
+      "backgroundLuminance": 1,
+      "contrastRatio": 4,
+      "passes": {
+        "aaNormal": false,
+        "aaaNormal": false,
+        "aaLarge": true,
+        "aaaLarge": false,
+        "nonText": true
+      },
+      "preferredTextOnBackground": "#000000"
+    }
+  },
+  {
+    "name": "gray below normal AA threshold",
+    "input": {
+      "foreground": "#777777",
+      "background": "#fff"
+    },
+    "expected": {
+      "foreground": "#777777",
+      "background": "#FFFFFF",
+      "foregroundLuminance": 0.184475,
+      "backgroundLuminance": 1,
+      "contrastRatio": 4.48,
+      "passes": {
+        "aaNormal": false,
+        "aaaNormal": false,
+        "aaLarge": true,
+        "aaaLarge": false,
+        "nonText": true
+      },
+      "preferredTextOnBackground": "#000000"
+    }
+  },
+  {
+    "name": "alpha color unsupported",
+    "input": {
+      "foreground": "#00000080",
+      "background": "#fff"
+    },
+    "error": true,
+    "errorMessage": "hex color"
+  },
+  {
+    "name": "non-hex color",
+    "input": {
+      "foreground": "#gggggg",
+      "background": "#fff"
+    },
+    "error": true,
+    "errorMessage": "hex color"
+  },
+  {
+    "name": "nonstring color",
+    "input": {
+      "foreground": 0,
+      "background": "#fff"
+    },
+    "error": true,
+    "errorMessage": "hex color"
+  }
+]

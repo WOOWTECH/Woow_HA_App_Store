@@ -22,6 +22,9 @@ else
 fi
 "$PREFIX/bin/python" -c 'import importlib.metadata; assert importlib.metadata.version("omnigent") == "0.16.0"'
 "$PREFIX/bin/python" "$ROOT/patch-runtime.py"
+WOOW_RUNTIME_SITE=$("$PREFIX/bin/python" -c 'import sysconfig; print(sysconfig.get_path("purelib"))')
+"$PREFIX/bin/python" "$ROOT/patch-native-resume.py" --site-packages "$WOOW_RUNTIME_SITE"
+"$PREFIX/bin/python" "$ROOT/patch-claude-strict-resume.py" --site-packages "$WOOW_RUNTIME_SITE"
 # Claude is supplied by the image. Do not ship a second SDK bundled binary.
 "$PREFIX/bin/python" -c 'import claude_agent_sdk,pathlib; (pathlib.Path(claude_agent_sdk.__file__).parent/"_bundled"/"claude").unlink(missing_ok=True)'
 "$PREFIX/bin/python" -m compileall -q "$PREFIX/lib"

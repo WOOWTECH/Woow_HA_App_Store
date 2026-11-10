@@ -1,0 +1,1 @@
+{"name": "woow-50-project-lab", "private": true, "type": "module", "scripts": {"start": "node server.mjs", "test": "node harness/test-all.mjs"}}

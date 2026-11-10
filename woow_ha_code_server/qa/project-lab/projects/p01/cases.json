@@ -1,0 +1,236 @@
+[
+  {
+    "name": "profiles blanks and exact duplicate rows",
+    "input": {
+      "csv": "name,amount\nAva,10\nBo,20\nAva,10\nCy,"
+    },
+    "expected": {
+      "rowCount": 4,
+      "columnCount": 2,
+      "columns": [
+        {
+          "name": "name",
+          "present": 4,
+          "missing": 0,
+          "distinct": 3,
+          "type": "text",
+          "anomalies": []
+        },
+        {
+          "name": "amount",
+          "present": 3,
+          "missing": 1,
+          "distinct": 2,
+          "type": "number",
+          "anomalies": [
+            {
+              "row": 4,
+              "kind": "missing",
+              "value": ""
+            }
+          ],
+          "numeric": {
+            "count": 3,
+            "min": 10,
+            "max": 20,
+            "mean": 13.333333
+          }
+        }
+      ],
+      "duplicateRows": [
+        {
+          "row": 3,
+          "firstRow": 1
+        }
+      ]
+    }
+  },
+  {
+    "name": "quoted delimiters escaped quotes and embedded newlines",
+    "input": {
+      "csv": "name;note\r\n\"A;B\";\"said \"\"hi\"\"\"\r\nC;\"two\nlines\"\r\n",
+      "delimiter": ";"
+    },
+    "expected": {
+      "rowCount": 2,
+      "columnCount": 2,
+      "columns": [
+        {
+          "name": "name",
+          "present": 2,
+          "missing": 0,
+          "distinct": 2,
+          "type": "text",
+          "anomalies": []
+        },
+        {
+          "name": "note",
+          "present": 2,
+          "missing": 0,
+          "distinct": 2,
+          "type": "text",
+          "anomalies": []
+        }
+      ],
+      "duplicateRows": []
+    }
+  },
+  {
+    "name": "mixed numeric content",
+    "input": {
+      "csv": "score\n1\nbad\n3"
+    },
+    "expected": {
+      "rowCount": 3,
+      "columnCount": 1,
+      "columns": [
+        {
+          "name": "score",
+          "present": 3,
+          "missing": 0,
+          "distinct": 3,
+          "type": "mixed",
+          "anomalies": [
+            {
+              "row": 2,
+              "kind": "nonNumeric",
+              "value": "bad"
+            }
+          ],
+          "numeric": {
+            "count": 2,
+            "min": 1,
+            "max": 3,
+            "mean": 2
+          }
+        }
+      ],
+      "duplicateRows": []
+    }
+  },
+  {
+    "name": "population z-score outlier",
+    "input": {
+      "csv": "n\n0\n0\n0\n0\n10",
+      "zScoreThreshold": 1
+    },
+    "expected": {
+      "rowCount": 5,
+      "columnCount": 1,
+      "columns": [
+        {
+          "name": "n",
+          "present": 5,
+          "missing": 0,
+          "distinct": 2,
+          "type": "number",
+          "anomalies": [
+            {
+              "row": 5,
+              "kind": "outlier",
+              "value": "10"
+            }
+          ],
+          "numeric": {
+            "count": 5,
+            "min": 0,
+            "max": 10,
+            "mean": 2
+          }
+        }
+      ],
+      "duplicateRows": [
+        {
+          "row": 2,
+          "firstRow": 1
+        },
+        {
+          "row": 3,
+          "firstRow": 1
+        },
+        {
+          "row": 4,
+          "firstRow": 1
+        }
+      ]
+    }
+  },
+  {
+    "name": "header only",
+    "input": {
+      "csv": "a,b\n"
+    },
+    "expected": {
+      "rowCount": 0,
+      "columnCount": 2,
+      "columns": [
+        {
+          "name": "a",
+          "present": 0,
+          "missing": 0,
+          "distinct": 0,
+          "type": "empty",
+          "anomalies": []
+        },
+        {
+          "name": "b",
+          "present": 0,
+          "missing": 0,
+          "distinct": 0,
+          "type": "empty",
+          "anomalies": []
+        }
+      ],
+      "duplicateRows": []
+    }
+  },
+  {
+    "name": "empty CSV rejected",
+    "input": {
+      "csv": ""
+    },
+    "error": true,
+    "errorContains": "csv must be a string"
+  },
+  {
+    "name": "duplicate headers rejected",
+    "input": {
+      "csv": "a, a\n1,2"
+    },
+    "error": true,
+    "errorContains": "headers must be nonempty and unique"
+  },
+  {
+    "name": "ragged row rejected",
+    "input": {
+      "csv": "a,b\n1"
+    },
+    "error": true,
+    "errorContains": "Data row 1 has 1 cells"
+  },
+  {
+    "name": "unterminated quote rejected",
+    "input": {
+      "csv": "a\n\"hi"
+    },
+    "error": true,
+    "errorContains": "Unterminated quoted"
+  },
+  {
+    "name": "characters after closing quote rejected",
+    "input": {
+      "csv": "a\n\"hi\"x"
+    },
+    "error": true,
+    "errorContains": "Unexpected character"
+  },
+  {
+    "name": "invalid delimiter rejected",
+    "input": {
+      "csv": "a",
+      "delimiter": "\""
+    },
+    "error": true,
+    "errorContains": "delimiter cannot"
+  }
+]

@@ -23,8 +23,10 @@ import { pathToFileURL } from 'node:url';
 const [source, root] = process.argv.slice(2);
 const { applyPidLockPatch } = await import(pathToFileURL(source + '/src/pid-lock-patch.mjs'));
 const { applyClaudeRootPatch } = await import(pathToFileURL(source + '/src/claude-root-patch.mjs'));
+const { applyMcpRefreshPatch } = await import(pathToFileURL(source + '/src/mcp-refresh-patch.mjs'));
 const { runtimeReady } = await import(pathToFileURL(source + '/src/runtime-layout.mjs'));
 applyPidLockPatch(root);
 applyClaudeRootPatch(root);
+applyMcpRefreshPatch(root);
 if (!runtimeReady({ runtimeDir: root })) throw new Error('PASEO_RUNTIME_VALIDATION_FAILED');
 NODE

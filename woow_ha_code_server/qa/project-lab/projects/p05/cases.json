@@ -1,0 +1,273 @@
+[
+  {
+    "name": "known SHA-256 vectors and repeatability",
+    "input": {
+      "records": [
+        {
+          "label": "abc",
+          "keep": 5
+        },
+        {
+          "label": "abc"
+        },
+        {
+          "label": "hello"
+        },
+        {
+          "label": null
+        },
+        {}
+      ],
+      "rules": [
+        {
+          "field": "label",
+          "mode": "token"
+        }
+      ]
+    },
+    "expected": {
+      "records": [
+        {
+          "label": "tok_ba7816bf8f01",
+          "keep": 5
+        },
+        {
+          "label": "tok_ba7816bf8f01"
+        },
+        {
+          "label": "tok_2cf24dba5fb0"
+        },
+        {
+          "label": null
+        },
+        {}
+      ],
+      "maskedCells": 3
+    }
+  },
+  {
+    "name": "known HMAC-SHA-256 vector",
+    "input": {
+      "records": [
+        {
+          "label": "The quick brown fox jumps over the lazy dog"
+        }
+      ],
+      "rules": [
+        {
+          "field": "label",
+          "mode": "token"
+        }
+      ],
+      "salt": "key"
+    },
+    "expected": {
+      "records": [
+        {
+          "label": "tok_f7bc83f43053"
+        }
+      ],
+      "maskedCells": 1
+    }
+  },
+  {
+    "name": "redaction masks at least one character",
+    "input": {
+      "records": [
+        {
+          "phone": "12345"
+        },
+        {
+          "phone": "7"
+        },
+        {
+          "phone": ""
+        },
+        {
+          "phone": null
+        }
+      ],
+      "rules": [
+        {
+          "field": "phone",
+          "mode": "redact",
+          "keepLast": 2
+        }
+      ]
+    },
+    "expected": {
+      "records": [
+        {
+          "phone": "***45"
+        },
+        {
+          "phone": "*"
+        },
+        {
+          "phone": ""
+        },
+        {
+          "phone": null
+        }
+      ],
+      "maskedCells": 3
+    }
+  },
+  {
+    "name": "redaction counts Unicode code points",
+    "input": {
+      "records": [
+        {
+          "name": "😀Ab"
+        }
+      ],
+      "rules": [
+        {
+          "field": "name",
+          "mode": "redact",
+          "keepLast": 1
+        }
+      ]
+    },
+    "expected": {
+      "records": [
+        {
+          "name": "**b"
+        }
+      ],
+      "maskedCells": 1
+    }
+  },
+  {
+    "name": "email display mask normalizes domains",
+    "input": {
+      "records": [
+        {
+          "email": "Ava@EXAMPLE.test"
+        },
+        {
+          "email": "bo@example.test"
+        }
+      ],
+      "rules": [
+        {
+          "field": "email",
+          "mode": "email"
+        }
+      ]
+    },
+    "expected": {
+      "records": [
+        {
+          "email": "A***@example.test"
+        },
+        {
+          "email": "b***@example.test"
+        }
+      ],
+      "maskedCells": 2
+    }
+  },
+  {
+    "name": "prototype-like property remains ordinary data",
+    "input": {
+      "records": [
+        {
+          "__proto__": "abc"
+        }
+      ],
+      "rules": [
+        {
+          "field": "__proto__",
+          "mode": "token"
+        }
+      ]
+    },
+    "expected": {
+      "records": [
+        {
+          "__proto__": "tok_ba7816bf8f01"
+        }
+      ],
+      "maskedCells": 1
+    }
+  },
+  {
+    "name": "duplicate rules rejected",
+    "input": {
+      "records": [],
+      "rules": [
+        {
+          "field": "x",
+          "mode": "token"
+        },
+        {
+          "field": "x",
+          "mode": "redact"
+        }
+      ]
+    },
+    "error": true,
+    "errorContains": "rule fields must be unique"
+  },
+  {
+    "name": "negative visible suffix rejected",
+    "input": {
+      "records": [],
+      "rules": [
+        {
+          "field": "x",
+          "mode": "redact",
+          "keepLast": -1
+        }
+      ]
+    },
+    "error": true,
+    "errorContains": "keepLast must be a finite number"
+  },
+  {
+    "name": "invalid email rejected",
+    "input": {
+      "records": [
+        {
+          "email": "invalid"
+        }
+      ],
+      "rules": [
+        {
+          "field": "email",
+          "mode": "email"
+        }
+      ]
+    },
+    "error": true,
+    "errorContains": "must contain an email address"
+  },
+  {
+    "name": "nested value rejected",
+    "input": {
+      "records": [
+        {
+          "x": {}
+        }
+      ],
+      "rules": [
+        {
+          "field": "x",
+          "mode": "token"
+        }
+      ]
+    },
+    "error": true,
+    "errorContains": "must be a string, number, boolean or null"
+  },
+  {
+    "name": "empty rule list rejected",
+    "input": {
+      "records": [],
+      "rules": []
+    },
+    "error": true,
+    "errorContains": "rules must be an array"
+  }
+]

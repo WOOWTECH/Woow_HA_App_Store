@@ -1,0 +1,412 @@
+[
+  {
+    "name": "required string and bounded integer",
+    "input": {
+      "schema": {
+        "name": {
+          "type": "string",
+          "required": true,
+          "minLength": 1
+        },
+        "age": {
+          "type": "integer",
+          "min": 0,
+          "max": 120
+        }
+      },
+      "records": [
+        {
+          "name": "Ava",
+          "age": 30
+        },
+        {
+          "name": "",
+          "age": -2
+        }
+      ]
+    },
+    "expected": {
+      "valid": false,
+      "total": 2,
+      "validCount": 1,
+      "invalidCount": 1,
+      "results": [
+        {
+          "index": 0,
+          "valid": true,
+          "errors": []
+        },
+        {
+          "index": 1,
+          "valid": false,
+          "errors": [
+            {
+              "field": "age",
+              "code": "min",
+              "message": "must be at least 0"
+            },
+            {
+              "field": "name",
+              "code": "minLength",
+              "message": "must contain at least 1 characters"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "name": "optional nullable fields and unknown keys",
+    "input": {
+      "schema": {
+        "note": {
+          "type": "string",
+          "nullable": true
+        },
+        "active": {
+          "type": "boolean",
+          "required": true
+        }
+      },
+      "records": [
+        {
+          "active": false,
+          "note": null
+        },
+        {
+          "active": true
+        },
+        {
+          "active": "false",
+          "extra": 1
+        }
+      ]
+    },
+    "expected": {
+      "valid": false,
+      "total": 3,
+      "validCount": 2,
+      "invalidCount": 1,
+      "results": [
+        {
+          "index": 0,
+          "valid": true,
+          "errors": []
+        },
+        {
+          "index": 1,
+          "valid": true,
+          "errors": []
+        },
+        {
+          "index": 2,
+          "valid": false,
+          "errors": [
+            {
+              "field": "active",
+              "code": "type",
+              "message": "must be boolean"
+            },
+            {
+              "field": "extra",
+              "code": "unknown",
+              "message": "is not declared in schema"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "name": "enum email and leap-day validation",
+    "input": {
+      "schema": {
+        "role": {
+          "type": "string",
+          "enum": [
+            "reader",
+            "editor"
+          ]
+        },
+        "email": {
+          "type": "string",
+          "format": "email"
+        },
+        "born": {
+          "type": "string",
+          "format": "date"
+        }
+      },
+      "records": [
+        {
+          "role": "reader",
+          "email": "a@b.test",
+          "born": "2024-02-29"
+        },
+        {
+          "role": "owner",
+          "email": "bad",
+          "born": "2023-02-29"
+        }
+      ]
+    },
+    "expected": {
+      "valid": false,
+      "total": 2,
+      "validCount": 1,
+      "invalidCount": 1,
+      "results": [
+        {
+          "index": 0,
+          "valid": true,
+          "errors": []
+        },
+        {
+          "index": 1,
+          "valid": false,
+          "errors": [
+            {
+              "field": "born",
+              "code": "format",
+              "message": "must be a valid YYYY-MM-DD date"
+            },
+            {
+              "field": "email",
+              "code": "format",
+              "message": "must be an email address"
+            },
+            {
+              "field": "role",
+              "code": "enum",
+              "message": "must be one of the allowed values"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "name": "required fields primitive records and unknown keys",
+    "input": {
+      "schema": {
+        "id": {
+          "type": "integer",
+          "required": true
+        }
+      },
+      "records": [
+        {},
+        null,
+        {
+          "id": 1,
+          "extra": 1
+        }
+      ]
+    },
+    "expected": {
+      "valid": false,
+      "total": 3,
+      "validCount": 0,
+      "invalidCount": 3,
+      "results": [
+        {
+          "index": 0,
+          "valid": false,
+          "errors": [
+            {
+              "field": "id",
+              "code": "required",
+              "message": "is required"
+            }
+          ]
+        },
+        {
+          "index": 1,
+          "valid": false,
+          "errors": [
+            {
+              "field": "$",
+              "code": "type",
+              "message": "must be an object"
+            }
+          ]
+        },
+        {
+          "index": 2,
+          "valid": false,
+          "errors": [
+            {
+              "field": "extra",
+              "code": "unknown",
+              "message": "is not declared in schema"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "name": "unknown fields can be permitted",
+    "input": {
+      "schema": {
+        "id": {
+          "type": "integer"
+        }
+      },
+      "records": [
+        {
+          "id": 1,
+          "extra": "x"
+        }
+      ],
+      "allowUnknown": true
+    },
+    "expected": {
+      "valid": true,
+      "total": 1,
+      "validCount": 1,
+      "invalidCount": 0,
+      "results": [
+        {
+          "index": 0,
+          "valid": true,
+          "errors": []
+        }
+      ]
+    }
+  },
+  {
+    "name": "Unicode lengths use code points",
+    "input": {
+      "schema": {
+        "label": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 2
+        }
+      },
+      "records": [
+        {
+          "label": "😀a"
+        },
+        {
+          "label": "😀"
+        }
+      ]
+    },
+    "expected": {
+      "valid": false,
+      "total": 2,
+      "validCount": 1,
+      "invalidCount": 1,
+      "results": [
+        {
+          "index": 0,
+          "valid": true,
+          "errors": []
+        },
+        {
+          "index": 1,
+          "valid": false,
+          "errors": [
+            {
+              "field": "label",
+              "code": "minLength",
+              "message": "must contain at least 2 characters"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "name": "empty record set",
+    "input": {
+      "schema": {
+        "id": {
+          "type": "integer"
+        }
+      },
+      "records": []
+    },
+    "expected": {
+      "valid": true,
+      "total": 0,
+      "validCount": 0,
+      "invalidCount": 0,
+      "results": []
+    }
+  },
+  {
+    "name": "unknown type rejected",
+    "input": {
+      "schema": {
+        "id": {
+          "type": "int"
+        }
+      },
+      "records": []
+    },
+    "error": true,
+    "errorContains": "type must be one of"
+  },
+  {
+    "name": "contradictory bounds rejected",
+    "input": {
+      "schema": {
+        "id": {
+          "type": "integer",
+          "min": 5,
+          "max": 1
+        }
+      },
+      "records": []
+    },
+    "error": true,
+    "errorContains": "min cannot exceed max"
+  },
+  {
+    "name": "unknown schema rule rejected",
+    "input": {
+      "schema": {
+        "id": {
+          "type": "integer",
+          "requried": true
+        }
+      },
+      "records": []
+    },
+    "error": true,
+    "errorContains": "unknown rule requried"
+  },
+  {
+    "name": "enum type mismatch rejected",
+    "input": {
+      "schema": {
+        "id": {
+          "type": "integer",
+          "enum": [
+            "1"
+          ]
+        }
+      },
+      "records": []
+    },
+    "error": true,
+    "errorContains": "enum values must match"
+  },
+  {
+    "name": "boolean option rejected",
+    "input": {
+      "schema": {
+        "id": {
+          "type": "integer"
+        }
+      },
+      "records": [],
+      "allowUnknown": "yes"
+    },
+    "error": true,
+    "errorContains": "allowUnknown must be boolean"
+  }
+]

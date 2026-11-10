@@ -29,7 +29,7 @@ spec.loader.exec_module(core)
 Error = core.PluginError
 VERSION = "0.16.0"
 PAUSE_MARKER = "WOOW_CONNECTOR_PAUSE_V1"
-MUTATIONS = {"configure", "connect", "start", "restore", "stop", "disconnect", "verify", "chat", "continue", "switchModel", "archive"}
+MUTATIONS = {"configure", "connect", "start", "restore", "stop", "disconnect", "verify", "chat", "continue", "switchModel", "archive", "refreshMcp"}
 _strict_normalize_server = core.normalize_server
 
 
@@ -323,6 +323,49 @@ class Connector(core.Plugin):
                 **({} if passed else {"error": {"code": data.get("reason") or "VERIFY_CLEANUP_FAILED",
                                                "message": "真實模型回覆或測試對話清理尚未通過。"}})}
 
+    def refresh_mcp(self):
+        import asyncio
+        from mcp_refresh import refresh_codex, synchronize, RefreshError
+        from native_resume import refresh_pi, NativeRefreshError
+        from claude_mcp_plugin import refresh_claude, ClaudeRefreshError
+        sid = self.request.get("sessionId")
+        if not isinstance(sid, str) or not re.fullmatch(r"[A-Za-z0-9_-]{8,128}", sid):
+            raise Error("INVALID_SESSION_ID", "Enter the existing conversation ID.")
+        if not self.saved.get("enabled") or not self.saved.get("loginConfirmed"):
+            raise Error("NEEDS_CONNECTION", "Connect this deployment first.")
+        client = self.client_factory(self.server(), True)
+        try:
+            info = client.request("GET", "/v1/sessions/" + core.quote(sid, safe=""))
+        finally:
+            client.close()
+        if type(info.get("permission_level")) is not int or info["permission_level"] < 2:
+            raise Error("MCP_PERMISSION_DENIED", "Editing this conversation requires its existing edit permission.")
+        if info.get("host_id") != self.saved.get("hostId"):
+            raise Error("MCP_SESSION_NOT_LOCAL", "Select a conversation on this host.")
+        if info.get("archived"):
+            raise Error("SESSION_ARCHIVED", "This conversation is archived.")
+        if info.get("status") != "idle":
+            raise Error("SESSION_BUSY", "Wait for this conversation to become idle.")
+        harness = info.get("harness") or info.get("harness_override")
+        if harness not in ("codex-native", "pi-native", "claude-native"):
+            raise Error("MCP_REFRESH_UNSUPPORTED", "This native harness has no verified safe MCP reload yet; the conversation was not changed.")
+        try:
+            if harness == "codex-native":
+                operation = refresh_codex(sid, info)
+            elif harness == "pi-native":
+                operation = refresh_pi(sid, info, sync=synchronize)
+            else:
+                operation = refresh_claude(sid, info, sync=synchronize)
+            result = asyncio.run(asyncio.wait_for(operation, timeout=90))
+        except (RefreshError, NativeRefreshError, ClaudeRefreshError) as error:
+            raise Error(error.code, error.code) from None
+        except TimeoutError:
+            raise Error("MCP_REFRESH_TIMEOUT", "Refresh timed out; check status before retrying.") from None
+        if result.get("refresh", {}).get("state") == "submission-unknown":
+            return {"ok": False, **result, "error": {"code": "MCP_RELOAD_SUBMISSION_UNKNOWN",
+                "message": "Native reload submission is uncertain; inspect the original conversation before retrying."}}
+        return {"ok": True, **result}
+
     def session_action(self, action):
         """Operate only sessions created here, never arbitrary server sessions.
 
@@ -438,6 +481,8 @@ def dispatch(request, **dependencies):
             return plugin.stop()
         if action == "disconnect":
             return plugin.disconnect_connector()
+        if action == "refreshMcp":
+            return plugin.refresh_mcp()
         if action == "models":
             return {"ok": True, **plugin.catalog()}
         if action in ("chat", "continue", "switchModel", "session", "archive"):

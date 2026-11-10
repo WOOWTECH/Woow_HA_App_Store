@@ -4,7 +4,7 @@ bbba98a7a123b76950c9f9f6ebd1250e01dcfa098b8353574722d4867ea5b18a  /usr/local/bin
 40cb570db992ef5bc64c8712cbf325d260268643ae2860ce51c104b6b4deb6b8  /etc/profile.d/claude.sh
 237e6fc290c000960be7847fa2b39ab9f37b83f5aec4709fecc9278146f5ed68  /usr/local/bin/woow-agent-sync
 5a3fdbe996d3810b0ed90b48d864c690b65232a78d86c2bac3f71e11526ee0cf  /etc/profile.d/codex.sh
-d1274bad5957e4c4530ce9596decb75bad012797400014cf2e0f36f9435081a3  /opt/woow-agent-tools/agent-sync.mjs
+2efb2d5ad00587d4af1f34b22167915f3d2a520979c733ab69384317e5b013d4  /opt/woow-agent-tools/agent-sync.mjs
 3edd6c2aa7fe1cb38be1712f7125d4d37399e9b2155923063f17687f0515fb1f  /opt/woow-agent-tools/package.json
 7c0b6c5ade1528b25c8445596eb68f631aee259e2c32f46dcb38520fc78fa8f7  /opt/woow-agent-tools/package-lock.json
 3ccedc47d80596e0eaf2bc8de1d5283b83ddd2f4bf7166d6271dc6e0c6043f05  /usr/local/bin/woow-connectors

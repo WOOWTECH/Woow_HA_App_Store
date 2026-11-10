@@ -1,0 +1,279 @@
+[
+  {
+    "name": "one equatorial degree and travel time",
+    "input": {
+      "points": [
+        {
+          "lat": 0,
+          "lon": 0
+        },
+        {
+          "lat": 0,
+          "lon": 1
+        }
+      ],
+      "speedKph": 60
+    },
+    "expected": {
+      "unit": "km",
+      "closedLoop": false,
+      "legs": [
+        {
+          "from": 1,
+          "to": 2,
+          "distance": 111.195
+        }
+      ],
+      "totalDistance": 111.195,
+      "travelMinutes": 111.2
+    }
+  },
+  {
+    "name": "closed return route",
+    "input": {
+      "points": [
+        {
+          "lat": 0,
+          "lon": 0
+        },
+        {
+          "lat": 0,
+          "lon": 1
+        }
+      ],
+      "closedLoop": true
+    },
+    "expected": {
+      "unit": "km",
+      "closedLoop": true,
+      "legs": [
+        {
+          "from": 1,
+          "to": 2,
+          "distance": 111.195
+        },
+        {
+          "from": 2,
+          "to": 1,
+          "distance": 111.195
+        }
+      ],
+      "totalDistance": 222.39,
+      "travelMinutes": null
+    }
+  },
+  {
+    "name": "short arc across antimeridian",
+    "input": {
+      "points": [
+        {
+          "lat": 0,
+          "lon": 179
+        },
+        {
+          "lat": 0,
+          "lon": -179
+        }
+      ]
+    },
+    "expected": {
+      "unit": "km",
+      "closedLoop": false,
+      "legs": [
+        {
+          "from": 1,
+          "to": 2,
+          "distance": 222.39
+        }
+      ],
+      "totalDistance": 222.39,
+      "travelMinutes": null
+    }
+  },
+  {
+    "name": "miles conversion",
+    "input": {
+      "points": [
+        {
+          "lat": 0,
+          "lon": 0
+        },
+        {
+          "lat": 0,
+          "lon": 1
+        }
+      ],
+      "unit": "mi"
+    },
+    "expected": {
+      "unit": "mi",
+      "closedLoop": false,
+      "legs": [
+        {
+          "from": 1,
+          "to": 2,
+          "distance": 69.093
+        }
+      ],
+      "totalDistance": 69.093,
+      "travelMinutes": null
+    }
+  },
+  {
+    "name": "coincident points",
+    "input": {
+      "points": [
+        {
+          "lat": 25,
+          "lon": 121
+        },
+        {
+          "lat": 25,
+          "lon": 121
+        }
+      ],
+      "speedKph": 5
+    },
+    "expected": {
+      "unit": "km",
+      "closedLoop": false,
+      "legs": [
+        {
+          "from": 1,
+          "to": 2,
+          "distance": 0
+        }
+      ],
+      "totalDistance": 0,
+      "travelMinutes": 0
+    }
+  },
+  {
+    "name": "antipodal points",
+    "input": {
+      "points": [
+        {
+          "lat": 0,
+          "lon": 0
+        },
+        {
+          "lat": 0,
+          "lon": 180
+        }
+      ]
+    },
+    "expected": {
+      "unit": "km",
+      "closedLoop": false,
+      "legs": [
+        {
+          "from": 1,
+          "to": 2,
+          "distance": 20015.114
+        }
+      ],
+      "totalDistance": 20015.114,
+      "travelMinutes": null
+    }
+  },
+  {
+    "name": "latitude out of range",
+    "input": {
+      "points": [
+        {
+          "lat": 91,
+          "lon": 0
+        },
+        {
+          "lat": 0,
+          "lon": 1
+        }
+      ]
+    },
+    "error": true,
+    "errorMessage": "lat"
+  },
+  {
+    "name": "zero speed",
+    "input": {
+      "points": [
+        {
+          "lat": 0,
+          "lon": 0
+        },
+        {
+          "lat": 0,
+          "lon": 1
+        }
+      ],
+      "speedKph": 0
+    },
+    "error": true,
+    "errorMessage": "speedKph"
+  },
+  {
+    "name": "too few points",
+    "input": {
+      "points": [
+        {
+          "lat": 0,
+          "lon": 0
+        }
+      ]
+    },
+    "error": true,
+    "errorMessage": "2–500"
+  },
+  {
+    "name": "numeric string coordinate",
+    "input": {
+      "points": [
+        {
+          "lat": "0",
+          "lon": 0
+        },
+        {
+          "lat": 0,
+          "lon": 1
+        }
+      ]
+    },
+    "error": true,
+    "errorMessage": "finite number"
+  },
+  {
+    "name": "unknown unit",
+    "input": {
+      "points": [
+        {
+          "lat": 0,
+          "lon": 0
+        },
+        {
+          "lat": 0,
+          "lon": 1
+        }
+      ],
+      "unit": "nm"
+    },
+    "error": true,
+    "errorMessage": "unit"
+  },
+  {
+    "name": "longitude out of range",
+    "input": {
+      "points": [
+        {
+          "lat": 0,
+          "lon": 181
+        },
+        {
+          "lat": 0,
+          "lon": 1
+        }
+      ]
+    },
+    "error": true,
+    "errorMessage": "lon"
+  }
+]

@@ -1,0 +1,11 @@
+[
+  {"name":"compatible minor release","input":{"current":"1.4.0","candidate":"1.5.2","range":"^1.4.0"},"expected":{"current":"1.4.0","candidate":"1.5.2","comparison":"newer","change":"minor","range":"^1.4.0","satisfiesRange":true}},
+  {"name":"zero-major caret excludes next minor","input":{"current":"0.2.3","candidate":"0.3.0","range":"^0.2.3"},"expected":{"current":"0.2.3","candidate":"0.3.0","comparison":"newer","change":"minor","range":"^0.2.3","satisfiesRange":false}},
+  {"name":"numeric prerelease ordering","input":{"current":"1.0.0-beta.2","candidate":"1.0.0-beta.11","range":">=1.0.0-beta.2 <1.0.0"},"expected":{"current":"1.0.0-beta.2","candidate":"1.0.0-beta.11","comparison":"newer","change":"prerelease","range":">=1.0.0-beta.2 <1.0.0","satisfiesRange":true}},
+  {"name":"build metadata ignored","input":{"current":"1.0.0+one","candidate":"1.0.0+two"},"expected":{"current":"1.0.0+one","candidate":"1.0.0+two","comparison":"same","change":"none","range":null,"satisfiesRange":null}},
+  {"name":"prerelease needs explicit core anchor","input":{"current":"1.0.0","candidate":"1.1.0-rc.1","range":"^1.0.0"},"expected":{"current":"1.0.0","candidate":"1.1.0-rc.1","comparison":"newer","change":"minor","range":"^1.0.0","satisfiesRange":false}},
+  {"name":"alternative tilde range","input":{"current":"2.0.0","candidate":"1.2.9","range":"~1.2.3 || ^3.0.0"},"expected":{"current":"2.0.0","candidate":"1.2.9","comparison":"older","change":"major","range":"~1.2.3 || ^3.0.0","satisfiesRange":true}},
+  {"name":"reject leading zero","input":{"current":"01.0.0","candidate":"1.0.0"},"error":true,"errorContains":"Invalid semantic version"},
+  {"name":"reject partial range","input":{"current":"1.0.0","candidate":"1.0.0","range":"^1.2"},"error":true,"errorContains":"Invalid semantic version"},
+  {"name":"reject leading prerelease zero","input":{"current":"1.0.0","candidate":"1.0.0-01"},"error":true,"errorContains":"leading zeros"}
+]

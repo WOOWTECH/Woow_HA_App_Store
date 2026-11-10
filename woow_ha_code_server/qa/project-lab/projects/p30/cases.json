@@ -1,0 +1,9 @@
+[
+  {"name":"three binary factors cover twelve pairs with four cases","input":{"factors":[{"name":"A","values":[0,1]},{"name":"B","values":[0,1]},{"name":"C","values":[0,1]}]},"expected":{"factorOrder":["A","B","C"],"cartesianCount":8,"totalPairs":12,"coveredPairs":12,"testCount":4,"cases":[{"case":1,"values":{"A":0,"B":0,"C":0}},{"case":2,"values":{"A":0,"B":1,"C":1}},{"case":3,"values":{"A":1,"B":0,"C":1}},{"case":4,"values":{"A":1,"B":1,"C":0}}]}},
+  {"name":"two factors require full Cartesian product","input":{"factors":[{"name":"browser","values":["a","b"]},{"name":"mode","values":["x","y"]}]},"expected":{"factorOrder":["browser","mode"],"cartesianCount":4,"totalPairs":4,"coveredPairs":4,"testCount":4,"cases":[{"case":1,"values":{"browser":"a","mode":"x"}},{"case":2,"values":{"browser":"a","mode":"y"}},{"case":3,"values":{"browser":"b","mode":"x"}},{"case":4,"values":{"browser":"b","mode":"y"}}]}},
+  {"name":"singleton factor and typed values","input":{"factors":[{"name":"flag","values":[true]},{"name":"item","values":[1,"1",null]}]},"expected":{"factorOrder":["flag","item"],"cartesianCount":3,"totalPairs":3,"coveredPairs":3,"testCount":3,"cases":[{"case":1,"values":{"flag":true,"item":1}},{"case":2,"values":{"flag":true,"item":"1"}},{"case":3,"values":{"flag":true,"item":null}}]}},
+  {"name":"duplicate values rejected","input":{"factors":[{"name":"A","values":[1,1]},{"name":"B","values":[0]}]},"error":true,"errorContains":"Duplicate values"},
+  {"name":"too few factors rejected","input":{"factors":[{"name":"A","values":[1]}]},"error":true,"errorContains":"2–8"},
+  {"name":"insufficient case budget rejected","input":{"factors":[{"name":"A","values":[0,1]},{"name":"B","values":[0,1]}],"maxCases":3},"error":true,"errorContains":"maxCases is insufficient"},
+  {"name":"duplicate factor names rejected","input":{"factors":[{"name":"A","values":[0]},{"name":"A","values":[1]}]},"error":true,"errorContains":"Duplicate factor"}
+]

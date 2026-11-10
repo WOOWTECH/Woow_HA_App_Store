@@ -1,0 +1,10 @@
+# Pristine source-only fixture; hash pins match the production runtime lock.
+omnigent==0.16.0 \
+    --hash=sha256:b11a9472a4c164d456e31c259fa25b33f0c2732076a802aebb1cb6ccbf3aa658 \
+    --hash=sha256:f0fd481ef57f0e7e0a533250e450cb954a6e35bc0173e8a685bec589b5a33ff7
+
+# Matching source-only client imported by runner recovery controls.
+omnigent-client==0.16.0 \
+    --hash=sha256:4794bfdd888af7c0bc76dc8c2bc267f5e91e0a0f7f2a95709d324f05ffc29c6f \
+    --hash=sha256:77d5f2d7fe98d388e4fc756df9e2608feea15971e839eb59ae2fa5a61b49085a
+    # via omnigent, omnigent-ui-sdk

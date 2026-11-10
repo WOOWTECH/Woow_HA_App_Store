@@ -1,0 +1,410 @@
+[
+  {
+    "name": "complete dependent work",
+    "input": {
+      "tasks": [
+        {
+          "id": "A",
+          "status": "done",
+          "dependencies": []
+        },
+        {
+          "id": "B",
+          "status": "ready",
+          "dependencies": [
+            "A"
+          ]
+        }
+      ],
+      "transitions": [
+        {
+          "id": "B",
+          "to": "in_progress"
+        },
+        {
+          "id": "B",
+          "to": "review"
+        },
+        {
+          "id": "B",
+          "to": "done"
+        }
+      ]
+    },
+    "expected": {
+      "tasks": [
+        {
+          "id": "A",
+          "status": "done",
+          "dependencies": []
+        },
+        {
+          "id": "B",
+          "status": "done",
+          "dependencies": [
+            "A"
+          ]
+        }
+      ],
+      "history": [
+        {
+          "id": "B",
+          "from": "ready",
+          "to": "in_progress"
+        },
+        {
+          "id": "B",
+          "from": "in_progress",
+          "to": "review"
+        },
+        {
+          "id": "B",
+          "from": "review",
+          "to": "done"
+        }
+      ],
+      "counts": {
+        "backlog": 0,
+        "ready": 0,
+        "in_progress": 0,
+        "review": 0,
+        "done": 2,
+        "blocked": 0
+      }
+    }
+  },
+  {
+    "name": "block resume and review rework",
+    "input": {
+      "tasks": [
+        {
+          "id": "A",
+          "status": "backlog"
+        }
+      ],
+      "transitions": [
+        {
+          "id": "A",
+          "to": "ready"
+        },
+        {
+          "id": "A",
+          "to": "in_progress"
+        },
+        {
+          "id": "A",
+          "to": "blocked"
+        },
+        {
+          "id": "A",
+          "to": "in_progress"
+        },
+        {
+          "id": "A",
+          "to": "review"
+        },
+        {
+          "id": "A",
+          "to": "in_progress"
+        }
+      ]
+    },
+    "expected": {
+      "tasks": [
+        {
+          "id": "A",
+          "status": "in_progress",
+          "dependencies": []
+        }
+      ],
+      "history": [
+        {
+          "id": "A",
+          "from": "backlog",
+          "to": "ready"
+        },
+        {
+          "id": "A",
+          "from": "ready",
+          "to": "in_progress"
+        },
+        {
+          "id": "A",
+          "from": "in_progress",
+          "to": "blocked"
+        },
+        {
+          "id": "A",
+          "from": "blocked",
+          "to": "in_progress"
+        },
+        {
+          "id": "A",
+          "from": "in_progress",
+          "to": "review"
+        },
+        {
+          "id": "A",
+          "from": "review",
+          "to": "in_progress"
+        }
+      ],
+      "counts": {
+        "backlog": 0,
+        "ready": 0,
+        "in_progress": 1,
+        "review": 0,
+        "done": 0,
+        "blocked": 0
+      }
+    }
+  },
+  {
+    "name": "reopen completed leaf task",
+    "input": {
+      "tasks": [
+        {
+          "id": "A",
+          "status": "done",
+          "dependencies": []
+        }
+      ],
+      "transitions": [
+        {
+          "id": "A",
+          "to": "ready"
+        }
+      ]
+    },
+    "expected": {
+      "tasks": [
+        {
+          "id": "A",
+          "status": "ready",
+          "dependencies": []
+        }
+      ],
+      "history": [
+        {
+          "id": "A",
+          "from": "done",
+          "to": "ready"
+        }
+      ],
+      "counts": {
+        "backlog": 0,
+        "ready": 1,
+        "in_progress": 0,
+        "review": 0,
+        "done": 0,
+        "blocked": 0
+      }
+    }
+  },
+  {
+    "name": "empty transition list validates board",
+    "input": {
+      "tasks": [
+        {
+          "id": "A",
+          "status": "backlog",
+          "dependencies": []
+        },
+        {
+          "id": "B",
+          "status": "ready",
+          "dependencies": [
+            "A"
+          ]
+        }
+      ],
+      "transitions": []
+    },
+    "expected": {
+      "tasks": [
+        {
+          "id": "A",
+          "status": "backlog",
+          "dependencies": []
+        },
+        {
+          "id": "B",
+          "status": "ready",
+          "dependencies": [
+            "A"
+          ]
+        }
+      ],
+      "history": [],
+      "counts": {
+        "backlog": 1,
+        "ready": 1,
+        "in_progress": 0,
+        "review": 0,
+        "done": 0,
+        "blocked": 0
+      }
+    }
+  },
+  {
+    "name": "skip straight to done rejected",
+    "input": {
+      "tasks": [
+        {
+          "id": "A",
+          "status": "ready",
+          "dependencies": []
+        }
+      ],
+      "transitions": [
+        {
+          "id": "A",
+          "to": "done"
+        }
+      ]
+    },
+    "error": true,
+    "errorIncludes": "not allowed"
+  },
+  {
+    "name": "unfinished prerequisite rejected",
+    "input": {
+      "tasks": [
+        {
+          "id": "A",
+          "status": "ready",
+          "dependencies": []
+        },
+        {
+          "id": "B",
+          "status": "ready",
+          "dependencies": [
+            "A"
+          ]
+        }
+      ],
+      "transitions": [
+        {
+          "id": "B",
+          "to": "in_progress"
+        }
+      ]
+    },
+    "error": true,
+    "errorIncludes": "completed dependency"
+  },
+  {
+    "name": "reopening prerequisite of done task rejected",
+    "input": {
+      "tasks": [
+        {
+          "id": "A",
+          "status": "done",
+          "dependencies": []
+        },
+        {
+          "id": "B",
+          "status": "done",
+          "dependencies": [
+            "A"
+          ]
+        }
+      ],
+      "transitions": [
+        {
+          "id": "A",
+          "to": "ready"
+        }
+      ]
+    },
+    "error": true,
+    "errorIncludes": "completed dependency"
+  },
+  {
+    "name": "cycles rejected before transitions",
+    "input": {
+      "tasks": [
+        {
+          "id": "A",
+          "status": "ready",
+          "dependencies": [
+            "B"
+          ]
+        },
+        {
+          "id": "B",
+          "status": "ready",
+          "dependencies": [
+            "A"
+          ]
+        }
+      ],
+      "transitions": []
+    },
+    "error": true,
+    "errorIncludes": "cycle"
+  },
+  {
+    "name": "unknown dependency rejected",
+    "input": {
+      "tasks": [
+        {
+          "id": "A",
+          "status": "ready",
+          "dependencies": [
+            "MISSING"
+          ]
+        }
+      ],
+      "transitions": []
+    },
+    "error": true,
+    "errorIncludes": "unknown dependency"
+  },
+  {
+    "name": "invalid initial active state rejected",
+    "input": {
+      "tasks": [
+        {
+          "id": "A",
+          "status": "ready",
+          "dependencies": []
+        },
+        {
+          "id": "B",
+          "status": "review",
+          "dependencies": [
+            "A"
+          ]
+        }
+      ],
+      "transitions": []
+    },
+    "error": true,
+    "errorIncludes": "Initial board"
+  },
+  {
+    "name": "late failure leaves input unchanged",
+    "input": {
+      "tasks": [
+        {
+          "id": "A",
+          "status": "backlog",
+          "dependencies": []
+        }
+      ],
+      "transitions": [
+        {
+          "id": "A",
+          "to": "ready"
+        },
+        {
+          "id": "A",
+          "to": "done"
+        }
+      ]
+    },
+    "error": true,
+    "errorIncludes": "not allowed"
+  }
+]

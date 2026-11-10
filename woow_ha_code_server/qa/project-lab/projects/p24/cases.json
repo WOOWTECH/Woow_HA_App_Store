@@ -1,0 +1,183 @@
+[
+  {
+    "name": "build encoded values in sorted key order",
+    "input": {
+      "mode": "build",
+      "url": "https://example.test/search?lang=en",
+      "allowedHosts": [
+        "example.test"
+      ],
+      "allowedKeys": [
+        "lang",
+        "q",
+        "tag"
+      ],
+      "params": {
+        "q": "a b",
+        "tag": [
+          "x",
+          "y"
+        ]
+      }
+    },
+    "expected": {
+      "url": "https://example.test/search?lang=en&q=a+b&tag=x&tag=y",
+      "origin": "https://example.test",
+      "pathname": "/search",
+      "query": {
+        "lang": [
+          "en"
+        ],
+        "q": [
+          "a b"
+        ],
+        "tag": [
+          "x",
+          "y"
+        ]
+      },
+      "fragment": ""
+    }
+  },
+  {
+    "name": "parse repeats empty and fragment",
+    "input": {
+      "mode": "parse",
+      "url": "https://example.test/?q=a%2Bb&q=&n=2#section",
+      "allowedHosts": [
+        "example.test"
+      ],
+      "allowedKeys": [
+        "q",
+        "n"
+      ]
+    },
+    "expected": {
+      "url": "https://example.test/?q=a%2Bb&q=&n=2#section",
+      "origin": "https://example.test",
+      "pathname": "/",
+      "query": {
+        "q": [
+          "a+b",
+          ""
+        ],
+        "n": [
+          "2"
+        ]
+      },
+      "fragment": "section"
+    }
+  },
+  {
+    "name": "delete and replace",
+    "input": {
+      "mode": "build",
+      "url": "http://example.test/?a=1&b=old",
+      "allowedHosts": [
+        "example.test"
+      ],
+      "allowedKeys": [
+        "a",
+        "b"
+      ],
+      "params": {
+        "a": null,
+        "b": false
+      }
+    },
+    "expected": {
+      "url": "http://example.test/?b=false",
+      "origin": "http://example.test",
+      "pathname": "/",
+      "query": {
+        "b": [
+          "false"
+        ]
+      },
+      "fragment": ""
+    }
+  },
+  {
+    "name": "reject unlisted hostname",
+    "input": {
+      "mode": "parse",
+      "url": "https://other.test/",
+      "allowedHosts": [
+        "example.test"
+      ],
+      "allowedKeys": []
+    },
+    "error": true,
+    "errorContains": "Hostname"
+  },
+  {
+    "name": "reject unlisted existing key",
+    "input": {
+      "mode": "build",
+      "url": "https://example.test/?hidden=1",
+      "allowedHosts": [
+        "example.test"
+      ],
+      "allowedKeys": [
+        "q"
+      ],
+      "params": {
+        "q": "demo"
+      }
+    },
+    "error": true,
+    "errorContains": "Query key"
+  },
+  {
+    "name": "reject malformed escape",
+    "input": {
+      "mode": "parse",
+      "url": "https://example.test/?q=%ZZ",
+      "allowedHosts": [
+        "example.test"
+      ],
+      "allowedKeys": [
+        "q"
+      ]
+    },
+    "error": true,
+    "errorContains": "percent"
+  },
+  {
+    "name": "reject credentials in URL",
+    "input": {
+      "mode": "parse",
+      "url": "https://demo@example.test/",
+      "allowedHosts": [
+        "example.test"
+      ],
+      "allowedKeys": []
+    },
+    "error": true,
+    "errorContains": "credentials"
+  },
+  {
+    "name": "inherited object property name is a normal query key",
+    "input": {
+      "mode": "parse",
+      "url": "https://example.test/?toString=demo",
+      "allowedHosts": [
+        "example.test"
+      ],
+      "allowedKeys": [
+        "toString"
+      ]
+    },
+    "expected": {
+      "url": "https://example.test/?toString=demo",
+      "origin": "https://example.test",
+      "pathname": "/",
+      "query": {
+        "toString": [
+          "demo"
+        ]
+      },
+      "fragment": ""
+    }
+  }
+]

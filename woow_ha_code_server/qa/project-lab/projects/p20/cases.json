@@ -1,0 +1,464 @@
+[
+  {
+    "name": "two dependent milestones occupy five business days",
+    "input": {
+      "startDate": "2026-11-09",
+      "milestones": [
+        {
+          "id": "A",
+          "durationDays": 2,
+          "dependsOn": []
+        },
+        {
+          "id": "B",
+          "durationDays": 3,
+          "dependsOn": [
+            "A"
+          ]
+        }
+      ]
+    },
+    "expected": {
+      "schedule": [
+        {
+          "id": "A",
+          "durationDays": 2,
+          "startOffset": 0,
+          "finishOffset": 2,
+          "startDate": "2026-11-09",
+          "finishDate": "2026-11-10",
+          "slackDays": 0,
+          "critical": true
+        },
+        {
+          "id": "B",
+          "durationDays": 3,
+          "startOffset": 2,
+          "finishOffset": 5,
+          "startDate": "2026-11-11",
+          "finishDate": "2026-11-13",
+          "slackDays": 0,
+          "critical": true
+        }
+      ],
+      "projectDurationDays": 5,
+      "projectStartDate": "2026-11-09",
+      "projectFinishDate": "2026-11-13",
+      "criticalMilestones": [
+        "A",
+        "B"
+      ],
+      "topologicalOrder": [
+        "A",
+        "B"
+      ]
+    }
+  },
+  {
+    "name": "diamond graph identifies shorter branch slack and weekend",
+    "input": {
+      "startDate": "2026-11-09",
+      "milestones": [
+        {
+          "id": "A",
+          "durationDays": 2,
+          "dependsOn": []
+        },
+        {
+          "id": "B",
+          "durationDays": 3,
+          "dependsOn": [
+            "A"
+          ]
+        },
+        {
+          "id": "C",
+          "durationDays": 1,
+          "dependsOn": [
+            "A"
+          ]
+        },
+        {
+          "id": "D",
+          "durationDays": 1,
+          "dependsOn": [
+            "B",
+            "C"
+          ]
+        }
+      ]
+    },
+    "expected": {
+      "schedule": [
+        {
+          "id": "A",
+          "durationDays": 2,
+          "startOffset": 0,
+          "finishOffset": 2,
+          "startDate": "2026-11-09",
+          "finishDate": "2026-11-10",
+          "slackDays": 0,
+          "critical": true
+        },
+        {
+          "id": "B",
+          "durationDays": 3,
+          "startOffset": 2,
+          "finishOffset": 5,
+          "startDate": "2026-11-11",
+          "finishDate": "2026-11-13",
+          "slackDays": 0,
+          "critical": true
+        },
+        {
+          "id": "C",
+          "durationDays": 1,
+          "startOffset": 2,
+          "finishOffset": 3,
+          "startDate": "2026-11-11",
+          "finishDate": "2026-11-11",
+          "slackDays": 2,
+          "critical": false
+        },
+        {
+          "id": "D",
+          "durationDays": 1,
+          "startOffset": 5,
+          "finishOffset": 6,
+          "startDate": "2026-11-16",
+          "finishDate": "2026-11-16",
+          "slackDays": 0,
+          "critical": true
+        }
+      ],
+      "projectDurationDays": 6,
+      "projectStartDate": "2026-11-09",
+      "projectFinishDate": "2026-11-16",
+      "criticalMilestones": [
+        "A",
+        "B",
+        "D"
+      ],
+      "topologicalOrder": [
+        "A",
+        "B",
+        "C",
+        "D"
+      ]
+    }
+  },
+  {
+    "name": "weekend and holiday start normalization",
+    "input": {
+      "startDate": "2026-11-14",
+      "holidays": [
+        "2026-11-16"
+      ],
+      "milestones": [
+        {
+          "id": "A",
+          "durationDays": 2,
+          "dependsOn": []
+        },
+        {
+          "id": "B",
+          "durationDays": 1,
+          "dependsOn": []
+        }
+      ]
+    },
+    "expected": {
+      "schedule": [
+        {
+          "id": "A",
+          "durationDays": 2,
+          "startOffset": 0,
+          "finishOffset": 2,
+          "startDate": "2026-11-17",
+          "finishDate": "2026-11-18",
+          "slackDays": 0,
+          "critical": true
+        },
+        {
+          "id": "B",
+          "durationDays": 1,
+          "startOffset": 0,
+          "finishOffset": 1,
+          "startDate": "2026-11-17",
+          "finishDate": "2026-11-17",
+          "slackDays": 1,
+          "critical": false
+        }
+      ],
+      "projectDurationDays": 2,
+      "projectStartDate": "2026-11-17",
+      "projectFinishDate": "2026-11-18",
+      "criticalMilestones": [
+        "A"
+      ],
+      "topologicalOrder": [
+        "A",
+        "B"
+      ]
+    }
+  },
+  {
+    "name": "one-day milestone finishes on start date",
+    "input": {
+      "startDate": "2026-11-13",
+      "milestones": [
+        {
+          "id": "A",
+          "durationDays": 1,
+          "dependsOn": []
+        }
+      ]
+    },
+    "expected": {
+      "schedule": [
+        {
+          "id": "A",
+          "durationDays": 1,
+          "startOffset": 0,
+          "finishOffset": 1,
+          "startDate": "2026-11-13",
+          "finishDate": "2026-11-13",
+          "slackDays": 0,
+          "critical": true
+        }
+      ],
+      "projectDurationDays": 1,
+      "projectStartDate": "2026-11-13",
+      "projectFinishDate": "2026-11-13",
+      "criticalMilestones": [
+        "A"
+      ],
+      "topologicalOrder": [
+        "A"
+      ]
+    }
+  },
+  {
+    "name": "dependencies may be declared after dependents",
+    "input": {
+      "startDate": "2026-11-09",
+      "milestones": [
+        {
+          "id": "B",
+          "durationDays": 1,
+          "dependsOn": [
+            "A"
+          ]
+        },
+        {
+          "id": "A",
+          "durationDays": 1,
+          "dependsOn": []
+        }
+      ]
+    },
+    "expected": {
+      "schedule": [
+        {
+          "id": "A",
+          "durationDays": 1,
+          "startOffset": 0,
+          "finishOffset": 1,
+          "startDate": "2026-11-09",
+          "finishDate": "2026-11-09",
+          "slackDays": 0,
+          "critical": true
+        },
+        {
+          "id": "B",
+          "durationDays": 1,
+          "startOffset": 1,
+          "finishOffset": 2,
+          "startDate": "2026-11-10",
+          "finishDate": "2026-11-10",
+          "slackDays": 0,
+          "critical": true
+        }
+      ],
+      "projectDurationDays": 2,
+      "projectStartDate": "2026-11-09",
+      "projectFinishDate": "2026-11-10",
+      "criticalMilestones": [
+        "A",
+        "B"
+      ],
+      "topologicalOrder": [
+        "A",
+        "B"
+      ]
+    }
+  },
+  {
+    "name": "holiday inside schedule shifts successor date",
+    "input": {
+      "startDate": "2026-11-09",
+      "holidays": [
+        "2026-11-10"
+      ],
+      "milestones": [
+        {
+          "id": "A",
+          "durationDays": 2,
+          "dependsOn": []
+        },
+        {
+          "id": "B",
+          "durationDays": 1,
+          "dependsOn": [
+            "A"
+          ]
+        }
+      ]
+    },
+    "expected": {
+      "schedule": [
+        {
+          "id": "A",
+          "durationDays": 2,
+          "startOffset": 0,
+          "finishOffset": 2,
+          "startDate": "2026-11-09",
+          "finishDate": "2026-11-11",
+          "slackDays": 0,
+          "critical": true
+        },
+        {
+          "id": "B",
+          "durationDays": 1,
+          "startOffset": 2,
+          "finishOffset": 3,
+          "startDate": "2026-11-12",
+          "finishDate": "2026-11-12",
+          "slackDays": 0,
+          "critical": true
+        }
+      ],
+      "projectDurationDays": 3,
+      "projectStartDate": "2026-11-09",
+      "projectFinishDate": "2026-11-12",
+      "criticalMilestones": [
+        "A",
+        "B"
+      ],
+      "topologicalOrder": [
+        "A",
+        "B"
+      ]
+    }
+  },
+  {
+    "name": "dependency cycle rejected",
+    "input": {
+      "startDate": "2026-11-09",
+      "milestones": [
+        {
+          "id": "A",
+          "durationDays": 1,
+          "dependsOn": [
+            "B"
+          ]
+        },
+        {
+          "id": "B",
+          "durationDays": 1,
+          "dependsOn": [
+            "A"
+          ]
+        }
+      ]
+    },
+    "error": true,
+    "errorIncludes": "cycle"
+  },
+  {
+    "name": "unknown dependency rejected",
+    "input": {
+      "startDate": "2026-11-09",
+      "milestones": [
+        {
+          "id": "A",
+          "durationDays": 1,
+          "dependsOn": [
+            "missing"
+          ]
+        }
+      ]
+    },
+    "error": true,
+    "errorIncludes": "unknown dependency"
+  },
+  {
+    "name": "zero duration rejected",
+    "input": {
+      "startDate": "2026-11-09",
+      "milestones": [
+        {
+          "id": "A",
+          "durationDays": 0,
+          "dependsOn": []
+        }
+      ]
+    },
+    "error": true,
+    "errorIncludes": "durationDays"
+  },
+  {
+    "name": "impossible start date rejected",
+    "input": {
+      "startDate": "2026-02-30",
+      "milestones": [
+        {
+          "id": "A",
+          "durationDays": 1,
+          "dependsOn": []
+        }
+      ]
+    },
+    "error": true,
+    "errorIncludes": "valid calendar"
+  },
+  {
+    "name": "duplicate milestone ID rejected",
+    "input": {
+      "startDate": "2026-11-09",
+      "milestones": [
+        {
+          "id": "A",
+          "durationDays": 1,
+          "dependsOn": []
+        },
+        {
+          "id": "A",
+          "durationDays": 1,
+          "dependsOn": []
+        }
+      ]
+    },
+    "error": true,
+    "errorIncludes": "duplicate"
+  },
+  {
+    "name": "duplicate holiday rejected",
+    "input": {
+      "startDate": "2026-11-09",
+      "holidays": [
+        "2026-11-10",
+        "2026-11-10"
+      ],
+      "milestones": [
+        {
+          "id": "A",
+          "durationDays": 1,
+          "dependsOn": []
+        }
+      ]
+    },
+    "error": true,
+    "errorIncludes": "duplicate"
+  }
+]

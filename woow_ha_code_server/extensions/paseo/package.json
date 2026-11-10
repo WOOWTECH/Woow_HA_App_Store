@@ -2,7 +2,7 @@
   "name": "paseo",
   "displayName": "WOOW Paseo",
   "description": "Connect code-server\u2019s Claude Code, Codex and Pi agents to Paseo. Configure, pair or sign in, and verify real conversations.",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "publisher": "woowtech",
   "license": "MIT",
   "engines": {
@@ -101,6 +101,11 @@
       {
         "command": "woow.paseo.pair",
         "title": "Pair with Paseo Web",
+        "category": "WOOW Paseo"
+      },
+      {
+        "command": "woow.paseo.refreshMcp",
+        "title": "Refresh shared MCP",
         "category": "WOOW Paseo"
       }
     ],

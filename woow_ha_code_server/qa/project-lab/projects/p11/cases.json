@@ -1,0 +1,277 @@
+[
+  {
+    "name": "pack-rounded reorder and sufficient stock",
+    "input": {
+      "reviewDays": 7,
+      "items": [
+        {
+          "sku": "FILTER",
+          "onHand": 10,
+          "incoming": 5,
+          "dailyUsage": 5,
+          "leadDays": 3,
+          "safetyStock": 5,
+          "packSize": 12,
+          "minimumOrder": 24
+        },
+        {
+          "sku": "GLOVE",
+          "onHand": 80,
+          "dailyUsage": 4,
+          "leadDays": 5
+        }
+      ]
+    },
+    "expected": {
+      "items": [
+        {
+          "sku": "FILTER",
+          "stockPosition": 15,
+          "reorderPoint": 20,
+          "targetStock": 55,
+          "orderQuantity": 48,
+          "projectedStock": 63,
+          "daysOnHand": 2,
+          "status": "reorder"
+        },
+        {
+          "sku": "GLOVE",
+          "stockPosition": 80,
+          "reorderPoint": 20,
+          "targetStock": 48,
+          "orderQuantity": 0,
+          "projectedStock": 80,
+          "daysOnHand": 20,
+          "status": "sufficient"
+        }
+      ],
+      "totalOrderUnits": 48,
+      "reorderCount": 1
+    }
+  },
+  {
+    "name": "above trigger does not top up to review target",
+    "input": {
+      "reviewDays": 5,
+      "items": [
+        {
+          "sku": "A",
+          "onHand": 11,
+          "dailyUsage": 2,
+          "leadDays": 5
+        }
+      ]
+    },
+    "expected": {
+      "items": [
+        {
+          "sku": "A",
+          "stockPosition": 11,
+          "reorderPoint": 10,
+          "targetStock": 20,
+          "orderQuantity": 0,
+          "projectedStock": 11,
+          "daysOnHand": 5.5,
+          "status": "sufficient"
+        }
+      ],
+      "totalOrderUnits": 0,
+      "reorderCount": 0
+    }
+  },
+  {
+    "name": "minimum purchase rounded to a whole pack",
+    "input": {
+      "reviewDays": 1,
+      "items": [
+        {
+          "sku": "A",
+          "onHand": 0,
+          "dailyUsage": 1,
+          "leadDays": 0,
+          "minimumOrder": 10,
+          "packSize": 6
+        }
+      ]
+    },
+    "expected": {
+      "items": [
+        {
+          "sku": "A",
+          "stockPosition": 0,
+          "reorderPoint": 0,
+          "targetStock": 1,
+          "orderQuantity": 12,
+          "projectedStock": 12,
+          "daysOnHand": 0,
+          "status": "reorder"
+        }
+      ],
+      "totalOrderUnits": 12,
+      "reorderCount": 1
+    }
+  },
+  {
+    "name": "zero demand has no days-on-hand estimate",
+    "input": {
+      "reviewDays": 7,
+      "items": [
+        {
+          "sku": "A",
+          "onHand": 0,
+          "dailyUsage": 0,
+          "leadDays": 5
+        }
+      ]
+    },
+    "expected": {
+      "items": [
+        {
+          "sku": "A",
+          "stockPosition": 0,
+          "reorderPoint": 0,
+          "targetStock": 0,
+          "orderQuantity": 0,
+          "projectedStock": 0,
+          "daysOnHand": null,
+          "status": "sufficient"
+        }
+      ],
+      "totalOrderUnits": 0,
+      "reorderCount": 0
+    }
+  },
+  {
+    "name": "incoming inventory prevents duplicate purchase",
+    "input": {
+      "reviewDays": 2,
+      "items": [
+        {
+          "sku": "A",
+          "onHand": 0,
+          "incoming": 20,
+          "dailyUsage": 5,
+          "leadDays": 2
+        }
+      ]
+    },
+    "expected": {
+      "items": [
+        {
+          "sku": "A",
+          "stockPosition": 20,
+          "reorderPoint": 10,
+          "targetStock": 20,
+          "orderQuantity": 0,
+          "projectedStock": 20,
+          "daysOnHand": 0,
+          "status": "sufficient"
+        }
+      ],
+      "totalOrderUnits": 0,
+      "reorderCount": 0
+    }
+  },
+  {
+    "name": "exact trigger orders review demand",
+    "input": {
+      "reviewDays": 2,
+      "items": [
+        {
+          "sku": "A",
+          "onHand": 6,
+          "dailyUsage": 3,
+          "leadDays": 2
+        }
+      ]
+    },
+    "expected": {
+      "items": [
+        {
+          "sku": "A",
+          "stockPosition": 6,
+          "reorderPoint": 6,
+          "targetStock": 12,
+          "orderQuantity": 6,
+          "projectedStock": 12,
+          "daysOnHand": 2,
+          "status": "reorder"
+        }
+      ],
+      "totalOrderUnits": 6,
+      "reorderCount": 1
+    }
+  },
+  {
+    "name": "negative stock rejected",
+    "input": {
+      "reviewDays": 1,
+      "items": [
+        {
+          "sku": "A",
+          "onHand": -1,
+          "dailyUsage": 1,
+          "leadDays": 1
+        }
+      ]
+    },
+    "error": true,
+    "errorIncludes": "onHand"
+  },
+  {
+    "name": "zero pack rejected",
+    "input": {
+      "reviewDays": 1,
+      "items": [
+        {
+          "sku": "A",
+          "onHand": 0,
+          "dailyUsage": 1,
+          "leadDays": 1,
+          "packSize": 0
+        }
+      ]
+    },
+    "error": true,
+    "errorIncludes": "packSize"
+  },
+  {
+    "name": "duplicate SKU rejected",
+    "input": {
+      "reviewDays": 1,
+      "items": [
+        {
+          "sku": "A",
+          "onHand": 0,
+          "dailyUsage": 1,
+          "leadDays": 1
+        },
+        {
+          "sku": "A",
+          "onHand": 0,
+          "dailyUsage": 1,
+          "leadDays": 1
+        }
+      ]
+    },
+    "error": true,
+    "errorIncludes": "duplicate"
+  },
+  {
+    "name": "null is not an omitted optional field",
+    "input": {
+      "reviewDays": 1,
+      "items": [
+        {
+          "sku": "A",
+          "onHand": 0,
+          "dailyUsage": 1,
+          "leadDays": 1,
+          "incoming": null
+        }
+      ]
+    },
+    "error": true,
+    "errorIncludes": "incoming"
+  }
+]

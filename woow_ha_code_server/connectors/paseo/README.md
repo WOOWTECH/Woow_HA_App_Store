@@ -116,6 +116,43 @@ separate and requires a new successful reply. `changed:false` is not a model
 switch. Full client/provider behavior still must be checked through Paseo Web.
 Changing provider creates another agent; context is not silently transferred.
 
+## Workspace downloads in Paseo Web
+
+Use Paseo's existing paired file transport for workspace artifacts. An assistant
+can link `[Download ZIP](downloads/all-projects.zip)` or
+`[Download text](README.txt)` using paths relative to its workspace. Clicking the
+link opens that file in Paseo. Open **Explorer → Files**, right-click the file,
+then choose **Download** to save its original bytes. A ZIP showing **Binary
+preview unavailable** is still downloadable from that menu.
+
+The browser downloads a local `blob:` assembled by Paseo's authenticated
+transport. No extra public file endpoint, injected authorization header, SSH
+forward, or credential-bearing chat URL is needed. An unpaired browser cannot
+open the workspace files. Keep normal HA ingress authentication for code-server
+and its live app previews; do not construct `/<addon>/proxy/...` URLs as file
+downloads in an external Paseo conversation.
+
+`tests/browser-downloads.mjs` verifies actual assistant file links, ordinary
+Explorer Download clicks, ZIP/text byte hashes, and isolation in a fresh
+unpaired browser. It attaches download listeners to existing and newly opened
+pages before clicking. A missing event or mismatched hash fails the check;
+an HTTP 200 alone is not download evidence. It stores only sanitized result
+metadata and optional fixture downloads, never browser storage or raw errors.
+
+Run it against an explicitly authorized, already-completed test conversation:
+
+```sh
+WOOW_PLAYWRIGHT_MODULE=/absolute/path/to/playwright-core/index.mjs \
+  node connectors/paseo/tests/browser-downloads.mjs /private/download-case.json
+```
+
+The case JSON contains `privatePairFile` (a private JSON input with `pairUrl`),
+`workspaceUrl`, `agentId`, `assistantMarker`, and `files` entries containing
+`path`, the assistant link's `label`, and expected `sha256`. Optional `reportFile`
+and `downloadDirectory` choose local output paths. Pairing material must remain
+private and must not be committed or included in reports. This check makes no
+new model calls and does not edit files on the target.
+
 Timeouts: local CLI 30s normally, daemon start 105s, local connect 5s, catalog up to
 150s, each verification turn 10–600s, conversation turn 1–600s. The parent CLI and
 UI must allow the requested total (three providers × two turns for `verify`).

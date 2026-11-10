@@ -1,0 +1,433 @@
+[
+  {
+    "name": "first record with trimmed case-insensitive keys",
+    "input": {
+      "records": [
+        {
+          "id": " A ",
+          "v": 1
+        },
+        {
+          "id": "a",
+          "v": 2
+        },
+        {
+          "id": "B",
+          "v": 3
+        }
+      ],
+      "keys": [
+        "id"
+      ]
+    },
+    "expected": {
+      "inputCount": 3,
+      "uniqueCount": 2,
+      "duplicatesRemoved": 1,
+      "records": [
+        {
+          "id": " A ",
+          "v": 1
+        },
+        {
+          "id": "B",
+          "v": 3
+        }
+      ],
+      "duplicateGroups": [
+        {
+          "indices": [
+            0,
+            1
+          ],
+          "outputIndex": 0
+        }
+      ]
+    }
+  },
+  {
+    "name": "last winner retains group encounter order",
+    "input": {
+      "records": [
+        {
+          "id": 1,
+          "x": "old"
+        },
+        {
+          "id": 2,
+          "x": "second"
+        },
+        {
+          "id": 1,
+          "x": "new"
+        }
+      ],
+      "keys": [
+        "id"
+      ],
+      "mode": "last"
+    },
+    "expected": {
+      "inputCount": 3,
+      "uniqueCount": 2,
+      "duplicatesRemoved": 1,
+      "records": [
+        {
+          "id": 1,
+          "x": "new"
+        },
+        {
+          "id": 2,
+          "x": "second"
+        }
+      ],
+      "duplicateGroups": [
+        {
+          "indices": [
+            0,
+            2
+          ],
+          "outputIndex": 0
+        }
+      ]
+    }
+  },
+  {
+    "name": "merge fills blanks but preserves zero and false",
+    "input": {
+      "records": [
+        {
+          "id": 1,
+          "name": "",
+          "score": 0,
+          "active": false,
+          "info": null
+        },
+        {
+          "id": 1,
+          "name": "Ava",
+          "score": 9,
+          "active": true,
+          "info": {
+            "x": 1
+          },
+          "extra": "y"
+        }
+      ],
+      "keys": [
+        "id"
+      ],
+      "mode": "merge"
+    },
+    "expected": {
+      "inputCount": 2,
+      "uniqueCount": 1,
+      "duplicatesRemoved": 1,
+      "records": [
+        {
+          "id": 1,
+          "name": "Ava",
+          "score": 0,
+          "active": false,
+          "info": {
+            "x": 1
+          },
+          "extra": "y"
+        }
+      ],
+      "duplicateGroups": [
+        {
+          "indices": [
+            0,
+            1
+          ],
+          "outputIndex": 0
+        }
+      ]
+    }
+  },
+  {
+    "name": "typed composite keys do not collide",
+    "input": {
+      "records": [
+        {
+          "tenant": "x",
+          "id": 1
+        },
+        {
+          "tenant": "x",
+          "id": "1"
+        }
+      ],
+      "keys": [
+        "tenant",
+        "id"
+      ]
+    },
+    "expected": {
+      "inputCount": 2,
+      "uniqueCount": 2,
+      "duplicatesRemoved": 0,
+      "records": [
+        {
+          "tenant": "x",
+          "id": 1
+        },
+        {
+          "tenant": "x",
+          "id": "1"
+        }
+      ],
+      "duplicateGroups": []
+    }
+  },
+  {
+    "name": "case sensitivity can be enabled",
+    "input": {
+      "records": [
+        {
+          "id": "A"
+        },
+        {
+          "id": "a"
+        }
+      ],
+      "keys": [
+        "id"
+      ],
+      "caseSensitive": true
+    },
+    "expected": {
+      "inputCount": 2,
+      "uniqueCount": 2,
+      "duplicatesRemoved": 0,
+      "records": [
+        {
+          "id": "A"
+        },
+        {
+          "id": "a"
+        }
+      ],
+      "duplicateGroups": []
+    }
+  },
+  {
+    "name": "empty data",
+    "input": {
+      "records": [],
+      "keys": [
+        "id"
+      ]
+    },
+    "expected": {
+      "inputCount": 0,
+      "uniqueCount": 0,
+      "duplicatesRemoved": 0,
+      "records": [],
+      "duplicateGroups": []
+    }
+  },
+  {
+    "name": "missing key rejected",
+    "input": {
+      "records": [
+        {
+          "name": "A"
+        }
+      ],
+      "keys": [
+        "id"
+      ]
+    },
+    "error": true,
+    "errorContains": "missing key id"
+  },
+  {
+    "name": "repeated key fields rejected",
+    "input": {
+      "records": [],
+      "keys": [
+        "id",
+        "id"
+      ]
+    },
+    "error": true,
+    "errorContains": "keys must be unique"
+  },
+  {
+    "name": "unknown retention mode rejected",
+    "input": {
+      "records": [],
+      "keys": [
+        "id"
+      ],
+      "mode": "random"
+    },
+    "error": true,
+    "errorContains": "mode must be one of"
+  },
+  {
+    "name": "object key rejected",
+    "input": {
+      "records": [
+        {
+          "id": {}
+        }
+      ],
+      "keys": [
+        "id"
+      ]
+    },
+    "error": true,
+    "errorContains": "must be a scalar"
+  },
+  {
+    "name": "boolean option must be boolean",
+    "input": {
+      "records": [],
+      "keys": [
+        "id"
+      ],
+      "trim": "yes"
+    },
+    "error": true,
+    "errorContains": "trim must be boolean"
+  },
+  {
+    "name": "rejectDuplicates throws on normalized duplicate",
+    "input": {
+      "records": [
+        {
+          "id": " A "
+        },
+        {
+          "id": "B"
+        },
+        {
+          "id": "a"
+        }
+      ],
+      "keys": [
+        "id"
+      ],
+      "rejectDuplicates": true
+    },
+    "error": true,
+    "errorContains": "duplicate key [\"a\"] at records[0] and records[2]"
+  },
+  {
+    "name": "rejectDuplicates passes when keys are unique",
+    "input": {
+      "records": [
+        {
+          "id": 1,
+          "v": "x"
+        },
+        {
+          "id": "1",
+          "v": "y"
+        }
+      ],
+      "keys": [
+        "id"
+      ],
+      "rejectDuplicates": true
+    },
+    "expected": {
+      "inputCount": 2,
+      "uniqueCount": 2,
+      "duplicatesRemoved": 0,
+      "records": [
+        {
+          "id": 1,
+          "v": "x"
+        },
+        {
+          "id": "1",
+          "v": "y"
+        }
+      ],
+      "duplicateGroups": []
+    }
+  },
+  {
+    "name": "rejectDuplicates must be boolean",
+    "input": {
+      "records": [],
+      "keys": [
+        "id"
+      ],
+      "rejectDuplicates": "true"
+    },
+    "error": true,
+    "errorContains": "rejectDuplicates must be boolean"
+  },
+  {
+    "name": "rejectDuplicates false keeps deduplication",
+    "input": {
+      "records": [
+        {
+          "id": "A"
+        },
+        {
+          "id": "a"
+        }
+      ],
+      "keys": [
+        "id"
+      ],
+      "rejectDuplicates": false
+    },
+    "expected": {
+      "inputCount": 2,
+      "uniqueCount": 1,
+      "duplicatesRemoved": 1,
+      "records": [
+        {
+          "id": "A"
+        }
+      ],
+      "duplicateGroups": [
+        {
+          "indices": [
+            0,
+            1
+          ],
+          "outputIndex": 0
+        }
+      ]
+    }
+  },
+  {
+    "name": "rejectDuplicates rejects null with empty records",
+    "input": {
+      "records": [],
+      "keys": [
+        "id"
+      ],
+      "rejectDuplicates": null
+    },
+    "error": true,
+    "errorContains": "rejectDuplicates must be boolean"
+  },
+  {
+    "name": "rejectDuplicates rejects null before deduplicating",
+    "input": {
+      "records": [
+        {
+          "id": " A "
+        },
+        {
+          "id": "a"
+        }
+      ],
+      "keys": [
+        "id"
+      ],
+      "rejectDuplicates": null
+    },
+    "error": true,
+    "errorContains": "rejectDuplicates must be boolean"
+  }
+]

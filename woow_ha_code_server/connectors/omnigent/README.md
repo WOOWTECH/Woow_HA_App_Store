@@ -1,7 +1,8 @@
 # WOOW Omnigent connector runtime
 
-This adapter implements `handle(request)` for the parent JSON CLI. It does not
-install Pi extensions, change the provider account, or install extra engine CLIs.
+This adapter implements `handle(request)` for the parent JSON CLI. Image builds
+patch its pinned native Pi bridge for MCP refresh; provider accounts and engine
+CLI installation remain the deployment's responsibility.
 
 Build the private runtime with:
 
@@ -18,7 +19,8 @@ The root CLI location is controlled by the parent, not this adapter.
 The runtime chooser uses `WOOW_OMNIGENT_PYTHON`, then `OG_PYTHON`, then the existing
 PaaS `/opt/omnigent/tools/omnigent/bin/python`, then `./runtime/bin/python`. Explicit
 paths are deployment environment, never request fields. On PaaS, patch the existing
-runtime at image build using its Python and `patch-runtime.py`; do not install or
+runtime at image build using its Python, `patch-runtime.py`, then
+`patch-native-resume.py --site-packages <runtime purelib>`; do not install or
 start a second host. Export `WOOW_OMNIGENT_SHARED_TOOLS=1` in the deployment environment
 so the existing kit and every native runner inherit the shared-tools patch.
 
@@ -84,8 +86,25 @@ a private connector host.
 New native Codex sessions retain the copied `config.toml` (MCP) and symlink shared
 skills; session `/model` changes stay private. Managed Pi sessions inherit the
 deployment agent directory's settings plus skills/extensions/prompts/MCP. Claude
-continues to use the deployment `CLAUDE_CONFIG_DIR`. Changes to MCP require a new
-agent session. Provider auth is not copied between deployments.
+continues to use the deployment `CLAUDE_CONFIG_DIR`. Provider auth is not copied
+between deployments.
+
+`refreshMcp {sessionId}` updates an existing local conversation after checking
+the saved account's edit permission and native idle state. Codex uses its native
+`config/mcpServer/reload` request and reports `queued` for the next turn boundary.
+Pi stages replacement MCP connections inside the same native process and publishes
+them only after a final native idle/identity check. It reports `applied` and
+`inventoryVerified`, never tool-execution success. Both retain the visible/native
+IDs, history, provider credentials and unrelated configuration. Busy, unsupported,
+missing native persistence and failed refreshes return explicit sanitized errors;
+there is no automatic session creation or host restart.
+
+Existing Pi processes predating the image need one operator-coordinated idle
+bootstrap before this action works. See [native Pi refresh](pi_mcp_refresh.md)
+for the exact supported runtime, `/reload` preparation, identity checks and the
+bounded Node 22 legacy-timer compatibility shim. The button does not perform this
+bootstrap. Claude refresh remains explicitly unsupported until a safe native
+implementation is available.
 
 With the shared-tools flag enabled, Pi's model picker also includes custom
 providers from the deployment's `models.json`, filtered to providers present in

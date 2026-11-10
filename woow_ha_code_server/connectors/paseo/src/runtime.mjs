@@ -1,3 +1,5 @@
+import {refreshSharedMcp} from './mcp-refresh.mjs';
+import {synchronizeMcp} from '../../shared-mcp.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 import net from 'node:net';
@@ -474,4 +476,10 @@ export async function archiveChat(options = {}) {
     if (!result?.archivedAt) throw new RuntimeError('ARCHIVE_UNCONFIRMED');
     return { agentId: id, archived: true, archivedAt: result.archivedAt };
   });
+}
+
+export async function refreshMcp(request) {
+  const instance = await currentInstance();
+  if (instance && instanceNeedsRuntimeRestart(instance)) throw new RuntimeError('RESTART_REQUIRED');
+  return withClient(client => refreshSharedMcp(client, request.sessionId, () => synchronizeMcp(inheritedEnv())), 90000);
 }

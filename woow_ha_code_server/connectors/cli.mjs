@@ -2,7 +2,7 @@
 import {pathToFileURL} from 'node:url';
 
 const adapters = Object.freeze({paseo: './paseo/index.mjs', omnigent: './omnigent/index.mjs'});
-const actions = new Set(['status', 'configure', 'start', 'stop', 'restore', 'models', 'verify', 'pair', 'connect', 'disconnect', 'diagnostics', 'chat', 'continue', 'switchModel', 'session', 'archive']);
+const actions = new Set(['status', 'configure', 'start', 'stop', 'restore', 'models', 'verify', 'pair', 'connect', 'disconnect', 'diagnostics', 'chat', 'continue', 'switchModel', 'session', 'archive', 'refreshMcp']);
 const failure = (code, message) => ({ok: false, error: {code, message}});
 
 export async function dispatch(request, load = name => import(adapters[name])) {

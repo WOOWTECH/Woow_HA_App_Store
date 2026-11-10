@@ -1,0 +1,9 @@
+[
+  {"name":"half of one-percent budget consumed","input":{"observations":[{"status":200,"count":995},{"status":500,"count":5}],"sloPercent":99},"expected":{"totalRequests":1000,"successfulRequests":995,"failedRequests":5,"successPercent":99.5,"allowedFailures":10,"remainingFailures":5,"burnRate":0.5,"withinBudget":true,"byStatus":[{"status":200,"count":995},{"status":500,"count":5}]}},
+  {"name":"custom failures aggregate and exhaust budget","input":{"observations":[{"status":429,"count":2},{"status":200,"count":5},{"status":200,"count":3}],"sloPercent":90,"failureStatuses":[429]},"expected":{"totalRequests":10,"successfulRequests":8,"failedRequests":2,"successPercent":80,"allowedFailures":1,"remainingFailures":-1,"burnRate":2,"withinBudget":false,"byStatus":[{"status":200,"count":8},{"status":429,"count":2}]}},
+  {"name":"zero budget with failure has undefined burn","input":{"observations":[{"status":503,"count":1}],"sloPercent":100},"expected":{"totalRequests":1,"successfulRequests":0,"failedRequests":1,"successPercent":0,"allowedFailures":0,"remainingFailures":-1,"burnRate":null,"withinBudget":false,"byStatus":[{"status":503,"count":1}]}},
+  {"name":"exactly on budget","input":{"observations":[{"status":200,"count":99},{"status":500,"count":1}],"sloPercent":99},"expected":{"totalRequests":100,"successfulRequests":99,"failedRequests":1,"successPercent":99,"allowedFailures":1,"remainingFailures":0,"burnRate":1,"withinBudget":true,"byStatus":[{"status":200,"count":99},{"status":500,"count":1}]}},
+  {"name":"invalid status","input":{"observations":[{"status":600,"count":1}]},"error":true,"errorContains":"status"},
+  {"name":"negative count","input":{"observations":[{"status":200,"count":-1}]},"error":true,"errorContains":"count"},
+  {"name":"empty observations","input":{"observations":[]},"error":true,"errorContains":"observations"}
+]

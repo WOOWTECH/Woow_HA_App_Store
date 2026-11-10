@@ -1,0 +1,532 @@
+[
+  {
+    "name": "cost benefit tradeoff",
+    "input": {
+      "criteria": [
+        {
+          "id": "price",
+          "weight": 3,
+          "direction": "cost"
+        },
+        {
+          "id": "battery",
+          "weight": 2,
+          "direction": "benefit"
+        }
+      ],
+      "alternatives": [
+        {
+          "name": "A",
+          "values": {
+            "price": 800,
+            "battery": 8
+          }
+        },
+        {
+          "name": "B",
+          "values": {
+            "price": 1000,
+            "battery": 12
+          }
+        },
+        {
+          "name": "C",
+          "values": {
+            "price": 900,
+            "battery": 10
+          }
+        }
+      ]
+    },
+    "expected": {
+      "criteria": [
+        {
+          "id": "price",
+          "direction": "cost",
+          "weight": 3,
+          "normalizedWeight": 0.6,
+          "minimum": 800,
+          "maximum": 1000
+        },
+        {
+          "id": "battery",
+          "direction": "benefit",
+          "weight": 2,
+          "normalizedWeight": 0.4,
+          "minimum": 8,
+          "maximum": 12
+        }
+      ],
+      "rankings": [
+        {
+          "rank": 1,
+          "name": "A",
+          "score": 60,
+          "contributions": {
+            "price": 60,
+            "battery": 0
+          }
+        },
+        {
+          "rank": 2,
+          "name": "C",
+          "score": 50,
+          "contributions": {
+            "price": 30,
+            "battery": 20
+          }
+        },
+        {
+          "rank": 3,
+          "name": "B",
+          "score": 40,
+          "contributions": {
+            "price": 0,
+            "battery": 40
+          }
+        }
+      ],
+      "winnerNames": [
+        "A"
+      ]
+    }
+  },
+  {
+    "name": "identical criterion produces tied winners",
+    "input": {
+      "criteria": [
+        {
+          "id": "quality",
+          "weight": 1,
+          "direction": "benefit"
+        }
+      ],
+      "alternatives": [
+        {
+          "name": "A",
+          "values": {
+            "quality": 10
+          }
+        },
+        {
+          "name": "B",
+          "values": {
+            "quality": 10
+          }
+        }
+      ]
+    },
+    "expected": {
+      "criteria": [
+        {
+          "id": "quality",
+          "direction": "benefit",
+          "weight": 1,
+          "normalizedWeight": 1,
+          "minimum": 10,
+          "maximum": 10
+        }
+      ],
+      "rankings": [
+        {
+          "rank": 1,
+          "name": "A",
+          "score": 100,
+          "contributions": {
+            "quality": 100
+          }
+        },
+        {
+          "rank": 1,
+          "name": "B",
+          "score": 100,
+          "contributions": {
+            "quality": 100
+          }
+        }
+      ],
+      "winnerNames": [
+        "A",
+        "B"
+      ]
+    }
+  },
+  {
+    "name": "negative costs and zero-weight criterion",
+    "input": {
+      "criteria": [
+        {
+          "id": "cost",
+          "weight": 1,
+          "direction": "cost"
+        },
+        {
+          "id": "ignored",
+          "weight": 0,
+          "direction": "benefit"
+        }
+      ],
+      "alternatives": [
+        {
+          "name": "A",
+          "values": {
+            "cost": -5,
+            "ignored": 0
+          }
+        },
+        {
+          "name": "B",
+          "values": {
+            "cost": 5,
+            "ignored": 10
+          }
+        }
+      ]
+    },
+    "expected": {
+      "criteria": [
+        {
+          "id": "cost",
+          "direction": "cost",
+          "weight": 1,
+          "normalizedWeight": 1,
+          "minimum": -5,
+          "maximum": 5
+        },
+        {
+          "id": "ignored",
+          "direction": "benefit",
+          "weight": 0,
+          "normalizedWeight": 0,
+          "minimum": 0,
+          "maximum": 10
+        }
+      ],
+      "rankings": [
+        {
+          "rank": 1,
+          "name": "A",
+          "score": 100,
+          "contributions": {
+            "cost": 100,
+            "ignored": 0
+          }
+        },
+        {
+          "rank": 2,
+          "name": "B",
+          "score": 0,
+          "contributions": {
+            "cost": 0,
+            "ignored": 0
+          }
+        }
+      ],
+      "winnerNames": [
+        "A"
+      ]
+    }
+  },
+  {
+    "name": "competition ranks skip after a tie",
+    "input": {
+      "criteria": [
+        {
+          "id": "quality",
+          "weight": 2,
+          "direction": "benefit"
+        }
+      ],
+      "alternatives": [
+        {
+          "name": "A",
+          "values": {
+            "quality": 5
+          }
+        },
+        {
+          "name": "B",
+          "values": {
+            "quality": 5
+          }
+        },
+        {
+          "name": "C",
+          "values": {
+            "quality": 0
+          }
+        }
+      ]
+    },
+    "expected": {
+      "criteria": [
+        {
+          "id": "quality",
+          "direction": "benefit",
+          "weight": 2,
+          "normalizedWeight": 1,
+          "minimum": 0,
+          "maximum": 5
+        }
+      ],
+      "rankings": [
+        {
+          "rank": 1,
+          "name": "A",
+          "score": 100,
+          "contributions": {
+            "quality": 100
+          }
+        },
+        {
+          "rank": 1,
+          "name": "B",
+          "score": 100,
+          "contributions": {
+            "quality": 100
+          }
+        },
+        {
+          "rank": 3,
+          "name": "C",
+          "score": 0,
+          "contributions": {
+            "quality": 0
+          }
+        }
+      ],
+      "winnerNames": [
+        "A",
+        "B"
+      ]
+    }
+  },
+  {
+    "name": "all weights zero",
+    "input": {
+      "criteria": [
+        {
+          "id": "x",
+          "weight": 0,
+          "direction": "benefit"
+        }
+      ],
+      "alternatives": [
+        {
+          "name": "A",
+          "values": {
+            "x": 1
+          }
+        },
+        {
+          "name": "B",
+          "values": {
+            "x": 2
+          }
+        }
+      ]
+    },
+    "error": true,
+    "errorMessage": "positive weight"
+  },
+  {
+    "name": "missing criterion value",
+    "input": {
+      "criteria": [
+        {
+          "id": "x",
+          "weight": 1,
+          "direction": "benefit"
+        }
+      ],
+      "alternatives": [
+        {
+          "name": "A",
+          "values": {}
+        },
+        {
+          "name": "B",
+          "values": {
+            "x": 2
+          }
+        }
+      ]
+    },
+    "error": true,
+    "errorMessage": "exactly the criterion IDs"
+  },
+  {
+    "name": "duplicate alternatives",
+    "input": {
+      "criteria": [
+        {
+          "id": "x",
+          "weight": 1,
+          "direction": "benefit"
+        }
+      ],
+      "alternatives": [
+        {
+          "name": "A",
+          "values": {
+            "x": 1
+          }
+        },
+        {
+          "name": "A",
+          "values": {
+            "x": 2
+          }
+        }
+      ]
+    },
+    "error": true,
+    "errorMessage": "unique"
+  },
+  {
+    "name": "invalid direction",
+    "input": {
+      "criteria": [
+        {
+          "id": "x",
+          "weight": 1,
+          "direction": "other"
+        }
+      ],
+      "alternatives": [
+        {
+          "name": "A",
+          "values": {
+            "x": 1
+          }
+        },
+        {
+          "name": "B",
+          "values": {
+            "x": 2
+          }
+        }
+      ]
+    },
+    "error": true,
+    "errorMessage": "direction"
+  },
+  {
+    "name": "negative weight",
+    "input": {
+      "criteria": [
+        {
+          "id": "x",
+          "weight": -1,
+          "direction": "benefit"
+        }
+      ],
+      "alternatives": [
+        {
+          "name": "A",
+          "values": {
+            "x": 1
+          }
+        },
+        {
+          "name": "B",
+          "values": {
+            "x": 2
+          }
+        }
+      ]
+    },
+    "error": true,
+    "errorMessage": "weight"
+  },
+  {
+    "name": "numeric string value",
+    "input": {
+      "criteria": [
+        {
+          "id": "x",
+          "weight": 1,
+          "direction": "benefit"
+        }
+      ],
+      "alternatives": [
+        {
+          "name": "A",
+          "values": {
+            "x": "1"
+          }
+        },
+        {
+          "name": "B",
+          "values": {
+            "x": 2
+          }
+        }
+      ]
+    },
+    "error": true,
+    "errorMessage": "finite number"
+  },
+  {
+    "name": "extra criterion value rejected",
+    "input": {
+      "criteria": [
+        {
+          "id": "x",
+          "weight": 1,
+          "direction": "benefit"
+        }
+      ],
+      "alternatives": [
+        {
+          "name": "A",
+          "values": {
+            "x": 1,
+            "extra": 0
+          }
+        },
+        {
+          "name": "B",
+          "values": {
+            "x": 2
+          }
+        }
+      ]
+    },
+    "error": true,
+    "errorMessage": "exactly the criterion IDs"
+  },
+  {
+    "name": "duplicate criterion ID rejected",
+    "input": {
+      "criteria": [
+        {
+          "id": "x",
+          "weight": 1,
+          "direction": "benefit"
+        },
+        {
+          "id": "x",
+          "weight": 1,
+          "direction": "cost"
+        }
+      ],
+      "alternatives": [
+        {
+          "name": "A",
+          "values": {
+            "x": 1
+          }
+        },
+        {
+          "name": "B",
+          "values": {
+            "x": 2
+          }
+        }
+      ]
+    },
+    "error": true,
+    "errorMessage": "unique"
+  }
+]

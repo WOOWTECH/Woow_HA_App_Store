@@ -1,0 +1,10 @@
+Application contract
+
+projects/p01 through p50 export meta and synchronous run(input) from app.mjs.
+meta includes id, title, category, description, version and example.
+run returns JSON-serializable output or throws an Error on invalid input.
+Application code uses the Node standard library, bounded synthetic inputs and no remote services.
+cases.json contains independently expected successes and explicit rejection cases.
+Each project has its own executable test.mjs, README.txt and standalone server.
+The shared runtime handles byte-safe JSON requests and loads only the requested application for POST.
+These are functional prototypes; workflow, webhook, scheduling and deployment examples are simulations as documented per project.

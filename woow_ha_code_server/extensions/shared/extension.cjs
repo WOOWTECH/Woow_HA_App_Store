@@ -94,6 +94,39 @@ function createExtension(connector, dependencies = {}) {
     }
     return result;
   }
+  async function refreshMcp() {
+    const sessionId = await vscode.window.showInputBox({
+      title: `${name}: refresh shared MCP in an existing conversation`,
+      prompt: connector === 'paseo'
+        ? 'Enter the existing Paseo agent ID. Only an idle conversation can resume; history and permissions are retained.'
+        : 'Enter the Omnigent conversation ID from /c/ID. Native reload supports Codex and Pi with an updated runtime; an unavailable native control returns an error without replacing the conversation.',
+      ignoreFocusOut: true,
+      validateInput: value => /^[A-Za-z0-9_-]{8,128}$/.test(value.trim()) ? undefined : 'Enter a conversation ID, without a URL or credentials.',
+    });
+    if (sessionId === undefined) return;
+    return invoke('refreshMcp', {sessionId: sessionId.trim()});
+  }
+  function refreshNotice(result) {
+    if (result?.ok) return result.refresh?.state === 'queued'
+      ? 'Shared MCP reload queued in the same native conversation. It takes effect at the next turn boundary; tool execution is not yet verified.'
+      : result.refresh?.state === 'applied'
+      ? 'Shared MCP configuration and tool inventory updated in the same native conversation. Tool execution is not yet verified.'
+      : result.refresh?.state === 'reloaded'
+      ? 'Shared MCP native reload completed in the same native conversation. Tool inventory and execution are not yet verified.'
+      : 'The same conversation resumed with the synchronized configuration. Tool execution is not yet verified.';
+    const code = result?.error?.code;
+    return ({SESSION_BUSY: 'Conversation is busy. Wait for its reply or permission prompt to finish, then retry. Nothing was interrupted.',
+      MCP_REFRESH_UNSUPPORTED: 'This native harness has no verified safe reload. Its conversation was not changed.',
+      MCP_RESUME_UNAVAILABLE: 'This conversation has no saved native session to resume. It was not replaced.',
+      RESTART_REQUIRED: 'This daemon is running the previous runtime. An operator must update it after its conversations are idle; refresh did not restart it.',
+      MCP_NATIVE_UNAVAILABLE: 'Native refresh control is unavailable. An operator must prepare the original native session before retrying; it was not replaced.',
+      MCP_REFRESH_UNCONFIRMED: 'Refresh could not be confirmed. Inspect the existing conversation before retrying.',
+      MCP_RELOAD_FAILED: 'Native reload failed. Inspect or reopen the existing conversation; no new conversation was created.',
+      MCP_RELOAD_SUBMISSION_UNKNOWN: 'Native reload submission is uncertain. Inspect the original conversation before retrying; the command was not resent.',
+      MCP_APPROVAL_PENDING: 'The native conversation is waiting for permission. Complete that prompt before refreshing; nothing was interrupted.',
+      MCP_SYNC_FAILED: 'The shared MCP configuration could not be synchronized. Check it and retry.',
+    })[code] || `Shared MCP refresh failed: ${publicCode(code)}. Check the existing conversation before retrying.`;
+  }
   async function openWeb(pair = false) {
     let url;
     if (pair) {
@@ -140,6 +173,10 @@ function createExtension(connector, dependencies = {}) {
       else if (action === 'configure') result = await configure(fields);
       else if (action === 'connect') result = await connect();
       else if (action === 'verify') result = await verify();
+      else if (action === 'refreshMcp') {
+        result = await refreshMcp();
+        if (result?.ok) await vscode.window.showInformationMessage(refreshNotice(result));
+      }
       else if (action === 'pair') result = await openWeb(true);
       else if (action === 'openWeb') result = await openWeb(false);
       else if (action === 'models') {
@@ -154,7 +191,7 @@ function createExtension(connector, dependencies = {}) {
       } else if (['start', 'stop', 'restore', 'disconnect'].includes(action)) result = await invoke(action);
       else throw new Error('Unsupported action.');
       if (result && action !== 'status') await refresh();
-      if (result?.ok === false && action !== 'status') await vscode.window.showErrorMessage(`${name}: ${publicCode(result.error?.code)}. Check configuration and runtime availability.`);
+      if (result?.ok === false && action !== 'status') await vscode.window.showErrorMessage(action === 'refreshMcp' ? refreshNotice(result) : `${name}: ${publicCode(result.error?.code)}. Check configuration and runtime availability.`);
       return result;
     } catch (error) {
       // Only our validation errors are shown; runtime stderr is never forwarded.
@@ -166,7 +203,8 @@ function createExtension(connector, dependencies = {}) {
       busy = false;
       panel?.webview.postMessage({ type: 'busy', busy: false });
       render();
-      if (result) notice(result.ok ? (action === 'verify' ? 'Verification request finished. Check the recorded conversation status.' : 'Operation completed.') : `Operation failed: ${publicCode(result.error?.code)}`, !result.ok);
+      if (result && action === 'refreshMcp') notice(refreshNotice(result), !result.ok);
+      else if (result) notice(result.ok ? (action === 'verify' ? 'Verification request finished. Check the recorded conversation status.' : 'Operation completed.') : `Operation failed: ${publicCode(result.error?.code)}`, !result.ok);
     }
   }
   function open() {
@@ -185,7 +223,7 @@ function createExtension(connector, dependencies = {}) {
     output = vscode.window.createOutputChannel(`WOOW ${name}`);
     emitter = new vscode.EventEmitter();
     context.subscriptions.push(output, emitter);
-    const actions = ['status', 'configure', 'start', 'stop', 'restore', 'models', 'verify', 'openWeb', 'settings', ...(connector === 'paseo' ? ['pair'] : ['connect', 'disconnect'])];
+    const actions = ['status', 'configure', 'start', 'stop', 'restore', 'models', 'verify', 'refreshMcp', 'openWeb', 'settings', ...(connector === 'paseo' ? ['pair'] : ['connect', 'disconnect'])];
     context.subscriptions.push(vscode.commands.registerCommand(`${prefix}.open`, open));
     for (const action of actions) context.subscriptions.push(vscode.commands.registerCommand(`${prefix}.${action}`, () => perform(action)));
     const tree = {
@@ -198,6 +236,7 @@ function createExtension(connector, dependencies = {}) {
           { label: `Conversation: ${current.verification}`, description: current.verifiedAt, command: { command: `${prefix}.verify`, title: 'Verify conversation' } },
           ...current.engines.map(engine => ({ label: engine.id, description: `installed ${engine.installed} · signed in ${engine.authenticated}` })),
           { label: 'Configure & connect', command: { command: `${prefix}.open`, title: 'Open connection' } },
+          { label: 'Refresh shared MCP', command: { command: `${prefix}.refreshMcp`, title: 'Refresh shared MCP' } },
           { label: 'Refresh status', command: { command: `${prefix}.status`, title: 'Refresh status' } },
         ];
       },

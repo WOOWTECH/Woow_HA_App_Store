@@ -1,0 +1,404 @@
+[
+  {
+    "name": "staff shortage only in first hour",
+    "input": {
+      "requirements": [
+        {
+          "role": "Support",
+          "start": "09:00",
+          "end": "11:00",
+          "minimumStaff": 2
+        }
+      ],
+      "shifts": [
+        {
+          "staff": "Ada",
+          "role": "Support",
+          "start": "09:00",
+          "end": "11:00"
+        },
+        {
+          "staff": "Ben",
+          "role": "Support",
+          "start": "10:00",
+          "end": "11:00"
+        }
+      ]
+    },
+    "expected": {
+      "coverage": [
+        {
+          "role": "Support",
+          "start": "09:00",
+          "end": "10:00",
+          "requiredStaff": 2,
+          "assignedStaff": [
+            "Ada"
+          ],
+          "availableStaff": 1,
+          "shortfall": 1,
+          "surplus": 0
+        },
+        {
+          "role": "Support",
+          "start": "10:00",
+          "end": "11:00",
+          "requiredStaff": 2,
+          "assignedStaff": [
+            "Ada",
+            "Ben"
+          ],
+          "availableStaff": 2,
+          "shortfall": 0,
+          "surplus": 0
+        }
+      ],
+      "covered": false,
+      "totalRequiredStaffMinutes": 240,
+      "totalUncoveredStaffMinutes": 60
+    }
+  },
+  {
+    "name": "shift extending outside demand is clipped",
+    "input": {
+      "requirements": [
+        {
+          "role": "Desk",
+          "start": "09:00",
+          "end": "10:00",
+          "minimumStaff": 1
+        }
+      ],
+      "shifts": [
+        {
+          "staff": "A",
+          "role": "Desk",
+          "start": "08:00",
+          "end": "11:00"
+        }
+      ]
+    },
+    "expected": {
+      "coverage": [
+        {
+          "role": "Desk",
+          "start": "09:00",
+          "end": "10:00",
+          "requiredStaff": 1,
+          "assignedStaff": [
+            "A"
+          ],
+          "availableStaff": 1,
+          "shortfall": 0,
+          "surplus": 0
+        }
+      ],
+      "covered": true,
+      "totalRequiredStaffMinutes": 60,
+      "totalUncoveredStaffMinutes": 0
+    }
+  },
+  {
+    "name": "overlapping demands are additive",
+    "input": {
+      "requirements": [
+        {
+          "role": "Desk",
+          "start": "09:00",
+          "end": "11:00",
+          "minimumStaff": 1
+        },
+        {
+          "role": "Desk",
+          "start": "10:00",
+          "end": "12:00",
+          "minimumStaff": 1
+        }
+      ],
+      "shifts": [
+        {
+          "staff": "A",
+          "role": "Desk",
+          "start": "09:00",
+          "end": "12:00"
+        },
+        {
+          "staff": "B",
+          "role": "Desk",
+          "start": "10:00",
+          "end": "11:00"
+        }
+      ]
+    },
+    "expected": {
+      "coverage": [
+        {
+          "role": "Desk",
+          "start": "09:00",
+          "end": "10:00",
+          "requiredStaff": 1,
+          "assignedStaff": [
+            "A"
+          ],
+          "availableStaff": 1,
+          "shortfall": 0,
+          "surplus": 0
+        },
+        {
+          "role": "Desk",
+          "start": "10:00",
+          "end": "11:00",
+          "requiredStaff": 2,
+          "assignedStaff": [
+            "A",
+            "B"
+          ],
+          "availableStaff": 2,
+          "shortfall": 0,
+          "surplus": 0
+        },
+        {
+          "role": "Desk",
+          "start": "11:00",
+          "end": "12:00",
+          "requiredStaff": 1,
+          "assignedStaff": [
+            "A"
+          ],
+          "availableStaff": 1,
+          "shortfall": 0,
+          "surplus": 0
+        }
+      ],
+      "covered": true,
+      "totalRequiredStaffMinutes": 240,
+      "totalUncoveredStaffMinutes": 0
+    }
+  },
+  {
+    "name": "unassigned role exposes full unmet demand",
+    "input": {
+      "requirements": [
+        {
+          "role": "Desk",
+          "start": "15:00",
+          "end": "15:30",
+          "minimumStaff": 2
+        }
+      ],
+      "shifts": []
+    },
+    "expected": {
+      "coverage": [
+        {
+          "role": "Desk",
+          "start": "15:00",
+          "end": "15:30",
+          "requiredStaff": 2,
+          "assignedStaff": [],
+          "availableStaff": 0,
+          "shortfall": 2,
+          "surplus": 0
+        }
+      ],
+      "covered": false,
+      "totalRequiredStaffMinutes": 60,
+      "totalUncoveredStaffMinutes": 60
+    }
+  },
+  {
+    "name": "one person can switch roles at a touching boundary",
+    "input": {
+      "requirements": [
+        {
+          "role": "B",
+          "start": "10:00",
+          "end": "11:00",
+          "minimumStaff": 1
+        },
+        {
+          "role": "A",
+          "start": "09:00",
+          "end": "10:00",
+          "minimumStaff": 1
+        }
+      ],
+      "shifts": [
+        {
+          "staff": "Sam",
+          "role": "A",
+          "start": "09:00",
+          "end": "10:00"
+        },
+        {
+          "staff": "Sam",
+          "role": "B",
+          "start": "10:00",
+          "end": "11:00"
+        }
+      ]
+    },
+    "expected": {
+      "coverage": [
+        {
+          "role": "A",
+          "start": "09:00",
+          "end": "10:00",
+          "requiredStaff": 1,
+          "assignedStaff": [
+            "Sam"
+          ],
+          "availableStaff": 1,
+          "shortfall": 0,
+          "surplus": 0
+        },
+        {
+          "role": "B",
+          "start": "10:00",
+          "end": "11:00",
+          "requiredStaff": 1,
+          "assignedStaff": [
+            "Sam"
+          ],
+          "availableStaff": 1,
+          "shortfall": 0,
+          "surplus": 0
+        }
+      ],
+      "covered": true,
+      "totalRequiredStaffMinutes": 120,
+      "totalUncoveredStaffMinutes": 0
+    }
+  },
+  {
+    "name": "surplus staff reported without negative shortage",
+    "input": {
+      "requirements": [
+        {
+          "role": "Desk",
+          "start": "09:00",
+          "end": "10:00",
+          "minimumStaff": 1
+        }
+      ],
+      "shifts": [
+        {
+          "staff": "B",
+          "role": "Desk",
+          "start": "09:00",
+          "end": "10:00"
+        },
+        {
+          "staff": "A",
+          "role": "Desk",
+          "start": "09:00",
+          "end": "10:00"
+        }
+      ]
+    },
+    "expected": {
+      "coverage": [
+        {
+          "role": "Desk",
+          "start": "09:00",
+          "end": "10:00",
+          "requiredStaff": 1,
+          "assignedStaff": [
+            "A",
+            "B"
+          ],
+          "availableStaff": 2,
+          "shortfall": 0,
+          "surplus": 1
+        }
+      ],
+      "covered": true,
+      "totalRequiredStaffMinutes": 60,
+      "totalUncoveredStaffMinutes": 0
+    }
+  },
+  {
+    "name": "same person overlapping in different roles rejected",
+    "input": {
+      "requirements": [
+        {
+          "role": "Desk",
+          "start": "09:00",
+          "end": "10:00",
+          "minimumStaff": 1
+        }
+      ],
+      "shifts": [
+        {
+          "staff": "A",
+          "role": "Desk",
+          "start": "09:00",
+          "end": "10:00"
+        },
+        {
+          "staff": "A",
+          "role": "Support",
+          "start": "09:30",
+          "end": "11:00"
+        }
+      ]
+    },
+    "error": true,
+    "errorIncludes": "overlapping shifts"
+  },
+  {
+    "name": "zero staffing requirement rejected",
+    "input": {
+      "requirements": [
+        {
+          "role": "Desk",
+          "start": "09:00",
+          "end": "10:00",
+          "minimumStaff": 0
+        }
+      ],
+      "shifts": []
+    },
+    "error": true,
+    "errorIncludes": "minimumStaff"
+  },
+  {
+    "name": "overnight shift rejected",
+    "input": {
+      "requirements": [
+        {
+          "role": "Desk",
+          "start": "09:00",
+          "end": "10:00",
+          "minimumStaff": 1
+        }
+      ],
+      "shifts": [
+        {
+          "staff": "A",
+          "role": "Desk",
+          "start": "22:00",
+          "end": "06:00"
+        }
+      ]
+    },
+    "error": true,
+    "errorIncludes": "after start"
+  },
+  {
+    "name": "malformed clock rejected",
+    "input": {
+      "requirements": [
+        {
+          "role": "Desk",
+          "start": "9:00",
+          "end": "10:00",
+          "minimumStaff": 1
+        }
+      ],
+      "shifts": []
+    },
+    "error": true,
+    "errorIncludes": "HH:MM"
+  }
+]

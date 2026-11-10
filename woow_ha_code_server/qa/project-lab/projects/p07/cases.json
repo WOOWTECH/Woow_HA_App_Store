@@ -1,0 +1,327 @@
+[
+  {
+    "name": "constant baseline shift",
+    "input": {
+      "points": [
+        {
+          "time": "2026-01-01T00:00:00Z",
+          "value": 10
+        },
+        {
+          "time": "2026-01-01T01:00:00Z",
+          "value": 10
+        },
+        {
+          "time": "2026-01-01T02:00:00Z",
+          "value": 10
+        },
+        {
+          "time": "2026-01-01T03:00:00Z",
+          "value": 30
+        }
+      ],
+      "window": 3,
+      "threshold": 3
+    },
+    "expected": {
+      "window": 3,
+      "threshold": 3,
+      "anomalyCount": 1,
+      "points": [
+        {
+          "time": "2026-01-01T00:00:00.000Z",
+          "value": 10,
+          "movingAverage": 10,
+          "baselineMean": null,
+          "baselineStdDev": null,
+          "zScore": null,
+          "anomaly": false
+        },
+        {
+          "time": "2026-01-01T01:00:00.000Z",
+          "value": 10,
+          "movingAverage": 10,
+          "baselineMean": null,
+          "baselineStdDev": null,
+          "zScore": null,
+          "anomaly": false
+        },
+        {
+          "time": "2026-01-01T02:00:00.000Z",
+          "value": 10,
+          "movingAverage": 10,
+          "baselineMean": null,
+          "baselineStdDev": null,
+          "zScore": null,
+          "anomaly": false
+        },
+        {
+          "time": "2026-01-01T03:00:00.000Z",
+          "value": 30,
+          "movingAverage": 16.666667,
+          "baselineMean": 10,
+          "baselineStdDev": 0,
+          "zScore": null,
+          "anomaly": true
+        }
+      ]
+    }
+  },
+  {
+    "name": "prior-window nonzero standard deviation",
+    "input": {
+      "points": [
+        {
+          "time": "2026-01-01T00:00:00Z",
+          "value": 1
+        },
+        {
+          "time": "2026-01-01T01:00:00Z",
+          "value": 3
+        },
+        {
+          "time": "2026-01-01T02:00:00Z",
+          "value": 5
+        }
+      ],
+      "window": 2,
+      "threshold": 2
+    },
+    "expected": {
+      "window": 2,
+      "threshold": 2,
+      "anomalyCount": 1,
+      "points": [
+        {
+          "time": "2026-01-01T00:00:00.000Z",
+          "value": 1,
+          "movingAverage": 1,
+          "baselineMean": null,
+          "baselineStdDev": null,
+          "zScore": null,
+          "anomaly": false
+        },
+        {
+          "time": "2026-01-01T01:00:00.000Z",
+          "value": 3,
+          "movingAverage": 2,
+          "baselineMean": null,
+          "baselineStdDev": null,
+          "zScore": null,
+          "anomaly": false
+        },
+        {
+          "time": "2026-01-01T02:00:00.000Z",
+          "value": 5,
+          "movingAverage": 4,
+          "baselineMean": 2,
+          "baselineStdDev": 1,
+          "zScore": 3,
+          "anomaly": true
+        }
+      ]
+    }
+  },
+  {
+    "name": "single point windows include unchanged zero variance",
+    "input": {
+      "points": [
+        {
+          "time": "2026-01-01T00:00:00Z",
+          "value": 2
+        },
+        {
+          "time": "2026-01-01T01:00:00Z",
+          "value": 2
+        },
+        {
+          "time": "2026-01-01T02:00:00Z",
+          "value": 3
+        }
+      ],
+      "window": 1
+    },
+    "expected": {
+      "window": 1,
+      "threshold": 3,
+      "anomalyCount": 1,
+      "points": [
+        {
+          "time": "2026-01-01T00:00:00.000Z",
+          "value": 2,
+          "movingAverage": 2,
+          "baselineMean": null,
+          "baselineStdDev": null,
+          "zScore": null,
+          "anomaly": false
+        },
+        {
+          "time": "2026-01-01T01:00:00.000Z",
+          "value": 2,
+          "movingAverage": 2,
+          "baselineMean": 2,
+          "baselineStdDev": 0,
+          "zScore": 0,
+          "anomaly": false
+        },
+        {
+          "time": "2026-01-01T02:00:00.000Z",
+          "value": 3,
+          "movingAverage": 3,
+          "baselineMean": 2,
+          "baselineStdDev": 0,
+          "zScore": null,
+          "anomaly": true
+        }
+      ]
+    }
+  },
+  {
+    "name": "warmup without full baseline",
+    "input": {
+      "points": [
+        {
+          "time": "2026-01-01T00:00:00Z",
+          "value": 7
+        }
+      ],
+      "window": 3
+    },
+    "expected": {
+      "window": 3,
+      "threshold": 3,
+      "anomalyCount": 0,
+      "points": [
+        {
+          "time": "2026-01-01T00:00:00.000Z",
+          "value": 7,
+          "movingAverage": 7,
+          "baselineMean": null,
+          "baselineStdDev": null,
+          "zScore": null,
+          "anomaly": false
+        }
+      ]
+    }
+  },
+  {
+    "name": "threshold equality is not anomalous",
+    "input": {
+      "points": [
+        {
+          "time": "2026-01-01T00:00:00Z",
+          "value": 1
+        },
+        {
+          "time": "2026-01-01T01:00:00Z",
+          "value": 3
+        },
+        {
+          "time": "2026-01-01T02:00:00Z",
+          "value": 4
+        }
+      ],
+      "window": 2,
+      "threshold": 2
+    },
+    "expected": {
+      "window": 2,
+      "threshold": 2,
+      "anomalyCount": 0,
+      "points": [
+        {
+          "time": "2026-01-01T00:00:00.000Z",
+          "value": 1,
+          "movingAverage": 1,
+          "baselineMean": null,
+          "baselineStdDev": null,
+          "zScore": null,
+          "anomaly": false
+        },
+        {
+          "time": "2026-01-01T01:00:00.000Z",
+          "value": 3,
+          "movingAverage": 2,
+          "baselineMean": null,
+          "baselineStdDev": null,
+          "zScore": null,
+          "anomaly": false
+        },
+        {
+          "time": "2026-01-01T02:00:00.000Z",
+          "value": 4,
+          "movingAverage": 3.5,
+          "baselineMean": 2,
+          "baselineStdDev": 1,
+          "zScore": 2,
+          "anomaly": false
+        }
+      ]
+    }
+  },
+  {
+    "name": "duplicate times rejected",
+    "input": {
+      "points": [
+        {
+          "time": "2026-01-01T00:00:00Z",
+          "value": 1
+        },
+        {
+          "time": "2026-01-01T00:00:00Z",
+          "value": 2
+        }
+      ]
+    },
+    "error": true,
+    "errorContains": "must be later"
+  },
+  {
+    "name": "invalid calendar timestamp rejected",
+    "input": {
+      "points": [
+        {
+          "time": "2026-02-30T00:00:00Z",
+          "value": 1
+        }
+      ]
+    },
+    "error": true,
+    "errorContains": "not a valid UTC calendar timestamp"
+  },
+  {
+    "name": "numeric strings rejected",
+    "input": {
+      "points": [
+        {
+          "time": "2026-01-01T00:00:00Z",
+          "value": "1"
+        }
+      ]
+    },
+    "error": true,
+    "errorContains": "must be a finite number"
+  },
+  {
+    "name": "oversized window rejected",
+    "input": {
+      "points": [
+        {
+          "time": "2026-01-01T00:00:00Z",
+          "value": 1
+        }
+      ],
+      "window": 1001
+    },
+    "error": true,
+    "errorContains": "window must be a finite number"
+  },
+  {
+    "name": "empty series rejected",
+    "input": {
+      "points": []
+    },
+    "error": true,
+    "errorContains": "points must be an array"
+  }
+]

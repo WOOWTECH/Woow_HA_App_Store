@@ -1,0 +1,639 @@
+[
+  {
+    "name": "secure pinned deployment",
+    "input": {
+      "deployment": {
+        "name": "demo",
+        "replicas": 2,
+        "strategy": {
+          "maxUnavailable": 0
+        },
+        "containers": [
+          {
+            "name": "web",
+            "image": "registry.example.invalid/demo@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "resources": {
+              "requests": {
+                "cpuMilli": 100,
+                "memoryMiB": 64
+              },
+              "limits": {
+                "cpuMilli": 500,
+                "memoryMiB": 128
+              }
+            },
+            "security": {
+              "runAsNonRoot": true,
+              "privileged": false,
+              "readOnlyRootFilesystem": true
+            },
+            "ports": [
+              8080
+            ]
+          }
+        ]
+      }
+    },
+    "expected": {
+      "name": "demo",
+      "compliant": true,
+      "totals": {
+        "requestedCpuMilli": 200,
+        "requestedMemoryMiB": 128,
+        "limitCpuMilli": 1000,
+        "limitMemoryMiB": 256
+      },
+      "findings": []
+    }
+  },
+  {
+    "name": "explicit policy permits versioned tag and writable root",
+    "input": {
+      "deployment": {
+        "name": "demo",
+        "replicas": 1,
+        "strategy": {
+          "maxUnavailable": 0
+        },
+        "containers": [
+          {
+            "name": "web",
+            "image": "other.example.invalid/demo:v1",
+            "resources": {
+              "requests": {
+                "cpuMilli": 100,
+                "memoryMiB": 64
+              },
+              "limits": {
+                "cpuMilli": 500,
+                "memoryMiB": 128
+              }
+            },
+            "security": {
+              "runAsNonRoot": true,
+              "privileged": false,
+              "readOnlyRootFilesystem": false
+            },
+            "ports": [
+              8080
+            ]
+          }
+        ]
+      },
+      "policy": {
+        "minReplicas": 1,
+        "allowedRegistries": [
+          "other.example.invalid"
+        ],
+        "requireDigest": false,
+        "requireReadOnlyRoot": false
+      }
+    },
+    "expected": {
+      "name": "demo",
+      "compliant": true,
+      "totals": {
+        "requestedCpuMilli": 100,
+        "requestedMemoryMiB": 64,
+        "limitCpuMilli": 500,
+        "limitMemoryMiB": 128
+      },
+      "findings": []
+    }
+  },
+  {
+    "name": "all independent policy violations reported",
+    "input": {
+      "deployment": {
+        "name": "demo",
+        "replicas": 1,
+        "strategy": {
+          "maxUnavailable": 1
+        },
+        "containers": [
+          {
+            "name": "web",
+            "image": "unapproved.example.invalid/demo:latest",
+            "resources": {
+              "requests": {
+                "cpuMilli": 0,
+                "memoryMiB": 64
+              },
+              "limits": {
+                "cpuMilli": 500,
+                "memoryMiB": 128
+              }
+            },
+            "security": {
+              "runAsNonRoot": false,
+              "privileged": true,
+              "readOnlyRootFilesystem": false
+            },
+            "ports": [
+              8080
+            ]
+          }
+        ]
+      }
+    },
+    "expected": {
+      "name": "demo",
+      "compliant": false,
+      "totals": {
+        "requestedCpuMilli": 0,
+        "requestedMemoryMiB": 64,
+        "limitCpuMilli": 500,
+        "limitMemoryMiB": 128
+      },
+      "findings": [
+        {
+          "severity": "error",
+          "code": "minimum-replicas",
+          "path": "deployment.replicas",
+          "message": "Replica count is below policy minimum"
+        },
+        {
+          "severity": "error",
+          "code": "availability",
+          "path": "deployment.strategy.maxUnavailable",
+          "message": "Rollout may make every replica unavailable"
+        },
+        {
+          "severity": "error",
+          "code": "registry",
+          "path": "deployment.containers[0].image",
+          "message": "Image registry is not allowed"
+        },
+        {
+          "severity": "error",
+          "code": "image-digest",
+          "path": "deployment.containers[0].image",
+          "message": "Image must be pinned to a SHA-256 digest"
+        },
+        {
+          "severity": "error",
+          "code": "image-latest",
+          "path": "deployment.containers[0].image",
+          "message": "Mutable latest tag is forbidden"
+        },
+        {
+          "severity": "error",
+          "code": "nonroot",
+          "path": "deployment.containers[0].security.runAsNonRoot",
+          "message": "Container must run as non-root"
+        },
+        {
+          "severity": "error",
+          "code": "privileged",
+          "path": "deployment.containers[0].security.privileged",
+          "message": "Privileged containers are forbidden"
+        },
+        {
+          "severity": "error",
+          "code": "readonly",
+          "path": "deployment.containers[0].security.readOnlyRootFilesystem",
+          "message": "Root filesystem must be read-only"
+        },
+        {
+          "severity": "error",
+          "code": "requests-positive",
+          "path": "deployment.containers[0].resources.requests",
+          "message": "CPU and memory requests must be positive"
+        }
+      ]
+    }
+  },
+  {
+    "name": "replica scaled limits exceed budgets",
+    "input": {
+      "deployment": {
+        "name": "demo",
+        "replicas": 2,
+        "strategy": {
+          "maxUnavailable": 0
+        },
+        "containers": [
+          {
+            "name": "web",
+            "image": "registry.example.invalid/demo@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "resources": {
+              "requests": {
+                "cpuMilli": 100,
+                "memoryMiB": 64
+              },
+              "limits": {
+                "cpuMilli": 500,
+                "memoryMiB": 128
+              }
+            },
+            "security": {
+              "runAsNonRoot": true,
+              "privileged": false,
+              "readOnlyRootFilesystem": true
+            },
+            "ports": [
+              8080
+            ]
+          }
+        ]
+      },
+      "policy": {
+        "maxTotalCpuMilli": 999,
+        "maxTotalMemoryMiB": 255
+      }
+    },
+    "expected": {
+      "name": "demo",
+      "compliant": false,
+      "totals": {
+        "requestedCpuMilli": 200,
+        "requestedMemoryMiB": 128,
+        "limitCpuMilli": 1000,
+        "limitMemoryMiB": 256
+      },
+      "findings": [
+        {
+          "severity": "error",
+          "code": "cpu-budget",
+          "path": "deployment.containers",
+          "message": "Total CPU limits exceed policy budget"
+        },
+        {
+          "severity": "error",
+          "code": "memory-budget",
+          "path": "deployment.containers",
+          "message": "Total memory limits exceed policy budget"
+        }
+      ]
+    }
+  },
+  {
+    "name": "exact budget boundary passes",
+    "input": {
+      "deployment": {
+        "name": "demo",
+        "replicas": 2,
+        "strategy": {
+          "maxUnavailable": 0
+        },
+        "containers": [
+          {
+            "name": "web",
+            "image": "registry.example.invalid/demo@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "resources": {
+              "requests": {
+                "cpuMilli": 100,
+                "memoryMiB": 64
+              },
+              "limits": {
+                "cpuMilli": 500,
+                "memoryMiB": 128
+              }
+            },
+            "security": {
+              "runAsNonRoot": true,
+              "privileged": false,
+              "readOnlyRootFilesystem": true
+            },
+            "ports": [
+              8080
+            ]
+          }
+        ]
+      },
+      "policy": {
+        "maxTotalCpuMilli": 1000,
+        "maxTotalMemoryMiB": 256
+      }
+    },
+    "expected": {
+      "name": "demo",
+      "compliant": true,
+      "totals": {
+        "requestedCpuMilli": 200,
+        "requestedMemoryMiB": 128,
+        "limitCpuMilli": 1000,
+        "limitMemoryMiB": 256
+      },
+      "findings": []
+    }
+  },
+  {
+    "name": "limits must cover requests",
+    "input": {
+      "deployment": {
+        "name": "demo",
+        "replicas": 2,
+        "strategy": {
+          "maxUnavailable": 0
+        },
+        "containers": [
+          {
+            "name": "web",
+            "image": "registry.example.invalid/demo@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "resources": {
+              "requests": {
+                "cpuMilli": 600,
+                "memoryMiB": 256
+              },
+              "limits": {
+                "cpuMilli": 500,
+                "memoryMiB": 128
+              }
+            },
+            "security": {
+              "runAsNonRoot": true,
+              "privileged": false,
+              "readOnlyRootFilesystem": true
+            },
+            "ports": [
+              8080
+            ]
+          }
+        ]
+      }
+    },
+    "expected": {
+      "name": "demo",
+      "compliant": false,
+      "totals": {
+        "requestedCpuMilli": 1200,
+        "requestedMemoryMiB": 512,
+        "limitCpuMilli": 1000,
+        "limitMemoryMiB": 256
+      },
+      "findings": [
+        {
+          "severity": "error",
+          "code": "limits",
+          "path": "deployment.containers[0].resources.limits",
+          "message": "Limits must cover requests"
+        }
+      ]
+    }
+  },
+  {
+    "name": "zero replicas fail availability policy minimum",
+    "input": {
+      "deployment": {
+        "name": "demo",
+        "replicas": 0,
+        "strategy": {
+          "maxUnavailable": 0
+        },
+        "containers": [
+          {
+            "name": "web",
+            "image": "registry.example.invalid/demo@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "resources": {
+              "requests": {
+                "cpuMilli": 100,
+                "memoryMiB": 64
+              },
+              "limits": {
+                "cpuMilli": 500,
+                "memoryMiB": 128
+              }
+            },
+            "security": {
+              "runAsNonRoot": true,
+              "privileged": false,
+              "readOnlyRootFilesystem": true
+            },
+            "ports": [
+              8080
+            ]
+          }
+        ]
+      }
+    },
+    "expected": {
+      "name": "demo",
+      "compliant": false,
+      "totals": {
+        "requestedCpuMilli": 0,
+        "requestedMemoryMiB": 0,
+        "limitCpuMilli": 0,
+        "limitMemoryMiB": 0
+      },
+      "findings": [
+        {
+          "severity": "error",
+          "code": "minimum-replicas",
+          "path": "deployment.replicas",
+          "message": "Replica count is below policy minimum"
+        }
+      ]
+    }
+  },
+  {
+    "name": "missing security rejected",
+    "input": {
+      "deployment": {
+        "name": "demo",
+        "replicas": 2,
+        "strategy": {
+          "maxUnavailable": 0
+        },
+        "containers": [
+          {
+            "name": "web",
+            "image": "registry.example.invalid/demo@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "resources": {
+              "requests": {
+                "cpuMilli": 100,
+                "memoryMiB": 64
+              },
+              "limits": {
+                "cpuMilli": 500,
+                "memoryMiB": 128
+              }
+            },
+            "ports": [
+              8080
+            ]
+          }
+        ]
+      }
+    },
+    "error": true,
+    "errorPattern": "security"
+  },
+  {
+    "name": "duplicate container name rejected",
+    "input": {
+      "deployment": {
+        "name": "demo",
+        "replicas": 2,
+        "strategy": {
+          "maxUnavailable": 0
+        },
+        "containers": [
+          {
+            "name": "web",
+            "image": "registry.example.invalid/demo@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "resources": {
+              "requests": {
+                "cpuMilli": 100,
+                "memoryMiB": 64
+              },
+              "limits": {
+                "cpuMilli": 500,
+                "memoryMiB": 128
+              }
+            },
+            "security": {
+              "runAsNonRoot": true,
+              "privileged": false,
+              "readOnlyRootFilesystem": true
+            },
+            "ports": [
+              8080
+            ]
+          },
+          {
+            "name": "web",
+            "image": "registry.example.invalid/demo@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "resources": {
+              "requests": {
+                "cpuMilli": 100,
+                "memoryMiB": 64
+              },
+              "limits": {
+                "cpuMilli": 500,
+                "memoryMiB": 128
+              }
+            },
+            "security": {
+              "runAsNonRoot": true,
+              "privileged": false,
+              "readOnlyRootFilesystem": true
+            },
+            "ports": [
+              8080
+            ]
+          }
+        ]
+      }
+    },
+    "error": true,
+    "errorPattern": "Duplicate"
+  },
+  {
+    "name": "invalid port rejected",
+    "input": {
+      "deployment": {
+        "name": "demo",
+        "replicas": 2,
+        "strategy": {
+          "maxUnavailable": 0
+        },
+        "containers": [
+          {
+            "name": "web",
+            "image": "registry.example.invalid/demo@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "resources": {
+              "requests": {
+                "cpuMilli": 100,
+                "memoryMiB": 64
+              },
+              "limits": {
+                "cpuMilli": 500,
+                "memoryMiB": 128
+              }
+            },
+            "security": {
+              "runAsNonRoot": true,
+              "privileged": false,
+              "readOnlyRootFilesystem": true
+            },
+            "ports": [
+              65536
+            ]
+          }
+        ]
+      }
+    },
+    "error": true,
+    "errorPattern": "ports"
+  },
+  {
+    "name": "implicit image reference rejected",
+    "input": {
+      "deployment": {
+        "name": "demo",
+        "replicas": 2,
+        "strategy": {
+          "maxUnavailable": 0
+        },
+        "containers": [
+          {
+            "name": "web",
+            "image": "demo",
+            "resources": {
+              "requests": {
+                "cpuMilli": 100,
+                "memoryMiB": 64
+              },
+              "limits": {
+                "cpuMilli": 500,
+                "memoryMiB": 128
+              }
+            },
+            "security": {
+              "runAsNonRoot": true,
+              "privileged": false,
+              "readOnlyRootFilesystem": true
+            },
+            "ports": [
+              8080
+            ]
+          }
+        ]
+      }
+    },
+    "error": true,
+    "errorPattern": "image"
+  },
+  {
+    "name": "nonboolean policy rejected",
+    "input": {
+      "deployment": {
+        "name": "demo",
+        "replicas": 2,
+        "strategy": {
+          "maxUnavailable": 0
+        },
+        "containers": [
+          {
+            "name": "web",
+            "image": "registry.example.invalid/demo@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "resources": {
+              "requests": {
+                "cpuMilli": 100,
+                "memoryMiB": 64
+              },
+              "limits": {
+                "cpuMilli": 500,
+                "memoryMiB": 128
+              }
+            },
+            "security": {
+              "runAsNonRoot": true,
+              "privileged": false,
+              "readOnlyRootFilesystem": true
+            },
+            "ports": [
+              8080
+            ]
+          }
+        ]
+      },
+      "policy": {
+        "requireDigest": "yes"
+      }
+    },
+    "error": true,
+    "errorPattern": "boolean"
+  }
+]

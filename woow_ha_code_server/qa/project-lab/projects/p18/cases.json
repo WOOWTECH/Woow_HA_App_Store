@@ -1,0 +1,496 @@
+[
+  {
+    "name": "urgent order consumes stock before earlier standard order",
+    "input": {
+      "stock": [
+        {
+          "sku": "A",
+          "quantity": 5
+        },
+        {
+          "sku": "B",
+          "quantity": 2
+        }
+      ],
+      "orders": [
+        {
+          "id": "Low",
+          "priority": 2,
+          "allowPartial": false,
+          "lines": [
+            {
+              "sku": "A",
+              "quantity": 4
+            }
+          ]
+        },
+        {
+          "id": "High",
+          "priority": 1,
+          "allowPartial": false,
+          "lines": [
+            {
+              "sku": "A",
+              "quantity": 3
+            },
+            {
+              "sku": "B",
+              "quantity": 2
+            }
+          ]
+        }
+      ]
+    },
+    "expected": {
+      "orders": [
+        {
+          "id": "High",
+          "priority": 1,
+          "status": "fulfilled",
+          "allocated": [
+            {
+              "sku": "A",
+              "quantity": 3
+            },
+            {
+              "sku": "B",
+              "quantity": 2
+            }
+          ],
+          "backordered": []
+        },
+        {
+          "id": "Low",
+          "priority": 2,
+          "status": "backordered",
+          "allocated": [],
+          "backordered": [
+            {
+              "sku": "A",
+              "quantity": 4
+            }
+          ]
+        }
+      ],
+      "remainingStock": [
+        {
+          "sku": "A",
+          "quantity": 2
+        },
+        {
+          "sku": "B",
+          "quantity": 0
+        }
+      ],
+      "totals": {
+        "requestedUnits": 9,
+        "allocatedUnits": 5,
+        "backorderedUnits": 4,
+        "fulfilledOrders": 1
+      }
+    }
+  },
+  {
+    "name": "partial fulfillment consumes available stock",
+    "input": {
+      "stock": [
+        {
+          "sku": "A",
+          "quantity": 5
+        }
+      ],
+      "orders": [
+        {
+          "id": "O",
+          "priority": 1,
+          "allowPartial": true,
+          "lines": [
+            {
+              "sku": "A",
+              "quantity": 7
+            }
+          ]
+        }
+      ]
+    },
+    "expected": {
+      "orders": [
+        {
+          "id": "O",
+          "priority": 1,
+          "status": "partial",
+          "allocated": [
+            {
+              "sku": "A",
+              "quantity": 5
+            }
+          ],
+          "backordered": [
+            {
+              "sku": "A",
+              "quantity": 2
+            }
+          ]
+        }
+      ],
+      "remainingStock": [
+        {
+          "sku": "A",
+          "quantity": 0
+        }
+      ],
+      "totals": {
+        "requestedUnits": 7,
+        "allocatedUnits": 5,
+        "backorderedUnits": 2,
+        "fulfilledOrders": 0
+      }
+    }
+  },
+  {
+    "name": "atomic order leaves all stock for later order",
+    "input": {
+      "stock": [
+        {
+          "sku": "A",
+          "quantity": 5
+        },
+        {
+          "sku": "B",
+          "quantity": 0
+        }
+      ],
+      "orders": [
+        {
+          "id": "First",
+          "priority": 1,
+          "allowPartial": false,
+          "lines": [
+            {
+              "sku": "A",
+              "quantity": 3
+            },
+            {
+              "sku": "B",
+              "quantity": 1
+            }
+          ]
+        },
+        {
+          "id": "Second",
+          "priority": 2,
+          "allowPartial": false,
+          "lines": [
+            {
+              "sku": "A",
+              "quantity": 5
+            }
+          ]
+        }
+      ]
+    },
+    "expected": {
+      "orders": [
+        {
+          "id": "First",
+          "priority": 1,
+          "status": "backordered",
+          "allocated": [],
+          "backordered": [
+            {
+              "sku": "A",
+              "quantity": 3
+            },
+            {
+              "sku": "B",
+              "quantity": 1
+            }
+          ]
+        },
+        {
+          "id": "Second",
+          "priority": 2,
+          "status": "fulfilled",
+          "allocated": [
+            {
+              "sku": "A",
+              "quantity": 5
+            }
+          ],
+          "backordered": []
+        }
+      ],
+      "remainingStock": [
+        {
+          "sku": "A",
+          "quantity": 0
+        },
+        {
+          "sku": "B",
+          "quantity": 0
+        }
+      ],
+      "totals": {
+        "requestedUnits": 9,
+        "allocatedUnits": 5,
+        "backorderedUnits": 4,
+        "fulfilledOrders": 1
+      }
+    }
+  },
+  {
+    "name": "equal priorities retain input order",
+    "input": {
+      "stock": [
+        {
+          "sku": "A",
+          "quantity": 3
+        }
+      ],
+      "orders": [
+        {
+          "id": "Z",
+          "priority": 2,
+          "allowPartial": true,
+          "lines": [
+            {
+              "sku": "A",
+              "quantity": 2
+            }
+          ]
+        },
+        {
+          "id": "A",
+          "priority": 2,
+          "allowPartial": true,
+          "lines": [
+            {
+              "sku": "A",
+              "quantity": 2
+            }
+          ]
+        }
+      ]
+    },
+    "expected": {
+      "orders": [
+        {
+          "id": "Z",
+          "priority": 2,
+          "status": "fulfilled",
+          "allocated": [
+            {
+              "sku": "A",
+              "quantity": 2
+            }
+          ],
+          "backordered": []
+        },
+        {
+          "id": "A",
+          "priority": 2,
+          "status": "partial",
+          "allocated": [
+            {
+              "sku": "A",
+              "quantity": 1
+            }
+          ],
+          "backordered": [
+            {
+              "sku": "A",
+              "quantity": 1
+            }
+          ]
+        }
+      ],
+      "remainingStock": [
+        {
+          "sku": "A",
+          "quantity": 0
+        }
+      ],
+      "totals": {
+        "requestedUnits": 4,
+        "allocatedUnits": 3,
+        "backorderedUnits": 1,
+        "fulfilledOrders": 1
+      }
+    }
+  },
+  {
+    "name": "no orders leaves inventory unchanged",
+    "input": {
+      "stock": [
+        {
+          "sku": "A",
+          "quantity": 3
+        }
+      ],
+      "orders": []
+    },
+    "expected": {
+      "orders": [],
+      "remainingStock": [
+        {
+          "sku": "A",
+          "quantity": 3
+        }
+      ],
+      "totals": {
+        "requestedUnits": 0,
+        "allocatedUnits": 0,
+        "backorderedUnits": 0,
+        "fulfilledOrders": 0
+      }
+    }
+  },
+  {
+    "name": "zero stock yields full backorder even when partial allowed",
+    "input": {
+      "stock": [
+        {
+          "sku": "A",
+          "quantity": 0
+        }
+      ],
+      "orders": [
+        {
+          "id": "O",
+          "priority": 1,
+          "allowPartial": true,
+          "lines": [
+            {
+              "sku": "A",
+              "quantity": 2
+            }
+          ]
+        }
+      ]
+    },
+    "expected": {
+      "orders": [
+        {
+          "id": "O",
+          "priority": 1,
+          "status": "backordered",
+          "allocated": [],
+          "backordered": [
+            {
+              "sku": "A",
+              "quantity": 2
+            }
+          ]
+        }
+      ],
+      "remainingStock": [
+        {
+          "sku": "A",
+          "quantity": 0
+        }
+      ],
+      "totals": {
+        "requestedUnits": 2,
+        "allocatedUnits": 0,
+        "backorderedUnits": 2,
+        "fulfilledOrders": 0
+      }
+    }
+  },
+  {
+    "name": "unknown SKU rejected",
+    "input": {
+      "stock": [
+        {
+          "sku": "A",
+          "quantity": 3
+        }
+      ],
+      "orders": [
+        {
+          "id": "O",
+          "priority": 1,
+          "allowPartial": false,
+          "lines": [
+            {
+              "sku": "B",
+              "quantity": 1
+            }
+          ]
+        }
+      ]
+    },
+    "error": true,
+    "errorIncludes": "unknown SKU"
+  },
+  {
+    "name": "duplicate SKU within an order rejected",
+    "input": {
+      "stock": [
+        {
+          "sku": "A",
+          "quantity": 3
+        }
+      ],
+      "orders": [
+        {
+          "id": "O",
+          "priority": 1,
+          "allowPartial": false,
+          "lines": [
+            {
+              "sku": "A",
+              "quantity": 1
+            },
+            {
+              "sku": "A",
+              "quantity": 1
+            }
+          ]
+        }
+      ]
+    },
+    "error": true,
+    "errorIncludes": "duplicate"
+  },
+  {
+    "name": "negative inventory rejected",
+    "input": {
+      "stock": [
+        {
+          "sku": "A",
+          "quantity": -1
+        }
+      ],
+      "orders": []
+    },
+    "error": true,
+    "errorIncludes": "quantity"
+  },
+  {
+    "name": "non-boolean partial flag rejected",
+    "input": {
+      "stock": [
+        {
+          "sku": "A",
+          "quantity": 3
+        }
+      ],
+      "orders": [
+        {
+          "id": "O",
+          "priority": 1,
+          "allowPartial": "yes",
+          "lines": [
+            {
+              "sku": "A",
+              "quantity": 1
+            }
+          ]
+        }
+      ]
+    },
+    "error": true,
+    "errorIncludes": "boolean"
+  }
+]

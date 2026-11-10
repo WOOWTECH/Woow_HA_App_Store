@@ -1,0 +1,73 @@
+{
+  "acceptedAt": "2026-11-10T07:10:08.609295+00:00",
+  "applicationVersion": "1.1.0",
+  "scope": "Functional prototypes using synthetic data; not production certification",
+  "platforms": [
+    "Podman",
+    "PaaS",
+    "Home Assistant add-on"
+  ],
+  "perPlatform": {
+    "projects": 50,
+    "functionalCases": 510,
+    "projectTestRunners": 50,
+    "httpAndUtf8Checks": 19,
+    "applicationBrowserScenarios": 50
+  },
+  "downloadedArchivesExecuted": 50,
+  "changes": [
+    {
+      "id": "utf8",
+      "change": "Buffer request bytes before UTF-8 decoding; test actual split multibyte HTTP input."
+    },
+    {
+      "id": "loader",
+      "change": "Resolve only the requested project on POST.",
+      "measurement": {
+        "appFileStatsBefore": 50,
+        "appFileStatsAfter": 1,
+        "isLatencyBenchmark": false
+      }
+    },
+    {
+      "id": "packaging",
+      "change": "Preflight all required project sources, reproducible ZIP metadata, execute extracted downloads."
+    },
+    {
+      "id": "assertions",
+      "change": "Require project-specific runners, fresh UI errors, exact IDE paths, saved edit nonce and terminal result."
+    },
+    {
+      "id": "ssh",
+      "change": "Drain stdout/stderr and await stream EOF plus exit status.",
+      "verifiedBinaryBytes": [
+        2097152,
+        4194304
+      ]
+    },
+    {
+      "id": "features",
+      "change": "p03 rejectDuplicates; p33 J/kJ/Wh/kWh; p44 maxItems.",
+      "fixturesBefore": 496,
+      "fixturesAfter": 510
+    }
+  ],
+  "agentExercise": {
+    "Claude Code": "p01-p17",
+    "Codex": "p18-p34",
+    "Pi": "p35-p50; same-conversation model switch, read Codex output, optimize/package/redeploy"
+  },
+  "limitations": [
+    "Omnigent native TXT/CSV downloads returned HTTP 500; product bug remains unresolved. ZIP downloads passed actual browser click and SHA-256 verification.",
+    "Preview services need restarting after code-server container restart; no production supervision is configured.",
+    "IDE file/edit/terminal exercise ran in Podman; application browser scenarios ran across all three environments.",
+    "The 50 standalone Node servers were tested; the 50 supplied Containerfiles were not individually image-built.",
+    "Existing external skills/MCP services were not all invoked again in this 50-project round.",
+    "Each deployment has its own workspace; later edits require explicit synchronization."
+  ],
+  "provenance": {
+    "originalAllProjectsZipSha256": "05c369d4bf68e43ac1234624d83e259fd9761664749e0471f27a58e0e3598f73",
+    "privateEvidenceRetainedByOperator": true,
+    "publishedRecordContainsNoCredentialsOrSessionIdentifiers": true
+  }
+}

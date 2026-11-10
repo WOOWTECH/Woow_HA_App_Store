@@ -1,0 +1,324 @@
+[
+  {
+    "name": "red and complementary cyan",
+    "input": {
+      "color": "#f00"
+    },
+    "expected": {
+      "original": {
+        "hex": "#FF0000",
+        "rgb": [
+          255,
+          0,
+          0
+        ],
+        "hsl": {
+          "h": 0,
+          "s": 100,
+          "l": 50
+        }
+      },
+      "transformed": {
+        "hex": "#FF0000",
+        "rgb": [
+          255,
+          0,
+          0
+        ],
+        "hsl": {
+          "h": 0,
+          "s": 100,
+          "l": 50
+        }
+      },
+      "complementary": {
+        "hex": "#00FFFF",
+        "rgb": [
+          0,
+          255,
+          255
+        ],
+        "hsl": {
+          "h": 180,
+          "s": 100,
+          "l": 50
+        }
+      }
+    }
+  },
+  {
+    "name": "positive hue rotation",
+    "input": {
+      "color": "#FF0000",
+      "hueShift": 120
+    },
+    "expected": {
+      "original": {
+        "hex": "#FF0000",
+        "rgb": [
+          255,
+          0,
+          0
+        ],
+        "hsl": {
+          "h": 0,
+          "s": 100,
+          "l": 50
+        }
+      },
+      "transformed": {
+        "hex": "#00FF00",
+        "rgb": [
+          0,
+          255,
+          0
+        ],
+        "hsl": {
+          "h": 120,
+          "s": 100,
+          "l": 50
+        }
+      },
+      "complementary": {
+        "hex": "#FF00FF",
+        "rgb": [
+          255,
+          0,
+          255
+        ],
+        "hsl": {
+          "h": 300,
+          "s": 100,
+          "l": 50
+        }
+      }
+    }
+  },
+  {
+    "name": "negative hue wraps",
+    "input": {
+      "color": "#f00",
+      "hueShift": -120
+    },
+    "expected": {
+      "original": {
+        "hex": "#FF0000",
+        "rgb": [
+          255,
+          0,
+          0
+        ],
+        "hsl": {
+          "h": 0,
+          "s": 100,
+          "l": 50
+        }
+      },
+      "transformed": {
+        "hex": "#0000FF",
+        "rgb": [
+          0,
+          0,
+          255
+        ],
+        "hsl": {
+          "h": 240,
+          "s": 100,
+          "l": 50
+        }
+      },
+      "complementary": {
+        "hex": "#FFFF00",
+        "rgb": [
+          255,
+          255,
+          0
+        ],
+        "hsl": {
+          "h": 60,
+          "s": 100,
+          "l": 50
+        }
+      }
+    }
+  },
+  {
+    "name": "remove saturation",
+    "input": {
+      "color": "#f00",
+      "saturationDelta": -100
+    },
+    "expected": {
+      "original": {
+        "hex": "#FF0000",
+        "rgb": [
+          255,
+          0,
+          0
+        ],
+        "hsl": {
+          "h": 0,
+          "s": 100,
+          "l": 50
+        }
+      },
+      "transformed": {
+        "hex": "#808080",
+        "rgb": [
+          128,
+          128,
+          128
+        ],
+        "hsl": {
+          "h": 0,
+          "s": 0,
+          "l": 50.2
+        }
+      },
+      "complementary": {
+        "hex": "#808080",
+        "rgb": [
+          128,
+          128,
+          128
+        ],
+        "hsl": {
+          "h": 0,
+          "s": 0,
+          "l": 50.2
+        }
+      }
+    }
+  },
+  {
+    "name": "lightness adjustment from black",
+    "input": {
+      "color": "000",
+      "lightnessDelta": 50
+    },
+    "expected": {
+      "original": {
+        "hex": "#000000",
+        "rgb": [
+          0,
+          0,
+          0
+        ],
+        "hsl": {
+          "h": 0,
+          "s": 0,
+          "l": 0
+        }
+      },
+      "transformed": {
+        "hex": "#808080",
+        "rgb": [
+          128,
+          128,
+          128
+        ],
+        "hsl": {
+          "h": 0,
+          "s": 0,
+          "l": 50.2
+        }
+      },
+      "complementary": {
+        "hex": "#808080",
+        "rgb": [
+          128,
+          128,
+          128
+        ],
+        "hsl": {
+          "h": 0,
+          "s": 0,
+          "l": 50.2
+        }
+      }
+    }
+  },
+  {
+    "name": "lightness clamped to white",
+    "input": {
+      "color": "#f00",
+      "lightnessDelta": 100
+    },
+    "expected": {
+      "original": {
+        "hex": "#FF0000",
+        "rgb": [
+          255,
+          0,
+          0
+        ],
+        "hsl": {
+          "h": 0,
+          "s": 100,
+          "l": 50
+        }
+      },
+      "transformed": {
+        "hex": "#FFFFFF",
+        "rgb": [
+          255,
+          255,
+          255
+        ],
+        "hsl": {
+          "h": 0,
+          "s": 0,
+          "l": 100
+        }
+      },
+      "complementary": {
+        "hex": "#FFFFFF",
+        "rgb": [
+          255,
+          255,
+          255
+        ],
+        "hsl": {
+          "h": 0,
+          "s": 0,
+          "l": 100
+        }
+      }
+    }
+  },
+  {
+    "name": "out of range adjustment",
+    "input": {
+      "color": "#f00",
+      "saturationDelta": 101
+    },
+    "error": true,
+    "errorMessage": "saturationDelta"
+  },
+  {
+    "name": "unsupported color name",
+    "input": {
+      "color": "red"
+    },
+    "error": true,
+    "errorMessage": "hex color"
+  },
+  {
+    "name": "numeric string shift",
+    "input": {
+      "color": "#f00",
+      "hueShift": "120"
+    },
+    "error": true,
+    "errorMessage": "hueShift"
+  },
+  {
+    "name": "excessive hue rotation",
+    "input": {
+      "color": "#f00",
+      "hueShift": 3601
+    },
+    "error": true,
+    "errorMessage": "hueShift"
+  }
+]

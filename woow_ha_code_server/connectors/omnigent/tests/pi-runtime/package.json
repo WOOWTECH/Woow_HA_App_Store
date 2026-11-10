@@ -1,0 +1,8 @@
+{
+  "name": "woow-native-pi-test-runtime",
+  "private": true,
+  "version": "0.0.0",
+  "dependencies": {
+    "@earendil-works/pi-coding-agent": "0.99.1"
+  }
+}

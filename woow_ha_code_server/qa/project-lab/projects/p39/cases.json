@@ -1,0 +1,206 @@
+[
+  {
+    "name": "operator precedence",
+    "input": {
+      "expression": "2 + 3 * 4"
+    },
+    "expected": {
+      "expression": "2 + 3 * 4",
+      "result": 14
+    }
+  },
+  {
+    "name": "parentheses and decimal values",
+    "input": {
+      "expression": "(2 + 3) * 4.5"
+    },
+    "expected": {
+      "expression": "(2 + 3) * 4.5",
+      "result": 22.5
+    }
+  },
+  {
+    "name": "right-associative exponentiation",
+    "input": {
+      "expression": "2^3^2"
+    },
+    "expected": {
+      "expression": "2^3^2",
+      "result": 512
+    }
+  },
+  {
+    "name": "power binds more tightly than unary minus",
+    "input": {
+      "expression": "-2^2"
+    },
+    "expected": {
+      "expression": "-2^2",
+      "result": -4
+    }
+  },
+  {
+    "name": "negative exponent",
+    "input": {
+      "expression": "2^-3"
+    },
+    "expected": {
+      "expression": "2^-3",
+      "result": 0.125
+    }
+  },
+  {
+    "name": "scientific notation and remainder",
+    "input": {
+      "expression": "1e2 % 30 + .5"
+    },
+    "expected": {
+      "expression": "1e2 % 30 + .5",
+      "result": 10.5
+    }
+  },
+  {
+    "name": "decimal rounding",
+    "input": {
+      "expression": "0.1 + 0.2"
+    },
+    "expected": {
+      "expression": "0.1 + 0.2",
+      "result": 0.3
+    }
+  },
+  {
+    "name": "left-associative subtraction and division",
+    "input": {
+      "expression": "20 / 2 / 2 - 3 - 1"
+    },
+    "expected": {
+      "expression": "20 / 2 / 2 - 3 - 1",
+      "result": 1
+    }
+  },
+  {
+    "name": "parenthesized negative base",
+    "input": {
+      "expression": "(-2)^2"
+    },
+    "expected": {
+      "expression": "(-2)^2",
+      "result": 4
+    }
+  },
+  {
+    "name": "trim expression and normalize negative zero",
+    "input": {
+      "expression": "  -0  "
+    },
+    "expected": {
+      "expression": "-0",
+      "result": 0
+    }
+  },
+  {
+    "name": "division by zero",
+    "input": {
+      "expression": "4/(3-3)"
+    },
+    "error": true,
+    "errorMessage": "zero"
+  },
+  {
+    "name": "remainder by zero",
+    "input": {
+      "expression": "4%0"
+    },
+    "error": true,
+    "errorMessage": "zero"
+  },
+  {
+    "name": "reject function calls",
+    "input": {
+      "expression": "process.exit()"
+    },
+    "error": true,
+    "errorMessage": "unsupported character"
+  },
+  {
+    "name": "missing close parenthesis",
+    "input": {
+      "expression": "(2+3"
+    },
+    "error": true,
+    "errorMessage": "closing parenthesis"
+  },
+  {
+    "name": "implicit multiplication",
+    "input": {
+      "expression": "2(3+4)"
+    },
+    "error": true,
+    "errorMessage": "implicit multiplication"
+  },
+  {
+    "name": "non-real power",
+    "input": {
+      "expression": "(-1)^0.5"
+    },
+    "error": true,
+    "errorMessage": "finite"
+  },
+  {
+    "name": "overflow",
+    "input": {
+      "expression": "10^101"
+    },
+    "error": true,
+    "errorMessage": "finite"
+  },
+  {
+    "name": "unfinished expression",
+    "input": {
+      "expression": "2+"
+    },
+    "error": true,
+    "errorMessage": "expected a number"
+  },
+  {
+    "name": "blank expression",
+    "input": {
+      "expression": "   "
+    },
+    "error": true,
+    "errorMessage": "nonempty"
+  },
+  {
+    "name": "expression character bound",
+    "input": {
+      "expression": "11111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111"
+    },
+    "error": true,
+    "errorMessage": "1000"
+  },
+  {
+    "name": "token count bound",
+    "input": {
+      "expression": "1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1"
+    },
+    "error": true,
+    "errorMessage": "512 tokens"
+  },
+  {
+    "name": "nested parenthesis bound",
+    "input": {
+      "expression": "(((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((1)))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))"
+    },
+    "error": true,
+    "errorMessage": "128 levels"
+  },
+  {
+    "name": "unary recursion bound",
+    "input": {
+      "expression": "---------------------------------------------------------------------------------------------------------------------------------1"
+    },
+    "error": true,
+    "errorMessage": "128 levels"
+  }
+]

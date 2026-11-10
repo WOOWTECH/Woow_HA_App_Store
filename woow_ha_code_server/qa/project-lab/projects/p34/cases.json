@@ -1,0 +1,217 @@
+[
+  {
+    "name": "two standard sessions without trailing break",
+    "input": {
+      "sessions": 2
+    },
+    "expected": {
+      "sessions": 2,
+      "totalWorkMinutes": 50,
+      "totalRestMinutes": 5,
+      "totalMinutes": 55,
+      "finishTime": "09:55",
+      "finishDay": 0,
+      "segments": [
+        {
+          "kind": "work",
+          "session": 1,
+          "minutes": 25,
+          "start": "09:00",
+          "startDay": 0,
+          "end": "09:25",
+          "endDay": 0
+        },
+        {
+          "kind": "short-break",
+          "session": 1,
+          "minutes": 5,
+          "start": "09:25",
+          "startDay": 0,
+          "end": "09:30",
+          "endDay": 0
+        },
+        {
+          "kind": "work",
+          "session": 2,
+          "minutes": 25,
+          "start": "09:30",
+          "startDay": 0,
+          "end": "09:55",
+          "endDay": 0
+        }
+      ]
+    }
+  },
+  {
+    "name": "midnight rollover",
+    "input": {
+      "sessions": 1,
+      "startTime": "23:50"
+    },
+    "expected": {
+      "sessions": 1,
+      "totalWorkMinutes": 25,
+      "totalRestMinutes": 0,
+      "totalMinutes": 25,
+      "finishTime": "00:15",
+      "finishDay": 1,
+      "segments": [
+        {
+          "kind": "work",
+          "session": 1,
+          "minutes": 25,
+          "start": "23:50",
+          "startDay": 0,
+          "end": "00:15",
+          "endDay": 1
+        }
+      ]
+    }
+  },
+  {
+    "name": "long break after second session",
+    "input": {
+      "sessions": 3,
+      "workMinutes": 10,
+      "shortBreakMinutes": 2,
+      "longBreakMinutes": 5,
+      "longBreakEvery": 2,
+      "startTime": "10:00"
+    },
+    "expected": {
+      "sessions": 3,
+      "totalWorkMinutes": 30,
+      "totalRestMinutes": 7,
+      "totalMinutes": 37,
+      "finishTime": "10:37",
+      "finishDay": 0,
+      "segments": [
+        {
+          "kind": "work",
+          "session": 1,
+          "minutes": 10,
+          "start": "10:00",
+          "startDay": 0,
+          "end": "10:10",
+          "endDay": 0
+        },
+        {
+          "kind": "short-break",
+          "session": 1,
+          "minutes": 2,
+          "start": "10:10",
+          "startDay": 0,
+          "end": "10:12",
+          "endDay": 0
+        },
+        {
+          "kind": "work",
+          "session": 2,
+          "minutes": 10,
+          "start": "10:12",
+          "startDay": 0,
+          "end": "10:22",
+          "endDay": 0
+        },
+        {
+          "kind": "long-break",
+          "session": 2,
+          "minutes": 5,
+          "start": "10:22",
+          "startDay": 0,
+          "end": "10:27",
+          "endDay": 0
+        },
+        {
+          "kind": "work",
+          "session": 3,
+          "minutes": 10,
+          "start": "10:27",
+          "startDay": 0,
+          "end": "10:37",
+          "endDay": 0
+        }
+      ]
+    }
+  },
+  {
+    "name": "zero break omitted",
+    "input": {
+      "sessions": 2,
+      "workMinutes": 1,
+      "shortBreakMinutes": 0,
+      "startTime": "00:00"
+    },
+    "expected": {
+      "sessions": 2,
+      "totalWorkMinutes": 2,
+      "totalRestMinutes": 0,
+      "totalMinutes": 2,
+      "finishTime": "00:02",
+      "finishDay": 0,
+      "segments": [
+        {
+          "kind": "work",
+          "session": 1,
+          "minutes": 1,
+          "start": "00:00",
+          "startDay": 0,
+          "end": "00:01",
+          "endDay": 0
+        },
+        {
+          "kind": "work",
+          "session": 2,
+          "minutes": 1,
+          "start": "00:01",
+          "startDay": 0,
+          "end": "00:02",
+          "endDay": 0
+        }
+      ]
+    }
+  },
+  {
+    "name": "invalid time",
+    "input": {
+      "sessions": 2,
+      "startTime": "24:00"
+    },
+    "error": true,
+    "errorMessage": "HH:MM"
+  },
+  {
+    "name": "fractional session",
+    "input": {
+      "sessions": 1.5
+    },
+    "error": true,
+    "errorMessage": "sessions"
+  },
+  {
+    "name": "zero long-break frequency",
+    "input": {
+      "sessions": 2,
+      "longBreakEvery": 0
+    },
+    "error": true,
+    "errorMessage": "longBreakEvery"
+  },
+  {
+    "name": "negative break",
+    "input": {
+      "sessions": 2,
+      "shortBreakMinutes": -1
+    },
+    "error": true,
+    "errorMessage": "shortBreakMinutes"
+  },
+  {
+    "name": "too many sessions",
+    "input": {
+      "sessions": 97
+    },
+    "error": true,
+    "errorMessage": "sessions"
+  }
+]

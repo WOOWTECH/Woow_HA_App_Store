@@ -1,0 +1,384 @@
+[
+  {
+    "name": "changed left-only and right-only records",
+    "input": {
+      "left": [
+        {
+          "id": "A",
+          "quantity": 5
+        },
+        {
+          "id": "B",
+          "quantity": 2
+        }
+      ],
+      "right": [
+        {
+          "id": "A",
+          "quantity": 6
+        },
+        {
+          "id": "C",
+          "quantity": 9
+        }
+      ],
+      "keys": [
+        "id"
+      ]
+    },
+    "expected": {
+      "summary": {
+        "leftCount": 2,
+        "rightCount": 2,
+        "matchedCount": 1,
+        "unchangedCount": 0,
+        "changedCount": 1,
+        "leftOnlyCount": 1,
+        "rightOnlyCount": 1
+      },
+      "changes": [
+        {
+          "key": {
+            "id": "A"
+          },
+          "differences": [
+            {
+              "field": "quantity",
+              "leftPresent": true,
+              "rightPresent": true,
+              "left": 5,
+              "right": 6
+            }
+          ]
+        }
+      ],
+      "leftOnly": [
+        {
+          "id": "B",
+          "quantity": 2
+        }
+      ],
+      "rightOnly": [
+        {
+          "id": "C",
+          "quantity": 9
+        }
+      ]
+    }
+  },
+  {
+    "name": "field selection and inclusive numeric tolerance",
+    "input": {
+      "left": [
+        {
+          "id": 1,
+          "amount": 10,
+          "note": "alpha"
+        }
+      ],
+      "right": [
+        {
+          "id": 1,
+          "amount": 10.25,
+          "note": "beta"
+        }
+      ],
+      "keys": [
+        "id"
+      ],
+      "fields": [
+        "amount"
+      ],
+      "numericTolerance": 0.25
+    },
+    "expected": {
+      "summary": {
+        "leftCount": 1,
+        "rightCount": 1,
+        "matchedCount": 1,
+        "unchangedCount": 1,
+        "changedCount": 0,
+        "leftOnlyCount": 0,
+        "rightOnlyCount": 0
+      },
+      "changes": [],
+      "leftOnly": [],
+      "rightOnly": []
+    }
+  },
+  {
+    "name": "missing is distinct from null",
+    "input": {
+      "left": [
+        {
+          "id": 1,
+          "x": null
+        }
+      ],
+      "right": [
+        {
+          "id": 1,
+          "y": null
+        }
+      ],
+      "keys": [
+        "id"
+      ]
+    },
+    "expected": {
+      "summary": {
+        "leftCount": 1,
+        "rightCount": 1,
+        "matchedCount": 1,
+        "unchangedCount": 0,
+        "changedCount": 1,
+        "leftOnlyCount": 0,
+        "rightOnlyCount": 0
+      },
+      "changes": [
+        {
+          "key": {
+            "id": 1
+          },
+          "differences": [
+            {
+              "field": "x",
+              "leftPresent": true,
+              "rightPresent": false,
+              "left": null
+            },
+            {
+              "field": "y",
+              "leftPresent": false,
+              "rightPresent": true,
+              "right": null
+            }
+          ]
+        }
+      ],
+      "leftOnly": [],
+      "rightOnly": []
+    }
+  },
+  {
+    "name": "nested object key order is ignored",
+    "input": {
+      "left": [
+        {
+          "id": 1,
+          "meta": {
+            "a": 1,
+            "b": 2
+          }
+        }
+      ],
+      "right": [
+        {
+          "id": 1,
+          "meta": {
+            "b": 2,
+            "a": 1
+          }
+        }
+      ],
+      "keys": [
+        "id"
+      ]
+    },
+    "expected": {
+      "summary": {
+        "leftCount": 1,
+        "rightCount": 1,
+        "matchedCount": 1,
+        "unchangedCount": 1,
+        "changedCount": 0,
+        "leftOnlyCount": 0,
+        "rightOnlyCount": 0
+      },
+      "changes": [],
+      "leftOnly": [],
+      "rightOnly": []
+    }
+  },
+  {
+    "name": "numeric and string keys remain distinct",
+    "input": {
+      "left": [
+        {
+          "id": 1
+        }
+      ],
+      "right": [
+        {
+          "id": "1"
+        }
+      ],
+      "keys": [
+        "id"
+      ]
+    },
+    "expected": {
+      "summary": {
+        "leftCount": 1,
+        "rightCount": 1,
+        "matchedCount": 0,
+        "unchangedCount": 0,
+        "changedCount": 0,
+        "leftOnlyCount": 1,
+        "rightOnlyCount": 1
+      },
+      "changes": [],
+      "leftOnly": [
+        {
+          "id": 1
+        }
+      ],
+      "rightOnly": [
+        {
+          "id": "1"
+        }
+      ]
+    }
+  },
+  {
+    "name": "composite key match",
+    "input": {
+      "left": [
+        {
+          "tenant": "A",
+          "id": 1,
+          "n": 2
+        }
+      ],
+      "right": [
+        {
+          "tenant": "A",
+          "id": 1,
+          "n": 2
+        }
+      ],
+      "keys": [
+        "tenant",
+        "id"
+      ]
+    },
+    "expected": {
+      "summary": {
+        "leftCount": 1,
+        "rightCount": 1,
+        "matchedCount": 1,
+        "unchangedCount": 1,
+        "changedCount": 0,
+        "leftOnlyCount": 0,
+        "rightOnlyCount": 0
+      },
+      "changes": [],
+      "leftOnly": [],
+      "rightOnly": []
+    }
+  },
+  {
+    "name": "empty sets",
+    "input": {
+      "left": [],
+      "right": [],
+      "keys": [
+        "id"
+      ]
+    },
+    "expected": {
+      "summary": {
+        "leftCount": 0,
+        "rightCount": 0,
+        "matchedCount": 0,
+        "unchangedCount": 0,
+        "changedCount": 0,
+        "leftOnlyCount": 0,
+        "rightOnlyCount": 0
+      },
+      "changes": [],
+      "leftOnly": [],
+      "rightOnly": []
+    }
+  },
+  {
+    "name": "duplicate left key rejected",
+    "input": {
+      "left": [
+        {
+          "id": 1
+        },
+        {
+          "id": 1
+        }
+      ],
+      "right": [],
+      "keys": [
+        "id"
+      ]
+    },
+    "error": true,
+    "errorContains": "left[1] has a duplicate key"
+  },
+  {
+    "name": "duplicate right key rejected",
+    "input": {
+      "left": [],
+      "right": [
+        {
+          "id": 1
+        },
+        {
+          "id": 1
+        }
+      ],
+      "keys": [
+        "id"
+      ]
+    },
+    "error": true,
+    "errorContains": "right[1] has a duplicate key"
+  },
+  {
+    "name": "missing key rejected",
+    "input": {
+      "left": [
+        {}
+      ],
+      "right": [],
+      "keys": [
+        "id"
+      ]
+    },
+    "error": true,
+    "errorContains": "left[0] missing key id"
+  },
+  {
+    "name": "negative tolerance rejected",
+    "input": {
+      "left": [],
+      "right": [],
+      "keys": [
+        "id"
+      ],
+      "numericTolerance": -1
+    },
+    "error": true,
+    "errorContains": "numericTolerance must be a finite number"
+  },
+  {
+    "name": "key field cannot be a comparison field",
+    "input": {
+      "left": [],
+      "right": [],
+      "keys": [
+        "id"
+      ],
+      "fields": [
+        "id"
+      ]
+    },
+    "error": true,
+    "errorContains": "exclude key fields"
+  }
+]

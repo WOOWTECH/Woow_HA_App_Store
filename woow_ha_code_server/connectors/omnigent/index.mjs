@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { spawn } from 'node:child_process';
 
 const root = path.dirname(fileURLToPath(import.meta.url));
-const actions = new Set(['status','configure','start','stop','restore','models','verify','connect','disconnect','chat','continue','switchModel','session','archive']);
+const actions = new Set(['status','configure','start','stop','restore','models','verify','connect','disconnect','chat','continue','switchModel','session','archive','refreshMcp']);
 const failure = (code, message) => ({ok:false,error:{code,message}});
 export function environment(env=process.env) {
   const data = path.resolve(env.PI_AGENT_DATA_DIR || '/data/pi-agent');

@@ -58,3 +58,9 @@ The command palette exposes configuration, status, models, start/stop, restore, 
 ## License and implementation
 
 MIT, Copyright 2026 WOOWTECH. This VS Code client is an independent implementation against the `woow-connectors` JSON contract. Existing WOOW Pi/Hermes/OD integrations informed the architecture; their host-specific UI code is not bundled in this extension. Runtime dependency licenses and provenance belong to the separately packaged runtime.
+
+## Refresh shared tools in an existing conversation
+
+Select **Refresh shared MCP** in the connection panel or command palette and enter the original conversation ID. The action synchronizes shared definitions, including removals, and keeps the same conversation and native persistence. Busy conversations are refused without interruption. Errors remain visible; success means configuration reload/resume was accepted, not that a model has executed a tool.
+
+Codex queues its native MCP reload at the next turn boundary. Pi stages new MCP connections and publishes the updated tool inventory only while idle. Claude Code 2.1.285 uses its native queued `/reload-plugins --force`; removed shared servers receive disabled inert tombstones so stale tools disappear. A native reload receipt is distinct from tool inventory or execution verification. Uncertain submissions remain visible and are never resent automatically. Existing cold sessions need operator preparation of their exact native persistence; the Refresh action never creates a replacement conversation. See [strict cold resume](../../connectors/omnigent/claude_strict_resume.md) for the bounded operator procedure.
