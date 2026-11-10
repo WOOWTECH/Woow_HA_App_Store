@@ -432,14 +432,20 @@ class ComparisonTargetCommand(unittest.TestCase):
             with self.subTest(tag_version):
                 with self.assertRaisesRegex(ValueError,f'^the comparison target v1.3 has no version in addon/config.yaml; {fix}, then re-run this check$'):
                     u.check_target('1.4','v1.3','addon/config.yaml',None,tag_version)
-    def main(self,releases,component,components=('t',),version='99.0.0',on_base=False):
+    def main(self,releases,component,components=('t',),version='99.0.0',on_base=False,catalog=None):
+        """catalog: the Store catalog.json's content (passed as --catalog), or None for no --catalog."""
         d=pathlib.Path(tempfile.mkdtemp());self.addCleanup(shutil.rmtree,d)
         (d/'registry.json').write_text(json.dumps({'providers':{'WOOWTECH/r':{'components':[{'id':c} for c in components]}}}))
+        if catalog is not None:(d/'catalog.json').write_text(catalog if isinstance(catalog,str) else json.dumps(catalog),encoding='utf-8')
         stdin=releases if isinstance(releases,str) else json.dumps([r if isinstance(r,dict) else {'tag_name':r,'draft':False,'prerelease':False} for r in releases])
         with contextlib.redirect_stdout(io.StringIO()) as out,unittest.mock.patch('sys.stdin',io.StringIO(stdin)):
             code=u.main(['comparison-target','--registry',str(d/'registry.json'),'--repo','WOOWTECH/r','--component',component,'--version',version,
-                *(['--on-base'] if on_base else [])])
+                *(['--on-base'] if on_base else []),*(['--catalog',str(d/'catalog.json')] if catalog is not None else [])])
         return code,out.getvalue()
+    def seed(self,why,tag='v<version>'):
+        return (f'::error title=Upgrade comparison failed::t is not a new add-on ({why}) but has no stable Release, so version 99.0.0 has nothing to be '
+            f'compared with; publish a seed Release first ({tag}, the version on the default branch: from its merged release job, or for a Mirror source '
+            'by hand with addon_sync.py release --apply; Store README, seed Release), then re-run this check\n')
     def test_an_add_on_on_the_pr_base_without_a_stable_release_fails(self):
         # #135: with a stable Release it is compared; without one only a new add-on (no config on the PR base) passes uncompared.
         self.assertEqual(self.main(['v1.2.0'],'t',on_base=True),(0,'v1.2.0\t1.2.0\n'))
@@ -447,10 +453,31 @@ class ComparisonTargetCommand(unittest.TestCase):
         for releases,tag in [([],'v<version>'),(['nightly',{'tag_name':'v2.0.0','draft':False,'prerelease':True}],'v<version>'),(['t_2-v1.0.0'],'t-v<version>')]:
             with self.subTest(releases):
                 code,out=self.main(releases,'t',('t','t_2'),on_base=True) if tag.startswith('t-') else self.main(releases,'t',on_base=True)
-                self.assertEqual(code,2)
-                self.assertEqual(out,'::error title=Upgrade comparison failed::t is on the PR base (not a new add-on) but has no stable Release, so this PR has '
-                    f'nothing to be compared with; publish a seed Release first ({tag}, the version on the default branch, from its release job; '
-                    'Store README, seed Release), then re-run this check\n')
+                self.assertEqual((code,out),(2,self.seed('its config is on the PR base',tag)))
+    CATALOG={'schema':1,'components':{'t':{'repository':'WOOWTECH/r','version':'1.0.0'},'u':{'repository':'WOOWTECH/other','version':'2.0.0'}}}
+    def test_an_add_on_in_the_store_catalog_without_a_stable_release_fails(self):
+        # #135: users run what the Store catalog has, PR base or not (sha mode has none); with a stable Release it is compared.
+        self.assertEqual(self.main([],'t',catalog=self.CATALOG),(2,self.seed('users run version 1.0.0 from the Store catalog')))
+        self.assertEqual(self.main([],'t',on_base=True,catalog=self.CATALOG),
+            (2,self.seed('its config is on the PR base; users run version 1.0.0 from the Store catalog')))
+        self.assertEqual(self.main(['v1.2.0'],'t',catalog=self.CATALOG),(0,'v1.2.0\t1.2.0\n'))
+    def test_a_catalog_entry_of_another_repository_is_ignored(self):
+        # The same id shipped from another repository is not this add-on; an id the catalog lacks is a new add-on.
+        self.assertEqual(self.main([],'u',('u',),catalog=self.CATALOG),(0,''))
+        self.assertEqual(self.main([],'n',('n',),catalog=self.CATALOG),(0,''))
+    def test_without_catalog_only_on_base_counts(self):
+        self.assertEqual(self.main([],'t'),(0,''))
+    def test_a_catalog_that_cannot_be_read_fails(self):
+        # Never looser: a catalog the check cannot read is a tool error, not "a new add-on". Only needed with no stable Release.
+        for catalog in ('{',[],{'schema':1}):
+            with self.subTest(catalog):
+                code,out=self.main([],'t',catalog=catalog);self.assertEqual(code,2);self.assertIn('::error title=Upgrade comparison failed::',out)
+        self.assertEqual(self.main(['v1.2.0'],'t',catalog='{'),(0,'v1.2.0\t1.2.0\n'))
+    def test_catalog_entry(self):
+        self.assertEqual(u.catalog_entry(self.CATALOG,'WOOWTECH/r','t'),{'repository':'WOOWTECH/r','version':'1.0.0'})
+        for repo,cid in (('WOOWTECH/r','u'),('WOOWTECH/r','n'),('woowtech/r','t')):
+            with self.subTest(repo=repo,cid=cid):self.assertIsNone(u.catalog_entry(self.CATALOG,repo,cid))
+        with self.assertRaisesRegex(ValueError,'no components object'):u.catalog_entry({'schema':1},'WOOWTECH/r','t')
     def test_prints_the_tag_of_the_latest_stable_release(self):
         # And its version, tab-separated: the plan step checks that the config at the tag says the same version.
         self.assertEqual(self.main(['v1.2.0rc1','v1.2.0','v1.1.0'],'t'),(0,'v1.2.0\t1.2.0\n'))
@@ -697,7 +724,7 @@ class StepHarness(unittest.TestCase):
     def step(self,ident):return next(s for j in ('compare','runtime') for s in self.wf['jobs'][j]['steps'] if ident in (s.get('id'),s.get('name')))
     def run_step(self,ident,*,policy='release',extra=None,releases=('v1.0.0',),old_config=True,new_config=True,skip='',sbom='',version='1.1.0',old=None,old_path='',
             new_path='addon/config.yaml',new=None,files=None,raw_version=None,history=None,changed=1,gh_fail='',images=(),vulnerable='',image_artifact='',
-            tarball=None,build_fail='',news=None,syft_fail='',sha='',keep_going=False,results=None,runtime='success',on_base=None):
+            tarball=None,build_fail='',news=None,syft_fail='',sha='',keep_going=False,results=None,runtime='success',on_base=None,catalog=None):
         """ident: one step, or a tuple run in order until one fails. new_path: where the PR has the config; new: changes to it;
         files: more files of the PR checkout; raw_version: {'old'/'new': the version line's YAML as written, e.g. 1.10 unquoted}.
         history: the PR base's history, newest first, [(sha, {path: changes to the config, or None for no file})]; the first
@@ -714,7 +741,8 @@ class StepHarness(unittest.TestCase):
         sha: the workflow input sha (sha mode, #167); keep_going: run every step of a tuple even after one fails, as sha mode
         does (self.runs has each step's CompletedProcess); results: {id: the runtime job's runtime-reports/<id>.json};
         runtime: the runtime job's result (RUNTIME_RESULT). on_base: what the detect step reports in changed.jsonl (#135);
-        default: the PR base has the config (old_config), never in sha mode.
+        default: the PR base has the config (old_config), never in sha mode. catalog: the Store catalog's components
+        ({id: entry}, tooling/.addon-sync/catalog.json; default none: every add-on is new to the Store, #135).
         self.tmp is the job's directory (also RUNNER_TEMP); self.plans is every line of plan.jsonl."""
         import os,subprocess
         tmp=self.tmp=pathlib.Path(tempfile.mkdtemp());self.addCleanup(shutil.rmtree,tmp)
@@ -723,6 +751,7 @@ class StepHarness(unittest.TestCase):
             if f.suffix in ('.py','.sh'):shutil.copy(f,tmp/'tooling/.addon-sync'/f.name)
         (tmp/'tooling/.addon-sync/registry.json').write_text(json.dumps({'providers':{'WOOWTECH/t':{'ref_policy':policy,'components':[
             {'id':'t','source_path':'addon','config_file':'config.yaml'}],**(extra or {})}}}))
+        (tmp/'tooling/.addon-sync/catalog.json').write_text(json.dumps({'schema':1,'components':catalog or {}}))
         cfg=dict(BASE,image='ghcr.io/da-anda/addon-{arch}')
         def dump(c,side):
             text=yaml.safe_dump(c)
@@ -1617,9 +1646,19 @@ class ShaMode(StepHarness):
         self.assertIn('- t: passed, startup only: data was not checked (只檢查啟動，沒有檢查資料)',summary)
         self.assertIn('- t: passed\n',summary)
     @needs_shell
-    def test_without_a_stable_release_there_is_no_comparison_target(self):
-        # #135 needs a PR base to tell a new add-on from one users run; sha mode has none, so its first Release is not compared.
-        self.run_step(('detect','plan'),sha=self.SHA,extra=self.APPROVED,releases=())
+    def test_an_add_on_in_the_store_catalog_without_a_stable_release_fails(self):
+        # #135: sha mode has no PR base, so the Store catalog tells an add-on users run from a new one; the Release job
+        # must not cut its next version uncompared. The fix for a Mirror 來源 is a seed Release by hand.
+        self.run_step(('detect','plan'),sha=self.SHA,extra=self.APPROVED,releases=(),keep_going=True,catalog={'t':{'repository':'WOOWTECH/t','version':'1.0.0'}})
+        log=''.join(r.stdout+r.stderr for r in self.runs)
+        self.assertEqual([r.returncode for r in self.runs],[0,1],log);self.assertEqual(json.loads((self.tmp/'changed.jsonl').read_text())['on_base'],False)
+        self.assertIn('::error title=Upgrade comparison failed::t is not a new add-on (users run version 1.0.0 from the Store catalog) but has no stable Release, '
+            'so version 1.1.0 has nothing to be compared with; publish a seed Release first (v<version>',self.runs[1].stdout)
+        self.assertIn('for a Mirror source by hand with addon_sync.py release --apply',self.runs[1].stdout);self.assertEqual(self.plans,[])
+    @needs_shell
+    def test_a_new_add_on_without_a_stable_release_has_no_comparison_target(self):
+        # Not in the Store catalog (an add-on of another repository by that id is not this one): its first Release is not compared.
+        self.run_step(('detect','plan'),sha=self.SHA,extra=self.APPROVED,releases=(),catalog={'t':{'repository':'WOOWTECH/other','version':'1.0.0'}})
         self.assertEqual([r.returncode for r in self.runs],[0,0],''.join(r.stdout+r.stderr for r in self.runs))
         self.assertEqual(json.loads((self.tmp/'changed.jsonl').read_text())['on_base'],False)
         self.assertEqual(self.plans[0]['note'],'no comparison target');self.assertNotIn('seed Release',self.runs[1].stdout)
@@ -1757,7 +1796,8 @@ class ComparisonTarget(StepHarness):
         r,plan,_=self.run_step('plan',releases=(),old_config=False)
         self.assertEqual(r.returncode,0,r.stdout+r.stderr);self.assertEqual([plan['target'],plan['ref'],plan['note']],['','','no comparison target'])
         self.assertIn('t: no stable Release yet, a new add-on',r.stdout)
-    SEED='t is on the PR base (not a new add-on) but has no stable Release, so this PR has nothing to be compared with; publish a seed Release first (v<version>'
+    SEED=('t is not a new add-on (its config is on the PR base) but has no stable Release, so version 1.1.0 has nothing to be compared with; '
+        'publish a seed Release first (v<version>')
     @needs_shell
     def test_an_add_on_on_the_pr_base_without_a_stable_release_fails(self):
         # #135: e.g. the registry switched to ref_policy release before the seed Release; it must not pass uncompared.
@@ -1778,6 +1818,15 @@ class ComparisonTarget(StepHarness):
         r,plan,_=self.run_step(('detect','plan'),releases=(),old_config=False)
         self.assertEqual(r.returncode,0,r.stdout+r.stderr);self.assertEqual(json.loads((self.tmp/'changed.jsonl').read_text())['on_base'],False)
         self.assertEqual([plan['target'],plan['note']],['','no comparison target']);self.assertIn('t: no stable Release yet, a new add-on',r.stdout)
+    @needs_shell
+    def test_an_add_on_in_the_store_catalog_without_a_stable_release_fails(self):
+        # #135: no config on the PR base, but the Store ships it from this repository (e.g. a config moved without
+        # previous_config): users run it, so it is not new; the same id from another repository is not this add-on.
+        r,plan,_=self.run_step(('detect','plan'),releases=(),old_config=False,catalog={'t':{'repository':'WOOWTECH/t','version':'1.0.0'}})
+        self.assertEqual(r.returncode,1,r.stdout+r.stderr);self.assertEqual(plan,{})
+        self.assertIn('::error title=Upgrade comparison failed::t is not a new add-on (users run version 1.0.0 from the Store catalog) but has no stable Release',r.stdout)
+        r,plan,_=self.run_step(('detect','plan'),releases=(),old_config=False,catalog={'t':{'repository':'WOOWTECH/other','version':'1.0.0'}})
+        self.assertEqual(r.returncode,0,r.stdout+r.stderr);self.assertEqual(plan['note'],'no comparison target')
     @needs_shell
     def test_ref_policy_main_does_not_look_for_a_stable_release(self):
         # Unchanged by #135: the target is the commit on the PR base where its version first appeared, Releases or none.

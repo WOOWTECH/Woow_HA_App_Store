@@ -276,8 +276,8 @@ def release_change(provider, comp, releases, version, sha):
     to release (release(): that tag exists); else 'changed'. A changed add-on is compared with that Release; one that
     is not newer (a downgrade, the same version written differently) or cannot be ordered against it is 'changed' too
     and fails in the plan (comparison-target, require_newer), as on a PR; with no stable Release there is no
-    comparison target. Without a PR base, the latest stable Release is what users run, so a re-run at the same commit
-    after a failed check compares again (a declaration added since, #91). ValueError when `sha` is not a full commit
+    comparison target, and the plan fails an add-on the Store catalog has (catalog_entry, #135). Without a PR base,
+    the latest stable Release is what users run, so a re-run at the same commit after a failed check compares again (a declaration added since, #91). ValueError when `sha` is not a full commit
     id (a branch could move) or the provider is not ref_policy release: sha mode gates Releases, and a ref_policy main
     source ships its default branch whatever this check says."""
     if not isinstance(sha,str) or not SHA_FORMAT.fullmatch(sha):raise ValueError(f'sha must be a full commit id (40 lower-case hex digits), not {sha!r}')
@@ -287,6 +287,14 @@ def release_change(provider, comp, releases, version, sha):
     whole=[v for v in stable_versions(provider,comp,releases) if _read(v)[0]==Form.WHOLE]
     latest=max(whole,key=functools.cmp_to_key(version_cmp),default=None)
     return 'unchanged' if latest is not None and version==latest else 'changed'
+
+def catalog_entry(catalog, repo, component):
+    """#135: the Store catalog's (.addon-sync/catalog.json) entry of add-on `component` when it ships from `repo` (its
+    `repository`, the registry's provider key, compared as find_provider does), so users run its version; None when the
+    Store has no such add-on from repo (a new one). ValueError when the catalog has no components object."""
+    if not isinstance(catalog,dict) or not isinstance(catalog.get('components'),dict):raise ValueError('the Store catalog has no components object')
+    entry=catalog['components'].get(component)
+    return entry if isinstance(entry,dict) and entry.get('repository')==repo else None
 
 def sha_verdicts(components, unchanged, planned, compared, results, runtime_failed):
     """sha mode (#167): each add-on's verdict, in the order of `components` (the ids `components()` gives):
@@ -697,13 +705,17 @@ def _comparison_target(a):
         releases=json.load(sys.stdin)
         if not isinstance(releases,list):raise ValueError('stdin is not a JSON array of Releases')
         target=comparison_target(stable_versions(provider,comp,releases),a.version)
-    if target is None and a.on_base:
-        # #135: no stable Release is "no comparison target" only for a new add-on. One already on the PR base (users run
-        # its catalog version) would pass uncompared, e.g. while the registry has ref_policy release before its seed Release.
-        with _failing(ValueError):raise ValueError(f'{a.component} is on the PR base (not a new add-on) but has no stable Release, so this PR '
-            f'has nothing to be compared with; publish a seed Release first ({release_tag(provider,comp,"<version>")}, the version '
-            'on the default branch, from its release job; Store README, seed Release), then re-run this check')
-    if target is not None:print(release_tag(provider,comp,target)+'\t'+target)
+    if target is None:
+        # #135: no stable Release is "no comparison target" only for a new add-on. One users run (its config on the PR base,
+        # or in the Store catalog: also in sha mode, which has no PR base) would pass uncompared, e.g. while the registry
+        # has ref_policy release before its seed Release, and the Release job would then cut this version.
+        with _failing((ValueError,OSError),f'{a.catalog}: '):entry=catalog_entry(_load(a.catalog,'json'),a.repo,a.component) if a.catalog else None
+        why=(['its config is on the PR base'] if a.on_base else [])+([f'users run version {entry.get("version")} from the Store catalog'] if entry else [])
+        if why:raise _Failed('Upgrade comparison failed',f'{a.component} is not a new add-on ({"; ".join(why)}) but has no stable Release, so version '
+            f'{a.version} has nothing to be compared with; publish a seed Release first ({release_tag(provider,comp,"<version>")}, the version on the '
+            'default branch: from its merged release job, or for a Mirror source by hand with addon_sync.py release --apply; Store README, seed Release), '
+            'then re-run this check')
+    else:print(release_tag(provider,comp,target)+'\t'+target)
     return 0
 
 def _release_change(a):
@@ -805,11 +817,12 @@ def main(argv=None):
     n.add_argument('--notes',required=True,help='upgrade-notes.yaml at the released commit (may be absent)')
     n.add_argument('--version',required=True,help='version being released')
     n.add_argument('--released',nargs='*',default=[],help='versions that already have a stable Release')
-    t=sub.add_parser('comparison-target',help="read the repository's Releases (GitHub API JSON array) on stdin, print the tag of the add-on's latest stable Release and its version, tab-separated (nothing when none, a failure with --on-base); fails unless --version is newer")
+    t=sub.add_parser('comparison-target',help="read the repository's Releases (GitHub API JSON array) on stdin, print the tag of the add-on's latest stable Release and its version, tab-separated (nothing when none, a failure with --on-base or an add-on --catalog has); fails unless --version is newer")
     t.add_argument('--registry',required=True,help='Store registry.json');t.add_argument('--repo',required=True,help='source repository, owner/name')
     t.add_argument('--component',required=True,help='add-on id in the registry')
     t.add_argument('--version',required=True,help="the PR's version: it must be newer than the target, as for the Release notes")
     t.add_argument('--on-base',action='store_true',help="the add-on's config is on the PR base: fail when it has no stable Release (#135; only a new add-on has no target)")
+    t.add_argument('--catalog',help="the Store catalog.json: fail when it has the add-on from --repo and there is no stable Release (#135; also in sha mode)")
     g=sub.add_parser('check-target',help="fail unless the comparison target's config gives the version its tag does and --version is newer (check_target)")
     g.add_argument('--name',required=True,help='add-on id, for the error');g.add_argument('--version',required=True,help="the PR's version")
     g.add_argument('--target',required=True,help="the target's tag, or under ref_policy main the commit where the PR base's version first appeared");g.add_argument('--tag-version',default='',help="the target's version by its tag; '' when it has none")
