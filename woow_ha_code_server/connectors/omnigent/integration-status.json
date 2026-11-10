@@ -1,0 +1,29 @@
+{
+  "status": "runtime-packaging-ready",
+  "runtimeVersion": "0.16.0",
+  "installer": "install-runtime.sh PREFIX",
+  "paasEntry": "python3 /opt/woow-connectors/omnigent/kit-entry.py /usr/local/bin/omnigent-host-entry NORMAL_ARGS",
+  "noCanonicalKitChanges": true,
+  "tests": {
+    "isolatedRuntimeInstall": "passed linux amd64 CPython3.12.3, 94 hash-locked packages",
+    "sdkSessionHomes": "passed Codex skills/copied MCP/private model edits and Pi shared resources",
+    "kitOverlay": "passed real supervisor pause/restart/restore and non-root read-only 0555 Kubernetes ConfigMap projection; actual PaaS pod prepare check passed without changing its running supervisor",
+    "liveModelConversation": "HA and Podman isolated QA: Claude, Codex and Pi Web two-model same-session context plus actual shared skill/MCP proof passed; PaaS model acceptance pending",
+    "arm64WheelResolution": "passed uv --dry-run --python-platform aarch64-unknown-linux-gnu --only-binary :all: --require-hashes (not arm64 runtime execution)",
+    "nodeAdapter": "5 passed",
+    "processOwnership": "passed own-host SIGTERM/reaping and unrelated-process refusal",
+    "pythonSuite": "30 passed, 0 skipped with private runtime and canonical kit fixture",
+    "nativeCliPinGuard": "passed actual SDK runner env filter; HA live Claude received DISABLE_AUTOUPDATER=1 and remained 2.1.285 after full conversation/model-switch/MCP proof",
+    "paasReadOnlyProjectionFix": "passed regression and deployed PaaS qa5 real ConfigMap projection; host connected with one original supervisor",
+    "customPiCatalog": "real SDK regression: authenticated models.json providers extend built-in catalogue without exposing secrets; two failing cases reproduced before patch; live LiteLLM Web acceptance pending rebuilt PaaS image"
+  },
+  "files": {
+    "index.mjs": "887b6f02659fab2990547464295bb4f0181b708e70b62694148dc69eeda8e10f",
+    "bridge.py": "5a8b017889de8d58e9dfbcf276ea274c25f2d80fdd39feb78953c88625447824",
+    "install-runtime.sh": "a6637e5694311e6e5605cfdbe57053aed33bc56605952e588f75e823f319b2bc",
+    "patch-runtime.py": "96241933e829315cafb8f546e19a2aac0631d986ee96fe12fe25714f8100764c",
+    "patch-kit.py": "5986807b685939fd508b9c1329e9eeff1f7144ae12ab50ded4104e0ab38e9a34",
+    "kit-entry.py": "5c57e54d4d95c8f1db95a505bd2a31a814626f068a19f45f846d6e774ede7b03",
+    "requirements.lock": "74e3f6298ce131bc987b5800a7c8fadab62223fe55d5faa47772787bd9320e50"
+  }
+}

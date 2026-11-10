@@ -1,0 +1,31 @@
+ACP concurrent permission regression — 2026-11-10
+
+Trigger: a model requests several MCP tools at once in ACP Client 0.2.0.
+VS Code replaces an open QuickPick when another is shown. Earlier permission
+requests resolve as cancelled, so tools fail with "Tool use aborted" even
+though the user intends to approve each read operation.
+
+Fix: serialize requests on the PermissionHandler instance. Resolve/reject each
+caller independently, and absorb a failure only in the queue's continuation.
+The original allow, reject, cancel and configured auto-approval behavior remains.
+A rejected or failed prompt does not prevent the next prompt from appearing.
+Apply the patch to the built-in extension during image build. The patch refuses
+missing, duplicate or mixed handlers and can be run again without further edits.
+
+Verification: six regression tests include reproduction on the upstream class,
+FIFO allow-once approvals, cancellation, explicit rejection, a failed UI request,
+idempotence and unknown/ambiguous bundle rejection. The extracted upstream class
+retains its MIT license in tests/fixtures/acp-LICENSE.txt.
+
+Live verification: an isolated code-server process on the PaaS QA6 image loaded
+a patched extension copy. Claude successfully invoked five real read-only MCP
+checks across three Odoo endpoints, Home Assistant and Context7. Native agent
+records confirmed all five results without permission cancellations. A same-version
+user extension is ignored in favor of the built-in copy, so the isolated override
+used a higher test-only version; image builds patch the actual built-in file and
+keep the published upstream extension version.
+
+These changes do not publish a release or switch production services. The live
+browser check used an isolated process, not a rebuilt image. Image build checks
+are reported by the pull request pipelines. Business payloads, URLs, account
+credentials and native model transcripts are deliberately absent from the repo.

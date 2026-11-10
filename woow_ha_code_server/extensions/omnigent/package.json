@@ -1,0 +1,179 @@
+{
+  "name": "omnigent",
+  "displayName": "WOOW Omnigent",
+  "description": "Connect code-server\u2019s Claude Code, Codex and Pi agents to Omnigent. Configure, pair or sign in, and verify real conversations.",
+  "version": "0.1.4",
+  "publisher": "woowtech",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "keywords": [
+    "code-server",
+    "agents",
+    "omnigent",
+    "Claude",
+    "Codex",
+    "Pi"
+  ],
+  "extensionKind": [
+    "workspace"
+  ],
+  "main": "./out/extension.cjs",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": false,
+      "description": "Connector controls execute the installed runtime and expose this workspace to authorized remote agent sessions."
+    },
+    "virtualWorkspaces": false
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/WOOWTECH/Woow_podman_code_server_package.git",
+    "directory": "extensions/omnigent"
+  },
+  "homepage": "https://github.com/WOOWTECH/Woow_podman_code_server_package",
+  "bugs": {
+    "url": "https://github.com/WOOWTECH/Woow_podman_code_server_package/issues"
+  },
+  "galleryBanner": {
+    "color": "#282139",
+    "theme": "dark"
+  },
+  "contributes": {
+    "commands": [
+      {
+        "command": "woow.omnigent.open",
+        "title": "Open Connection Panel",
+        "category": "WOOW Omnigent"
+      },
+      {
+        "command": "woow.omnigent.configure",
+        "title": "Configure Workspace",
+        "category": "WOOW Omnigent"
+      },
+      {
+        "command": "woow.omnigent.status",
+        "title": "Refresh Connection Status",
+        "category": "WOOW Omnigent"
+      },
+      {
+        "command": "woow.omnigent.start",
+        "title": "Start Connection",
+        "category": "WOOW Omnigent"
+      },
+      {
+        "command": "woow.omnigent.stop",
+        "title": "Stop Connection",
+        "category": "WOOW Omnigent"
+      },
+      {
+        "command": "woow.omnigent.restore",
+        "title": "Restore Confirmed Connection",
+        "category": "WOOW Omnigent"
+      },
+      {
+        "command": "woow.omnigent.models",
+        "title": "Show Available Models",
+        "category": "WOOW Omnigent"
+      },
+      {
+        "command": "woow.omnigent.verify",
+        "title": "Verify Real Conversation",
+        "category": "WOOW Omnigent"
+      },
+      {
+        "command": "woow.omnigent.openWeb",
+        "title": "Open Omnigent Web",
+        "category": "WOOW Omnigent"
+      },
+      {
+        "command": "woow.omnigent.settings",
+        "title": "Open Extension Settings",
+        "category": "WOOW Omnigent"
+      },
+      {
+        "command": "woow.omnigent.connect",
+        "title": "Sign In and Connect",
+        "category": "WOOW Omnigent"
+      },
+      {
+        "command": "woow.omnigent.disconnect",
+        "title": "Sign Out and Disconnect",
+        "category": "WOOW Omnigent"
+      }
+    ],
+    "configuration": {
+      "title": "WOOW Omnigent",
+      "properties": {
+        "woow.omnigent.runtimePath": {
+          "type": "string",
+          "default": "/usr/local/bin/woow-connectors",
+          "description": "Absolute path to the installed WOOW connector runtime. This executable runs in the code-server container.",
+          "scope": "machine"
+        },
+        "woow.omnigent.workspace": {
+          "type": "string",
+          "default": "/workspace",
+          "description": "Absolute container workspace to expose to remote agent sessions. Apply with Configure Workspace after editing.",
+          "scope": "machine"
+        },
+        "woow.omnigent.hostName": {
+          "type": "string",
+          "default": "code-server",
+          "description": "Display name for this deployment. Apply with Configure Workspace after editing.",
+          "scope": "machine"
+        },
+        "woow.omnigent.server": {
+          "type": "string",
+          "default": "",
+          "description": "Omnigent server URL reachable from this container, such as an internal Podman/Kubernetes URL. Sign-in credentials are sent only here. No credentials, query, or fragment in the URL. Apply with Configure Workspace after editing.",
+          "scope": "machine"
+        },
+        "woow.omnigent.webUrl": {
+          "type": "string",
+          "default": "",
+          "description": "Optional Omnigent Web URL reachable from your browser. Open Web uses this URL, or server when empty. Allows explicitly configured HTTP(S), including loopback/private addresses; no credentials, query, or fragment. No server credentials are forwarded to the browser.",
+          "scope": "machine"
+        }
+      }
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "woow-omnigent",
+          "title": "WOOW Omnigent",
+          "icon": "media/connector.svg"
+        }
+      ]
+    },
+    "views": {
+      "woow-omnigent": [
+        {
+          "id": "woow.omnigent.statusView",
+          "name": "Omnigent Connection"
+        }
+      ]
+    },
+    "menus": {
+      "view/title": [
+        {
+          "command": "woow.omnigent.open",
+          "when": "view == woow.omnigent.statusView",
+          "group": "navigation@1"
+        },
+        {
+          "command": "woow.omnigent.status",
+          "when": "view == woow.omnigent.statusView",
+          "group": "navigation@2"
+        }
+      ]
+    }
+  }
+}

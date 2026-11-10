@@ -1,2 +1,10 @@
 .git
 **/node_modules
+**/__pycache__
+**/*.pyc
+extensions/dist
+connectors/omnigent/runtime
+connectors/python
+connectors/bootstrap
+*.local.env
+*.bak.*

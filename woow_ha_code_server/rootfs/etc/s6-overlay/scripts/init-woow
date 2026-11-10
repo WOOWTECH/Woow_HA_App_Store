@@ -185,4 +185,5 @@ else
     rm -f /run/s6/container_environment/ANTHROPIC_API_KEY
 fi
 
+node /opt/woow-connectors/seed-extensions.mjs || bashio::log.warning "Connector extensions require manual installation from /opt/woow-connector-vsix"
 bashio::log.info "init-woow: done"

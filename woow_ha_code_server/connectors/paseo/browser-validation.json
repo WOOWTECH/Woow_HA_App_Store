@@ -1,0 +1,212 @@
+{
+  "checkedAt": "2026-11-09T20:33:49.498314+00:00",
+  "official": {
+    "url": "https://app.paseo.sh/",
+    "httpStatus": 200,
+    "title": "Paseo",
+    "clientVersion": "v0.15.3",
+    "welcomeRendered": true,
+    "javascriptPageErrors": 0
+  },
+  "environment": {
+    "chrome": "143.0.7499.169",
+    "playwrightCore": "1.61.1",
+    "node": "22.23.4",
+    "platform": "linux",
+    "arch": "x64"
+  },
+  "isolatedBrowserPairing": {
+    "daemonVersion": "0.11.2",
+    "privateEmptyProviderHomes": true,
+    "officialTrustDialogConfirmed": true,
+    "wideShellRendered": true,
+    "remoteDirectoryOpenedThroughBrowser": true,
+    "resultRoute": "/new",
+    "composerRendered": true,
+    "providerModelCalls": 0,
+    "cleanupPassed": true
+  },
+  "selfHostedFallback": {
+    "needed": false,
+    "implemented": false,
+    "reason": "Official browser client loads and completes relay pairing and remote-directory UI interaction."
+  },
+  "fullThreeAgentBrowserJourney": {
+    "implemented": true,
+    "executed": true,
+    "target": "Podman existing QA container",
+    "installationMode": "Parent directly installed pinned runtime into existing QA; not a newly built image validation",
+    "workspace": "/workspace/connector-qa",
+    "realModelRepliesVerified": true,
+    "modelSwitchesVerified": true,
+    "sameConversationVerified": true,
+    "sharedMcpProofVerified": true,
+    "archiveCleanupVerified": true,
+    "providerPromptTurns": 9,
+    "providers": [
+      {
+        "provider": "claude",
+        "models": [
+          "claude-sonnet-5-5",
+          "claude-opus-5-5"
+        ],
+        "passed": true,
+        "uiCreated": true,
+        "twoTurns": true,
+        "modelSwitch": true,
+        "runtimeVerified": true,
+        "cleanupConfirmed": true,
+        "sameAgent": true,
+        "sharedSkillMcpVerified": true,
+        "newProofCalls": 1
+      },
+      {
+        "provider": "codex",
+        "models": [
+          "gpt-6.1-sol",
+          "gpt-6-sol"
+        ],
+        "passed": true,
+        "uiCreated": true,
+        "twoTurns": true,
+        "modelSwitch": true,
+        "runtimeVerified": true,
+        "cleanupConfirmed": true,
+        "sameAgent": true,
+        "sharedSkillMcpVerified": true,
+        "newProofCalls": 1
+      },
+      {
+        "provider": "pi",
+        "models": [
+          "openai-codex/gpt-6.1-sol",
+          "openai-codex/gpt-6-sol"
+        ],
+        "passed": true,
+        "uiCreated": true,
+        "twoTurns": true,
+        "modelSwitch": true,
+        "runtimeVerified": true,
+        "cleanupConfirmed": true,
+        "sameAgent": true,
+        "sharedSkillMcpVerified": true,
+        "newProofCalls": 1
+      }
+    ],
+    "claudeVersionAfter": "2.1.285",
+    "autoUpdaterGuard": "DISABLE_AUTOUPDATER=1 explicitly forwarded to Claude SDK provider env after this run"
+  },
+  "contractTests": {
+    "command": "node --test connectors/paseo/tests/adapter.test.mjs connectors/paseo/tests/browser-contract.test.mjs",
+    "passed": 23,
+    "failed": 0
+  },
+  "privacy": {
+    "screenshotsSaved": false,
+    "browserStorageSaved": false,
+    "harOrTraceSaved": false,
+    "pairingSecretsPersistedInRepository": false
+  },
+  "referenceSelectors": {
+    "source": "WOOWTECH/paseo app UI source",
+    "localReferenceCommit": "d5496f786a65b8ef21dbf5d482c7421d683a39b9",
+    "observedOfficialClientVersion": "v0.15.3"
+  },
+  "haThreeAgentBrowserJourney": {
+    "ok": true,
+    "checkedAt": "2026-11-09T20:33:49.498314+00:00",
+    "target": "ha",
+    "workspace": "/share/connector-qa",
+    "pairingConfirmedInBrowser": true,
+    "realModelsTested": true,
+    "repairs": [
+      "Missing procps caused Codex probe cleanup to crash worker; installed procps and added preflight guard.",
+      "Claude SDK requested bypass-permission capability under root; applied guarded 0.11.2 patch to omit that capability for root."
+    ],
+    "attempts": {
+      "initialAllProviders": {
+        "claude": false,
+        "codex": true,
+        "pi": true
+      },
+      "targetedRetry": {
+        "claude": true
+      },
+      "failedClaudeAttemptArchived": true
+    },
+    "containerRestarted": false,
+    "ownedDaemonRestartedForRuntimePatch": true,
+    "runtimeRevisionForCodexPi": "r1 with procps repair",
+    "runtimeRevisionForClaudeRetry": "r2 with root-permission fix",
+    "successfulUserPromptTurns": 9,
+    "failedPreReplyPromptAttempts": 1,
+    "behavioralTestsPassed": 23,
+    "postTestAudit": {
+      "ok": true,
+      "versions": {
+        "claude": "2.1.285",
+        "codex": "0.167.0",
+        "pi": "0.99.1"
+      },
+      "runtimeRevision": "woow-code-server-0.11.2-r2-6d8dbe515479",
+      "online": true,
+      "owned": true,
+      "running": true,
+      "claudeAutoUpdaterDisabled": true,
+      "currentWorkerFatalLogCount": 0
+    },
+    "providers": [
+      {
+        "provider": "claude",
+        "passed": true,
+        "uiCreated": true,
+        "twoTurns": true,
+        "modelSwitch": true,
+        "runtimeVerified": true,
+        "cleanupConfirmed": true,
+        "models": [
+          "claude-sonnet-5-5",
+          "claude-opus-5-5"
+        ],
+        "sameAgent": true,
+        "sharedSkillMcpVerified": true,
+        "newProofCalls": 1
+      },
+      {
+        "provider": "codex",
+        "passed": true,
+        "uiCreated": true,
+        "twoTurns": true,
+        "modelSwitch": true,
+        "runtimeVerified": true,
+        "cleanupConfirmed": true,
+        "models": [
+          "gpt-6.1-sol",
+          "gpt-6-sol"
+        ],
+        "sameAgent": true,
+        "sharedSkillMcpVerified": true,
+        "newProofCalls": 1
+      },
+      {
+        "provider": "pi",
+        "passed": true,
+        "uiCreated": true,
+        "twoTurns": true,
+        "modelSwitch": true,
+        "runtimeVerified": true,
+        "cleanupConfirmed": true,
+        "models": [
+          "openai-codex/gpt-6.1-sol",
+          "openai-codex/gpt-6-sol"
+        ],
+        "sameAgent": true,
+        "sharedSkillMcpVerified": true,
+        "newProofCalls": 1
+      }
+    ],
+    "sharedSkillsResolveToSameFile": true,
+    "sharedMcpServerCount": 9,
+    "installationMode": "Parent directly installed pinned runtime in existing HA QA; package and own-runtime repairs were applied there. No container restart."
+  }
+}

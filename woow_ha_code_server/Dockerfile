@@ -1,4 +1,10 @@
 ARG BUILD_FROM=ghcr.io/hassio-addons/vscode/amd64:7.2.0
+FROM docker.io/library/node:22.23.2-bookworm-slim AS connector-vsix
+WORKDIR /build/extensions
+RUN apt-get update && apt-get install -y --no-install-recommends python3 && rm -rf /var/lib/apt/lists/*
+COPY extensions/ ./
+RUN npm ci --ignore-scripts --no-audit --no-fund && npm run package
+
 FROM ${BUILD_FROM}
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
@@ -10,6 +16,7 @@ ENV LANG=C.UTF-8 \
     PI_SKIP_VERSION_CHECK=1 \
     CLAUDE_CONFIG_DIR=/data/pi-agent/claude \
     CODEX_HOME=/data/pi-agent/codex \
+    WOOW_CODE_EXTENSIONS_DIR=/data/vscode/extensions \
     DISABLE_AUTOUPDATER=1
 
 # The upstream vscode run script resets CLAUDE_CONFIG_DIR to /data/claude just
@@ -177,6 +184,7 @@ RUN set -euo pipefail; \
     cp -a /tmp/acp-vsix/extension/. "${EXT_DIR}/"; \
     rm -rf /tmp/acp.vsix /tmp/acp-vsix; \
     test -f "${EXT_DIR}/package.json"; \
+    node /opt/patches/patch-acp-permission-queue.mjs "${EXT_DIR}/dist/extension.js"; \
     echo "formulahendry.acp-client#${ACP_CLIENT_VERSION}" >> /root/vscode.extensions
 
 # The official Claude Code extension, same pin as podman/k3s. Open VSX ships
@@ -225,9 +233,21 @@ RUN npm ci --prefix /opt/woow-agent-tools --omit=dev \
 ENV CODEX_HOME=/data/pi-agent/codex \
     CODEX_PATH=/opt/woow-agent-tools/node_modules/.bin/codex
 
+COPY connectors/ /opt/woow-connectors/
+COPY --from=connector-vsix /build/extensions/dist/ /opt/woow-connector-vsix/
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends tmux bubblewrap util-linux procps python3 \
+ && rm -rf /var/lib/apt/lists/* \
+ && chmod +x /opt/woow-connectors/install-runtime.sh \
+             /opt/woow-connectors/paseo/install-runtime.sh \
+             /opt/woow-connectors/omnigent/install-runtime.sh \
+ && /opt/woow-connectors/install-runtime.sh
+
 COPY rootfs/ /
 RUN chmod +x /usr/local/bin/pi-code /usr/local/bin/pi-seed \
              /usr/local/bin/codex-code /usr/local/bin/woow-agent-sync \
+             /usr/local/bin/woow-connectors /usr/local/bin/woow-connectors-service \
+             /etc/s6-overlay/s6-rc.d/woow-connectors/run \
              /usr/local/bin/migrate-claude-state \
              /etc/s6-overlay/scripts/init-woow \
              /etc/s6-overlay/s6-rc.d/nginx-direct/run \

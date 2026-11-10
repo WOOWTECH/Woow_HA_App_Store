@@ -1,0 +1,3 @@
+#!/command/with-contenv bashio
+exec 2>&1
+exec /usr/local/bin/woow-connectors-service

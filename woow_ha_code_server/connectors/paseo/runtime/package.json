@@ -1,0 +1,20 @@
+{
+  "name": "pi-paseo-managed-runtime",
+  "version": "0.11.2-r2",
+  "private": true,
+  "dependencies": {
+    "@getpaseo/cli": "0.11.2"
+  },
+  "overrides": {
+    "esbuild": "0.28.2",
+    "@modelcontextprotocol/sdk": "1.32.0",
+    "markdown-it": "14.3.3",
+    "linkify-it": "5.0.2",
+    "@ai-sdk/provider-utils": "3.0.28",
+    "ai": "5.0.207",
+    "uuid": "11.1.1",
+    "body-parser@^1.20.0": "1.20.9",
+    "body-parser@^2.0.0": "2.4.0",
+    "fast-uri": "3.1.9"
+  }
+}

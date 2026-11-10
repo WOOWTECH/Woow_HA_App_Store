@@ -1,0 +1,168 @@
+{
+  "name": "paseo",
+  "displayName": "WOOW Paseo",
+  "description": "Connect code-server\u2019s Claude Code, Codex and Pi agents to Paseo. Configure, pair or sign in, and verify real conversations.",
+  "version": "0.1.4",
+  "publisher": "woowtech",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "keywords": [
+    "code-server",
+    "agents",
+    "paseo",
+    "Claude",
+    "Codex",
+    "Pi"
+  ],
+  "extensionKind": [
+    "workspace"
+  ],
+  "main": "./out/extension.cjs",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": false,
+      "description": "Connector controls execute the installed runtime and expose this workspace to authorized remote agent sessions."
+    },
+    "virtualWorkspaces": false
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/WOOWTECH/Woow_podman_code_server_package.git",
+    "directory": "extensions/paseo"
+  },
+  "homepage": "https://github.com/WOOWTECH/Woow_podman_code_server_package",
+  "bugs": {
+    "url": "https://github.com/WOOWTECH/Woow_podman_code_server_package/issues"
+  },
+  "galleryBanner": {
+    "color": "#172b30",
+    "theme": "dark"
+  },
+  "contributes": {
+    "commands": [
+      {
+        "command": "woow.paseo.open",
+        "title": "Open Connection Panel",
+        "category": "WOOW Paseo"
+      },
+      {
+        "command": "woow.paseo.configure",
+        "title": "Configure Workspace",
+        "category": "WOOW Paseo"
+      },
+      {
+        "command": "woow.paseo.status",
+        "title": "Refresh Connection Status",
+        "category": "WOOW Paseo"
+      },
+      {
+        "command": "woow.paseo.start",
+        "title": "Start Connection",
+        "category": "WOOW Paseo"
+      },
+      {
+        "command": "woow.paseo.stop",
+        "title": "Stop Connection",
+        "category": "WOOW Paseo"
+      },
+      {
+        "command": "woow.paseo.restore",
+        "title": "Restore Confirmed Connection",
+        "category": "WOOW Paseo"
+      },
+      {
+        "command": "woow.paseo.models",
+        "title": "Show Available Models",
+        "category": "WOOW Paseo"
+      },
+      {
+        "command": "woow.paseo.verify",
+        "title": "Verify Real Conversation",
+        "category": "WOOW Paseo"
+      },
+      {
+        "command": "woow.paseo.openWeb",
+        "title": "Open Paseo Web",
+        "category": "WOOW Paseo"
+      },
+      {
+        "command": "woow.paseo.settings",
+        "title": "Open Extension Settings",
+        "category": "WOOW Paseo"
+      },
+      {
+        "command": "woow.paseo.pair",
+        "title": "Pair with Paseo Web",
+        "category": "WOOW Paseo"
+      }
+    ],
+    "configuration": {
+      "title": "WOOW Paseo",
+      "properties": {
+        "woow.paseo.runtimePath": {
+          "type": "string",
+          "default": "/usr/local/bin/woow-connectors",
+          "description": "Absolute path to the installed WOOW connector runtime. This executable runs in the code-server container.",
+          "scope": "machine"
+        },
+        "woow.paseo.workspace": {
+          "type": "string",
+          "default": "/workspace",
+          "description": "Absolute container workspace to expose to remote agent sessions. Apply with Configure Workspace after editing.",
+          "scope": "machine"
+        },
+        "woow.paseo.hostName": {
+          "type": "string",
+          "default": "code-server",
+          "description": "Display name for this deployment. Apply with Configure Workspace after editing.",
+          "scope": "machine"
+        },
+        "woow.paseo.webUrl": {
+          "type": "string",
+          "default": "https://app.paseo.sh",
+          "description": "Paseo Web URL opened by explicit user action. Do not paste a pairing URL here.",
+          "scope": "machine"
+        }
+      }
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "woow-paseo",
+          "title": "WOOW Paseo",
+          "icon": "media/connector.svg"
+        }
+      ]
+    },
+    "views": {
+      "woow-paseo": [
+        {
+          "id": "woow.paseo.statusView",
+          "name": "Paseo Connection"
+        }
+      ]
+    },
+    "menus": {
+      "view/title": [
+        {
+          "command": "woow.paseo.open",
+          "when": "view == woow.paseo.statusView",
+          "group": "navigation@1"
+        },
+        {
+          "command": "woow.paseo.status",
+          "when": "view == woow.paseo.statusView",
+          "group": "navigation@2"
+        }
+      ]
+    }
+  }
+}

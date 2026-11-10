@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.10
+
+- 新增可在 Extensions 頁面管理的 Paseo 與 Omnigent 插件，以及固定版本 runtime。
+- 支援 Paseo Web 配對與 Omnigent 主機連線；共用本部署三代理的 skills 與 MCP。
+- 連線及手動停止狀態保存在既有資料卷，升級保留模型登入。
+- Omnigent 模型選單支援 Pi 原生授權的 LiteLLM 等自訂 provider，保留完整模型 ID。
+- 更新 Python 3.12.16、uv 0.13.7、esbuild 0.28.2，通過新版映像的升版比較。
+
 ## 0.1.9
 
 - Codex CLI 0.167.0 與 Codex ACP 2.6.0 的相依套件改用固定 lockfile；ACP 面板使用相同 CLI。

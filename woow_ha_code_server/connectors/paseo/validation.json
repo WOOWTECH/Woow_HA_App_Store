@@ -1,0 +1,52 @@
+{
+  "checkedAt": "2026-11-09T20:33:49.498314+00:00",
+  "platform": "linux",
+  "arch": "x64",
+  "node": "22.23.4",
+  "paseoVersion": "0.11.2",
+  "behavioralTests": {
+    "command": "node --test connectors/paseo/tests/adapter.test.mjs connectors/paseo/tests/browser-contract.test.mjs",
+    "passed": 23,
+    "failed": 0
+  },
+  "isolatedDaemonIntegration": {
+    "command": "WOOW_PASEO_RUNTIME_DIR=<prebuilt-0.11.2-runtime> node connectors/paseo/tests/live-daemon.mjs",
+    "passed": true,
+    "concurrentSingleDaemon": true,
+    "pairingProduced": true,
+    "pairingPersisted": false,
+    "healthyRestoreReadOnly": true,
+    "stoppedRestoreRespected": true,
+    "enabledRestoreWorks": true,
+    "cleanupPassed": true,
+    "runtimeRevisionAtTest": "r1 before Claude root compatibility patch; historical isolated lifecycle evidence"
+  },
+  "notVerified": [
+    "new-image npm ci install step with procps/root-compatibility changes",
+    "PaaS real Web conversations, model switching and shared MCP proof",
+    "arm64 runtime"
+  ],
+  "browserValidation": "browser-validation.json",
+  "podmanQa": {
+    "realThreeAgentWebConversations": true,
+    "realModelSwitches": true,
+    "sharedSkillRequestedAndMcpProofVerified": true,
+    "allCreatedConversationsArchived": true,
+    "claudePinnedVersionAfter": "2.1.285",
+    "installedUnconfiguredPhase": "not_configured",
+    "evidence": "browser-validation.json"
+  },
+  "haQa": {
+    "realThreeAgentWebConversations": true,
+    "realModelSwitches": true,
+    "sameConversationContext": true,
+    "sharedSkillRequestedAndMcpProofVerified": true,
+    "sharedSkillFilesIdentical": true,
+    "allCreatedConversationsArchived": true,
+    "claudePinnedVersionAfter": "2.1.285",
+    "runtimeRevisionAfter": "woow-code-server-0.11.2-r2-6d8dbe515479",
+    "rootCompatibilityVerified": true,
+    "containerRestarted": false,
+    "evidence": "browser-validation.json"
+  }
+}

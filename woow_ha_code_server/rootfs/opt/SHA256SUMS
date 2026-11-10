@@ -8,3 +8,5 @@ bbba98a7a123b76950c9f9f6ebd1250e01dcfa098b8353574722d4867ea5b18a  /usr/local/bin
 d1274bad5957e4c4530ce9596decb75bad012797400014cf2e0f36f9435081a3  /opt/woow-agent-tools/agent-sync.mjs
 3edd6c2aa7fe1cb38be1712f7125d4d37399e9b2155923063f17687f0515fb1f  /opt/woow-agent-tools/package.json
 7c0b6c5ade1528b25c8445596eb68f631aee259e2c32f46dcb38520fc78fa8f7  /opt/woow-agent-tools/package-lock.json
+3ccedc47d80596e0eaf2bc8de1d5283b83ddd2f4bf7166d6271dc6e0c6043f05  /usr/local/bin/woow-connectors
+6bc78c63f415dec0e698bbb0113990e4918424b740c71cc408c51abd520e3ffe  /usr/local/bin/woow-connectors-service

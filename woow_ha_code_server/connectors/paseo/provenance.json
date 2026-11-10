@@ -1,0 +1,98 @@
+{
+  "source": "https://github.com/WOOWTECH/pi-paseo-plugin",
+  "commit": "2d5531fd65f80a58a15ed19c709a4f29e52d3723",
+  "license": "MIT",
+  "runtimeVersion": "0.11.2",
+  "files": [
+    {
+      "path": "src/state.mjs",
+      "sourceSha256": "e0232bbef2fbec24821377ba0dbce59489f9fff3cb14c1e0fb66c64aed1142d0",
+      "modified": true
+    },
+    {
+      "path": "src/process.mjs",
+      "sourceSha256": "fb7f387d0b82be18d7e98ef7d23b733338c21c6eb80530350091de59527bd983",
+      "modified": false
+    },
+    {
+      "path": "src/daemon-identity.mjs",
+      "sourceSha256": "7994f181a1864fa5892ab3b5d510a156c55b8d9864596462d34c96fdae151615",
+      "modified": false
+    },
+    {
+      "path": "src/pid-transition.mjs",
+      "sourceSha256": "37bdef75ee090452ce946bbf051d411352d51fda95d8121ff0c83a34680e3987",
+      "modified": false
+    },
+    {
+      "path": "src/pid-lock-patch.mjs",
+      "sourceSha256": "92117af8f3a2b8fb2ccdb959a938eb6b3fa4f9989933c1a6e7df028512fb346f",
+      "modified": false
+    },
+    {
+      "path": "src/chat-result.mjs",
+      "sourceSha256": "371d9a50951f18c1aeabca6a6359b5ca7c15a450e277f7191350cdc2e9c687dc",
+      "modified": false
+    },
+    {
+      "path": "src/provider-reply.mjs",
+      "sourceSha256": "35e953d415a963180ed1402cc57a83c9dd82d1931ae547aae971decbb5fca69b",
+      "modified": false
+    },
+    {
+      "path": "src/acceptance-agent.mjs",
+      "sourceSha256": "bc73607738a1784c2e5cf3951cf867d139b7dd99afbadbaa357a042f329c0726",
+      "modified": false
+    },
+    {
+      "path": "src/acceptance-workspace.mjs",
+      "sourceSha256": "95acadaac8a14957ceaf59f64afdf2bcd5588605e26e1b0c0fe4eaae95a99779",
+      "modified": false
+    },
+    {
+      "path": "src/single-flight.mjs",
+      "sourceSha256": "a2008cad4fe2b1d77d051070adc5b2fe2104eea89d0ca31dea9b41b5bf0b82c4",
+      "modified": false
+    },
+    {
+      "path": "src/runtime.mjs",
+      "sourceSha256": "a9c696ddb4a620bfed29fc7221568a42b9ecc8ec18d92a23fd36921e64f6f1b3",
+      "modified": true
+    },
+    {
+      "path": "runtime/package.json",
+      "sourceSha256": "1b02d3a98d86f83c4162b3cfb2c000c6f041f9ab730cbefb23952644f20a5c95",
+      "modified": false
+    },
+    {
+      "path": "runtime/package-lock.json",
+      "sourceSha256": "6d8dbe5154790bbbb0b1281e991871b6f354919022fb55a1235162e969779526",
+      "modified": false
+    },
+    {
+      "path": "LICENSE",
+      "sourceSha256": "1b05bfafc14067beabe8885c164528c122ebf545eabe97984b222fe377143a69",
+      "modified": false
+    }
+  ],
+  "changes": [
+    "code-server paths and credential-home preservation",
+    "remove Pi SDK, package manager, automatic installs and onboarding",
+    "explicit official-web pairing only; no pairing persistence",
+    "idempotent restore and persistent manual stop",
+    "add JSON adapter, provider catalog and owned-session model switching",
+    "retain guarded PID patch and process birth verification",
+    "child-only private umask for daemon PID and auth files",
+    "semantic provider-config comparison after Paseo schema serialization"
+  ],
+  "runtimePatches": [
+    {
+      "recipe": "src/claude-root-patch.mjs",
+      "package": "@getpaseo/server@0.11.2",
+      "file": "dist/server/server/agent/providers/claude/agent.js",
+      "originalSha256": "519318ffe2c3427e9478ebd3e29e2d28835558c9fb40ff3136f3557c1a077060",
+      "patchedSha256": "197cab82770baa1f6dfdef0f7765688e3983a45afec82e003750376a2dafc1da",
+      "behavior": "Root does not request bypass-permission launch capability; normal permissions remain active. No upstream source vendored."
+    }
+  ]
+}

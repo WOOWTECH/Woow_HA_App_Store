@@ -1,0 +1,2 @@
+#!/bin/sh
+exec node /opt/woow-connectors/service.mjs "$@"
