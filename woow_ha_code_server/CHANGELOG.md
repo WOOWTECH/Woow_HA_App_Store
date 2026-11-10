@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.11
+
+- 發布已合併的 Codex 容器 sandbox 相容性修正；終端與 ACP 使用同一個 scoped bubblewrap launcher，保留原有登入及 sandbox 設定。
+- 收錄 Pi Responses 設定工具與回歸測試；工具僅在使用者明確執行時調整指定 provider 的 GPT-6 模型，啟動及升級不會自動改寫模型設定或登入。
+- 本版不變更 HA Supervisor 的 AppArmor／seccomp 或全域安全政策。隔離行為已在獨立 Docker probe 驗證，但 Supervisor 管理的正式 add-on 政策仍未驗證，升級本身不代表其 namespace／mount 限制已解決。細節見 [sandbox 說明](security/codex/README.md)。
+
 ## 0.1.10
 
 - 新增可在 Extensions 頁面管理的 Paseo 與 Omnigent 插件，以及固定版本 runtime。

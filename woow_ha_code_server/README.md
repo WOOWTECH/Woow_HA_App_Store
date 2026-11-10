@@ -124,3 +124,7 @@ Full detail: [`DOCS.md`](DOCS.md#security).
 ## License
 
 MIT
+
+### Codex container sandbox compatibility
+
+Native Codex and the ACP adapter use the same scoped bubblewrap compatibility launcher. See [sandbox setup and isolation verification](security/codex/README.md) for optional host profiles and the live probe. Existing sandbox and login settings are retained.

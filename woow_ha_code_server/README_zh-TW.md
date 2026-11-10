@@ -125,3 +125,20 @@ HA_URL=https://your-ha-host HA_TOKEN=... bash tests/smoke-addon.sh
 ## 授權
 
 MIT
+
+## Pi 經由 LiteLLM／OpenAI 相容閘道調用 GPT-6 工具
+
+若 `models.json` 把 GPT-6 系列設為 `openai-completions`，帶推理的工具呼叫可能遺失參數。2026-11-10 實測同一閘道、GPT-6 Sol 與 GPT-6.1 Sol：Chat Completions 平行呼叫兩個工具時參數為空；Responses 保留完整參數。改用 Responses 後，Pi 0.99.1 對兩個模型各執行一次 HA 模板與 Context7 真實 MCP 呼叫，共 4 次成功、0 次重試。
+
+[OpenAI 官方相容性說明](https://developers.openai.com/api/docs/guides/latest-model)要求 GPT-6.1 Sol 工具呼叫使用 Responses；GPT-6 Sol 在 Chat Completions 的工具呼叫僅支援 `reasoning_effort: none`。這裡保留推理能力，使用 Responses。
+
+先確認自己的閘道確實支援 `/v1/responses`，再於 code-server 終端執行（替換供應商名稱）：
+
+```sh
+node /opt/woow-agent-tools/configure-pi-responses.mjs --provider my-gateway
+node /opt/woow-agent-tools/configure-pi-responses.mjs --provider my-gateway --apply
+```
+
+第一行僅預覽。第二行只為該供應商的 GPT-6 模型加上 `api: "openai-responses"`，保留其餘模型、金鑰、網址與推理設定，並建立權限 0600 的原始設定備份。未知 API、壞 JSON、符號連結或偵測到同時修改時會中止。此工具不在啟動時自動執行，也不建立或複製供應商登入。
+
+完成後開啟新的 Pi 工作階段，再驗證實際工具參數與結果。模型出現在選單、工具列出成功，均不足以代表對話驗收通過。本次真實重測發生在 PaaS QA；工具在三種映像的原始碼與回歸測試一致，未因此宣稱 HA／Podman 正式環境已換版。

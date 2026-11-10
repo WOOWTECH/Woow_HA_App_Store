@@ -1,0 +1,12 @@
+#!/bin/bash
+# Codex 0.167 recognizes /newroot/proc, while bubblewrap 0.12 prints /proc.
+# Normalize only the fixed no-model preflight command's mount diagnostic.
+# Actual commands, arguments, inherited descriptors and exit codes stay intact.
+last_arg=
+for arg in "$@"; do last_arg=$arg; done
+case "$last_arg" in
+  /bin/true|/usr/bin/true)
+    exec /usr/bin/bwrap "$@" 2> >(sed -u -E "/^bwrap: Can't mount proc on \/proc: (Operation not permitted|Permission denied|Invalid argument)$/s|on /proc:|on /newroot/proc:|" >&2)
+    ;;
+  *) exec /usr/bin/bwrap "$@" ;;
+esac

@@ -2,5 +2,5 @@
 # ACP Codex and terminal Codex use the same private auth/config directory.
 set -eu
 export CODEX_HOME="${CODEX_HOME:-${PI_AGENT_DATA_DIR:-/data/pi-agent}/codex}"
-export CODEX_PATH=/opt/woow-agent-tools/node_modules/.bin/codex
+export CODEX_PATH=/usr/local/bin/codex
 exec /opt/woow-agent-tools/node_modules/.bin/codex-acp "$@"

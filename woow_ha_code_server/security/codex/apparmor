@@ -1,0 +1,51 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# Derived from Moby apparmor/v0.2.1 (tag
+# 8f67eb80c7c8cdf6eb8f72e776c3864e9509f4d2). The upstream template source
+# SHA-256 is 2e9f9780a9b64d4f547f8563399d1147b22d810d973701688b5eb4cb0ec46168.
+# Keep Docker's default restrictions, plus the explicit AF_ALG and nested
+# Bubblewrap user-namespace/mount exceptions required by the sandbox canary.
+
+#include <tunables/global>
+
+abi <abi/3.0>,
+
+profile woow-code-server-bwrap flags=(attach_disconnected,mediate_deleted) {
+  #include <abstractions/base>
+
+  network,
+  # Disallow AF_ALG (Linux kernel crypto API); see https://copy.fail/
+  deny network alg,
+  capability,
+  file,
+  userns,
+  mount,
+  umount,
+  pivot_root,
+
+  # Host runtimes must be able to stop and kill the container.
+  signal (receive) peer=unconfined,
+  signal (receive) peer=runc,
+  signal (receive) peer=crun,
+  signal (send,receive) peer=woow-code-server-bwrap,
+
+  deny @{PROC}/* w,
+  deny @{PROC}/{[^1-9/],[^1-9/][^0-9/],[^1-9s/][^0-9y/][^0-9s/],[^1-9/][^0-9/][^0-9/][^0-9/]*}/** w,
+  deny @{PROC}/sys/[^k]** w,
+  deny @{PROC}/sys/kernel/{?,??,[^s][^h][^m]**} w,
+  deny @{PROC}/sysrq-trigger rwklx,
+  deny @{PROC}/kcore rwklx,
+
+  deny /sys/[^f]*/** wklx,
+  deny /sys/f[^s]*/** wklx,
+  deny /sys/fs/[^c]*/** wklx,
+  deny /sys/fs/c[^g]*/** wklx,
+  deny /sys/fs/cg[^r]*/** wklx,
+  deny /sys/firmware/** rwklx,
+  deny /sys/devices/virtual/powercap/** rwklx,
+  deny /sys/kernel/security/** rwklx,
+
+  # Allow processes within the container to trace each other, subject to
+  # other LSM and Yama restrictions.
+  ptrace (trace,tracedby,read,readby) peer=woow-code-server-bwrap,
+}

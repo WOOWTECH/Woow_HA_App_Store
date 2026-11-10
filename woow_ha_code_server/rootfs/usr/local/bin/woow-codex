@@ -1,0 +1,5 @@
+#!/bin/sh
+# Keep bubblewrap compatibility scoped to Codex and its subprocesses.
+# The real CLI stays at its npm path; CODEX_HOME and sandbox policy are unchanged.
+export PATH="/opt/woow-agent-tools/sandbox-bin:$PATH"
+exec /opt/woow-agent-tools/node_modules/.bin/codex "$@"

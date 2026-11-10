@@ -1,0 +1,6 @@
+Optional sandbox policies derived from Moby's Apache-2.0 AppArmor and seccomp
+baselines, via https://github.com/jonasjancarik/codex-broker/tree/main/examples.
+Original baseline tags and source checksums remain in the profiles. The upstream
+AppArmor file explicitly declares SPDX-License-Identifier: Apache-2.0.
+WOOW changes: AppArmor profile/peer names renamed to woow-code-server-bwrap.
+The Apache-2.0 license text is included in this directory.
