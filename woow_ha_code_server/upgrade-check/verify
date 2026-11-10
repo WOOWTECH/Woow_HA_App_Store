@@ -1,0 +1,5 @@
+#!/usr/bin/env python3
+"""升級測試 hook：在新版本上確認 seed 寫的資料還在、init-woow 合併沒有蓋掉它（見 code_server_upgrade.py）。"""
+import code_server_upgrade
+
+code_server_upgrade.main("verify")

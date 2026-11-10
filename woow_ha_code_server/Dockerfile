@@ -1,5 +1,5 @@
 ARG BUILD_FROM=ghcr.io/hassio-addons/vscode/amd64:7.2.0
-FROM docker.io/library/node:22.23.2-bookworm-slim AS connector-vsix
+FROM docker.io/library/node:22.23.4-bookworm-slim AS connector-vsix
 WORKDIR /build/extensions
 RUN apt-get update && apt-get install -y --no-install-recommends python3 && rm -rf /var/lib/apt/lists/*
 COPY extensions/ ./
@@ -57,7 +57,7 @@ RUN apt-get update \
 # which may pin a different Debian release). Arch is mapped from BUILD_ARCH,
 # set by the CI matrix (amd64/aarch64, matching HA's own {arch} convention).
 ARG BUILD_ARCH=amd64
-ARG NODE_VERSION=22.23.2
+ARG NODE_VERSION=22.23.4
 RUN set -euo pipefail; \
     case "${BUILD_ARCH}" in \
       amd64)   NARCH=x64 ;; \

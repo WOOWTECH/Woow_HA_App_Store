@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.12
+
+- Node 22.23.2 → 22.23.4（Node.js 安全性更新），執行環境的 Node 與打包 connector 插件的建置階段一起更新。pi、Claude Code、Codex、各插件、base image 與 hash 釘住的共用檔案都不變。
+- 升版比較開始檢查資料：新增 `upgrade-check/seed` 與 `verify`。升級後 `/data/pi-agent` 的使用者檔案、`/data/vscode/User/settings.json` 的使用者設定與自訂 ACP agent 都要保留不變，且 `init-woow` 合併後 `pi`、`claude`、`codex` 三個 agent 都在。
+- PARITY_CONTRACT 的 P09 改為檢查 `claude`、`codex`、`pi` 都在，不再要求「剛好只有這幾個」，使用者自行加的 agent 不會讓 parity 檢查失敗；並同步 podman 套件 2026-11-09 的擴充套件說明（HA 不採用 podman 的擴充套件 volume，`/data/vscode/extensions` 本來就會保留）。
+- 選項與資料目錄結構不變。
+
 ## 0.1.11
 
 - 發布已合併的 Codex 容器 sandbox 相容性修正；終端與 ACP 使用同一個 scoped bubblewrap launcher，保留原有登入及 sandbox 設定。

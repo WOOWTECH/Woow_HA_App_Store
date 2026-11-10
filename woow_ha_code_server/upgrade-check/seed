@@ -1,0 +1,5 @@
+#!/usr/bin/env python3
+"""升級測試 hook：在比對對象上寫入使用者資料（見 code_server_upgrade.py）。"""
+import code_server_upgrade
+
+code_server_upgrade.main("seed")
