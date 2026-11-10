@@ -1,5 +1,5 @@
 name: Woow Code Server
-version: "0.1.13"
+version: "0.1.14"
 slug: woow_ha_code_server
 description: code-server 4.139.1 with Pi (0.99.1), Claude Code (2.1.285), and Codex (0.167.0) as terminal and ACP sidebar agents — WOOWTECH build layered on the Home Assistant Community vscode add-on
 url: https://github.com/WOOWTECH/Woow_ha_code_server_add_on

@@ -159,6 +159,23 @@ test('busy MCP refresh is visible and cancellation makes no runtime request', as
   assert.equal(cancelled.calls.length,0);
 });
 
+test('cold Paseo refresh explains opening the original without changing Omnigent guidance', async () => {
+  for (const connector of ['paseo', 'omnigent']) {
+    const h=harness(connector,{refreshMcp:{ok:false,error:{code:'MCP_NATIVE_UNAVAILABLE',message:'private-diagnostic'}}});
+    h.inputs.push('original-agent');await h.commands.get(`woow.${connector}.refreshMcp`)();
+    assert.equal(h.calls.filter(x=>x.action==='refreshMcp').length,1);
+    assert.equal(h.updates.length,0);assert.equal(h.opened.length,0);
+    assert.equal(JSON.stringify([h.logs,h.posted,h.notices]).includes('private-diagnostic'),false);
+    if(connector==='paseo') {
+      assert.ok(h.notices.some(x=>x.includes('Open the original conversation in Paseo Web')));
+      assert.ok(h.notices.some(x=>x.includes('history to load')&&x.includes('idle')));
+    } else {
+      assert.ok(h.notices.some(x=>x.includes('operator must prepare')));
+      assert.ok(h.notices.every(x=>!x.includes('Paseo Web')));
+    }
+  }
+});
+
 test('in-process inventory refresh does not claim a restart or tool execution', async()=>{
  const h=harness('omnigent',{refreshMcp:{ok:true,refresh:{state:'applied',inventoryVerified:true,toolsVerified:false}}});h.inputs.push('existing-pi-session');await h.commands.get('woow.omnigent.refreshMcp')();assert.ok(h.notices.some(x=>x.includes('inventory updated')));assert.ok(h.notices.every(x=>!x.includes('resumed')));assert.ok(h.notices.some(x=>x.includes('not yet verified')));
 });
@@ -174,4 +191,157 @@ test('Claude reload receipt and uncertain submission have distinct honest notice
  assert.ok(pending.notices.some(x=>x.includes('submission is uncertain')));
  assert.ok(pending.notices.some(x=>x.includes('not resent')));
  assert.equal(pending.calls.filter(x=>x.action==='refreshMcp').length,1);
+});
+
+function deferred() {
+  let resolve, reject;
+  const promise = new Promise((yes, no) => { resolve = yes; reject = no; });
+  return { promise, resolve, reject };
+}
+const nextTick = () => new Promise(resolve => setImmediate(resolve));
+function lastBusy(h) { return h.posted.filter(message => message.type === 'busy').at(-1)?.busy; }
+
+test('pending MCP success notifications do not hold Working or prevent another operation', async () => {
+  for (const connector of ['omnigent', 'paseo']) {
+    for (const [state, expected] of [
+      ['queued', 'next turn boundary'], ['applied', 'inventory updated'],
+      ['reloaded', 'inventory and execution are not yet verified'], ['resumed', 'conversation resumed'],
+    ]) {
+      const h = harness(connector, { refreshMcp: { ok: true, refresh: { state, toolsVerified: false } } });
+      h.commands.get(`woow.${connector}.open`)();
+      const toast = deferred();
+      h.vscode.window.showInformationMessage = text => { h.notices.push(text); return toast.promise; };
+      h.inputs.push('original-native-session');
+      let settled = false;
+      const operation = h.commands.get(`woow.${connector}.refreshMcp`)().then(value => { settled = true; return value; });
+      try {
+        await nextTick();
+        assert.equal(settled, true, `${connector}/${state}: completion must not wait for toast dismissal`);
+        assert.equal(lastBusy(h), false);
+        assert.equal((await operation).ok, true);
+        assert.ok(h.notices.some(text => text.includes(expected)));
+        assert.ok(h.posted.some(message => message.type === 'notice' && message.text.includes(expected) && !message.error));
+        assert.ok(h.notices.every(text => text.includes('not yet verified')));
+        assert.deepEqual(h.calls.find(call => call.action === 'refreshMcp'), { connector, action: 'refreshMcp', sessionId: 'original-native-session' });
+        assert.equal((await h.api.perform('start')).ok, true);
+        assert.equal(h.calls.filter(call => call.action === 'start').length, 1);
+      } finally { toast.resolve(); await operation; }
+    }
+  }
+});
+
+test('pending refresh error notifications remain observable after controls unlock', async () => {
+  for (const connector of ['omnigent', 'paseo']) {
+    const h = harness(connector, { refreshMcp: { ok: false, error: { code: 'SESSION_BUSY' } } });
+    h.commands.get(`woow.${connector}.open`)();
+    const toast = deferred();
+    h.vscode.window.showErrorMessage = text => { h.notices.push(text); return toast.promise; };
+    h.inputs.push('original-native-session');
+    let settled = false;
+    const operation = h.api.perform('refreshMcp').then(value => { settled = true; return value; });
+    try {
+      await nextTick();
+      assert.equal(settled, true, `${connector}: error notification must not hold busy`);
+      assert.equal(lastBusy(h), false);
+      assert.equal((await operation).error.code, 'SESSION_BUSY');
+      assert.ok(h.notices.some(text => text.includes('Nothing was interrupted')));
+      assert.ok(h.posted.some(message => message.type === 'notice' && message.error && message.text.includes('Nothing was interrupted')));
+      assert.equal((await h.api.perform('start')).ok, true);
+    } finally { toast.resolve(); await operation; }
+  }
+});
+
+test('an operation exception unlocks controls while its sanitized error toast is still open', async () => {
+  const backend = deferred(), toast = deferred();
+  const h = harness('omnigent', { refreshMcp: backend.promise });
+  h.commands.get('woow.omnigent.open')();
+  h.vscode.window.showErrorMessage = text => { h.notices.push(text); return toast.promise; };
+  h.inputs.push('original-native-session');
+  let settled = false;
+  const operation = h.api.perform('refreshMcp').then(value => { settled = true; return value; });
+  await nextTick();
+  backend.reject(new Error('backend-private-fixture-secret'));
+  try {
+    await nextTick();
+    assert.equal(settled, true);
+    assert.equal(lastBusy(h), false);
+    assert.equal((await operation).error.code, 'CLIENT_ERROR');
+    assert.ok(h.notices.includes('Connector operation could not be completed.'));
+    assert.ok(h.posted.some(message => message.type === 'notice' && message.error && message.text === 'Connector operation could not be completed.'));
+    assert.equal(JSON.stringify([h.logs, h.notices, h.posted]).includes('backend-private-fixture-secret'), false);
+    assert.equal((await h.api.perform('start')).ok, true);
+  } finally { toast.resolve(); await operation; }
+});
+
+test('a pending backend still holds busy and prevents a second operation', async () => {
+  const backend = deferred();
+  const h = harness('paseo', { refreshMcp: backend.promise });
+  h.commands.get('woow.paseo.open')();
+  h.inputs.push('original-native-session');
+  const operation = h.api.perform('refreshMcp');
+  try {
+    await nextTick();
+    assert.equal(lastBusy(h), true);
+    await h.api.perform('start');
+    assert.equal(h.calls.some(call => call.action === 'start'), false);
+    assert.ok(h.posted.some(message => message.text === 'An operation is already running.'));
+  } finally { backend.resolve({ ok: true, refresh: { state: 'resumed' } }); await operation; }
+  assert.equal(lastBusy(h), false);
+});
+
+test('notification rejection or synchronous failure preserves the result and safe fallback notice', async () => {
+  for (const failure of ['reject', 'throw']) for (const ok of [true, false]) {
+    const result = ok ? { ok: true, refresh: { state: 'applied', toolsVerified: false } } : { ok: false, error: { code: 'MCP_SYNC_FAILED' } };
+    const h = harness('omnigent', { refreshMcp: result });
+    h.commands.get('woow.omnigent.open')();
+    h.vscode.window[ok ? 'showInformationMessage' : 'showErrorMessage'] = text => {
+      h.notices.push(text);
+      if (failure === 'throw') throw new Error('notification-private-fixture-secret');
+      return Promise.reject(new Error('notification-private-fixture-secret'));
+    };
+    h.inputs.push('original-native-session');
+    assert.deepEqual(await h.api.perform('refreshMcp'), result);
+    await nextTick();
+    assert.equal(lastBusy(h), false);
+    assert.ok(h.logs.some(line => line === h.notices[0]));
+    assert.ok(h.posted.some(message => message.type === 'notice' && message.text === h.notices[0] && message.error === !ok));
+    assert.equal(JSON.stringify([h.logs, h.notices, h.posted]).includes('notification-private-fixture-secret'), false);
+  }
+});
+
+test('status, model inventory, verification and trust notices never await dismissal', async () => {
+  for (const action of ['status', 'models', 'verify', 'untrusted']) {
+    const h = harness('omnigent', { models: { ok: true, models: [] }, verify: { ok: true } });
+    const toast = deferred();
+    const show = text => { h.notices.push(text); return toast.promise; };
+    h.vscode.window.showInformationMessage = show;
+    h.vscode.window.showErrorMessage = show;
+    if (action === 'verify') { h.picks.push({ engine: 'codex', label: 'Codex' }); h.inputs.push(''); }
+    if (action === 'untrusted') h.vscode.workspace.isTrusted = false;
+    let settled = false;
+    const operation = h.api.perform(action === 'untrusted' ? 'start' : action).then(value => { settled = true; return value; });
+    try {
+      await nextTick();
+      assert.equal(settled, true, action);
+      assert.equal(h.notices.length, 1);
+      if (action === 'verify') assert.match(h.notices[0], /has not reported a verified reply/);
+      if (action === 'untrusted') assert.equal(h.calls.length, 0);
+      else assert.equal((await h.api.perform('start')).ok, true);
+    } finally { toast.resolve(); await operation; }
+  }
+});
+
+test('conversation input still holds busy until answered or cancelled', async () => {
+  const h = harness('omnigent'), input = deferred();
+  h.commands.get('woow.omnigent.open')();
+  h.vscode.window.showInputBox = () => input.promise;
+  const operation = h.api.perform('refreshMcp');
+  try {
+    await nextTick();
+    assert.equal(lastBusy(h), true);
+    await h.api.perform('start');
+    assert.equal(h.calls.length, 0);
+  } finally { input.resolve(undefined); await operation; }
+  assert.equal(lastBusy(h), false);
+  assert.equal(h.calls.length, 0);
 });

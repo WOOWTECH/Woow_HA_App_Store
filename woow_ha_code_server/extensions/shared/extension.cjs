@@ -15,6 +15,15 @@ function createExtension(connector, dependencies = {}) {
   }
   function render() { panel?.webview.postMessage({ type: 'status', state: state() }); emitter?.fire(); }
   function notice(text, error = false) { panel?.webview.postMessage({ type: 'notice', text, error }); }
+  function notify(text, error = false) {
+    // VS Code resolves these notifications when dismissed. Their lifetime must
+    // not hold an operation busy or prevent its status/notice from rendering.
+    const fallback = () => { notice(text, error); output?.appendLine(text); };
+    try {
+      const pending = error ? vscode.window.showErrorMessage(text) : vscode.window.showInformationMessage(text);
+      void Promise.resolve(pending).catch(fallback);
+    } catch { fallback(); }
+  }
   async function invoke(action, fields = {}) {
     const run = (dependencies.createRuntime || createRuntime)({ executable: configuration().runtimePath, onEvent: event => output?.appendLine(`${event.connector} ${event.action}: ${event.ok ? 'ok' : publicCode(event.code)}`) });
     return run({ connector, action, ...fields });
@@ -90,7 +99,7 @@ function createExtension(connector, dependencies = {}) {
     if (result.ok) {
       const receipt = result.verification ?? result.acceptance ?? result;
       const verified = result.verified === true || receipt.requestedPassed === true || receipt.passed === true || receipt.status === 'passed' || result.verification?.ok === true;
-      await vscode.window.showInformationMessage(verified ? `${name}: conversation verification passed.` : `${name}: verification request completed. The runtime has not reported a verified reply; inspect its verification status.`);
+      notify(verified ? `${name}: conversation verification passed.` : `${name}: verification request completed. The runtime has not reported a verified reply; inspect its verification status.`);
     }
     return result;
   }
@@ -119,7 +128,9 @@ function createExtension(connector, dependencies = {}) {
       MCP_REFRESH_UNSUPPORTED: 'This native harness has no verified safe reload. Its conversation was not changed.',
       MCP_RESUME_UNAVAILABLE: 'This conversation has no saved native session to resume. It was not replaced.',
       RESTART_REQUIRED: 'This daemon is running the previous runtime. An operator must update it after its conversations are idle; refresh did not restart it.',
-      MCP_NATIVE_UNAVAILABLE: 'Native refresh control is unavailable. An operator must prepare the original native session before retrying; it was not replaced.',
+      MCP_NATIVE_UNAVAILABLE: connector === 'paseo'
+        ? 'Open the original conversation in Paseo Web and wait for its history to load. When it is idle, retry Refresh shared MCP. No new conversation was created.'
+        : 'Native refresh control is unavailable. An operator must prepare the original native session before retrying; it was not replaced.',
       MCP_REFRESH_UNCONFIRMED: 'Refresh could not be confirmed. Inspect the existing conversation before retrying.',
       MCP_RELOAD_FAILED: 'Native reload failed. Inspect or reopen the existing conversation; no new conversation was created.',
       MCP_RELOAD_SUBMISSION_UNKNOWN: 'Native reload submission is uncertain. Inspect the original conversation before retrying; the command was not resent.',
@@ -149,7 +160,7 @@ function createExtension(connector, dependencies = {}) {
   }
   async function perform(action, fields) {
     if (!vscode.workspace.isTrusted) {
-      await vscode.window.showErrorMessage('Trust this workspace before using connector controls.');
+      notify('Trust this workspace before using connector controls.', true);
       return;
     }
     if (busy) { notice('An operation is already running.'); return; }
@@ -167,7 +178,7 @@ function createExtension(connector, dependencies = {}) {
         result = await refresh();
         if (!panel) {
           const current = state();
-          await vscode.window.showInformationMessage(`${name}: connection ${current.phase}; conversation ${current.verification}${current.error ? `; ${current.error}` : ''}.`);
+          notify(`${name}: connection ${current.phase}; conversation ${current.verification}${current.error ? `; ${current.error}` : ''}.`);
         }
       }
       else if (action === 'configure') result = await configure(fields);
@@ -175,7 +186,7 @@ function createExtension(connector, dependencies = {}) {
       else if (action === 'verify') result = await verify();
       else if (action === 'refreshMcp') {
         result = await refreshMcp();
-        if (result?.ok) await vscode.window.showInformationMessage(refreshNotice(result));
+        if (result?.ok) notify(refreshNotice(result));
       }
       else if (action === 'pair') result = await openWeb(true);
       else if (action === 'openWeb') result = await openWeb(false);
@@ -185,19 +196,19 @@ function createExtension(connector, dependencies = {}) {
           lastModels = modelItems(result);
           if (!panel) {
             if (lastModels.length) await vscode.window.showQuickPick(lastModels.map(model => ({ label: safeText(model.name), description: safeText(model.agent), detail: safeText(model.id) })), { title: `${name}: available models`, placeHolder: 'View inventory; change models in the Web conversation.', ignoreFocusOut: true });
-            else await vscode.window.showInformationMessage(`${name}: the runtime has not reported a model inventory.`);
+            else notify(`${name}: the runtime has not reported a model inventory.`);
           }
         }
       } else if (['start', 'stop', 'restore', 'disconnect'].includes(action)) result = await invoke(action);
       else throw new Error('Unsupported action.');
       if (result && action !== 'status') await refresh();
-      if (result?.ok === false && action !== 'status') await vscode.window.showErrorMessage(action === 'refreshMcp' ? refreshNotice(result) : `${name}: ${publicCode(result.error?.code)}. Check configuration and runtime availability.`);
+      if (result?.ok === false && action !== 'status') notify(action === 'refreshMcp' ? refreshNotice(result) : `${name}: ${publicCode(result.error?.code)}. Check configuration and runtime availability.`, true);
       return result;
     } catch (error) {
       // Only our validation errors are shown; runtime stderr is never forwarded.
       const message = error instanceof Error && /^(Invalid |Unknown configuration|Workspace must |Server must |Web URL must |Unsupported action)/.test(error.message) ? safeText(error.message) : 'Connector operation could not be completed.';
       notice(message, true);
-      await vscode.window.showErrorMessage(message);
+      notify(message, true);
       return { ok: false, error: { code: 'CLIENT_ERROR' } };
     } finally {
       busy = false;

@@ -2,7 +2,7 @@
   "name": "omnigent",
   "displayName": "WOOW Omnigent",
   "description": "Connect code-server\u2019s Claude Code, Codex and Pi agents to Omnigent. Configure, pair or sign in, and verify real conversations.",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "publisher": "woowtech",
   "license": "MIT",
   "engines": {

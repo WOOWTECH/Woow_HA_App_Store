@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.14
+
+- Paseo / Omnigent extensions 0.1.6 release connector controls when an action completes, without waiting for notification dismissal.
+- Paseo refresh reports recognized native-session RPC failures with guidance to open the original Paseo Web conversation, wait for history and idle, then refresh. Private diagnostic details remain hidden.
+
 ## 0.1.13
 
 - Paseo / Omnigent extensions 0.1.5 add an explicit **Refresh shared MCP** action for an existing conversation, with idle and native-context guards and managed-server removals. Paseo supports Claude/Codex/Pi; Omnigent supports Codex native reload, guarded Claude reload and prepared Pi native sessions. Existing Pi sessions require explicit operator preparation before refresh.
