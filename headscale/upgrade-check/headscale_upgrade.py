@@ -13,7 +13,9 @@ verify   Headscale is up on the new version (it runs its database migrations
          key and it still authenticates, the user is still there with the same
          id and name, the pre-auth key is still there with the same id, user,
          reusable and ephemeral flags and expiration time, and creating (then
-         deleting) a new user works. The key text and the timestamp's form are
+         deleting) a new user works. It also signs into Headplane through the
+         ingress and opens the ACL page five times to catch the SSR crash.
+         The key text and the timestamp's form are
          not compared: a version may list only the key's prefix, or write the
          time another way, and the key is still the same one.
 
@@ -164,6 +166,40 @@ class Client:
                 raise AssertionError(f"GET {self.ingress}/_ha_key gave no API key within the wait: {code} {shown}")
             time.sleep(2)
 
+    def acl_page(self) -> str:
+        """Log into Headplane through the add-on ingress and catch its repeat-request SSR crash."""
+        data = urllib.parse.urlencode({"api_key": self.key}).encode()
+        login = urllib.request.Request(
+            self.ingress + "/login", data=data, method="POST",
+            headers={"Content-Type": "application/x-www-form-urlencoded", "Accept": "text/html"},
+        )
+        try:
+            response = self.opener.open(login, timeout=time_left(20))
+        except urllib.error.HTTPError as error:
+            response = error  # NoRedirect exposes the expected 302 this way.
+        with response:
+            status = response.status
+            cookies = response.headers.get_all("Set-Cookie", [])
+        assert status in (302, 303), f"Headplane login returned {status}, expected redirect"
+        auth_cookies = [value.split(";", 1)[0] for value in cookies if value.startswith("_hp_auth=")]
+        assert len(auth_cookies) == 1, "Headplane login did not set one auth cookie"
+
+        statuses = []
+        for _ in range(5):
+            request = urllib.request.Request(
+                self.ingress + "/acls", headers={"Cookie": auth_cookies[0], "Accept": "text/html"},
+            )
+            try:
+                with self.opener.open(request, timeout=time_left(20)) as response:
+                    statuses.append(response.status)
+                    body = response.read()
+            except urllib.error.HTTPError as error:
+                statuses.append(error.code)
+                body = error.read()
+            assert statuses[-1] == 200, f"Headplane ACL request {len(statuses)} returned {statuses[-1]}"
+            assert b"Access Control" in body, "Headplane ACL response was not the ACL page"
+        return "login succeeded; ACL page returned 200 with ACL content on five requests"
+
     def users(self) -> list[dict]:
         users = self.call("GET", "/api/v1/user").get("users") or []
         assert isinstance(users, list), f"users is not a list: {users!r}"[:300]
@@ -299,6 +335,8 @@ def verify() -> int:
         hs.users()
         return f"GET /api/v1/user -> 200 (Headscale {state.get('version')} -> {hs.version()})"
     auth = checks.run("add-on API key authenticates", authenticates, bool(kept))
+
+    checks.run("Headplane ACL page survives repeated SSR", hs.acl_page, bool(auth))
 
     def user_kept() -> str:
         want = state["user"]

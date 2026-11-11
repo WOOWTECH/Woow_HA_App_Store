@@ -2774,22 +2774,22 @@
     "woow-headscale": {
       "id": "woow-headscale",
       "name": "Woow Headscale VPN",
-      "version": "0.1.2",
+      "version": "0.1.3",
       "repository": "WOOWTECH/Woow_ha_vpn_headscale_package",
-      "source_sha": "1d774f077ebb6172accfb9ab927522ba45b9236d",
+      "source_sha": "43c2adf653b610d7d7005ed1d5d1bdb4b83cb2c1",
       "source_path": "headscale",
       "config_file": "config.yaml",
-      "config_sha256": "sha256:fa78df20ef20c427774229f1a8bc4d2b50b7ca1b485e6656f619d2787c3b0e97",
-      "archive_sha256": "sha256:efaab9b1efa8e1756e3b93f416e713c33a6d59b4e1a0bb83de58ea71e4e06831",
-      "context_fingerprint": "sha256:63a9134d7fb5ee05dab495435be4ffdaaacfea0f39e296cea6eb8b32e13b97aa",
-      "material_fingerprint": "sha256:1770a5a0bb68e5aee90a78c261cc5a3cdcd036e5957ccce0851c561d950bdda3",
+      "config_sha256": "sha256:99ce56665e205320cc7a7dc54997035cb160be5f8e018019be13b5768ab86c9e",
+      "archive_sha256": "sha256:d8f255ebbd9c9a844695b03123e12fc78de453857c8dcf08f0053c361ccf1b02",
+      "context_fingerprint": "sha256:2dd251c430d5eb0b24d0062ce71e31e9dff9ef35a1aba72a33a07c715232f591",
+      "material_fingerprint": "sha256:0386a8c23efba952b5583c7261dfdc422f0a4198acd8862267b1799c5d634a54",
       "architectures": [
         "aarch64",
         "amd64"
       ],
       "config": {
         "name": "Woow Headscale VPN",
-        "version": "0.1.2",
+        "version": "0.1.3",
         "slug": "woow-headscale",
         "description": "Self-hosted Tailscale control plane (Headscale + Headplane) by WoowTech",
         "url": "https://github.com/WOOWTECH/Woow_ha_vpn_headscale_package",
@@ -2857,7 +2857,7 @@
       "images": {},
       "delivery": "local-source-build",
       "validation": "manifest+source-context+configured-CI (runtime build not certified)",
-      "publisher_run_id": "42999798497",
+      "publisher_run_id": "43051124432",
       "channel": "stable",
       "store_path": "headscale"
     },
@@ -3704,5 +3704,5 @@
       "store_path": "woow_mcp_headscale"
     }
   },
-  "catalog_id": "sha256:26e029e4491d17b3f5db683df732cdc68a5c4dfa3eab0f25b081d2c7f0734cb1"
+  "catalog_id": "sha256:d1033bb7ac9a59a5b574a97402d41484c7129596836299cf18f3c2e42907be37"
 }

@@ -1,0 +1,27 @@
+diff --git a/app/routes/acls/overview.tsx b/app/routes/acls/overview.tsx
+index 51206f9..0bb1548 100644
+--- a/app/routes/acls/overview.tsx
++++ b/app/routes/acls/overview.tsx
+@@ -31,0 +32 @@ export default function Page({ loaderData: { access, writable, policy } }: Route
++  const [hydrated, setHydrated] = useState(false);
+@@ -35,0 +37,2 @@ export default function Page({ loaderData: { access, writable, policy } }: Route
++  useEffect(() => setHydrated(true), []);
++
+@@ -111,3 +114,5 @@ export default function Page({ loaderData: { access, writable, policy } }: Route
+-          <Suspense fallback={<Fallback />}>
+-            <LazyEditor isDisabled={disabled} onChange={setCodePolicy} value={codePolicy} />
+-          </Suspense>
++          {hydrated ? (
++            <Suspense fallback={<Fallback />}>
++              <LazyEditor isDisabled={disabled} onChange={setCodePolicy} value={codePolicy} />
++            </Suspense>
++          ) : <Fallback />}
+@@ -116,3 +121,5 @@ export default function Page({ loaderData: { access, writable, policy } }: Route
+-          <Suspense fallback={<Fallback />}>
+-            <LazyDiffer left={policy} right={codePolicy} />
+-          </Suspense>
++          {hydrated ? (
++            <Suspense fallback={<Fallback />}>
++              <LazyDiffer left={policy} right={codePolicy} />
++            </Suspense>
++          ) : <Fallback />}

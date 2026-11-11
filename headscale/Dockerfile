@@ -1,5 +1,4 @@
 ARG BUILD_FROM=ghcr.io/hassio-addons/debian-base:9.3.0
-ARG HEADPLANE_VERSION="0.7.1"
 
 ###############################################################################
 # Stage 1 — Official Headplane image, used only as a COPY source.
@@ -8,10 +7,25 @@ ARG HEADPLANE_VERSION="0.7.1"
 # bundled Node.js runtime (/nodejs) instead of running it directly.
 ###############################################################################
 # hadolint ignore=DL3006
-FROM ghcr.io/tale/headplane:${HEADPLANE_VERSION} AS headplane
+FROM ghcr.io/tale/headplane:0.7.1@sha256:394483fd2336ce6b15df360c3e118ddfd45eb8140fe21df9f2611077f5d79d22 AS headplane
 
 ###############################################################################
-# Stage 2 — Add-on image
+# Stage 2 — Rebuild only Headplane's UI with the ACL SSR fix. Keep the pinned
+# upstream runtime from stage 1 so both add-on architectures use the same app.
+###############################################################################
+FROM docker.io/library/node:24-bookworm@sha256:8fa96264f302f58bbb13aa7339c541547b56975766ce956c875da149452a3e40 AS headplane-ui
+ARG HEADPLANE_SOURCE_COMMIT="30c842ed8dbf011e78596e3a474133ec4069ba79"
+RUN git clone --quiet --depth 1 --branch v0.7.1 https://github.com/tale/headplane.git /src \
+    && test "$(git -C /src rev-parse HEAD)" = "${HEADPLANE_SOURCE_COMMIT}"
+COPY patches/headplane-acl-ssr.patch /tmp/headplane-acl-ssr.patch
+RUN git -C /src apply --unidiff-zero --check /tmp/headplane-acl-ssr.patch \
+    && git -C /src apply --unidiff-zero /tmp/headplane-acl-ssr.patch \
+    && cd /src \
+    && corepack pnpm install --frozen-lockfile \
+    && corepack pnpm run build
+
+###############################################################################
+# Stage 3 — Add-on image
 ###############################################################################
 # hadolint ignore=DL3006
 FROM ${BUILD_FROM}
@@ -56,6 +70,8 @@ RUN apt-get update \
 # Headplane dashboard: bundled Node.js runtime + self-contained app build
 COPY --from=headplane /nodejs /opt/nodejs
 COPY --from=headplane /app /opt/headplane
+COPY --from=headplane-ui /src/build/client /opt/headplane/build/client
+COPY --from=headplane-ui /src/build/server /opt/headplane/build/server
 
 # Patch Headplane build for HA Ingress —「方案 A」. The exact route-discovery
 # pattern was checked in the official 0.7.1 amd64 image before this bump:
