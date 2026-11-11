@@ -1,0 +1,36 @@
+name: Woow Headscale MCP Server
+version: 0.4.13
+slug: woow_mcp_headscale
+description: HA admin-role management; Headscale nodes, routes and access keys; every tool and write on by default (each can be turned off in the panel).
+url: https://github.com/WOOWTECH/Woow_ha_mcp_addons
+arch:
+- amd64
+startup: application
+boot: auto
+init: true
+stage: stable
+image: ghcr.io/woowtech/{arch}-mcp-headscale
+ingress: true
+ingress_port: 8099
+ingress_stream: true
+panel_admin: true
+panel_icon: mdi:connection
+ports:
+  8081/tcp: null
+ports_description:
+  8081/tcp: Optional LAN MCP; Bearer required. Never administration.
+timeout: 30
+backup: cold
+apparmor: true
+host_network: false
+host_pid: false
+host_ipc: false
+host_uts: false
+host_dbus: false
+full_access: false
+docker_api: false
+hassio_api: false
+homeassistant_api: true
+auth_api: false
+options: {}
+schema: {}
