@@ -2,8 +2,8 @@
 
 把 HA 主機變成自架 Tailscale 網路（tailnet）的 control plane：
 
-- **Headscale v0.29.3** — 開源版 Tailscale 控制伺服器（官方 .deb）
-- **Headplane v0.7.0** — Web 管理介面，經 **HA Ingress** 使用（sidebar 點開自動登入，免貼 API key）
+- **Headscale v0.29.4** — 開源版 Tailscale 控制伺服器（官方 .deb）
+- **Headplane v0.7.1** — Web 管理介面，經 **HA Ingress** 使用（sidebar 點開自動登入，免貼 API key）
 - **選配 ngrok tunnel** — 填 authtoken 就能把 control plane 打洞到公網，免碰 router
 
 所有裝置（手機、筆電、其他 HAOS 機器）用**未修改的官方 Tailscale client** 加入，取得 `100.64.0.0/10` 的 tailnet IP，彼此以 WireGuard 直連。
@@ -91,7 +91,7 @@
 - Headplane 對 Headscale 的設定熱更新走同容器 process 整合（`integration.proc`，SIGHUP reload），在 GUI 改 DNS/設定即時生效，不需重啟 add-on。
 - 自動登入用的 API key 存於 `/var/lib/headscale/.headplane_api_key`（效期 3650 天，遺失會自動重生）。
 
-> ⚠️ Ingress 介面的路徑重寫規則（sed / sub_filter）與 **Headplane 0.7.0** 的 build 產物綁定，請勿自行改裝其他 Headplane 版本，升級一律等本 add-on 發版。
+> ⚠️ Ingress 介面的路徑重寫規則（sed / sub_filter）與 **Headplane 0.7.1** 的 build 產物綁定，請勿自行改裝其他 Headplane 版本，升級一律等本 add-on 發版。
 
 ---
 
@@ -105,7 +105,7 @@
 2. 指定自訂 control server：
    - **Android**：開 app → 右上 ⋮ 選單 → 「Use an alternate server」→ 輸入 `server_url`。
    - **iOS**：先開過一次 app，再到 iOS **設定 → Tailscale → Alternate Coordination Server URL** 填入 `server_url`，回 app 登入。
-3. app 會顯示（或開瀏覽器到）`.../register/hskey-authreq-XXXX` 的註冊網址——**該頁面會直接顯示要執行的註冊指令**，照抄到 Headscale CLI 執行（§6.5），或改用 Headplane **Machines** 頁以 registration key 完成註冊（Headplane 0.7.0 支援 headscale 0.29 的 registration flow）。
+3. app 會顯示（或開瀏覽器到）`.../register/hskey-authreq-XXXX` 的註冊網址——**該頁面會直接顯示要執行的註冊指令**，照抄到 Headscale CLI 執行（§6.5），或改用 Headplane **Machines** 頁以 registration key 完成註冊（Headplane 0.7.1 支援 headscale 0.29 的 registration flow）。
 4. 註冊完成後手機取得 `100.64.x.x` IP，`http://100.64.x.x:8123` 即可從任何 tailnet 裝置連回 HA。
 
 ### 6.2 筆電 / 桌機（tailscale CLI）
@@ -117,7 +117,7 @@ tailscale up --login-server=http://<HA_IP>:28080
 
 ### 6.3 Pre-auth key（免互動註冊，適合批量/無頭裝置）
 
-在 Headplane **Users** 頁產生 pre-auth key，或用 CLI（`--user` 在 headscale 0.29 需要**數字 user ID**，先 `headscale users list` 查）：
+在 Headplane **Settings → Manage Auth Keys → Create pre-auth key** 的彈窗選擇 **User**，保持 **Reusable 關閉**以建立單次 key；若尚無使用者，先到 **Users** 建立。也可用 CLI（`--user` 在 headscale 0.29 需要**數字 user ID**，先 `headscale users list` 查）：
 
 ```bash
 headscale users list                                # 查 ID，例如 default = 1
@@ -130,7 +130,17 @@ headscale preauthkeys create --user 1 --expiration 24h
 tailscale up --login-server=<server_url> --authkey=<key>
 ```
 
-### 6.4 其他 HAOS 機器（官方 Tailscale add-on）
+### 6.4 其他 HAOS 機器（Woow Tailscale add-on）
+
+若要在 HA 圖形介面完成配對，請使用 **Woow Tailscale 0.1.5 以上版本**：
+
+1. 在本 add-on 的 **Web UI（Headplane）→ Users** 建立裝置歸屬者（若已存在可略過），再到 **Settings → Manage Auth Keys → Create pre-auth key**，於彈窗選擇 **User**、保持 **Reusable 關閉**，產生**單次使用**的 pre-auth key。可在彈窗設定有效時間及 ACL tags。這是裝置加入用的 key，**不是** Headscale 管理 API key。
+2. 到 **Woow Tailscale → Configuration**，把此 add-on 可連線的 `server_url` 填入 `login_server`，把單次 key 貼入遮罩欄位 `auth_key`，儲存並啟動或重新啟動。`server_url` 是控制入口（例如 `http://<HA_IP>:28080` 或對外 HTTPS/ngrok），**不是** HA Ingress 的 Headplane 網址。
+3. 到 Woow Tailscale 的 **Web UI** 查看已連線狀態與 `100.x.x.x` 位址，再回 Headplane **Machines** 確認節點與歸屬者。配對成功後，Woow Tailscale 會自動清除 HA 設定內的 `auth_key`；若失敗，更新過期或無效 key 後再重新啟動。
+
+對 Headscale 的 ACL tags 請在 Headplane 的 pre-auth key 設定；Woow Tailscale 的 `tags` 欄位對自訂控制伺服器會略過，避免 Headscale 0.29 拒絕帶有 client-requested tags 的註冊。若不使用 key，也可讓 `auth_key` 保持空白，啟動後複製 Log 的 `/register/hskey-authreq-...` 網址，在 Headplane **Add Device** 選擇歸屬者並核准。
+
+### 6.4.1 官方 Tailscale add-on 的舊流程
 
 用官方社群 add-on [hassio-addons/addon-tailscale](https://github.com/hassio-addons/addon-tailscale)，Configuration 建議：
 

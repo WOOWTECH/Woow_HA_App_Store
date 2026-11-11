@@ -1,0 +1,5 @@
+#!/usr/bin/env python3
+"""Upgrade test hook: check the seeded user and pre-auth key on the new version (see headscale_upgrade.py)."""
+import headscale_upgrade
+
+headscale_upgrade.main("verify")

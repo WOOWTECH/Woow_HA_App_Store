@@ -20,12 +20,25 @@ configuration:
     name: MagicDNS 尾綴
     description: >-
       節點主機名後綴（例如 `phone.ts.local`）。**必須與伺服器 URL 的網域不同**。
-  headplane_enabled:
-    name: 啟用 Headplane 管理介面
-    description: >-
-      是否啟動內建的 Headplane Web UI（port 3000，路徑 /admin）。首次啟動時
-      Log 會印出 API key，用它登入。
   create_default_user:
     name: 首次啟動建立 default 使用者
     description: >-
       啟用時，add-on 首次啟動會自動建立 `default` 使用者（idempotent，開著沒副作用）。
+  ngrok_enabled:
+    name: 啟用 ngrok 對外入口
+    description: >-
+      將 Headscale 控制入口透過 ngrok 公開；產生的網址會自動設定為 server_url。
+      需要填寫 ngrok authtoken。Headplane 管理介面仍只透過 HA Ingress 開啟。
+  ngrok_authtoken:
+    name: ngrok authtoken
+    description: ngrok 平台提供的 authtoken；啟用 ngrok 時必填。
+  ngrok_mode:
+    name: ngrok 模式
+    description: >-
+      http 會提供 HTTPS 控制入口；tcp 是測試用原始通道，外部客戶端需使用
+      http:// 控制網址。
+  ngrok_domain:
+    name: ngrok 固定網域
+    description: >-
+      選填。填入已保留的 ngrok 網域可避免重啟後網址變更；留空時免費方案
+      可能在重啟後換網址，需重新確認客戶端的控制網址。

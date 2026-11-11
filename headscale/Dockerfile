@@ -1,5 +1,5 @@
 ARG BUILD_FROM=ghcr.io/hassio-addons/debian-base:9.3.0
-ARG HEADPLANE_VERSION="0.7.0"
+ARG HEADPLANE_VERSION="0.7.1"
 
 ###############################################################################
 # Stage 1 — Official Headplane image, used only as a COPY source.
@@ -18,7 +18,7 @@ FROM ${BUILD_FROM}
 
 # Setup base system
 ARG BUILD_ARCH="amd64"
-ARG HEADSCALE_VERSION="v0.29.3"
+ARG HEADSCALE_VERSION="v0.29.4"
 ARG YQ_VERSION="v4.53.3"
 ARG NGROK_BASE_URL="https://bin.equinox.io/c/bNyj1mQVY4c"
 
@@ -57,7 +57,8 @@ RUN apt-get update \
 COPY --from=headplane /nodejs /opt/nodejs
 COPY --from=headplane /app /opt/headplane
 
-# Patch Headplane build for HA Ingress —「方案 A」, verified on 0.7.0 artifacts:
+# Patch Headplane build for HA Ingress —「方案 A」. The exact route-discovery
+# pattern was checked in the official 0.7.1 amd64 image before this bump:
 # keep the /admin basename INTACT as the unique rewrite anchor for the nginx
 # sub_filter shim, and only switch React Router route discovery from "lazy" to
 # "initial". This removes the /__manifest?paths=... endpoint whose query-string

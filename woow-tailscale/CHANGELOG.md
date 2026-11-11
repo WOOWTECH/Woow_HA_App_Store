@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.1.5
+
+- Add a masked, optional one-use Headscale pairing key to the Home Assistant
+  Configuration page. The key is passed to `tailscale up` through a temporary
+  file and cleared from the add-on options only after the node connects.
+- Preserve an already connected node when a key is entered. Failed or stalled
+  enrollments keep the option editable and remove the temporary key file.
+- Document the Headplane owner/key GUI flow and same-server recovery.
+- For custom control servers, omit client-requested tags during login; assign
+  Headscale ACL tags to the pre-auth key in Headplane instead.
+- Add Traditional Chinese labels and help text for the control URL and pairing key.
+
 ## 0.1.4
 
 - The image builds again. Alpine no longer serves the package versions 0.1.3

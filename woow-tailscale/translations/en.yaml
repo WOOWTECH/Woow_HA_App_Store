@@ -59,6 +59,15 @@ configuration:
       This option allows you to specify a custom control server for this
       Tailscale instance, for example, a self-host Headscale instance.
       By default, it uses the control server provided by Tailscale.
+  auth_key:
+    name: One-time pairing key
+    description: >-
+      Optional. In Headplane Settings > Manage Auth Keys, create a one-use
+      pre-auth key for the device owner. Paste it here to pair this device with
+      Headscale. The key is cleared from the add-on settings after the device
+      connects. Leave it empty for the normal registration URL flow. Do not
+      paste a Headscale administrator API key here. Avoid trace logging while
+      the field contains a key; Bashio trace logs can include raw options.
   share_homeassistant:
     name: Share Home Assistant with Serve or Funnel
     description: >-
@@ -93,7 +102,9 @@ configuration:
     name: Tags
     description: >-
       This option allows you to specify specific ACL tags for this
-      Tailscale instance. They need to start with `tag:`.
+      Tailscale instance on the official control plane. They need to start
+      with `tag:`. For Headscale, put tags on the pre-auth key in Headplane;
+      this field is ignored for custom control servers.
   taildrive:
     name: Taildrive shares
     description: >-

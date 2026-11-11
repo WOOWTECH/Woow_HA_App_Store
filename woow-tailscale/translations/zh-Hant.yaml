@@ -1,0 +1,15 @@
+---
+configuration:
+  login_server:
+    name: 控制伺服器網址
+    description: >-
+      此 HA 主機連入的 Tailscale 控制伺服器網址。使用 Woow Headscale 時，填入
+      Headscale 的 server_url（例如 http://<HA_IP>:28080 或對外 HTTPS/ngrok
+      網址），不要填 Headplane 的 HA Ingress 網址。留預設值則連官方 Tailscale。
+  auth_key:
+    name: 單次配對金鑰
+    description: >-
+      選填。到 Headplane「Settings → Manage Auth Keys → Create pre-auth key」
+      選擇裝置歸屬者、保持 Reusable 關閉，將產生的 key 貼在此處。連線成功後
+      設定會自動清除；若要走註冊網址核准流程，請留空。勿貼 Headscale 管理 API key。
+      配對期間請勿使用 trace 記錄等級，以免將設定值寫入日誌。

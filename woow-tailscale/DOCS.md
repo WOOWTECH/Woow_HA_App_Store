@@ -39,9 +39,7 @@ administrator. A Tailscale account is not required for Headscale.
    with this step. It is recommended to complete this step on a desktop or
    laptop computer using the Chrome browser.
 
-   For Headscale, configure `login_server` and follow the registration
-   instructions in [Control server / Headscale
-   migration](#control-server--headscale-migration).
+   For Headscale, use the [GUI pairing steps](#pair-with-woow-headscale-in-home-assistant).
 1. Check the logs of the "Tailscale" app again, to see if everything went
    well.
 1. Done!
@@ -84,6 +82,7 @@ always_use_derp: false
 exit_node: 100.101.102.103
 log_level: info
 login_server: "https://controlplane.tailscale.com"
+auth_key: ""
 share_homeassistant: disabled
 share_on_port: 443
 snat_subnet_routes: true
@@ -103,6 +102,46 @@ taildrop: true
 userspace_networking: true
 ```
 
+## Pair with Woow Headscale in Home Assistant
+
+1. Open **Woow Headscale VPN → Web UI** in Home Assistant. In Headplane,
+   create the intended owner on **Users** if needed. Go to **Settings → Manage
+   Auth Keys → Create pre-auth key**, select that owner in the **User** field,
+   leave **Reusable** off, and copy the key shown after creation. This is a
+   device enrollment key, not a Headscale administrator API key.
+2. Open **Woow Tailscale → Configuration**. Set `login_server` to the
+   Headscale **control URL** that this HA device can reach, for example your
+   public HTTPS/ngrok URL or `http://<HA_IP>:28080` on the same LAN. Paste the
+   copied key into **One-time pairing key** (`auth_key`). Save and start or
+   restart the add-on.
+3. Open **Woow Tailscale → Web UI** to see its connected state and Tailscale
+   address. In Headplane **Machines**, confirm the node appears under the
+   selected user. Test access to a peer from this Home Assistant node.
+
+The Headplane Web UI is accessed through **Home Assistant Ingress**. Its URL is
+different from `login_server`; do not paste the Ingress URL as the control
+server. Once the node is running, the add-on clears `auth_key` from the HA
+options. Its local Tailscale identity persists across restarts.
+For Headscale, assign ACL tags to the pre-auth key in Headplane, not the
+Tailscale add-on's `tags` field. Headscale 0.29 rejects client-requested tags
+during pre-auth key registration; the add-on omits that flag for custom control
+servers.
+
+If you prefer the interactive registration flow, leave `auth_key` empty. Start
+the add-on, copy the `/register/hskey-authreq-...` address from its log, then
+approve the device in Headplane **Add Device** under the desired owner. The
+Tailscale Web UI remains a read-only status view; pairing options are in the
+Home Assistant Configuration page.
+
+If a key is invalid, expired, or already used, create another one-use key for
+the correct owner, replace `auth_key`, save, and restart. The option remains
+available until the node connects. When this add-on is already connected, a
+new key is ignored and cleared so the existing node is not reauthenticated.
+If the node itself expires or is removed, create a new key and restart with the
+**same** `login_server`; the existing local state is retained. Changing
+`login_server` to another control plane is a separate migration that backs up
+and replaces local identity; see below.
+
 ## Control server / Headscale migration
 
 To migrate from the official Home Assistant Tailscale add-on to Woow Tailscale:
@@ -111,17 +150,15 @@ To migrate from the official Home Assistant Tailscale add-on to Woow Tailscale:
 2. Install **Woow Tailscale** and open its Configuration page
    (`/config/app/1b7b4ce7_woow-tailscale/config`).
 3. Copy your desired routing and DNS settings, then set `login_server` to the
-   public Headscale URL. For example:
+   Headscale control URL that this device can reach. For example:
 
    ```yaml
    login_server: "https://loving-woodcock-cleanly.ngrok-free.app"
    ```
 
-4. Start Woow Tailscale and get the `/register/hskey-authreq-...` URL from the
-   add-on log.
-5. Register the pending node through Headplane or with
-   `headscale auth register --user <user> --auth-id <id>`.
-6. Verify the log shows `active login: <user>` and a `100.x.x.x` peer API
+4. Follow the [GUI pairing steps](#pair-with-woow-headscale-in-home-assistant),
+   or use the interactive registration URL from the add-on log.
+5. Verify the log shows `active login: <user>` and a `100.x.x.x` peer API
    address.
 
 > [!WARNING]
@@ -273,6 +310,18 @@ you are troubleshooting.
 This option lets you to specify a custom control server instead of the default
 (`https://controlplane.tailscale.com`). This is useful if you are running your
 own Tailscale control server, for example, a self-hosted [Headscale] instance.
+
+### Option: `auth_key`
+
+An optional one-use Headscale pre-auth key for enrolling this device under the
+owner selected in Headplane. The field is masked. The key is passed to
+Tailscale through a temporary file, then cleared from the HA add-on options
+after a confirmed connection. A failed enrollment keeps the option for retry.
+Leave it empty to use the registration URL flow. Never enter a Headscale
+administrator API key here.
+
+Keep `log_level` at `info` or `debug` while this field contains a key. Bashio's
+`trace` level can print raw add-on options, including masked fields, into logs.
 
 ### Option: `share_homeassistant`
 

@@ -1,0 +1,5 @@
+#!/usr/bin/env python3
+"""Upgrade test hook: create a user and a pre-auth key on the comparison target (see headscale_upgrade.py)."""
+import headscale_upgrade
+
+headscale_upgrade.main("seed")

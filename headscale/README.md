@@ -1,6 +1,6 @@
 # Woow Headscale VPN
 
-自架 [Tailscale](https://tailscale.com/) control plane 的 Home Assistant add-on：**Headscale v0.29.3** + **Headplane v0.7.0** 管理介面，單容器、s6-overlay 監督（`amd64` / `aarch64`）。
+自架 [Tailscale](https://tailscale.com/) control plane 的 Home Assistant add-on：**Headscale v0.29.4** + **Headplane v0.7.1** 管理介面，單容器、s6-overlay 監督（`amd64` / `aarch64`）。
 
 所有裝置用**未修改的官方 Tailscale client** 加入你自己的 `100.64.0.0/10` tailnet；資料面走 WireGuard P2P + 公共 DERP fallback，不經 HA 主機、HA 端不需開任何 UDP port。
 
@@ -16,6 +16,8 @@
 1. 加入倉庫 `https://github.com/WOOWTECH/Woow_ha_vpn_headscale_package` → 安裝本 add-on（本地 build 約 3–5 分鐘）。
 2. Configuration 設定 `server_url`（區網測試：`http://<HA_IP>:28080`）→ 啟動。
 3. 裝置端：`tailscale up --login-server=http://<HA_IP>:28080`，依 Log / 註冊頁指示完成核准。
+
+若要用 HA 圖形介面配對另一台 HA 主機，先在 Headplane **Settings → Manage Auth Keys → Create pre-auth key** 選擇歸屬者並建立單次 key，再到 **Woow Tailscale 0.1.5+ → Configuration** 填入 `login_server` 與遮罩欄位 `auth_key`。連線成功後 key 會從設定中清除；詳見 [DOCS.md](./DOCS.md)。
 
 完整說明（架構、port 分層、曝露教學、裝置註冊、備份還原、troubleshooting）見 add-on 的 **Documentation** 分頁（[DOCS.md](./DOCS.md)）。
 

@@ -2,6 +2,12 @@
 
 本檔案記錄 **Woow Headscale VPN** add-on 的版本變更。
 
+## 0.1.1 (2026-11-11)
+
+- 與 PaaS 對齊 Headscale v0.29.4、Headplane v0.7.1；維持既有 HA Ingress、資料路徑與備份方式。
+- 補上 Headplane 選歸屬者、產生單次 pre-auth key，以及 Woow Tailscale 0.1.5+ 在 HA 設定頁貼 key 的 GUI 配對說明。
+- 更新繁體中文設定說明：補齊 ngrok 欄位，移除已不存在的 `headplane_enabled` 舊欄位。
+
 ## 0.1.0 (2026-08-07)
 
 初版釋出（Supervisor 本地 build，`amd64` / `aarch64`）。
