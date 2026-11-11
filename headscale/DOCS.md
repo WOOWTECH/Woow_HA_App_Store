@@ -119,6 +119,8 @@ tailscale up --login-server=http://<HA_IP>:28080
 
 在 Headplane **Settings → Manage Auth Keys → Create pre-auth key** 的彈窗選擇 **User**，保持 **Reusable 關閉**以建立單次 key；若尚無使用者，先到 **Users** 建立。也可用 CLI（`--user` 在 headscale 0.29 需要**數字 user ID**，先 `headscale users list` 查）：
 
+Headplane 的「複製連線指令」使用對裝置可達的控制網址；啟用 ngrok 時會顯示實際的 ngrok tunnel URL。裝置不在同一區網時，請確認該網址從裝置網路可連線。
+
 ```bash
 headscale users list                                # 查 ID，例如 default = 1
 headscale preauthkeys create --user 1 --expiration 24h

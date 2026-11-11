@@ -22,6 +22,9 @@ server:
 
 headscale:
   url: "http://127.0.0.1:8080"
+  # Device-facing URL used by Headplane's copyable pairing commands.
+  # services.d/headscale/run replaces this with the resolved ngrok URL when enabled.
+  public_url: "{{ .server_url }}"
   config_path: /etc/headscale/config.yaml
   dns_records_path: /etc/headscale/dns_records.json
   # 寬鬆驗證：ngrok 模式下 services.d/headscale/run 會在執行期改寫

@@ -1,6 +1,6 @@
 ---
 name: "Woow Headscale VPN"
-version: "0.1.1"
+version: "0.1.2"
 slug: "woow-headscale"
 description: "Self-hosted Tailscale control plane (Headscale + Headplane) by WoowTech"
 url: "https://github.com/WOOWTECH/Woow_ha_vpn_headscale_package"

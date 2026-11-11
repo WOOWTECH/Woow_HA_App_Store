@@ -2,6 +2,10 @@
 
 本檔案記錄 **Woow Headscale VPN** add-on 的版本變更。
 
+## 0.1.2 (2026-11-11)
+
+- Headplane 複製的裝置配對指令現在使用對裝置可達的 Headscale 網址；啟用 ngrok 時會帶入實際 tunnel URL，不再顯示容器內的 `127.0.0.1:8080`。
+
 ## 0.1.1 (2026-11-11)
 
 - 與 PaaS 對齊 Headscale v0.29.4、Headplane v0.7.1；維持既有 HA Ingress、資料路徑與備份方式。

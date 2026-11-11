@@ -11,6 +11,7 @@
 # 出處：AlessioBazzanella/homeassistant-headscale-addon（headscale service）
 # ==============================================================================
 readonly CONFIG='/etc/headscale/config.yaml'
+readonly HEADPLANE_CONFIG='/etc/headplane/config.yaml'
 readonly NGROK_API='http://127.0.0.1:4040/api/tunnels'
 
 if bashio::config.true 'ngrok_enabled'; then
@@ -59,6 +60,11 @@ if bashio::config.true 'ngrok_enabled'; then
 else
     server_url=$(yq '.server_url' "${CONFIG}")
 fi
+
+# Headplane talks to the local API, while its copyable pairing commands must
+# show the URL reachable from client devices. Resolve this before Headplane
+# starts (it waits for Headscale health below).
+yq -i ".headscale.public_url = \"${server_url}\"" "${HEADPLANE_CONFIG}"
 
 bashio::log.info '===================================================================='
 bashio::log.info '  Headscale login server URL（裝置加入 tailnet 用）：'
