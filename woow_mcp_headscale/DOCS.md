@@ -2,11 +2,11 @@
 
 ## 目前狀態
 
-**0.4.13 已發布並上架；0.4.14 修正了 Core 2026.11 的管理頁相容性。** 0.4.13 的管理面板只接受已審核的 Core 版本至 2026.10.4；在 2026.11.1 會明確拒絕並顯示版本原因，MCP 端點仍可服務。0.4.14 的原始碼逐檔審核加入 2026.11.0 與 2026.11.1，候選映像已在隔離 HAOS 2026.11.1 通過管理頁及角色權限驗證；正式可用狀態以 [Release](https://github.com/WOOWTECH/Woow_ha_mcp_addons/releases) 和商店版號為準。Headscale 使用獨立的 `woow_mcp_headscale` slug、映像名稱與 Release tag；其他七項產品仍維持各自 0.4.13 的已發布版號。
+**0.4.14 已發布並上架；0.4.16 收斂密鑰網址的 Origin。** 0.4.14 支援已審核的 Core 2026.11.0 與 2026.11.1。0.4.16 讓 Headscale 的密鑰網址只接受沒有 Origin 的請求及 `https://claude.ai`，對其他或重複 Origin 回 403。正式可用狀態以 [Release](https://github.com/WOOWTECH/Woow_ha_mcp_addons/releases) 和商店版號為準。Headscale 使用獨立的 `woow_mcp_headscale` slug、映像名稱與 Release tag；其他七項產品仍維持各自 0.4.13 的已發布版號。
 
 ## 從商店安裝
 
-在 Home Assistant「設定 → Add-ons → Add-on 商店」加入自訂來源 `https://github.com/WOOWTECH/Woow_HA_App_Store`，重新整理商店，搜尋 **Woow Headscale MCP Server**，確認版本為 0.4.14 後按「安裝」與「啟動」，再按「開啟 Web UI」。若商店仍顯示 0.4.13，請先等待商店同步新版再於 Core 2026.11.x 使用管理面板。安裝與更新狀態以 Home Assistant 顯示為準。
+在 Home Assistant「設定 → Add-ons → Add-on 商店」加入自訂來源 `https://github.com/WOOWTECH/Woow_HA_App_Store`，重新整理商店，搜尋 **Woow Headscale MCP Server**，確認版本為 0.4.16 後按「安裝」與「啟動」，再按「開啟 Web UI」。若商店仍顯示 0.4.14，請等待正式 Release 與商店同步。安裝與更新狀態以 Home Assistant 顯示為準。
 
 ## 連線與權限
 
@@ -19,7 +19,7 @@
 ## 網路與日常操作
 
 - `8099` 僅供 HA Ingress 管理面板使用，不映射到主機，也不是 MCP 端點。
-- `8081/mcp` 是需要 Bearer 權杖的 Streamable HTTP 端點；`8081/tcp: null` 表示預設不對 LAN 開放。只有確實需要外部 MCP 用戶端時才設定主機映射。不能帶 Authorization header 的用戶端可使用面板產生的 `…/private_<token>/mcp` 密鑰網址；網址等同密碼。
+- `8081/mcp` 是需要 Bearer 權杖的 Streamable HTTP 端點；`8081/tcp: null` 表示預設不對 LAN 開放。只有確實需要外部 MCP 用戶端時才設定主機映射。不能帶 Authorization header 的用戶端可使用面板產生的 `…/private_<token>/mcp` 密鑰網址；網址等同密碼。Headscale 密鑰網址接受沒有 Origin 的原生用戶端及 `https://claude.ai`，其他瀏覽器 Origin 回 403。Origin 不取代權杖；對外開埠時仍須 HTTPS 與網路來源限制。
 - `3000` 是容器內的私有子程序埠，只監聽 loopback，不可對外映射。
 
 後端尚未設定或暫時連不上時，管理面板仍可用，MCP 用戶端可 initialize 並列出目前允許的工具，但工具呼叫會回設定或連線錯誤。後端健康檢查只在 Headscale 回報 `databaseConnectivity: true` 時視為成功；斷線時 readiness 回 503，不會因此重啟 Add-on。更換連線或政策可能重啟子程序並使舊 MCP session 失效，用戶端須重新 initialize。

@@ -3635,21 +3635,21 @@
     "woow_mcp_headscale": {
       "id": "woow_mcp_headscale",
       "name": "Woow Headscale MCP Server",
-      "version": "0.4.14",
+      "version": "0.4.16",
       "repository": "WOOWTECH/Woow_ha_mcp_addons",
-      "source_sha": "d1cfd6ccf1a78aa7b03a01d4df793f096cd9e7e8",
+      "source_sha": "5a81309896c77033381cdb55bfaf292cae2dcd36",
       "source_path": "addons/headscale",
       "config_file": "config.yaml",
-      "config_sha256": "sha256:3c303f08bf6d94263bf5e672866fdb87733721a8a8754cd954aa32c7d44133c9",
-      "archive_sha256": "sha256:748d6182772100dc6a8e3fdc62adbaf69c0ac2cdea8f096160f929a981d885df",
-      "context_fingerprint": "sha256:49b1a0a073bf2df2482a5f7650c05841c7a70e3a62f87ebc2c6654d310fc6683",
-      "material_fingerprint": "sha256:ab796106be821431ec595c0e9877291582e51474d1489e94badf03979f14213d",
+      "config_sha256": "sha256:f4d7c19b3d4df607876a33762a546e97b3ceb967c3144e59b174503d6716fd5d",
+      "archive_sha256": "sha256:6d753f353135a61cda867dbbc03b73e27da60304546356b160b37598dc12b7f2",
+      "context_fingerprint": "sha256:228e5d741a3a406470cba5b0f01cf84a442c59a57df7c60da036680d4a826932",
+      "material_fingerprint": "sha256:7cc3cccd4476791f7bea71fe83c459bc4ebd0e5f4821812d872e2dc555f77d2b",
       "architectures": [
         "amd64"
       ],
       "config": {
         "name": "Woow Headscale MCP Server",
-        "version": "0.4.14",
+        "version": "0.4.16",
         "slug": "woow_mcp_headscale",
         "description": "HA admin-role management; Headscale nodes, routes and access keys; every tool and write on by default (each can be turned off in the panel).",
         "url": "https://github.com/WOOWTECH/Woow_ha_mcp_addons",
@@ -3691,18 +3691,18 @@
       "source_build_supported": false,
       "images": {
         "amd64": {
-          "reference": "ghcr.io/woowtech/amd64-mcp-headscale:0.4.14",
-          "index_digest": "sha256:c3099fc3398ffa8c5491edb8d728978f1f87f5a7592cd032eacddb8c8086ac92",
-          "digest": "sha256:c3099fc3398ffa8c5491edb8d728978f1f87f5a7592cd032eacddb8c8086ac92",
-          "source_revision": "695e5b7bdbf607897af724175292a163329f9584"
+          "reference": "ghcr.io/woowtech/amd64-mcp-headscale:0.4.16",
+          "index_digest": "sha256:01e48d8cef742dc085df2948e4e931e7919b4b7366292a4fc19a88267aa979bf",
+          "digest": "sha256:01e48d8cef742dc085df2948e4e931e7919b4b7366292a4fc19a88267aa979bf",
+          "source_revision": "efcc63ed12364c8a63467841f8c80d4ff3339221"
         }
       },
       "delivery": "published-image",
       "validation": "manifest+architecture-images+configured-CI",
-      "publisher_run_id": "43027038410",
+      "publisher_run_id": "43116243699",
       "channel": "stable",
       "store_path": "woow_mcp_headscale"
     }
   },
-  "catalog_id": "sha256:d1033bb7ac9a59a5b574a97402d41484c7129596836299cf18f3c2e42907be37"
+  "catalog_id": "sha256:1bb95d680ac61de306d5c1500a666e77e5026634e45b0ef784cc28a8dd722a98"
 }
