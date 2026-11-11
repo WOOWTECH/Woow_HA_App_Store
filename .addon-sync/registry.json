@@ -636,6 +636,14 @@
           "store_path": "woow_mcp_nextcloud",
           "channel": "stable",
           "enabled": true
+        },
+        {
+          "id": "woow_mcp_headscale",
+          "source_path": "addons/headscale",
+          "config_file": "config.yaml",
+          "store_path": "woow_mcp_headscale",
+          "channel": "stable",
+          "enabled": true
         }
       ]
     },
