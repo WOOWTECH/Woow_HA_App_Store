@@ -2,11 +2,11 @@
 
 ## 目前狀態
 
-**0.4.16 已發布並上架；0.4.17 是下一個候選版。** 0.4.16 包含已審核的 Core 2026.11.0／2026.11.1 相容性，以及 Headscale 密鑰網址的 Origin 防護。0.4.17 再加入多筆合法 DNS 位址的順序連線退避。正式可用狀態以 [Release](https://github.com/WOOWTECH/Woow_ha_mcp_addons/releases) 和商店版號為準。Headscale 使用獨立的 `woow_mcp_headscale` slug、映像名稱與 Release tag；其他七項產品仍維持各自 0.4.13 的已發布版號。
+**0.4.17 已發布並上架；0.4.18 是輸出 schema 發布候選版。** 0.4.17 包含 Core 2026.11 相容性、密鑰網址 Origin 防護及多 DNS 位址連線退避；0.4.18 再讓 11 支 Headscale 工具公開已審查的物件輸出 schema，不變更 29 項原生操作、輸入或權限。正式可用狀態以 [Release](https://github.com/WOOWTECH/Woow_ha_mcp_addons/releases) 和商店版號為準。
 
 ## 從商店安裝
 
-在 Home Assistant「設定 → Add-ons → Add-on 商店」加入自訂來源 `https://github.com/WOOWTECH/Woow_HA_App_Store`，重新整理商店，搜尋 **Woow Headscale MCP Server**。0.4.17 完成正式 Release 與商店同步後，確認商店版本為 0.4.17，再按「安裝」與「啟動」，開啟 Web UI。同步前商店顯示已發布的 0.4.16；安裝與更新狀態以 Home Assistant 顯示為準。
+在 Home Assistant「設定 → Add-ons → Add-on 商店」加入自訂來源 `https://github.com/WOOWTECH/Woow_HA_App_Store`，重新整理商店，搜尋 **Woow Headscale MCP Server**。0.4.18 完成正式 Release 與商店同步後，確認商店版本為 0.4.18，再按「安裝」與「啟動」，開啟 Web UI。同步前商店顯示已發布的 0.4.17；安裝與更新狀態以 Home Assistant 顯示為準。
 
 ## 連線與權限
 

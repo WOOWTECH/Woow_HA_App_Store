@@ -1,5 +1,11 @@
 # Headscale Add-on changelog
 
+## 0.4.18 — reviewed output schemas
+
+- Publish the reviewed object output schema for each of the 11 Headscale MCP tools so clients can consume the same metadata declared by the pinned child.
+- Preserve all 29 native API operations, input schemas, permissions and backend behavior from 0.4.17.
+- Fail closed by omitting output metadata if a future child schema or reviewed source binding drifts.
+
 ## 0.4.17 — DNS address fallback release candidate
 
 - Try each validated Headscale DNS address within the bounded connection deadline, so a failed first address does not hide a reachable later one.
