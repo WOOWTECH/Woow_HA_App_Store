@@ -1,5 +1,11 @@
 # Headscale Add-on changelog
 
+## 0.4.17 — DNS address fallback release candidate
+
+- Try each validated Headscale DNS address within the bounded connection deadline, so a failed first address does not hide a reachable later one.
+- Include the 0.4.16 secret URL Origin restriction in the first candidate built after the DNS fix. Version 0.4.16 is a Stable Release in the Store; its immutable image predates the DNS fix.
+- Publish only after exact-image supply-chain gates, Stable Release checks, Store sync and QA Supervisor acceptance.
+
 ## 0.4.16 — publish secret URL browser Origin policy
 
 - Publish the Headscale-only Origin restriction after re-building from the fully reviewed source and runtime ledger.

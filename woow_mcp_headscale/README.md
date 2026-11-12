@@ -1,6 +1,6 @@
 # Woow Headscale MCP Server
 
-**0.4.14 已發布並進入 WOOW HA App Store；0.4.16 收斂 Headscale 密鑰網址的 Origin。** 0.4.14 的 Core 2026.11 相容性和發佈證據見 [發佈決策](../../docs/operations/release-decision-headscale-0.4.14.md)。0.4.16 的正式狀態以 Release 和商店版號為準；其他七項產品維持各自已發布的 0.4.13 映像。
+**0.4.16 已發布並進入 WOOW HA App Store；0.4.17 是多 DNS 位址連線修正的候選版。** 0.4.16 的 Core 2026.11 相容性、Origin 防護和發佈證據見 [發佈決策](../../docs/operations/release-decision-headscale-0.4.16.md)。0.4.17 的正式狀態以 Release 和商店版號為準。其他七項產品維持各自已發布的 0.4.13 映像。
 
 這個 amd64 Home Assistant Add-on 預計透過 MCP（Streamable HTTP）管理一台 Headscale 控制伺服器。HA owner 或系統管理員在 Ingress 面板設定 Headscale 網址與**專用 API key**；MCP 用戶端以另一把 Bearer 權杖連接 `8081/mcp`，但 8081 預設不對 LAN 開埠。子程序的 3000 埠只在容器內的 loopback 監聽。
 
