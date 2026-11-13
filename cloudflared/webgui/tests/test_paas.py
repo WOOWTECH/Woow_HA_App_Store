@@ -173,7 +173,7 @@ def test_subscription_list_and_review_are_read_only(client, fake_paas, tmp_path)
     assert all("tunnel-token" not in path for path, _ in fake_paas)
 
 
-def test_zero_seat_plan_explains_purchase_before_connect(client, fake_paas, tmp_path):
+def test_zero_seat_plan_still_blocks_protected_route(client, fake_paas, tmp_path):
     (tmp_path / "link.json").write_text(json.dumps({
         "access_token": "PRIVATE_ACCESS_TOKEN", "refresh_token": "PRIVATE_REFRESH_TOKEN",
         "expires_at": time.time() + 3600,
@@ -181,9 +181,9 @@ def test_zero_seat_plan_explains_purchase_before_connect(client, fake_paas, tmp_
     fake_paas.detail["subscription"].update(ac_max_access_seats=0, ac_used_access_seats=0)
     review = client.get("/api/paas/accesses/25/review").json()
     assert review["ready"] is False
-    assert any("至少 1 席" in issue for issue in review["issues"])
+    assert any("沒有席次" in issue for issue in review["issues"])
     assert review["access"]["subscription"]["ac_max_access_seats"] == 0
-    assert client.post("/api/paas/accesses/25/connect").status_code == 409
+    assert client.post("/api/paas/accesses/25/connect", json={"allow_public_routes": True}).status_code == 409
     assert all("tunnel-token" not in path for path, _ in fake_paas)
 
 
@@ -257,20 +257,94 @@ def test_supervisor_rejection_releases_new_binding(client, fake_paas, fake_super
     assert fake_supervisor.restarted is False
 
 
-def test_unprotected_route_blocks_connect_without_claiming_token(client, fake_paas, tmp_path):
+def test_zero_seat_public_route_needs_explicit_confirmation_then_connects(
+    client, fake_paas, fake_supervisor, tmp_path,
+):
     (tmp_path / "link.json").write_text(json.dumps({
         "access_token": "PRIVATE_ACCESS_TOKEN",
         "refresh_token": "PRIVATE_REFRESH_TOKEN",
         "expires_at": time.time() + 3600,
     }))
-    fake_paas.detail["routes"][0]["is_protected"] = False
+    fake_paas.detail["subscription"].update(ac_max_access_seats=0, ac_used_access_seats=0)
+    fake_paas.detail["routes"][0].update(
+        is_protected=False, login_email_otp=False, login_google=False,
+        access_configuration_ready=False, access_policies=[],
+    )
     review = client.get("/api/paas/accesses/25/review")
     assert review.status_code == 200
-    assert review.json()["ready"] is False
-    assert "Access" in review.json()["issues"][0]
-    connect = client.post("/api/paas/accesses/25/connect")
-    assert connect.status_code == 409
+    assert review.json()["ready"] is True
+    assert review.json()["public_routes"] == ["ha.example.com"]
+    assert review.json()["access"]["routes"][0]["public"] is True
+    assert client.post("/api/paas/accesses/25/connect").status_code == 409
     assert all("tunnel-token" not in path for path, _ in fake_paas)
+    assert "tunnel_token" not in fake_supervisor.options
+
+    connect = client.post("/api/paas/accesses/25/connect", json={"allow_public_routes": True})
+    assert connect.status_code == 200
+    assert "PRIVATE_TUNNEL_TOKEN" not in connect.text
+    assert fake_supervisor.options["tunnel_token"] == "PRIVATE_TUNNEL_TOKEN"
+    status = client.get("/api/paas/connection/status").json()
+    assert status["connected"] is True
+    assert status["service_ready"] is True
+    assert status["access_ready"] is False
+    assert status["public_routes"] == ["ha.example.com"]
+
+
+def test_mixed_routes_require_seats_for_protected_route(client, fake_paas, tmp_path):
+    _authorized_link(tmp_path)
+    fake_paas.detail["subscription"].update(ac_max_access_seats=0, ac_used_access_seats=0)
+    fake_paas.detail["routes"].append({
+        "hostname": "public.example.com", "service_url": "http://homeassistant:8123",
+        "is_protected": False, "access_publish_pending": False,
+        "access_protection_lost": False,
+    })
+    review = client.get("/api/paas/accesses/25/review").json()
+    assert review["ready"] is False
+    assert review["public_routes"] == ["public.example.com"]
+    assert any("沒有席次" in issue for issue in review["issues"])
+    assert client.post("/api/paas/accesses/25/connect", json={"allow_public_routes": True}).status_code == 409
+    assert all("tunnel-token" not in path for path, _ in fake_paas)
+
+
+@pytest.mark.parametrize("change", ["missing_host", "missing_origin", "lost", "unknown_mode", "unknown_publication"])
+def test_public_route_must_be_complete_and_explicit(client, fake_paas, tmp_path, change):
+    _authorized_link(tmp_path)
+    route = fake_paas.detail["routes"][0]
+    route["is_protected"] = False
+    if change == "missing_host":
+        route["hostname"] = ""
+    elif change == "missing_origin":
+        route["service_url"] = ""
+    elif change == "lost":
+        route["access_protection_lost"] = True
+    elif change == "unknown_mode":
+        route.pop("is_protected")
+    else:
+        route.pop("access_publish_pending")
+    review = client.get("/api/paas/accesses/25/review").json()
+    assert review["ready"] is False
+    assert client.post("/api/paas/accesses/25/connect", json={"allow_public_routes": True}).status_code == 409
+    assert all("tunnel-token" not in path for path, _ in fake_paas)
+
+
+def test_public_route_waiting_for_paas_publication_can_claim_connector(
+    client, fake_paas, fake_supervisor, tmp_path,
+):
+    _authorized_link(tmp_path)
+    fake_paas.detail["subscription"].update(ac_max_access_seats=0)
+    fake_paas.detail["routes"][0].update(
+        is_protected=False, access_publish_pending=True,
+        access_configuration_ready=False, login_email_otp=False,
+        access_policies=[],
+    )
+    review = client.get("/api/paas/accesses/25/review").json()
+    assert review["ready"] is True
+    assert review["awaiting_publication"] is True
+    assert review["access"]["routes"][0]["public"] is True
+    assert client.post("/api/paas/accesses/25/connect").status_code == 409
+    response = client.post("/api/paas/accesses/25/connect", json={"allow_public_routes": True})
+    assert response.status_code == 200
+    assert fake_supervisor.options["tunnel_token"] == "PRIVATE_TUNNEL_TOKEN"
 
 
 def test_everyone_policy_or_unresolved_login_blocks_deployment(client, fake_paas, tmp_path):
@@ -472,7 +546,7 @@ def test_pending_publication_with_complete_protection_does_not_block(client, fak
     assert fake_supervisor.options["tunnel_token"] == "PRIVATE_TUNNEL_TOKEN"
 
 
-@pytest.mark.parametrize("change", ["no_login", "everyone", "unprotected", "lost", "unresolved_idp", "no_allow"])
+@pytest.mark.parametrize("change", ["no_login", "everyone", "lost", "unresolved_idp", "no_allow"])
 def test_pending_publication_never_hides_a_missing_protection(client, fake_paas, fake_supervisor, tmp_path, change):
     _authorized_link(tmp_path)
     route = fake_paas.detail["routes"][0]
@@ -481,8 +555,6 @@ def test_pending_publication_never_hides_a_missing_protection(client, fake_paas,
         route.update(login_email_otp=False, login_google=False)
     elif change == "everyone":
         route["access_policies"].append({"decision": "allow", "include": [{"rule_type": "everyone"}]})
-    elif change == "unprotected":
-        route["is_protected"] = False
     elif change == "lost":
         route["access_protection_lost"] = True
     elif change == "unresolved_idp":

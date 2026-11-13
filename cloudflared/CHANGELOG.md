@@ -1,5 +1,27 @@
 # Changelog
 
+## 1.1.3
+
+### Changed
+- PaaS linking now supports a paid route subscription with zero Cloudflare
+  Access seats when every selected public route explicitly has Access disabled.
+  Mixed services remain possible: each protected route still needs its own
+  verified login method, allow-list and a nonzero seat allowance. Missing
+  subscription, origin URL, tunnel, or conflicting connector still block linking.
+- Public routes are visibly labeled in review and status. Before the add-on
+  claims the tunnel, both the UI and backend require an explicit confirmation
+  that those hostnames will be reachable without Cloudflare Access. A route
+  changing from protected to public can connect while PaaS keeps its origin at
+  503; it becomes reachable only after PaaS finishes publication with a live
+  connector.
+- Anonymous external probes now describe a direct response on a public route
+  as expected, while continuing to flag the same response on a protected one.
+
+### Migration
+- No Supervisor option, port, schema, credential format, or stored state
+  changes. Existing protected routes keep their Access checks and can still
+  connect without the new public-route confirmation.
+
 ## 1.1.2
 
 ### Security

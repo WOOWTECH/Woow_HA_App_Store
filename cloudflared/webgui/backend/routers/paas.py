@@ -15,7 +15,7 @@ from pathlib import Path
 from urllib.parse import urlencode, urlparse
 
 import aiohttp
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Body, HTTPException, Query
 
 from ..instances import supervisor
 from .. import metrics
@@ -264,8 +264,6 @@ def _review(access: dict) -> dict:
     subscription = access.get("subscription")
     if not isinstance(subscription, dict) or subscription.get("state") != "in_progress":
         issues.append("訂閱無效，請到 PaaS 開通或續訂")
-    if isinstance(subscription, dict) and subscription.get("ac_max_access_seats") == 0:
-        issues.append("此方案尚未加購 Access 席次；請到 PaaS 方案設定選擇至少 1 席，再加入允許登入的 Email")
     if not access.get("tunnel_id"):
         issues.append("Tunnel 尚未建立，請到 PaaS 完成部署")
     connection = _state().get("connection") or {}
@@ -278,58 +276,71 @@ def _review(access: dict) -> dict:
         issues.append("尚未建立公開網址，請到 PaaS 新增路由")
         routes = []
     safe_routes = []
+    public_routes = []
     for route in routes:
         host = route.get("hostname") or "未命名路由"
-        policies = route.get("access_policies")
-        allow = isinstance(policies, list) and any(
-            p.get("decision") == "allow" and any(
-                rule.get("rule_type") in ("email_list", "email_domain") and rule.get("rule_value")
-                for rule in p.get("include", []))
-            for p in policies
-        )
-        broad_access = not isinstance(policies, list) or any(
-            p.get("decision") == "bypass" or (
+        valid_target = bool(route.get("hostname")) and bool(route.get("service_url"))
+        if not valid_target:
+            issues.append(f"{host}：公開網址或內部服務網址未設定，請到 PaaS 補齊")
+        public = route.get("is_protected") is False
+        protected = False
+        awaiting_publication = False
+        if public:
+            public_routes.append(host)
+            if route.get("access_protection_lost") is not False:
+                issues.append(f"{host}：Access 狀態尚未收斂，請到 PaaS 檢查")
+            # PaaS parks the origin at 503 during an unprotect transition.
+            # A fresh connector may be required before it can release the
+            # route, so allow that explicit public intent to be claimed.
+            awaiting_publication = route.get("access_publish_pending") is True
+            if route.get("access_publish_pending") is not True and route.get("access_publish_pending") is not False:
+                issues.append(f"{host}：無法確認 PaaS 發布狀態，請重新讀取服務")
+        else:
+            if route.get("is_protected") is not True:
+                issues.append(f"{host}：無法確認存取模式，請到 PaaS 重新檢查路由")
+            if isinstance(subscription, dict) and subscription.get("ac_max_access_seats") == 0:
+                issues.append(f"{host}：已啟用 Access，但方案沒有席次；請加購席次或在 PaaS 關閉此路由的 Access")
+            policies = route.get("access_policies")
+            allow = isinstance(policies, list) and any(
                 p.get("decision") == "allow" and any(
-                    rule.get("rule_type") in ("everyone", "ip_range", "country")
-                    for rule in p.get("include", [])
-                )
-            ) for p in (policies if isinstance(policies, list) else [])
-        )
-        login_ready = route.get("login_google") is True or route.get("login_email_otp") is True
-        if not login_ready:
-            issues.append(f"{host}：尚未指定登入方式；請在 PaaS 勾選 Email OTP 或 Google")
-        # Everything the route itself declares: a protected app, an explicit
-        # email allow-list, a login method, nothing broad, nothing lost.
-        declared = (
-            bool(route.get("hostname")) and bool(route.get("service_url"))
-            and route.get("is_protected") is True
-            and route.get("access_protection_lost") is False
-            and not route.get("access_unresolved_idp_types")
-            and login_ready
-            and allow
-            and not broad_access
-        )
-        protected = (
-            declared
-            and route.get("access_configuration_ready") is True
-            and route.get("access_publish_pending") is False
-        )
-        # PaaS keeps a pending route's origin closed (it publishes
-        # http_status:503 to the tunnel) and only re-publishes it once a fresh
-        # sync confirmed Access. After an authorization change that sync needs
-        # a live connector (_access_recovery_tunnel_is_live), so a tunnel that
-        # has never been connected cannot leave pending by itself: refusing to
-        # connect here would wait forever. A pending route whose declared
-        # protection is complete therefore does not block the claim.
-        awaiting_publication = (
-            declared and not protected
-            and route.get("access_publish_pending") is True
-        )
-        if not protected and not awaiting_publication:
-            issues.append(f"{host}：Access 保護或允許名單尚未確認，請到 PaaS 設定")
+                    rule.get("rule_type") in ("email_list", "email_domain") and rule.get("rule_value")
+                    for rule in p.get("include", []))
+                for p in policies
+            )
+            broad_access = not isinstance(policies, list) or any(
+                p.get("decision") == "bypass" or (
+                    p.get("decision") == "allow" and any(
+                        rule.get("rule_type") in ("everyone", "ip_range", "country")
+                        for rule in p.get("include", [])
+                    )
+                ) for p in (policies if isinstance(policies, list) else [])
+            )
+            login_ready = route.get("login_google") is True or route.get("login_email_otp") is True
+            if not login_ready:
+                issues.append(f"{host}：尚未指定登入方式；請在 PaaS 勾選 Email OTP 或 Google")
+            # A protected route still needs explicit access policy and login.
+            declared = (
+                valid_target and route.get("is_protected") is True
+                and route.get("access_protection_lost") is False
+                and not route.get("access_unresolved_idp_types")
+                and login_ready and allow and not broad_access
+            )
+            protected = (
+                declared and route.get("access_configuration_ready") is True
+                and route.get("access_publish_pending") is False
+            )
+            # PaaS parks a protected origin at 503 until a live connector
+            # enables Access publication. Do not deadlock that transition.
+            awaiting_publication = (
+                declared and not protected
+                and route.get("access_publish_pending") is True
+            )
+            if not protected and not awaiting_publication:
+                issues.append(f"{host}：Access 保護或允許名單尚未確認，請到 PaaS 設定")
         safe_routes.append({
             "hostname": route.get("hostname"), "service_url": route.get("service_url"),
-            "protected": protected, "awaiting_publication": awaiting_publication,
+            "public": public, "protected": protected,
+            "awaiting_publication": awaiting_publication,
         })
     workspace_id = access.get("workspace_id")
     access_id = access.get("id")
@@ -344,6 +355,7 @@ def _review(access: dict) -> dict:
     return {
         "ready": not issues,
         "issues": issues,
+        "public_routes": public_routes,
         "awaiting_publication": any(r["awaiting_publication"] for r in safe_routes),
         "access": summary,
         "portal_access_url": _portal_path(workspace_id, access_id, "access"),
@@ -381,7 +393,9 @@ async def connection_status(probe: bool = Query(default=False)) -> dict:
     return {
         "connected": True,
         "subscription": reviewed["access"]["subscription"],
-        "access_ready": reviewed["ready"],
+        "access_ready": reviewed["ready"] and not reviewed["public_routes"] and not reviewed["awaiting_publication"],
+        "service_ready": reviewed["ready"],
+        "public_routes": reviewed["public_routes"],
         "awaiting_publication": reviewed["awaiting_publication"],
         "issues": reviewed["issues"],
         "routes": reviewed["access"]["routes"],
@@ -395,11 +409,16 @@ async def connection_status(probe: bool = Query(default=False)) -> dict:
 
 
 @router.post("/accesses/{access_id}/connect")
-async def connect_access(access_id: int, background: BackgroundTasks) -> dict:
+async def connect_access(
+    access_id: int, background: BackgroundTasks,
+    allow_public_routes: bool = Body(default=False, embed=True),
+) -> dict:
     async with _connect_lock:
         review = await review_access(access_id)
         if not review["ready"]:
             raise HTTPException(409, "；".join(review["issues"]))
+        if review["public_routes"] and not allow_public_routes:
+            raise HTTPException(409, "此服務含未啟用 Cloudflare Access 的公開網址；請確認後再連結")
         state = _state()
         if state.get("release_pending"):
             raise HTTPException(409, "先完成上一個服務的解除綁定，再重新連結")

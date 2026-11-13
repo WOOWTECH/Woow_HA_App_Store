@@ -1,9 +1,9 @@
 <template>
   <div class="space-y-6 pb-12">
     <section class="overflow-hidden rounded-3xl bg-slate-950 px-6 py-8 text-white shadow-xl sm:px-9">
-      <p class="text-xs font-semibold uppercase tracking-[0.25em] text-orange-300">WOOW PaaS · 安全存取</p>
-      <h1 class="mt-3 text-3xl font-bold tracking-tight sm:text-4xl">從訂閱到安全連線，照著做就好</h1>
-      <p class="mt-3 max-w-2xl text-sm leading-7 text-slate-300">先在 PaaS 選方案與設定誰能登入，再回來選擇服務。此頁會檢查每一個網址的保護，通過後才連結這台 Home Assistant。</p>
+      <p class="text-xs font-semibold uppercase tracking-[0.25em] text-orange-300">WOOW PaaS · TUNNEL 連線</p>
+      <h1 class="mt-3 text-3xl font-bold tracking-tight sm:text-4xl">從訂閱到對外連線，照著做就好</h1>
+      <p class="mt-3 max-w-2xl text-sm leading-7 text-slate-300">先在 PaaS 設定對外網址，再選擇是否加上 Cloudflare Access。此頁會逐一檢查路由和綁定條件，通過後才連結這台 Home Assistant。</p>
       <div class="mt-6 flex flex-wrap gap-2 text-xs font-medium">
         <span v-for="(step, index) in steps" :key="step" class="rounded-full border border-white/20 bg-white/10 px-3 py-1.5">{{ index + 1 }}　{{ step }}</span>
       </div>
@@ -19,8 +19,8 @@
           <h2 class="text-lg font-semibold text-gray-900">到 PaaS 開通訂閱</h2>
           <p class="mt-1 text-sm leading-6 text-gray-600">在 PaaS 選擇工作區與方案，建立安全存取服務。費用與付款都會在 PaaS 確認；這裡不會自動扣款。</p>
           <div class="mt-3 rounded-xl bg-orange-50 px-4 py-3 text-sm leading-6 text-orange-900">
-            <p class="font-semibold">一台 HA、一個人登入：選 1 組路由 ＋ 1 個 Access 席次。</p>
-            <p class="mt-1">路由是對外網址的數量；席次是允許登入的人數。選「不加購」沒有登入席次，無法完成本頁的安全連結。多人使用時，請依不同 Email 的人數加購。</p>
+            <p class="font-semibold">一台 HA 可先選 1 組路由；Access 席次是選配。</p>
+            <p class="mt-1">不加購 Access 也能綁定 Tunnel，但對應網址會直接對網際網路開放，訪客直接到 Home Assistant 登入頁。若要先由 Cloudflare 限制允許的 Email，再依人數購買 Access 席次並開啟路由保護。</p>
           </div>
           <a :href="bootstrap?.portal_url || portalFallback" target="_blank" rel="noopener noreferrer" class="mt-4 inline-flex rounded-lg bg-cf-orange px-4 py-2.5 text-sm font-semibold text-white hover:bg-orange-600">前往 PaaS 開通 ↗</a>
           <p class="mt-3 text-xs text-gray-500">已經開通了？繼續下方的帳戶授權，就能選擇現有服務。</p>
@@ -55,8 +55,8 @@
       <div class="flex items-start gap-4">
         <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-orange-100 font-bold text-cf-orange">3</span>
         <div class="min-w-0 flex-1">
-          <h2 class="text-lg font-semibold text-gray-900">選服務，確認每個網址有保護</h2>
-          <p class="mt-1 text-sm leading-6 text-gray-600">先在 PaaS 的「應用路由」新增網址，再到「存取控制」設定允許登入的人。回到這裡選擇該服務。</p>
+          <h2 class="text-lg font-semibold text-gray-900">選服務，檢查每個網址的存取模式</h2>
+          <p class="mt-1 text-sm leading-6 text-gray-600">先在 PaaS 的「應用路由」新增網址。需要 Cloudflare Access 時，再到「存取控制」設定登入方式與允許名單；不需要時，保持該路由的 Access 開關關閉。回到這裡選擇服務。</p>
           <details class="mt-3 rounded-xl bg-slate-50 px-4 py-3 text-sm text-slate-700">
             <summary class="cursor-pointer font-semibold">HA 的內部網址要填什麼？出現 400 或 502 怎麼辦？</summary>
             <p class="mt-3 leading-6">先到 HA「設定 → 系統 → 網路」確認 HTTP 埠。新版 HAOS 通常填 <code>http://homeassistant:80</code>；使用 8123 埠的安裝則填 <code>http://homeassistant:8123</code>。請以這台 HA 的實際設定為準。</p>
@@ -80,23 +80,24 @@
               </label>
             </div>
             <div v-if="workspaceId && !accesses.length" class="mt-4 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-900">這個工作區還沒有安全存取服務。<a :href="workspacePortal" target="_blank" rel="noopener noreferrer" class="font-semibold underline">到 PaaS 建立 ↗</a></div>
-            <div v-if="review" class="mt-5 rounded-xl border p-5" :class="review.ready ? 'border-emerald-200 bg-emerald-50' : 'border-amber-200 bg-amber-50'">
+            <div v-if="review" class="mt-5 rounded-xl border p-5" :class="review.ready && !review.public_routes.length ? 'border-emerald-200 bg-emerald-50' : 'border-amber-200 bg-amber-50'">
               <div class="flex flex-wrap items-center justify-between gap-2">
-                <h3 class="font-semibold text-gray-900">{{ review.access.name }} · {{ review.ready ? '可以連結' : '需要完成設定' }}</h3>
+                <h3 class="font-semibold text-gray-900">{{ review.access.name }} · {{ review.ready ? (review.public_routes.length ? '可以連結（含公開網址）' : '可以連結') : '需要完成設定' }}</h3>
                 <button class="text-xs font-semibold text-slate-700 underline" @click="loadReview">重新檢查</button>
               </div>
               <p class="mt-2 text-xs text-gray-600">訂閱：{{ review.access.subscription?.plan_name || '尚未訂閱' }}（{{ subscriptionLabel(review.access.subscription?.state) }}） · 服務：{{ serviceLabel(review.access.state) }} · 綁定：{{ bindingLabel(review.access.binding_state) }}</p>
-              <p v-if="review.access.subscription?.ac_max_access_seats != null" class="mt-2 text-xs text-gray-600">Access 席次：已使用 {{ review.access.subscription.ac_used_access_seats ?? '—' }} / {{ review.access.subscription.ac_max_access_seats }} 席。同一個 Email 用於多個網址只計 1 席。</p>
+              <p v-if="review.access.subscription?.ac_max_access_seats != null" class="mt-2 text-xs text-gray-600">Access 席次：已使用 {{ review.access.subscription.ac_used_access_seats ?? '—' }} / {{ review.access.subscription.ac_max_access_seats }} 席。0 席時可用公開路由；受 Access 保護的路由需要席次。</p>
               <div v-for="route in review.access.routes" :key="route.hostname" class="mt-3 rounded-lg bg-white px-4 py-3 text-sm text-gray-700">
-                <span :class="route.protected ? 'text-emerald-700' : route.awaiting_publication ? 'text-amber-700' : 'text-red-700'" class="font-bold">{{ route.protected ? '✓' : route.awaiting_publication ? '…' : '!' }}</span>
+                <span :class="route.public ? 'text-amber-700' : route.protected ? 'text-emerald-700' : route.awaiting_publication ? 'text-amber-700' : 'text-red-700'" class="font-bold">{{ route.awaiting_publication ? '…' : route.public ? '○' : route.protected ? '✓' : '!' }}</span>
                 <span class="ml-2 font-medium">{{ route.hostname }}</span>
-                <span class="ml-2 text-xs text-gray-500">{{ route.protected ? '保護設定已確認' : route.awaiting_publication ? '保護已設定，等待 PaaS 發布' : '保護設定未完成' }}</span>
+                <span class="ml-2 text-xs text-gray-500">{{ route.public ? (route.awaiting_publication ? '公開模式 · 等待 PaaS 發布（目前 503）' : '公開網址 · 未啟用 Cloudflare Access') : route.protected ? 'Access 保護已確認' : route.awaiting_publication ? '保護已設定，等待 PaaS 發布' : '保護設定未完成' }}</span>
               </div>
               <ul v-if="review.issues.length" class="mt-4 list-inside list-disc space-y-1 text-sm text-amber-900"><li v-for="issue in review.issues" :key="issue">{{ issue }}</li></ul>
-              <p v-if="review.awaiting_publication" class="mt-4 rounded-lg bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900">PaaS 剛記下新的存取設定，要等這個 add-on 的 connector 上線後才會發布。發布前網址只會回 503，不會轉到 Home Assistant；連結並重新啟動後，可在下方「刷新連線狀態」看到發布完成。</p>
+              <p v-if="review.public_routes.length" class="mt-4 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-950">{{ review.public_routes.join('、') }} 未啟用 Cloudflare Access。連上 Tunnel 後，任何知道網址的人都能到達來源服務；請確認 Home Assistant 或該服務自己的登入已啟用。</p>
+              <p v-if="review.awaiting_publication" class="mt-4 rounded-lg bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900">PaaS 剛記下新的存取模式，要等這個 add-on 的 connector 上線後才會發布。發布前網址只會回 503，不會轉到 Home Assistant；連結並重新啟動後，可在下方「刷新連線狀態」看到發布完成。</p>
               <div class="mt-4 flex flex-wrap gap-3 text-sm font-semibold">
                 <a :href="review.portal_routes_url" target="_blank" rel="noopener noreferrer" class="text-cf-orange underline">設定應用路由 ↗</a>
-                <a :href="review.portal_access_url" target="_blank" rel="noopener noreferrer" class="text-cf-orange underline">設定 Access 保護 ↗</a>
+                <a :href="review.portal_access_url" target="_blank" rel="noopener noreferrer" class="text-cf-orange underline">選用 Access 保護 ↗</a>
               </div>
             </div>
           </template>
@@ -109,7 +110,7 @@
         <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-orange-100 font-bold text-cf-orange">4</span>
         <div class="min-w-0 flex-1">
           <h2 class="text-lg font-semibold text-gray-900">連結並啟用</h2>
-          <p class="mt-1 text-sm leading-6 text-gray-600">按下前系統會再檢查一次所有網址。通過後才取得 Tunnel 憑證，綁定這台裝置並重新啟動 add-on。</p>
+          <p class="mt-1 text-sm leading-6 text-gray-600">按下前系統會再檢查一次所有網址。通過後才取得 Tunnel 憑證，綁定這台裝置並重新啟動 add-on。公開網址會要求額外確認。</p>
           <button :disabled="!review?.ready || busy" class="mt-4 rounded-lg bg-cf-orange px-5 py-2.5 text-sm font-semibold text-white shadow-sm disabled:cursor-not-allowed disabled:bg-gray-300" @click="connect">{{ busy ? '處理中…' : '連結並啟用' }}</button>
           <p v-if="bootstrap?.connection && !bootstrap.release_pending" class="mt-4 rounded-lg bg-emerald-50 px-4 py-3 text-sm text-emerald-800">✓ 已連結 {{ bootstrap.connection.name }}。add-on 重新啟動後可到 Dashboard 查看 Tunnel 狀態。</p>
           <div v-if="bootstrap?.release_pending" class="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
@@ -124,16 +125,16 @@
           </div>
           <div v-if="connectionStatus?.connected" class="mt-4 grid gap-3 sm:grid-cols-3">
             <div class="rounded-xl border border-gray-200 bg-gray-50 p-4 text-sm"><p class="text-xs text-gray-500">訂閱</p><p class="mt-1 font-semibold text-gray-900">{{ subscriptionLabel(connectionStatus.subscription?.state) }}</p></div>
-            <div class="rounded-xl border border-gray-200 bg-gray-50 p-4 text-sm"><p class="text-xs text-gray-500">Access 保護</p><p class="mt-1 font-semibold" :class="!connectionStatus.access_ready ? 'text-red-700' : connectionStatus.awaiting_publication ? 'text-amber-700' : 'text-emerald-700'">{{ !connectionStatus.access_ready ? '需要修復' : connectionStatus.awaiting_publication ? '等待 PaaS 發布（網址暫回 503）' : '設定已確認' }}</p></div>
+            <div class="rounded-xl border border-gray-200 bg-gray-50 p-4 text-sm"><p class="text-xs text-gray-500">網址存取模式</p><p class="mt-1 font-semibold" :class="!connectionStatus.service_ready ? 'text-red-700' : connectionStatus.public_routes.length || connectionStatus.awaiting_publication ? 'text-amber-700' : 'text-emerald-700'">{{ !connectionStatus.service_ready ? '需要修復' : connectionStatus.public_routes.length ? `含 ${connectionStatus.public_routes.length} 條公開網址（無 Access）` : connectionStatus.awaiting_publication ? '等待 PaaS 發布（網址暫回 503）' : 'Access 保護已確認' }}</p></div>
             <div class="rounded-xl border border-gray-200 bg-gray-50 p-4 text-sm"><p class="text-xs text-gray-500">Tunnel</p><p class="mt-1 font-semibold text-gray-900">{{ tunnelLabel(connectionStatus.tunnel_status) }}</p></div>
             <p class="sm:col-span-3 text-xs text-gray-500">檢查時間：{{ new Date(connectionStatus.checked_at * 1000).toLocaleString() }}。{{ connectionStatus.external.length ? '匿名外部探測只確認回應，不代表指定使用者登入成功。' : '外部網址尚未獨立測試；Tunnel 在線不等於公開網址可用。' }}</p>
             <div v-for="result in connectionStatus.external" :key="result.hostname" class="rounded-xl border border-gray-200 bg-white p-4 text-sm">
               <p class="font-medium text-gray-900">{{ result.hostname }}</p>
-              <p class="mt-1 text-xs" :class="result.status === 'login_required' ? 'text-emerald-700' : result.status === 'public_response' ? 'text-red-700' : 'text-amber-700'">{{ externalLabel(result.status) }}</p>
+              <p class="mt-1 text-xs" :class="externalClass(result)">{{ externalLabel(result) }}</p>
             </div>
             <ul v-if="connectionStatus.issues.length" class="sm:col-span-3 list-inside list-disc text-sm text-red-700"><li v-for="issue in connectionStatus.issues" :key="issue">{{ issue }}</li></ul>
           </div>
-          <p class="mt-3 text-xs text-gray-500">Tunnel 連線成功只代表通道在線；公開網址與登入保護的外部驗證仍需個別確認。</p>
+          <p class="mt-3 text-xs text-gray-500">Tunnel 連線成功只代表通道在線；公開網址、Access 保護及來源服務登入仍需個別確認。</p>
         </div>
       </div>
     </section>
@@ -154,11 +155,11 @@ interface Connection { access_id: number; workspace_id: number; name: string }
 interface Bootstrap { authorized: boolean; portal_url: string; connection: Connection | null; release_pending: boolean }
 interface Workspace { id: number; name: string; portal_url: string }
 interface Access { id: number; name: string; state: string }
-interface Review { ready: boolean; issues: string[]; awaiting_publication: boolean; access: { id: number; name: string; state: string; binding_state: string; subscription: { state: string; plan_name: string; ac_max_access_seats?: number | null; ac_used_access_seats?: number | null } | null; routes: { hostname: string; protected: boolean; awaiting_publication: boolean }[] }; portal_access_url: string; portal_routes_url: string }
+interface Review { ready: boolean; issues: string[]; public_routes: string[]; awaiting_publication: boolean; access: { id: number; name: string; state: string; binding_state: string; subscription: { state: string; plan_name: string; ac_max_access_seats?: number | null; ac_used_access_seats?: number | null } | null; routes: { hostname: string; public: boolean; protected: boolean; awaiting_publication: boolean }[] }; portal_access_url: string; portal_routes_url: string }
 interface Authorization { user_code: string; verification_url: string; interval: number }
-interface ConnectionStatus { connected: boolean; subscription: { state: string } | null; access_ready: boolean; awaiting_publication: boolean; issues: string[]; tunnel_status: string; checked_at: number; external: { hostname: string; status: string; http_status?: number }[] }
+interface ConnectionStatus { connected: boolean; subscription: { state: string } | null; access_ready: boolean; service_ready: boolean; public_routes: string[]; routes: Review['access']['routes']; awaiting_publication: boolean; issues: string[]; tunnel_status: string; checked_at: number; external: { hostname: string; status: string; http_status?: number }[] }
 
-const steps = ['開通訂閱', '授權帳戶', '檢查保護', '連結啟用']
+const steps = ['開通訂閱', '授權帳戶', '檢查路由', '連結啟用']
 const portalFallback = 'https://aiot.woowtech.io/woow#/workspaces'
 const bootstrap = ref<Bootstrap | null>(null)
 const authorization = ref<Authorization | null>(null)
@@ -226,7 +227,7 @@ async function refreshServices() {
       accessId.value = previousAccess
       await loadReview()
     }
-    if (!error.value) message.value = '服務列表已更新。請選擇服務，確認保護設定後再連結。'
+    if (!error.value) message.value = '服務列表已更新。請選擇服務，確認每條路由的存取模式後再連結。'
   } catch (cause) {
     error.value = cause instanceof Error ? cause.message : '暫時無法更新服務列表'
   } finally {
@@ -293,10 +294,15 @@ async function pollAuthorization() {
 
 async function connect() {
   if (accessId.value === null || !review.value?.ready) return
+  if (review.value.public_routes.length && !window.confirm(
+    `以下網址沒有 Cloudflare Access，連結後可由網際網路直接到達來源服務：\n${review.value.public_routes.join('\n')}\n\n確定啟用公開路由嗎？`
+  )) return
   busy.value = true
   error.value = ''
   try {
-    await api(`api/paas/accesses/${accessId.value}/connect`, { method: 'POST' })
+    await api(`api/paas/accesses/${accessId.value}/connect`, {
+      method: 'POST', body: JSON.stringify({ allow_public_routes: review.value.public_routes.length > 0 }),
+    })
     message.value = '已儲存連結，add-on 正在重新啟動。請稍後刷新狀態。'
     try { await loadBootstrap() } catch { /* Restart briefly interrupts Ingress. */ }
   } catch (cause) {
@@ -321,7 +327,16 @@ async function checkExternal() {
   message.value = ''
 }
 
-function externalLabel(status: string): string {
+function externalClass(result: ConnectionStatus['external'][number]): string {
+  const isPublic = connectionStatus.value?.public_routes.includes(result.hostname)
+  if (isPublic) return 'text-amber-700'
+  return result.status === 'login_required' ? 'text-emerald-700' : result.status === 'public_response' ? 'text-red-700' : 'text-amber-700'
+}
+
+function externalLabel(result: ConnectionStatus['external'][number]): string {
+  const isPublic = connectionStatus.value?.public_routes.includes(result.hostname)
+  if (isPublic && result.status === 'public_response') return '匿名可直接到達服務；請再確認來源服務自己的登入'
+  if (isPublic && result.status === 'login_required') return '外部出現 Access 登入，與 PaaS 的公開設定不同；請檢查 Cloudflare 狀態'
   const labels: Record<string, string> = {
     login_required: '匿名訪問進入 Cloudflare Access 登入流程',
     public_response: '匿名訪問直接得到 200；請立即檢查 Access 保護',
@@ -331,7 +346,7 @@ function externalLabel(status: string): string {
     unreachable: 'DNS、TLS 或網路連線失敗',
     undetermined: '回應無法判定，請到 PaaS 與瀏覽器再驗證',
   }
-  return labels[status] || '無法判定'
+  return labels[result.status] || '無法判定'
 }
 
 async function disconnect() {
