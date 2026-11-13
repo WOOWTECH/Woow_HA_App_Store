@@ -24,7 +24,7 @@ DOMAIN = "ha_mcp_tools"
 # manifest bump that forgets this constant (or vice-versa) fails in CI. The
 # capability negotiation — not this version — gates each WS command (see
 # ``websocket_api.CAPABILITIES``).
-COMPONENT_VERSION = "1.2.2"
+COMPONENT_VERSION = "1.2.4"
 
 # Config-entry discriminator (``entry.data[CONF_ENTRY_TYPE]``). A missing value
 # means "tools" so the pre-existing services entry keeps working across the
@@ -283,7 +283,8 @@ COMPONENT_MANIFEST_AT_TAG_URL = (
 
 # Options-flow keys (stored in entry.options).
 OPT_CHANNEL = "channel"
-# Automatic server-version updates toggle (default on). When on, the channel is
+# Automatic server-version updates toggle (default OFF in the WOOWTECH fork,
+# pipeline ai-mcp-pinning/44; upstream defaults on). When on, the channel is
 # unpinned and auto-updates (force-install on reload/restart + a reload when the
 # periodic check sees a newer build). When off, the server stays on the version
 # currently installed: _resolve_pip_spec pins the channel's dist to that version
@@ -291,8 +292,11 @@ OPT_CHANNEL = "channel"
 # newer builds; its Install button is the manual path (issue #1760). Governs the
 # ha-mcp server package only — component updates still come through HACS. An
 # explicit OPT_PIP_SPEC override wins over both and skips the check entirely.
+# Off by default here: the newest ha-mcp needs a newer Home Assistant than the
+# WOOWTECH machines ship, so an install must not move by itself. The first
+# install still takes the newest build (nothing installed to pin to yet).
 OPT_AUTO_UPDATE = "auto_update"
-DEFAULT_AUTO_UPDATE = True
+DEFAULT_AUTO_UPDATE = False
 OPT_SERVER_PORT = "server_port"
 OPT_BIND_HOST = "bind_host"
 OPT_WEBHOOK_AUTH = "webhook_auth"
