@@ -17,6 +17,16 @@ def entry(raw):
     files=s.context_files(raw,'pkg');cfg=s.config_from_files(files,'config.yaml')
     return {'id':'test','name':'Test','repository':'WOOWTECH/test','source_sha':'a'*40,'source_path':'pkg','config_file':'config.yaml','config_sha256':s.digest(files['config.yaml'][0]),'config':cfg,'archive_sha256':s.digest(raw),'architectures':['amd64'],'images':{'amd64':{'reference':'ghcr.io/example/test:1.0.0','digest':'sha256:'+'a'*64}},'version':'1.0.0','channel':'stable','context_fingerprint':'fp','publisher_run_id':'123'}
 
+def ships_without_required_workflows(provider):
+    """Release-gating #103: an exempt provider that ships (an enabled component) has no branch rules, so its
+    required_workflows are the only check before the Store takes a commit; they must not be empty. Mirrors are the
+    exception: a mirror-sync run belongs to the commit before its push, so they rely on the published-image check
+    and pipeline #91's comparison before each Release."""
+    exempt=provider['branch_rules'].get('exempt')
+    if exempt is None or exempt.startswith('mirror:'):return False
+    if not any(c.get('enabled',True) for c in provider['components']):return False
+    return not provider['required_workflows']
+
 class Tests(unittest.TestCase):
     def test_readme_versions_follow_catalog_preserving_editorial_content(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -582,6 +592,24 @@ class Tests(unittest.TestCase):
                     self.assertLessEqual({'required_checks'},set(rules));self.assertLessEqual(set(rules),{'required_checks','upgrade_comparison_pending'})
                     self.assertTrue(rules['required_checks']);self.assertTrue(all(isinstance(c,str) and c for c in rules['required_checks']))
                     self.assertTrue(provider['required_workflows'])
+
+    def test_a_shipping_non_mirror_exempt_provider_without_required_workflows_is_flagged(self):
+        def provider(exempt,workflows,*enabled):
+            return {'branch_rules':{'exempt':exempt} if exempt else {'required_checks':['ci']},'required_workflows':workflows,
+                    'components':[{'id':f'c{i}','enabled':on} for i,on in enumerate(enabled)]}
+        self.assertTrue(ships_without_required_workflows(provider('upstream fork',[],True)))
+        self.assertTrue(ships_without_required_workflows(provider('upstream fork',[],False,True)))
+        # `enabled` defaults to true, as in addon_sync.publish.
+        self.assertTrue(ships_without_required_workflows({'branch_rules':{'exempt':'upstream fork'},'required_workflows':[],'components':[{'id':'c'}]}))
+        self.assertFalse(ships_without_required_workflows(provider('upstream fork',['.github/workflows/ci.yml'],True)))
+        self.assertFalse(ships_without_required_workflows(provider('mirror: mirror-sync pushes the default branch',[],True)))
+        self.assertFalse(ships_without_required_workflows(provider('retired: not published',[],False)))
+        self.assertFalse(ships_without_required_workflows(provider(None,['.github/workflows/ci.yml'],True)))
+
+    def test_no_registered_provider_ships_ungated(self):
+        registry=json.loads((pathlib.Path(__file__).resolve().parent/'registry.json').read_text(encoding='utf-8'))
+        for repo,provider in registry['providers'].items():
+            with self.subTest(repo):self.assertFalse(ships_without_required_workflows(provider),'exempt, not a mirror, ships, and lists no required_workflows')
 
     def test_every_gated_provider_requires_the_upgrade_comparison_or_names_the_ticket_wiring_it(self):
         # Pipeline #89: each gated repository's ruleset requires the upgrade comparison; branch_rules.py fails when one drops it.

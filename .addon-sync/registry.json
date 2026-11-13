@@ -183,7 +183,9 @@
     },
     "WOOWTECH/Woow_ha_ai_mcp": {
       "default_branch": "master",
-      "required_workflows": [],
+      "required_workflows": [
+        ".github/workflows/ci.yml"
+      ],
       "observe_workflow_names": [
         "Build Binaries and Attach to Release",
         "Update Add-on Config Version",
@@ -213,11 +215,12 @@
         "Webhook Proxy Dev — Version Guard",
         "Webhook Proxy — Promote Dev to Stable",
         "Webhook Proxy — Reset Dev from Stable",
-        "Webhook Proxy — Stable Guard"
+        "Webhook Proxy — Stable Guard",
+        "CI"
       ],
       "ref_policy": "main",
       "branch_rules": {
-        "exempt": "upstream fork: workflows inherited from homeassistant-ai/ha-mcp push master directly"
+        "exempt": "upstream fork: no branch rules; ci.yml must pass on the shipped commit (#103)"
       },
       "components": [
         {
@@ -991,29 +994,6 @@
           "note": "Canonical source since 2026-10-06 (owner decision); 0.1.2 carries the Store 0.1.1 fix plus the current bind-tools pin. Source-built on the device; CI must build amd64 and aarch64 before distribution. Never downgrade the Store copy."
         }
       ]
-    },
-    "WOOWTECH/Woow_ha_vscode_add_on": {
-      "default_branch": "main",
-      "required_workflows": [],
-      "observe_workflow_names": [
-        "image-mirror",
-        "mirror-sync"
-      ],
-      "ref_policy": "main",
-      "branch_rules": {
-        "exempt": "retired: replaced by woow_ha_code_server, not published"
-      },
-      "components": [
-        {
-          "id": "vscode",
-          "source_path": "vscode",
-          "config_file": "config.yaml",
-          "store_path": "vscode",
-          "channel": "stable",
-          "enabled": false,
-          "reason": "Retired in Store; replaced by distinct woow_ha_code_server. Do not resurrect."
-        }
-      ]
     }
   },
   "excluded_repositories": [
@@ -1117,6 +1097,13 @@
       "reason": "archived",
       "components": [
         "woow-immich"
+      ]
+    },
+    {
+      "repository": "WOOWTECH/Woow_ha_vscode_add_on",
+      "reason": "archived",
+      "components": [
+        "vscode"
       ]
     }
   ]
