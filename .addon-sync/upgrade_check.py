@@ -313,6 +313,76 @@ def sha_verdicts(components, unchanged, planned, compared, results, runtime_fail
         out.append({'id':cid,'verdict':verdict})
     return out
 
+def _when(text):
+    """A GitHub API timestamp (ISO 8601, e.g. 2026-11-10T05:56:00Z) as an aware datetime; None when empty or null."""
+    return datetime.datetime.fromisoformat(text.replace('Z','+00:00')) if text else None
+
+# The upgrade comparison's own jobs ("<caller job> / compare", "<caller job> / runtime"); they never upload the caller's artifacts.
+COMPARISON_JOB=re.compile(r' / (compare|runtime)$')
+
+def attempt_artifact(name, attempt, run, jobs, artifacts, producer=None):
+    """#131: which run attempt's artifact the upgrade comparison reads for `name` (<base>-attempt-<attempt>, an artifact of
+    attempt `attempt` of this run). Returns {id, attempt, note}: id the artifact's id, or None when there is none to read
+    (yet); attempt the attempt it is (or would be) from; note says why, for the report.
+
+    This attempt's own artifact always wins. An earlier attempt's artifact counts only after "Re-run failed jobs": that
+    re-runs only the failed jobs (and their dependants), and the jobs it does not re-run upload nothing in this attempt.
+    GitHub lists such a job in this attempt too, with a new id and this run_attempt, but with the started_at of the attempt
+    it really ran in, which is before this attempt's run_started_at (measured, pipeline #131); so `started_at <
+    run_started_at` tells a job that did not run again. Where it really ran: the lowest run_attempt listing it with that
+    started_at. Re-run all jobs re-runs every job, so then only this attempt's artifact counts, as before.
+      producer 'runtime': the artifact of the upgrade comparison's runtime job (its results, the rebuilt images' SBOMs).
+        When that job ("… / runtime", exactly one) did not run again, read the attempt it ran in; else only this one.
+      producer None: an artifact of the caller's build (addon-sbom, addon-image), whose job name is not known. Read
+        <base>-attempt-K (K < attempt) only when a job that did not run again ran in attempt K while it was uploaded
+        (started_at <= created_at <= completed_at) and no job that did run again in this attempt was also running then in
+        attempt K: then it may be that job's, whose new run failed or has not uploaded yet, so it is not read (fail closed).
+        The comparison's own jobs are left out of both.
+    Either way the artifact must belong to this run's head commit (workflow_run.head_sha equals the attempt's head_sha).
+    run: GET actions/runs/{id}/attempts/{attempt} ({run_started_at, head_sha}); jobs: GET actions/runs/{id}/jobs?filter=all
+    (name, run_attempt, status, started_at, completed_at); artifacts: GET actions/runs/{id}/artifacts (name, id, created_at,
+    expired, workflow_run)."""
+    suffix=f'-attempt-{attempt}'
+    if not name.endswith(suffix):raise ValueError(f'{name} is not an artifact of attempt {attempt} (it must end in {suffix})')
+    base=name[:-len(suffix)];live=[a for a in artifacts if not a.get('expired')]
+    def latest(n):
+        found=sorted((a for a in live if a.get('name')==n),key=lambda a:a.get('created_at') or '')
+        return found[-1] if found else None
+    own=latest(name)
+    if own:return {'id':own['id'],'attempt':attempt,'note':'this attempt'}
+    if attempt<=1:return {'id':None,'attempt':attempt,'note':'not uploaded yet'}
+    started=_when((run or {}).get('run_started_at'));head=(run or {}).get('head_sha')
+    if started is None or not head:raise ValueError(f'attempt {attempt} of this run has no run_started_at or head_sha')
+    this=[j for j in jobs if j.get('run_attempt')==attempt]
+    def carried(j):
+        s=_when(j.get('started_at'));return j.get('status')=='completed' and s is not None and s<started and _when(j.get('completed_at')) is not None
+    def ran_in(j):return min(k['run_attempt'] for k in jobs if k.get('name')==j['name'] and k.get('started_at')==j.get('started_at'))
+    def same_head(a,k):
+        sha=(a.get('workflow_run') or {}).get('head_sha')
+        if sha==head:return {'id':a['id'],'attempt':k,'note':f'attempt {k}: its job did not run again in attempt {attempt} (Re-run failed jobs)'}
+        return {'id':None,'attempt':k,'note':f'{a["name"]} is for commit {sha}, not {head}, the commit of attempt {attempt}; it is not read'}
+    if producer=='runtime':
+        runtime=[j for j in this if j.get('name','').endswith(' / runtime')]
+        if len(runtime)!=1:return {'id':None,'attempt':attempt,'note':f'attempt {attempt} lists {len(runtime)} jobs named "… / runtime", so only its own artifact is read'}
+        if not carried(runtime[0]):return {'id':None,'attempt':attempt,'note':f'the runtime job ran in attempt {attempt}, so only its own artifact is read'}
+        k=ran_in(runtime[0]);found=latest(f'{base}-attempt-{k}')
+        if not found:return {'id':None,'attempt':k,'note':f'the runtime job ran in attempt {k}, which has no {base}-attempt-{k} (or it expired)'}
+        return same_head(found,k)
+    pool=[j for j in this if not COMPARISON_JOB.search(j.get('name',''))]
+    kept=[j for j in pool if carried(j)];again={j['name'] for j in pool if not carried(j)}
+    if not kept:return {'id':None,'attempt':attempt,'note':f'every job ran in attempt {attempt}, so only its own artifact is read'}
+    note=f'no job that did not run again in attempt {attempt} uploaded an earlier {base}-attempt-<N>'
+    earlier=[(int(m.group(1)),a) for a in live for m in [re.fullmatch(re.escape(base)+r'-attempt-(\d+)',a.get('name',''))] if m and int(m.group(1))<attempt]
+    for k,a in sorted(earlier,key=lambda x:(x[0],x[1].get('created_at') or ''),reverse=True):
+        t=_when(a.get('created_at'))
+        if t is None:continue
+        if not any(ran_in(j)==k and _when(j['started_at'])<=t<=_when(j['completed_at']) for j in kept):continue
+        busy=sorted({j['name'] for j in jobs if j.get('name') in again and j.get('run_attempt')==k and _when(j.get('started_at')) is not None
+            and _when(j['started_at'])<=t<=(_when(j.get('completed_at')) or t)})
+        if busy:return {'id':None,'attempt':k,'note':f'{a["name"]} is not read: {", ".join(busy)} ran again in attempt {attempt} and was also running in attempt {k} when it was uploaded, so it may be that job\'s'}
+        return same_head(a,k)
+    return {'id':None,'attempt':attempt,'note':note}
+
 def _load(path, fmt, optional=False):
     """Parsed `fmt` ('yaml' or 'json') file, or None when `path` is not given or, if `optional`, does not exist."""
     if not path:return None
@@ -805,6 +875,13 @@ COMMANDS['regression']=_regression  # #139
 COMMANDS['release-change']=_release_change  # #167
 COMMANDS['sha-verdicts']=_sha_verdicts  # #167
 
+def _attempt_artifact(a):
+    with _failing((ValueError,KeyError,TypeError,AttributeError),f'{a.name}: '):
+        state=json.load(sys.stdin)
+        r=attempt_artifact(a.name,a.attempt,state.get('run'),state.get('jobs') or [],state.get('artifacts') or [],a.producer)
+    print(json.dumps(r));return 0
+COMMANDS['attempt-artifact']=_attempt_artifact  # #131
+
 def main(argv=None):
     p=argparse.ArgumentParser(description=__doc__.splitlines()[0]);sub=p.add_subparsers(dest='command',required=True)
     c=sub.add_parser('compare',help='judge one add-on and write the report')
@@ -862,6 +939,10 @@ def main(argv=None):
     y.add_argument('--provider',required=True,help="provider.json (upgrade_check.py components)");y.add_argument('--unchanged',required=True,help='ids whose version is unchanged, one per line (may be absent)')
     y.add_argument('--plan',required=True,help="the compare job's plan.jsonl (may be absent)");y.add_argument('--compared',required=True,help='ids whose comparison passed, one per line (may be absent)')
     y.add_argument('--runtime-reports',required=True,help="directory of the runtime job's results, <id>.json");y.add_argument('--runtime-failed',required=True,help="ids 'Upgrade test result' failed, one per line (may be absent)")
+    z=sub.add_parser('attempt-artifact',help="#131: read this run's state ({run, jobs, artifacts}, GitHub API JSON) on stdin and print which attempt's "
+        "artifact to read, as JSON {id, attempt, note} (attempt_artifact(); id null when there is none to read yet)")
+    z.add_argument('--name',required=True,help="the artifact's name in this attempt, <base>-attempt-<attempt>");z.add_argument('--attempt',required=True,type=int,help='this run attempt')
+    z.add_argument('--producer',choices=['runtime'],help="runtime: the upgrade comparison's runtime job uploads it; default: the caller's build")
     a=p.parse_args(argv)
     try:return COMMANDS[a.command](a)
     except _Failed as e:

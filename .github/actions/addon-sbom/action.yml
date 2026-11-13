@@ -53,7 +53,8 @@ runs:
   - name: Upload the SBOM
     uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
     with:
-      # The run attempt in the name: a re-run's comparison must not pick up an earlier attempt's SBOM.
+      # The run attempt in the name: a re-run's comparison reads its own build's SBOM, and an earlier attempt's only when this
+      # build did not run again (Re-run failed jobs, #131).
       name: upgrade-comparison-sbom-${{ inputs.component }}-attempt-${{ github.run_attempt }}
       path: ${{ runner.temp }}/addon-sbom/${{ inputs.component }}.syft.json
       if-no-files-found: error

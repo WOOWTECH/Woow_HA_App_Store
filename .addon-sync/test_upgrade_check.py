@@ -1300,7 +1300,7 @@ class UpgradeTestResult(StepHarness):
         import os,subprocess
         tmp=pathlib.Path(tempfile.mkdtemp());self.addCleanup(shutil.rmtree,tmp)
         (tmp/'runtime-reports').mkdir();(tmp/'bin').mkdir();(tmp/'tooling/.addon-sync').mkdir(parents=True)
-        shutil.copy(self.STORE/'.addon-sync/log.sh',tmp/'tooling/.addon-sync/log.sh')
+        for helper in ('log.sh','attempt_artifacts.sh'):shutil.copy(self.STORE/'.addon-sync'/helper,tmp/'tooling/.addon-sync'/helper)
         # #141: each add-on with a result is in this job's plan and the registry, with no data-check due date.
         for f in (self.STORE/'.addon-sync').glob('*.py'):shutil.copy(f,tmp/'tooling/.addon-sync'/f.name)
         names=[r['name'] for r in results if r['name']!='runtime job']
@@ -1352,7 +1352,7 @@ class DataCheckDueStep(StepHarness):
     TODAY='2026-11-10'  # DATA_CHECK_TODAY: fixed, so no test races UTC midnight
     def result(self,result,due='2026-11-17',verify=False,in_plan=True,crash=False,smoke=False):
         """result: t's runtime-reports/t.json. due: t's data_check_due in the registry (None: none). verify: the PR's
-        upgrade-check/ has verify. crash: upgrade_check.py dies with exit 1 and no output. (exit code, stdout, step summary)."""
+        upgrade-check/ has verify. crash: upgrade_check.py data-check-due dies with exit 1 and no output. (exit code, stdout, step summary)."""
         import os,subprocess
         tmp=pathlib.Path(tempfile.mkdtemp());self.addCleanup(shutil.rmtree,tmp)
         (tmp/'runtime-reports').mkdir();(tmp/'bin').mkdir();(tmp/'tooling/.addon-sync').mkdir(parents=True);(tmp/'source/addon/upgrade-check').mkdir(parents=True)
@@ -1364,7 +1364,10 @@ class DataCheckDueStep(StepHarness):
         if in_plan:(tmp/'plan.jsonl').write_text(json.dumps({'id':'t','notes':'addon/upgrade-notes.yaml'})+'\n')
         if verify:(tmp/'source/addon/upgrade-check/verify').write_text('#!/bin/sh\nexit 0\n',newline='\n')
         if smoke:(tmp/'source/addon/upgrade-check/smoke').write_text('#!/bin/sh\nexit 0\n',newline='\n')
-        if crash:(tmp/'tooling/.addon-sync/upgrade_check.py').write_text('import sys\nsys.exit(1)\n')
+        if crash:
+            # Only data-check-due dies; the other commands (attempt-artifact, #131) are the real ones.
+            tool=tmp/'tooling/.addon-sync/upgrade_check.py';tool.rename(tool.with_name('upgrade_check_real.py'))
+            tool.write_text('import runpy,sys\nif "data-check-due" in sys.argv:sys.exit(1)\nrunpy.run_path(sys.path[0]+"/upgrade_check_real.py",run_name="__main__")\n')
         (tmp/'bin/gh').write_text('#!/bin/sh\nexit 0\n',newline='\n');(tmp/'bin/gh').chmod(0o755)
         (tmp/'runtime-reports/t.json').write_text(json.dumps(result))
         (tmp/'step.sh').write_text(self.step('Upgrade test result')['run'],newline='\n');(tmp/'summary.md').write_text('')
@@ -1992,7 +1995,8 @@ class ComparisonTarget(StepHarness):
         import re
         for step in self.wf['jobs']['compare']['steps']:
             run=step.get('run','')
-            for helper,use in [('gh_raw.sh',r'\b(fetch|config_at|version_since) '),('log.sh',r'\b(esc|fail|fail_output|no_cntrl) "'),('fields.sh',r'\bfields "')]:
+            for helper,use in [('gh_raw.sh',r'\b(fetch|config_at|version_since) '),('log.sh',r'\b(esc|fail|fail_output|no_cntrl) "'),('fields.sh',r'\bfields "'),
+                    ('attempt_artifacts.sh',r'\b(run_state|pick_artifact)\b')]:
                 with self.subTest(step=step.get('name'),helper=helper):
                     self.assertEqual('source tooling/.addon-sync/'+helper in run,bool(re.search(use,run)))
 
@@ -2316,6 +2320,234 @@ class SbomAttempt(unittest.TestCase):
     def test_callers_glob_still_matches(self):
         import fnmatch
         self.assertTrue(fnmatch.fnmatchcase('upgrade-comparison-sbom-odoo18ce-attempt-2','upgrade-comparison-sbom-*'))
+
+# #131's gh stub: the run's state from $STATE ({run, jobs, artifacts, zips: {artifact id: {file: text}}}), as the Actions API
+# gives it; --paginate is one page. Every URL asked for goes to $GH_LOG.
+RUN_STATE_GH_STUB=r'''#!/usr/bin/env python3
+import io,json,os,re,subprocess,sys,zipfile
+args=sys.argv[1:];url=next(a for a in args if a.startswith('repos/'))
+with open(os.environ['GH_LOG'],'a') as f:f.write(url+'\n')
+s=json.load(open(os.environ['STATE']))
+# GH_FAIL: a URL part; that call prints its data, then fails (one page came, the next did not).
+fails=bool(os.environ.get('GH_FAIL')) and os.environ['GH_FAIL'] in url
+def out(data):
+    if '--jq' not in args:print(json.dumps(data));sys.exit(1 if fails else 0)
+    rc=subprocess.run(['jq','-r',args[args.index('--jq')+1]],input=json.dumps(data),text=True).returncode
+    sys.exit(1 if fails else rc)
+m=re.search(r'/actions/artifacts/(\d+)/zip$',url)
+if m:
+    buf=io.BytesIO()
+    with zipfile.ZipFile(buf,'w') as z:
+        for name,text in s['zips'][m.group(1)].items():z.writestr(name,text)
+    sys.stdout.buffer.write(buf.getvalue());sys.exit(0)
+m=re.search(r'/attempts/(\d+)/jobs',url)
+if m:out({'jobs':[j for j in s['jobs'] if j['run_attempt']==int(m.group(1))]})
+if re.search(r'/attempts/\d+$',url):out(s['run'])
+if '/jobs?filter=all' in url:out({'jobs':s['jobs']})
+if '/artifacts?' in url:out({'artifacts':s['artifacts']})
+sys.exit(1)
+'''
+
+class RerunFailedJobs(unittest.TestCase):
+    """#131: after "Re-run failed jobs" the upgrade comparison reads the per-attempt artifacts of the jobs that did not run
+    again from the attempt they ran in, and says which; a job that ran again, and Re-run all jobs, read only this attempt.
+    Times as measured on the probe run (MattLinP/rerun-failed-jobs-probe 42765171678): attempt 2 lists the jobs it did not
+    re-run with their attempt-1 started_at, before its run_started_at."""
+    STORE=pathlib.Path(__file__).resolve().parent.parent
+    HEAD='a'*40
+    NAMES={'sbom':'upgrade-comparison-sbom-t-attempt-{}','image':'upgrade-comparison-image-t-attempt-{}',
+        'runtime':'upgrade-comparison-runtime-attempt-{}','rebuilt':'upgrade-comparison-rebuilt-sboms-attempt-{}'}
+    @staticmethod
+    def job(name,attempt,start,end,conclusion='success'):
+        return {'name':name,'run_attempt':attempt,'status':'completed','conclusion':conclusion,
+            'started_at':f'2026-11-10T05:{start}Z','completed_at':f'2026-11-10T05:{end}Z' if end else None}
+    def art(self,kind,attempt,at,aid,head=None,expired=False):
+        return {'name':self.NAMES[kind].format(attempt),'id':aid,'created_at':f'2026-11-10T05:{at}Z','expired':expired,
+            'workflow_run':{'id':1,'head_sha':head or self.HEAD}}
+    def attempt1(self,build='success'):
+        """Attempt 1: the amd64 and aarch64 builds, runtime (upgrade test) and compare, which failed (Grype DB)."""
+        j=self.job
+        jobs=[j('build (amd64)',1,'56:00','56:07',build),j('build (aarch64)',1,'56:00','56:20'),
+            j('Upgrade comparison / runtime',1,'56:08','56:30'),j('Upgrade comparison / compare',1,'56:31','56:35','failure')]
+        arts=[self.art('sbom',1,'56:05',11),self.art('image',1,'56:06',12),self.art('runtime',1,'56:29',13),self.art('rebuilt',1,'56:29',14)]
+        return jobs,arts
+    def failed_rerun(self):
+        """Re-run failed jobs: only compare runs again in attempt 2; the others are listed with their attempt-1 times."""
+        jobs,arts=self.attempt1();j=self.job
+        jobs+=[j('build (amd64)',2,'56:00','56:07'),j('build (aarch64)',2,'56:00','56:20'),j('Upgrade comparison / runtime',2,'56:08','56:30'),
+            {**j('Upgrade comparison / compare',2,'56:44',None),'status':'in_progress'}]
+        return {'run_started_at':'2026-11-10T05:56:40Z','head_sha':self.HEAD},jobs,arts
+    def all_rerun(self):
+        """Re-run all jobs: every job of attempt 2 starts after its run_started_at; the builds have not uploaded yet."""
+        jobs,arts=self.attempt1();j=self.job
+        jobs+=[{**j('build (amd64)',2,'56:45',None),'status':'in_progress'},{**j('build (aarch64)',2,'56:45',None),'status':'in_progress'},
+            {**j('Upgrade comparison / runtime',2,'56:45',None),'status':'in_progress'},{**j('Upgrade comparison / compare',2,'56:45',None),'status':'queued'}]
+        return {'run_started_at':'2026-11-10T05:56:40Z','head_sha':self.HEAD},jobs,arts
+    def pick(self,kind,state,attempt=2):
+        run,jobs,arts=state
+        return u.attempt_artifact(self.NAMES[kind].format(attempt),attempt,run,jobs,arts,'runtime' if kind in ('runtime','rebuilt') else None)
+
+    def test_rerun_failed_after_a_good_build_reads_every_artifact_of_the_attempt_its_job_ran_in(self):
+        for kind,aid in (('sbom',11),('image',12),('runtime',13),('rebuilt',14)):
+            with self.subTest(kind):
+                r=self.pick(kind,self.failed_rerun())
+                self.assertEqual((r['id'],r['attempt']),(aid,1));self.assertIn('did not run again in attempt 2 (Re-run failed jobs)',r['note'])
+    def test_rerun_all_jobs_reads_only_this_attempt(self):
+        for kind in self.NAMES:
+            with self.subTest(kind):
+                r=self.pick(kind,self.all_rerun());self.assertIsNone(r['id']);self.assertEqual(r['attempt'],2)
+        run,jobs,arts=self.all_rerun();arts=arts+[self.art('sbom',2,'57:30',21),self.art('runtime',2,'58:00',23)]
+        self.assertEqual(self.pick('sbom',(run,jobs,arts))['id'],21);self.assertEqual(self.pick('runtime',(run,jobs,arts))['id'],23)
+    def test_this_attempts_artifact_always_wins(self):
+        run,jobs,arts=self.failed_rerun()
+        self.assertEqual(self.pick('sbom',(run,jobs,arts+[self.art('sbom',2,'57:00',21)])),{'id':21,'attempt':2,'note':'this attempt'})
+    def test_a_build_that_ran_again_in_this_attempt_never_falls_back(self):
+        # Attempt 1's amd64 build uploaded its SBOM and image, then failed (e.g. a later step); Re-run failed jobs runs it,
+        # and compare and runtime, again. Its new run fails before uploading: attempt 1's artifacts are not read, although
+        # the aarch64 build, which did not run again, was running when they were uploaded.
+        jobs,arts=self.attempt1(build='failure');j=self.job
+        jobs+=[j('build (amd64)',2,'56:45','56:50','failure'),j('build (aarch64)',2,'56:00','56:20'),
+            j('Upgrade comparison / runtime',2,'56:45','57:10','failure'),{**j('Upgrade comparison / compare',2,'57:11',None),'status':'in_progress'}]
+        state=({'run_started_at':'2026-11-10T05:56:40Z','head_sha':self.HEAD},jobs,arts)
+        for kind in ('sbom','image'):
+            with self.subTest(kind):
+                r=self.pick(kind,state);self.assertIsNone(r['id'])
+                self.assertIn('build (amd64) ran again in attempt 2 and was also running in attempt 1 when it was uploaded',r['note'])
+        # Without the aarch64 build no job that kept its attempt-1 run was running then: not read either.
+        alone=[x for x in jobs if x['name']!='build (aarch64)']
+        r=self.pick('sbom',(state[0],alone,arts));self.assertIsNone(r['id']);self.assertIn('every job ran in attempt 2',r['note'])
+        # The runtime job ran again: only its own results, which it uploaded in attempt 2.
+        self.assertIsNone(self.pick('runtime',state)['id'])
+        self.assertEqual(self.pick('runtime',(state[0],jobs,arts+[self.art('runtime',2,'57:09',23)]))['id'],23)
+    def test_runtime_ran_again_reads_the_builds_image_and_sbom_from_the_attempt_the_build_ran_in(self):
+        # Attempt 1's runtime job failed (e.g. a flaky pull); Re-run failed jobs runs it and compare again, not the builds.
+        jobs,arts=self.attempt1();j=self.job;jobs[2]['conclusion']='failure'
+        jobs+=[j('build (amd64)',2,'56:00','56:07'),j('build (aarch64)',2,'56:00','56:20'),
+            {**j('Upgrade comparison / runtime',2,'56:45',None),'status':'in_progress'}]
+        state=({'run_started_at':'2026-11-10T05:56:40Z','head_sha':self.HEAD},jobs,arts)
+        self.assertEqual(self.pick('image',state)['id'],12);self.assertEqual(self.pick('sbom',state)['id'],11)
+        self.assertIsNone(self.pick('runtime',state)['id'])
+    def test_a_job_kept_over_several_re_runs_is_read_from_the_attempt_it_ran_in(self):
+        run,jobs,arts=self.failed_rerun();j=self.job
+        jobs+=[j('build (amd64)',3,'56:00','56:07'),j('build (aarch64)',3,'56:00','56:20'),j('Upgrade comparison / runtime',3,'56:08','56:30'),
+            {**j('Upgrade comparison / compare',3,'58:05',None),'status':'in_progress'}]
+        run3={'run_started_at':'2026-11-10T05:58:00Z','head_sha':self.HEAD}
+        for kind,aid in (('sbom',11),('runtime',13)):
+            with self.subTest(kind):self.assertEqual((self.pick(kind,(run3,jobs,arts),3)['id'],self.pick(kind,(run3,jobs,arts),3)['attempt']),(aid,1))
+    def test_another_head_commit_or_an_expired_artifact_is_not_read(self):
+        run,jobs,arts=self.failed_rerun()
+        other=[dict(a,workflow_run={'id':1,'head_sha':'b'*40}) for a in arts]
+        for kind in self.NAMES:
+            with self.subTest(kind):
+                r=self.pick(kind,(run,jobs,other));self.assertIsNone(r['id']);self.assertIn(f'is for commit {"b"*40}, not {self.HEAD}',r['note'])
+        gone=[dict(a,expired=True) for a in arts]
+        self.assertIsNone(self.pick('sbom',(run,jobs,gone))['id']);self.assertIsNone(self.pick('runtime',(run,jobs,gone))['id'])
+    def test_first_attempt_needs_no_run_state(self):
+        self.assertEqual(u.attempt_artifact('upgrade-comparison-sbom-t-attempt-1',1,None,[],[]),{'id':None,'attempt':1,'note':'not uploaded yet'})
+        with self.assertRaises(ValueError):u.attempt_artifact('upgrade-comparison-sbom-t-attempt-1',2,None,[],[])
+
+    # The scripts as the workflow runs them, against the run state above (gh stubbed).
+    def sh(self,state,script,attempt=2,**env):
+        import os,subprocess
+        tmp=self.tmp=pathlib.Path(tempfile.mkdtemp());self.addCleanup(shutil.rmtree,tmp)
+        (tmp/'tooling/.addon-sync').mkdir(parents=True);(tmp/'bin').mkdir()
+        for f in (self.STORE/'.addon-sync').iterdir():
+            if f.suffix in ('.py','.sh'):shutil.copy(f,tmp/'tooling/.addon-sync'/f.name)
+        (tmp/'tooling/.addon-sync/registry.json').write_text(json.dumps({'providers':{'WOOWTECH/t':{'ref_policy':'release','components':[
+            {'id':'t','source_path':'t','config_file':'config.yaml'}]}}}))
+        run,jobs,arts=state
+        (tmp/'state.json').write_text(json.dumps({'run':run,'jobs':jobs,'artifacts':arts,'zips':{
+            '11':{'t.syft.json':'{"from": 1}'},'13':{'t.json':json.dumps({'name':'t','passed':True,'hooks':[],'data_checked':False})},
+            '14':{'t.new.syft.json':'{}'},'23':{'t.json':json.dumps({'name':'t','passed':False,'reason':'it broke','hooks':[]})}}}))
+        for name,text in (('gh',RUN_STATE_GH_STUB),('sleep','#!/bin/sh\nexit 0\n')):(tmp/'bin'/name).write_text(text);(tmp/'bin'/name).chmod(0o755)
+        (tmp/'step.sh').write_text(script)
+        e=dict(os.environ,PATH=f"{tmp/'bin'}{os.pathsep}{os.environ['PATH']}",STATE=str(tmp/'state.json'),GH_LOG=str(tmp/'gh.log'),GH_TOKEN='x',
+            REPO='WOOWTECH/t',RUN_ID='1',RUN_ATTEMPT=str(attempt),WAIT_MINUTES='40',RUNNER_TEMP=str(tmp),GITHUB_STEP_SUMMARY=str(tmp/'summary'),
+            GITHUB_OUTPUT=str(tmp/'out'),**{'RUNTIME_RESULT':'success',**env})
+        r=subprocess.run(['bash',str(tmp/'step.sh')],cwd=tmp,env=e,capture_output=True,text=True)
+        summary=(tmp/'summary').read_text() if (tmp/'summary').exists() else ''
+        return r,summary
+    def step(self,job,name):
+        wf=yaml.safe_load((self.STORE/'.github/workflows/woow-addon-upgrade-check.yml').read_text(encoding='utf-8'))
+        return next(s for s in wf['jobs'][job]['steps'] if s.get('name')==name)['run']
+    WAIT_SBOM="printf 't\\tupgrade-comparison-sbom-t-attempt-2\\n' > wanted.tsv\nbash tooling/.addon-sync/wait_artifacts.sh wanted.tsv found.tsv 'SBOM of the new image' addon-sbom\n"
+    @needs_shell
+    def test_wait_takes_the_sbom_of_the_attempt_the_build_ran_in_and_says_so(self):
+        r,summary=self.sh(self.failed_rerun(),self.WAIT_SBOM)
+        self.assertEqual(r.returncode,0,r.stdout+r.stderr);self.assertEqual((self.tmp/'found.tsv').read_text(),'t\t11\t1\n')
+        self.assertIn('- t: SBOM of the new image from attempt 1: its build did not run again in attempt 2 (Re-run failed jobs)',summary)
+        # The download step reads the third column as the attempt, not as part of the artifact id.
+        r,_=self.sh(self.failed_rerun(),self.WAIT_SBOM+self.step('compare',"Download the new images' SBOMs").replace('artifacts.tsv','found.tsv'))
+        self.assertEqual(r.returncode,0,r.stdout+r.stderr);self.assertEqual((self.tmp/'sboms/t.syft.json').read_text(),'{"from": 1}')
+    @needs_shell
+    def test_wait_after_rerun_all_jobs_waits_for_this_attempt_and_says_why_not_the_earlier_one(self):
+        # Every other job of attempt 2 finished without uploading (twice in a row): it fails, and never reads attempt 1's.
+        run,jobs,arts=self.all_rerun();j=self.job
+        jobs=[x for x in jobs if x['run_attempt']==1]+[j('build (amd64)',2,'56:45','56:50','failure'),j('build (aarch64)',2,'56:45','57:20'),
+            {**j('Upgrade comparison / compare',2,'56:45',None),'status':'in_progress'}]
+        r,_=self.sh((run,jobs,arts),self.WAIT_SBOM)
+        self.assertEqual(r.returncode,1);self.assertEqual((self.tmp/'found.tsv').read_text(),'')
+        self.assertIn('no SBOM of the new image for t: every other job of attempt 2 finished without uploading it',r.stdout)
+        self.assertIn('t: every job ran in attempt 2, so only its own artifact is read',r.stdout);self.assertNotIn('Re-run all jobs',r.stdout)
+    RUN_STATE_CALLS=('/artifacts?','/attempts/2','/jobs?filter=all')
+    @needs_shell
+    def test_wait_fails_when_the_run_state_cannot_be_read(self):
+        # A failed gh call can leave the run state short (a page of jobs missing): a job that ran again could then be
+        # missing, and an earlier attempt's artifact read. No artifact is read; the check fails and says why.
+        for call in self.RUN_STATE_CALLS:
+            with self.subTest(call):
+                r,summary=self.sh(self.failed_rerun(),self.WAIT_SBOM,GH_FAIL=call)
+                self.assertEqual(r.returncode,1,r.stdout+r.stderr);self.assertEqual((self.tmp/'found.tsv').read_text(),'')
+                self.assertIn('::error title=Upgrade comparison failed::cannot read the state of run 1 attempt 2',r.stdout)
+                self.assertNotIn('SBOM of the new image from',summary)
+        # In the runtime job (FAIL_LOG set) the reason is handed to compare once.
+        self.sh(self.failed_rerun(),self.WAIT_SBOM,GH_FAIL='/jobs?filter=all',FAIL_LOG='fail.log')
+        self.assertEqual((self.tmp/'fail.log').read_text().count('cannot read the state of run 1 attempt 2'),1)
+    @needs_shell
+    def test_the_compare_steps_fail_when_the_run_state_cannot_be_read(self):
+        plan=json.dumps({'id':'t','notes':'t/upgrade-notes.yaml'})+'\n'
+        for name,script in (('Upgrade test result',f"printf '%s' '{plan}' > plan.jsonl\n"+self.step('compare','Upgrade test result')),
+                ("Download the rebuilt images' SBOMs",self.step('compare',"Download the rebuilt images' SBOMs"))):
+            with self.subTest(name):
+                r,summary=self.sh(self.failed_rerun(),script,GH_FAIL='/jobs?filter=all',CHANGED='true')
+                self.assertEqual(r.returncode,1,r.stdout+r.stderr)
+                self.assertIn('::error title=Upgrade comparison failed::cannot read the state of run 1 attempt 2',r.stdout)
+                self.assertNotIn('from attempt 1',summary)
+    @needs_shell
+    def test_first_attempt_asks_only_for_the_artifacts(self):
+        run,jobs,arts=self.failed_rerun()
+        r,summary=self.sh((run,jobs,arts),self.WAIT_SBOM.replace('attempt-2','attempt-1'),attempt=1)
+        self.assertEqual(r.returncode,0,r.stdout+r.stderr);self.assertIn('- t: SBOM of the new image from this attempt (1)',summary)
+        self.assertNotIn('jobs',(self.tmp/'gh.log').read_text());self.assertNotIn('/attempts/',(self.tmp/'gh.log').read_text())
+    @needs_shell
+    def test_upgrade_test_result_reads_the_attempt_runtime_ran_in(self):
+        script=self.step('compare','Upgrade test result')
+        plan=json.dumps({'id':'t','notes':'t/upgrade-notes.yaml'})+'\n'
+        r,summary=self.sh(self.failed_rerun(),f"printf '%s' '{plan}' > plan.jsonl\n"+script)
+        self.assertEqual(r.returncode,0,r.stdout+r.stderr);self.assertIn('Results from attempt 1 (attempt 1: its job did not run again in attempt 2',summary)
+        self.assertIn('- t: passed',summary)
+        # Its results expired: never passes without them.
+        run,jobs,arts=self.failed_rerun();arts=[a for a in arts if 'runtime' not in a['name']]
+        r,_=self.sh((run,jobs,arts),script,CHANGED='true')
+        self.assertEqual(r.returncode,1);self.assertIn('the upgrade test results cannot be read: the runtime job ran in attempt 1, which has no upgrade-comparison-runtime-attempt-1',r.stdout)
+        # A PR that changes no version has no results to read.
+        r,_=self.sh((run,jobs,arts),script,CHANGED='false');self.assertEqual(r.returncode,0,r.stdout+r.stderr)
+        # The runtime job ran again in this attempt: its own results (a failure), never attempt 1's pass.
+        run,jobs,arts=self.failed_rerun()
+        jobs=[x for x in jobs if not (x['run_attempt']==2 and x['name'].endswith('/ runtime'))]+[self.job('Upgrade comparison / runtime',2,'56:45','57:10','failure')]
+        r,summary=self.sh((run,jobs,arts+[self.art('runtime',2,'57:09',23)]),f"printf '%s' '{plan}' > plan.jsonl\n"+script,RUNTIME_RESULT='failure')
+        self.assertEqual(r.returncode,1);self.assertIn('t: upgrade test failed: it broke',r.stdout);self.assertIn('Results from attempt 2 (this attempt)',summary)
+    @needs_shell
+    def test_rebuilt_sboms_are_read_from_the_attempt_runtime_ran_in(self):
+        r,summary=self.sh(self.failed_rerun(),self.step('compare',"Download the rebuilt images' SBOMs"))
+        self.assertEqual(r.returncode,0,r.stdout+r.stderr);self.assertTrue((self.tmp/'rebuilt-sboms/t.new.syft.json').exists())
+        self.assertIn('- SBOMs of the rebuilt images from attempt 1',summary)
+        r,_=self.sh(self.all_rerun(),self.step('compare',"Download the rebuilt images' SBOMs"))
+        self.assertEqual(r.returncode,0,r.stdout+r.stderr);self.assertFalse((self.tmp/'rebuilt-sboms').exists())
+    def test_no_message_tells_people_to_use_re_run_all_jobs_for_a_good_build(self):
+        for path in ('.addon-sync/wait_artifacts.sh','.github/workflows/woow-addon-upgrade-check.yml','README.md'):
+            with self.subTest(path):self.assertNotIn('use Re-run all jobs: an earlier attempt',(self.STORE/path).read_text(encoding='utf-8'))
+        self.assertNotIn('重跑請用 Re-run all jobs',(self.STORE/'README.md').read_text(encoding='utf-8'))
 
 class Scanners(unittest.TestCase):
     ACTION=pathlib.Path(__file__).resolve().parent.parent/'.github/actions/addon-sbom'
