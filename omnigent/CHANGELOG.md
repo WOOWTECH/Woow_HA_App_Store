@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.1.21
+
+- A new install no longer needs `admin_password` before the first start. If
+  it is empty, the first start generates a random 32-character password, so
+  every install gets its own, saves it into the add-on options, and creates
+  the admin with it. Read it on the **Configuration** tab. It is never written
+  to the log. If the add-on cannot save it through the Supervisor API, it stops
+  before creating anything, as 0.1.20 did with an empty password.
+- A password you set is used as before.
+- An existing install (its database already exists) is unchanged: with an
+  empty `admin_password` it still starts with a warning, nothing is generated,
+  and the admin keeps its current password.
+
 ## 0.1.20
 
 **Take a backup of this add-on before you update.** This update runs a

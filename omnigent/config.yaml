@@ -1,5 +1,5 @@
 name: Woow Omnigent
-version: 0.1.20
+version: 0.1.21
 slug: woow-omnigent
 image: ghcr.io/woowtech/woow-ha-omnigent-{arch}
 description: >-
@@ -10,8 +10,8 @@ description: >-
 url: https://github.com/WOOWTECH/Woow_ha_omnigent_addon
 arch: [amd64, aarch64]
 init: false
-# bashio::config talks to the Supervisor API to read /data/options.json,
-# so hassio_api must be true even though our own code doesn't call it.
+# init-addon-config saves a generated admin_password through the Supervisor
+# API (POST /addons/self/options) on a new install, so hassio_api must be true.
 hassio_api: true
 homeassistant_api: false
 ingress: true
@@ -45,11 +45,13 @@ backup_exclude:
 schema:
   # --- Admin identity ------------------------------------------------------
   admin_username: str
-  # Required for a new install and deliberately without a default: the add-on
-  # stops with a clear message while it is empty. An install that already has
-  # its database keeps running with an empty value, because the account exists
-  # and the option is read only when the account is created. Releases up to
-  # 0.1.15 pre-filled a default that was readable in this repository.
+  # Deliberately without a default. Empty on a new install: the first start
+  # generates a random password and saves it here through the Supervisor API
+  # (stops instead if it cannot save it). An install that already has its
+  # database keeps running with an empty value and nothing is generated,
+  # because the account exists and the option is read only when the account
+  # is created. Releases up to 0.1.15 pre-filled a default that was readable
+  # in this repository.
   admin_password: password
   # --- Public URL runners dial in on ---------------------------------------
   # Only set this if you have a Cloudflared add-on route pointing at us —

@@ -9,19 +9,28 @@ dependency, no external database wiring.
 1. Supervisor → **Add-on Store** → three-dot menu → **Repositories**
 2. Add `https://github.com/WOOWTECH/Woow_ha_omnigent_addon`
 3. Install **Woow Omnigent**
-4. On the **Configuration** tab, set `admin_password` (required for a new install, no default);
-   adjust the other options if you don't want their defaults
+4. Optional: on the **Configuration** tab, set `admin_password`, and adjust
+   the other options if you don't want their defaults. If you leave
+   `admin_password` empty, the first start generates one (see below).
 5. **Start**
 
-The first boot takes ~30–60 s while Postgres inits + omnigent claims the
+The first boot takes ~30–60 s while Postgres inits + omnigent creates the
 admin. The Ingress panel appears in the HA sidebar once ready.
+
+If `admin_password` was empty, the first start generates a random
+32-character password, saves it into the add-on options, and creates the
+admin with it. Every install gets its own. To read it, open the
+**Configuration** tab (reload the page if it was already open) and use the
+eye icon of `admin_password`. The password is never written to the log. If
+the add-on cannot save it, it stops before creating anything and says so in
+the log; start it again, or set a password yourself first.
 
 ## Configuration
 
 | Option           | Default              | Purpose                                                                                        |
 |------------------|----------------------|------------------------------------------------------------------------------------------------|
 | `admin_username` | `woow`               | Local admin pre-seeded before the server accepts requests on first boot                       |
-| `admin_password` | *(required)*         | Password of the admin account, used for the web UI. A new install does not start while it is empty; an existing install does, and keeps the account's current password |
+| `admin_password` | *(empty)*            | Password of the admin account, used for the web UI. Empty on a new install: a random one is generated on the first start and saved here. Empty on an existing install: nothing is generated, the account keeps its current password |
 | `base_url`       | *(empty)*            | Public URL runners dial in on. Empty = `http://homeassistant.local:8000`                       |
 | `features`       | `usage_page,harness_install` | Comma-separated feature flags forwarded as `OMNIGENT_FEATURES=…`                       |
 | `env_vars`       | `[]`                 | Arbitrary passthrough — each item `{key, value}` becomes an env var (key must match `^[A-Z]…`) |
@@ -130,8 +139,9 @@ runner. Register at least one from the LAN or over a Cloudflared route
 (see *Connecting a runner*).
 
 **The server still needs setup** — check the add-on logs for an admin
-bootstrap error. New installs require `admin_password`; the server creates
-the account before it accepts requests. An older install with an empty
+bootstrap error. A new install uses `admin_password`, or the password the
+first start generated and saved there; the server creates the account before
+it accepts requests. An older install with an empty
 option is checked against its existing database before the server starts.
 
 **Runner registers but chat hangs** — pi extension conflict. Wipe the

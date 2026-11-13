@@ -1,18 +1,23 @@
 #!/bin/sh
 # Offline check of the admin password gate in init-addon-config/run.
 #
-# The real script reads fixed paths (/data/options.json, /run/s6/...), so this runs a copy whose three
-# paths point into a temp directory and which stops right after the admin block. Cases:
-#   - empty admin_password, no database yet -> exit 1 with a FATAL message, nothing exported
-#   - empty admin_password, database present -> exit 0 with a WARNING (the account already exists)
-#   - a strong password        -> exit 0, exported as-is, no warning
+# The real script reads fixed paths (/data/options.json, /run/s6/...), so this runs a copy whose
+# paths point into a temp directory and which stops right after the admin block. A stand-in curl
+# plays the Supervisor API (POST /addons/self/options). Cases:
+#   - empty admin_password, no database yet -> a random 32-character password is generated, saved to
+#     the add-on options (the POST body keeps every other option) and exported; it is never logged and
+#     never on a command line; two installs get different passwords
+#   - the same, but the Supervisor refuses or there is no token -> exit 1 with a FATAL message, nothing exported
+#   - empty admin_password, database present -> exit 0 with a WARNING, nothing generated, no Supervisor call
+#   - a strong password        -> exit 0, exported as-is, no warning, no Supervisor call
 #   - the retired default      -> exit 0 (an existing install keeps running) with a WARNING
 # plus: init-admin-claim stops whenever the server reports no admin,
 # config.yaml carries no default, and no shipped file contains the retired default.
 #
-# Red proofs: the same harness is also run against two earlier versions of the script (reconstructed from
+# Red proofs: the same harness is also run against earlier or broken versions of the script (rebuilt from
 # the current one): release 0.1.15, which falls back to the retired default, must NOT stop on an empty
-# password; release 0.1.16, which stops on any empty password, must stop on an existing install.
+# password; release 0.1.20, which stops on an empty password, must fail the new-install case; a script
+# that ignores the database must be caught generating and saving a password on an existing install.
 set -eu
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
@@ -30,19 +35,37 @@ cut_script() { # out_file
         -e "s#^CONFIG_ENV=.*#CONFIG_ENV=$TMP/omnigent.env#" \
         -e "s#^S6_ENV_DIR=.*#S6_ENV_DIR=$TMP/s6env#" \
         -e "s#^PG_VERSION_FILE=.*#PG_VERSION_FILE=$TMP/PG_VERSION#" \
+        -e "s#^SUPERVISOR_URL=.*#SUPERVISOR_URL=http://supervisor.test#" \
         "$SCRIPT" | sed '/^# --- Base URL/,$d' > "$1"
-    for want in "OPTIONS_FILE=$TMP/options.json" "CONFIG_ENV=$TMP/omnigent.env" "S6_ENV_DIR=$TMP/s6env" "PG_VERSION_FILE=$TMP/PG_VERSION"; do
+    for want in "OPTIONS_FILE=$TMP/options.json" "CONFIG_ENV=$TMP/omnigent.env" "S6_ENV_DIR=$TMP/s6env" "PG_VERSION_FILE=$TMP/PG_VERSION" "SUPERVISOR_URL=http://supervisor.test"; do
         grep -qF "$want" "$1" || { echo "FAIL harness: init-addon-config/run no longer has the line for $want; update this test"; exit 1; }
     done
     grep -q 'set_env OMNIGENT_ADMIN_PASSWORD' "$1" || { echo "FAIL harness: the admin block is not in the copied part; update this test"; exit 1; }
 }
 
+# A stand-in for curl as the Supervisor: records its arguments and the request body,
+# answers with exit $CURL_EXIT (0 = accepted, 22 = HTTP error).
+mkdir -p "$TMP/supbin"
+cat > "$TMP/supbin/curl" <<'STUB'
+#!/bin/sh
+printf '%s\n' "$@" > "$CURL_ARGS"
+cat > "$CURL_BODY"
+exit "${CURL_EXIT:-0}"
+STUB
+chmod +x "$TMP/supbin/curl"
+
 # run LABEL SCRIPT_COPY OPTIONS_JSON EXPECTED_EXIT [MUST_CONTAIN] [MUST_NOT_CONTAIN]
+# Environment knobs: DB=yes (database present); TOKEN (SUPERVISOR_TOKEN, default a test token, '' = none);
+# TOKEN_FILE (a token in the s6 environment directory instead); CURL_EXIT (the Supervisor's answer);
+# POSTED=yes|no (whether the options must have been saved).
 run() {
     label=$1; copy=$2; options=$3; want=$4; must=${5:-}; mustnot=${6:-}
-    rm -rf "$TMP/s6env" "$TMP/omnigent.env" "$TMP/PG_VERSION"; printf '%s' "$options" > "$TMP/options.json"
+    rm -rf "$TMP/s6env" "$TMP/omnigent.env" "$TMP/PG_VERSION" "$TMP/curl.args" "$TMP/curl.body"
+    printf '%s' "$options" > "$TMP/options.json"
     if [ "${DB:-no}" = yes ]; then : > "$TMP/PG_VERSION"; fi
-    rc=0; sh "$copy" > "$TMP/out.log" 2>&1 || rc=$?
+    if [ -n "${TOKEN_FILE:-}" ]; then mkdir -p "$TMP/s6env"; printf '%s' "$TOKEN_FILE" > "$TMP/s6env/SUPERVISOR_TOKEN"; fi
+    rc=0; env PATH="$TMP/supbin:$PATH" SUPERVISOR_TOKEN="${TOKEN-test-token}" CURL_EXIT="${CURL_EXIT:-0}" \
+        CURL_ARGS="$TMP/curl.args" CURL_BODY="$TMP/curl.body" sh "$copy" > "$TMP/out.log" 2>&1 || rc=$?
     : > "$TMP/observed.env"
     for setting in "$TMP/s6env"/*; do
         [ -f "$setting" ] || continue
@@ -52,10 +75,12 @@ run() {
     [ "$rc" = "$want" ] || ok=no
     if [ -n "$must" ]    && ! grep -qF -- "$must"    "$TMP/out.log" "$TMP/observed.env" 2>/dev/null; then ok=no; fi
     if [ -n "$mustnot" ] &&   grep -qF -- "$mustnot" "$TMP/out.log" 2>/dev/null; then ok=no; fi
+    posted=no; [ -e "$TMP/curl.args" ] && posted=yes
+    if [ -n "${POSTED:-}" ] && [ "$posted" != "$POSTED" ]; then ok=no; fi
     if [ "$ok" = yes ]; then
         echo "PASS $label"
     else
-        echo "FAIL $label: exit $rc (want $want); must contain '$must'; must not contain '$mustnot'"
+        echo "FAIL $label: exit $rc (want $want); must contain '$must'; must not contain '$mustnot'; options saved: $posted (want ${POSTED:-either})"
         sed 's/^/    | /' "$TMP/out.log"
         fail=1
     fi
@@ -63,20 +88,50 @@ run() {
 
 cut_script "$TMP/current.sh"
 
-echo "== init-addon-config/run, new install (no database yet) =="
-run 'empty password stops the add-on'        "$TMP/current.sh" '{"admin_username":"woow","admin_password":""}'   1 'FATAL: admin_password is empty'
-run 'missing password key stops the add-on'  "$TMP/current.sh" '{"admin_username":"woow"}'                         1 'FATAL: admin_password is empty'
-run 'null password stops the add-on'         "$TMP/current.sh" '{"admin_username":"woow","admin_password":null}'  1 'FATAL: admin_password is empty'
+# check LABEL COMMAND... : one PASS/FAIL line for a plain shell condition
+check() { label=$1; shift; if "$@"; then echo "PASS $label"; else echo "FAIL $label"; fail=1; fi; }
+exported() { cat "$TMP/s6env/$1" 2>/dev/null || true; }
 
-echo "== init-addon-config/run, existing install (database present) =="
-DB=yes run 'empty password keeps running, with a warning'   "$TMP/current.sh" '{"admin_username":"woow","admin_password":""}'  0 'WARNING: admin_password is empty' 'FATAL'
-DB=yes run 'missing password key keeps running'             "$TMP/current.sh" '{"admin_username":"woow"}'                        0 'WARNING: admin_password is empty' 'FATAL'
-DB=yes run 'null password keeps running'                    "$TMP/current.sh" '{"admin_username":"woow","admin_password":null}' 0 'WARNING: admin_password is empty' 'FATAL'
-DB=yes run 'the username is still exported'                 "$TMP/current.sh" '{"admin_username":"ops","admin_password":""}'     0 'OMNIGENT_ADMIN_USERNAME=ops'
+FULL='{"admin_username":"ops","admin_password":"","base_url":"https://omni.example","features":"usage_page","env_vars":[{"key":"A_B","value":"x y"}]}'
+SAVE_FATAL='FATAL: admin_password is empty, and a generated password could not be saved'
+
+echo "== init-addon-config/run, new install (no database yet): generate and save =="
+POSTED=yes run 'empty password: generated and saved to the options' "$TMP/current.sh" "$FULL" 0 'generated a random password' 'FATAL'
+pw=$(exported OMNIGENT_ADMIN_PASSWORD)
+check 'the generated password is 32 letters and digits' sh -c 'printf "%s" "$1" | grep -qxE "[A-Za-z0-9]{32}"' _ "$pw"
+check 'the server bootstrap gets the same password' test "$(exported OMNIGENT_ACCOUNTS_INIT_ADMIN_PASSWORD)" = "$pw"
+check 'the shell-sourced env file carries it too' sh -c '. "$1"; test "$OMNIGENT_ACCOUNTS_INIT_ADMIN_PASSWORD" = "$2"' _ "$TMP/omnigent.env" "$pw"
+check 'POSTed to /addons/self/options with the token' sh -c 'grep -qx POST "$1" && grep -qx "http://supervisor.test/addons/self/options" "$1" && grep -qx "Authorization: Bearer test-token" "$1"' _ "$TMP/curl.args"
+check 'the saved options carry the generated password' test "$(jq -r '.options.admin_password' "$TMP/curl.body")" = "$pw"
+check 'the saved options keep every other option unchanged' test "$(jq -cS '.options | del(.admin_password)' "$TMP/curl.body")" = "$(printf '%s' "$FULL" | jq -cS 'del(.admin_password)')"
+check 'the password is not on the curl command line' sh -c '! grep -qF -- "$1" "$2"' _ "$pw" "$TMP/curl.args"
+check 'the password is not in the log' sh -c '! grep -qF -- "$1" "$2"' _ "$pw" "$TMP/out.log"
+POSTED=yes run 'a second new install'                 "$TMP/current.sh" "$FULL" 0 'generated a random password'
+check 'two installs get different passwords' test "$(exported OMNIGENT_ADMIN_PASSWORD)" != "$pw"
+POSTED=yes run 'missing password key: generated'      "$TMP/current.sh" '{"admin_username":"woow"}'                        0 'generated a random password'
+check 'missing key: the saved password is the exported one' test "$(jq -r '.options.admin_password' "$TMP/curl.body")" = "$(exported OMNIGENT_ADMIN_PASSWORD)"
+POSTED=yes run 'null password: generated'             "$TMP/current.sh" '{"admin_username":"woow","admin_password":null}' 0 'generated a random password'
+check 'null: the saved password is the exported one' test "$(jq -r '.options.admin_password' "$TMP/curl.body")" = "$(exported OMNIGENT_ADMIN_PASSWORD)"
+TOKEN='' TOKEN_FILE=file-token POSTED=yes run 'a token only in the s6 environment directory is used' "$TMP/current.sh" "$FULL" 0 'generated a random password'
+check 'the s6 directory token is sent' grep -qx 'Authorization: Bearer file-token' "$TMP/curl.args"
+
+echo "== init-addon-config/run, new install: cannot save, so stop before anything is created =="
+CURL_EXIT=22 POSTED=yes run 'the Supervisor refuses: stop' "$TMP/current.sh" "$FULL" 1 "$SAVE_FATAL"
+check 'refused: nothing is exported to later services' test ! -e "$TMP/s6env/OMNIGENT_ADMIN_PASSWORD" -a ! -e "$TMP/s6env/OMNIGENT_ACCOUNTS_INIT_ADMIN_PASSWORD"
+check 'refused: the password is not in the log' sh -c '! grep -qF -- "$(jq -r .options.admin_password "$1")" "$2"' _ "$TMP/curl.body" "$TMP/out.log"
+TOKEN='' POSTED=no run 'no Supervisor token: stop without a call' "$TMP/current.sh" "$FULL" 1 "$SAVE_FATAL"
+check 'no token: nothing is exported to later services' test ! -e "$TMP/s6env/OMNIGENT_ADMIN_PASSWORD"
+
+echo "== init-addon-config/run, existing install (database present): never generate =="
+DB=yes POSTED=no run 'empty password keeps running, with a warning'   "$TMP/current.sh" '{"admin_username":"woow","admin_password":""}'  0 'WARNING: admin_password is empty' 'FATAL'
+DB=yes POSTED=no run 'missing password key keeps running'             "$TMP/current.sh" '{"admin_username":"woow"}'                        0 'WARNING: admin_password is empty' 'generated'
+DB=yes POSTED=no run 'null password keeps running'                    "$TMP/current.sh" '{"admin_username":"woow","admin_password":null}' 0 'WARNING: admin_password is empty' 'generated'
+DB=yes POSTED=no run 'the username is still exported'                 "$TMP/current.sh" '{"admin_username":"ops","admin_password":""}'     0 'OMNIGENT_ADMIN_USERNAME=ops'
+check 'existing install: the password stays empty, no bootstrap password' test -z "$(exported OMNIGENT_ADMIN_PASSWORD)" -a ! -e "$TMP/s6env/OMNIGENT_ACCOUNTS_INIT_ADMIN_PASSWORD"
 
 echo "== init-addon-config/run, either way =="
-run 'a strong password is accepted as-is'    "$TMP/current.sh" '{"admin_username":"ops","admin_password":"correct-horse-battery-staple-42"}' 0 'OMNIGENT_ADMIN_PASSWORD=correct-horse-battery-staple-42' 'WARNING'
-DB=yes run 'a strong password on an existing install gets no warning' "$TMP/current.sh" '{"admin_username":"ops","admin_password":"correct-horse-battery-staple-42"}' 0 'OMNIGENT_ADMIN_PASSWORD=correct-horse-battery-staple-42' 'WARNING'
+POSTED=no run 'a strong password is accepted as-is'    "$TMP/current.sh" '{"admin_username":"ops","admin_password":"correct-horse-battery-staple-42"}' 0 'OMNIGENT_ADMIN_PASSWORD=correct-horse-battery-staple-42' 'WARNING'
+DB=yes POSTED=no run 'a strong password on an existing install gets no warning' "$TMP/current.sh" '{"admin_username":"ops","admin_password":"correct-horse-battery-staple-42"}' 0 'OMNIGENT_ADMIN_PASSWORD=correct-horse-battery-staple-42' 'WARNING'
 run 'the username still defaults to woow'    "$TMP/current.sh" '{"admin_password":"another-long-password-1"}'     0 'OMNIGENT_ADMIN_USERNAME=woow' 'FATAL'
 run 'the retired default still starts, with a warning' "$TMP/current.sh" "{\"admin_username\":\"woow\",\"admin_password\":\"$RETIRED\"}" 0 'WARNING: admin_password is the default'
 run 'a look-alike of the retired default is not flagged' "$TMP/current.sh" "{\"admin_username\":\"woow\",\"admin_password\":\"${RETIRED}x\"}" 0 'OMNIGENT_ADMIN_PASSWORD=' 'WARNING'
@@ -104,10 +159,18 @@ else
     echo 'FAIL shell-sourced environment file is not mode 0600'; fail=1
 fi
 
-echo "== release 0.1.16 (red proof: stops on any empty password) =="
-sed -e 's#if \[ -f "\${PG_VERSION_FILE}" \]; then#if false; then#' "$TMP/current.sh" > "$TMP/r0116.sh"
-grep -qF 'if false; then' "$TMP/r0116.sh" || { echo "FAIL harness: could not rebuild the 0.1.16 script"; exit 1; }
-DB=yes run '0.1.16 stops an existing install that has no password option' "$TMP/r0116.sh" '{"admin_username":"woow","admin_password":""}' 1 'FATAL: admin_password is empty'
+echo "== release 0.1.20 (red proof: a new install with an empty password stopped) =="
+awk '/^        # 32 characters from/ { print "        log \"FATAL: admin_password is empty. Set a strong password on the add-on Configuration tab, then start the add-on again.\""; print "        exit 1"; skip = 1 }
+     skip && /^    fi$/ { skip = 0 }
+     !skip' "$TMP/current.sh" > "$TMP/r0120.sh"
+{ grep -qF 'FATAL: admin_password is empty. Set a strong' "$TMP/r0120.sh" && ! grep -qF 'head -c 48' "$TMP/r0120.sh"; } \
+    || { echo "FAIL harness: could not rebuild the 0.1.20 script"; exit 1; }
+POSTED=no run '0.1.20 stops a new install with an empty password' "$TMP/r0120.sh" '{"admin_username":"woow","admin_password":""}' 1 'FATAL: admin_password is empty. Set a strong'
+
+echo "== a script that ignores the database (red proof for the existing-install cases) =="
+sed -e 's#if \[ -f "\${PG_VERSION_FILE}" \]; then#if false; then#' "$TMP/current.sh" > "$TMP/nodb.sh"
+grep -qF 'if false; then' "$TMP/nodb.sh" || { echo "FAIL harness: could not rebuild the database-blind script"; exit 1; }
+DB=yes POSTED=yes run 'a database-blind script would generate and save a password on an existing install' "$TMP/nodb.sh" '{"admin_username":"woow","admin_password":""}' 0 'generated a random password'
 
 echo "== release 0.1.15 (red proof: silently falls back to the retired default) =="
 sed -e '/^if \[ -z "\${ADMIN_PASSWORD}" \]; then$/,/^fi$/d' \
