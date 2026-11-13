@@ -232,9 +232,9 @@ class EmbeddedServerManager:
         self._pip_spec_override: str = (
             raw_pip_spec if raw_pip_spec and raw_pip_spec != DEFAULT_PIP_SPEC else ""
         )
-        # Auto-update toggle (default on). Off pins a non-override channel to
-        # the currently-installed version; the periodic PyPI check keeps
-        # running either way (it feeds the update entity — issue #1760), only
+        # Auto-update toggle (DEFAULT_AUTO_UPDATE; off in the WOOWTECH fork).
+        # Off pins a non-override channel to the currently-installed version;
+        # the periodic PyPI check keeps running either way (it feeds the update entity — issue #1760), only
         # the automatic reload is gated on this. Read before
         # _resolve_pip_spec, which consults it.
         self._auto_update: bool = bool(
@@ -442,7 +442,7 @@ class EmbeddedServerManager:
         GitHub tarball URL — the pre-release test channel). Otherwise the channel
         picks the distribution (``dev`` → ``ha-mcp-dev``, ``stable`` → ``ha-mcp``):
 
-        * auto-update ON (default): the bare, unpinned distribution name, so the
+        * auto-update ON: the bare, unpinned distribution name, so the
           newest build of the channel resolves at install time.
         * auto-update OFF: the distribution pinned to ``installed_version``
           (``dist==X``), so reloads/restarts keep that exact version; falls back
@@ -638,7 +638,7 @@ class EmbeddedServerManager:
         under a live importer corrupts it the same way a sys.modules purge
         does. The deferred update applies on the next reload or HA restart.
 
-        With auto-update on (the default) both channels install their
+        With auto-update on, both channels install their
         distribution UNPINNED, so every entry reload / HA restart must pick up
         the newest build. Such a spec ALWAYS takes the force-install path
         (``upgrade=True``, bypassing the requirements manager's is-installed

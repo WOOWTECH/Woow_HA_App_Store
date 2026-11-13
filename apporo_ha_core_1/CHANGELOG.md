@@ -1,5 +1,39 @@
 # Changelog
 
+## 2.4.4
+
+The bundled `ha_mcp_tools` moves from 1.2.2 to 1.2.4 (WOOWTECH fork of
+`ha-mcp`, master `01f8de3e`). The other 20 components are unchanged.
+
+In 1.2.4 the "Automatic server updates" option starts **off**. Before, it
+started on, and the component installed every new `ha-mcp` server release by
+itself. Current `ha-mcp` releases need a newer Home Assistant than this add-on
+runs, and installing one upgrades packages Home Assistant itself uses. With the
+option off, the component keeps the server version that is installed. Newer
+versions still show on the update entity, and installing one is your choice.
+
+Known limits:
+
+- The first time HA-MCP is added, nothing is installed yet, so it still
+  installs the newest `ha-mcp` server.
+- If you saved the HA-MCP options form before 1.2.4, the saved choice
+  (automatic updates on) is kept. Turn it off in the options form.
+- If the installed server is older than the oldest version the component
+  supports, it is still updated to the newest one.
+
+`ha_mcp_tools` is not set up by the add-on: add it from the UI when you need
+it. The requirement `voluptuous-openapi>=0.3.0` that 1.2.4 adds is already
+part of Home Assistant.
+
+### What happens on upgrade
+
+Like every bundled component except the ones listed under 2.4.0, 2.4.2 and
+2.4.3, `ha_mcp_tools` is only copied in when its folder is missing. An existing
+instance keeps the `ha_mcp_tools` it has (1.2.2, automatic updates on by
+default). To get 1.2.4, make a backup, delete `custom_components/ha_mcp_tools`
+and restart the add-on, which copies in 1.2.4. Your HA-MCP config entry and
+options are not touched.
+
 ## 2.4.3
 
 Three bundled components move to their latest upstream releases:
