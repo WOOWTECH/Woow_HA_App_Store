@@ -2328,9 +2328,12 @@ import io,json,os,re,subprocess,sys,zipfile
 args=sys.argv[1:];url=next(a for a in args if a.startswith('repos/'))
 with open(os.environ['GH_LOG'],'a') as f:f.write(url+'\n')
 s=json.load(open(os.environ['STATE']))
+# GH_FAIL: a URL part; that call prints its data, then fails (one page came, the next did not).
+fails=bool(os.environ.get('GH_FAIL')) and os.environ['GH_FAIL'] in url
 def out(data):
-    if '--jq' not in args:print(json.dumps(data));sys.exit(0)
-    sys.exit(subprocess.run(['jq','-r',args[args.index('--jq')+1]],input=json.dumps(data),text=True).returncode)
+    if '--jq' not in args:print(json.dumps(data));sys.exit(1 if fails else 0)
+    rc=subprocess.run(['jq','-r',args[args.index('--jq')+1]],input=json.dumps(data),text=True).returncode
+    sys.exit(1 if fails else rc)
 m=re.search(r'/actions/artifacts/(\d+)/zip$',url)
 if m:
     buf=io.BytesIO()
@@ -2486,6 +2489,30 @@ class RerunFailedJobs(unittest.TestCase):
         self.assertEqual(r.returncode,1);self.assertEqual((self.tmp/'found.tsv').read_text(),'')
         self.assertIn('no SBOM of the new image for t: every other job of attempt 2 finished without uploading it',r.stdout)
         self.assertIn('t: every job ran in attempt 2, so only its own artifact is read',r.stdout);self.assertNotIn('Re-run all jobs',r.stdout)
+    RUN_STATE_CALLS=('/artifacts?','/attempts/2','/jobs?filter=all')
+    @needs_shell
+    def test_wait_fails_when_the_run_state_cannot_be_read(self):
+        # A failed gh call can leave the run state short (a page of jobs missing): a job that ran again could then be
+        # missing, and an earlier attempt's artifact read. No artifact is read; the check fails and says why.
+        for call in self.RUN_STATE_CALLS:
+            with self.subTest(call):
+                r,summary=self.sh(self.failed_rerun(),self.WAIT_SBOM,GH_FAIL=call)
+                self.assertEqual(r.returncode,1,r.stdout+r.stderr);self.assertEqual((self.tmp/'found.tsv').read_text(),'')
+                self.assertIn('::error title=Upgrade comparison failed::cannot read the state of run 1 attempt 2',r.stdout)
+                self.assertNotIn('SBOM of the new image from',summary)
+        # In the runtime job (FAIL_LOG set) the reason is handed to compare once.
+        self.sh(self.failed_rerun(),self.WAIT_SBOM,GH_FAIL='/jobs?filter=all',FAIL_LOG='fail.log')
+        self.assertEqual((self.tmp/'fail.log').read_text().count('cannot read the state of run 1 attempt 2'),1)
+    @needs_shell
+    def test_the_compare_steps_fail_when_the_run_state_cannot_be_read(self):
+        plan=json.dumps({'id':'t','notes':'t/upgrade-notes.yaml'})+'\n'
+        for name,script in (('Upgrade test result',f"printf '%s' '{plan}' > plan.jsonl\n"+self.step('compare','Upgrade test result')),
+                ("Download the rebuilt images' SBOMs",self.step('compare',"Download the rebuilt images' SBOMs"))):
+            with self.subTest(name):
+                r,summary=self.sh(self.failed_rerun(),script,GH_FAIL='/jobs?filter=all',CHANGED='true')
+                self.assertEqual(r.returncode,1,r.stdout+r.stderr)
+                self.assertIn('::error title=Upgrade comparison failed::cannot read the state of run 1 attempt 2',r.stdout)
+                self.assertNotIn('from attempt 1',summary)
     @needs_shell
     def test_first_attempt_asks_only_for_the_artifacts(self):
         run,jobs,arts=self.failed_rerun()

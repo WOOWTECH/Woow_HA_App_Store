@@ -513,7 +513,7 @@ jobs:
         set -euo pipefail
         source tooling/.addon-sync/log.sh
         source tooling/.addon-sync/attempt_artifacts.sh
-        state="$(run_state)"
+        state="$(run_state)" || fail_output "${state}"
         pick="$(pick_artifact "${state}" "upgrade-comparison-rebuilt-sboms-attempt-${RUN_ATTEMPT}" runtime)" || fail_output "${pick}"
         artifact="$(jq -r '.id // ""' <<<"${pick}")"; from="$(jq -r '.attempt' <<<"${pick}")"
         [ -n "${artifact}" ] || { echo "No SBOMs of rebuilt images: $(jq -r '.note' <<<"${pick}")"; exit 0; }
@@ -591,7 +591,7 @@ jobs:
         source tooling/.addon-sync/attempt_artifacts.sh
         mkdir -p runtime-reports; status=0
         # This attempt's results; after Re-run failed jobs that did not re-run the runtime job, the attempt it ran in (#131).
-        state="$(run_state)"
+        state="$(run_state)" || fail_output "${state}"
         pick="$(pick_artifact "${state}" "upgrade-comparison-runtime-attempt-${RUN_ATTEMPT}" runtime)" || fail_output "${pick}"
         artifact="$(jq -r '.id // ""' <<<"${pick}")"; from="$(jq -r '.attempt' <<<"${pick}")"
         if [ -z "${artifact}" ] && [ "${from}" != "${RUN_ATTEMPT}" ] && [ "${CHANGED:-}" = true ]; then

@@ -16,7 +16,7 @@ source "$(dirname "$0")/attempt_artifacts.sh"
 wanted="$1"; found="$2"; what="$3"; action="$4"
 deadline=$(( $(date -u +%s) + WAIT_MINUTES * 60 )); idle=0; : > "${found}"
 while :; do
-  state="$(run_state)"
+  state="$(run_state)" || fail_output "${state}"
   missing=""; why=""; : > "${found}"
   while IFS=$'\t' read -r id n; do
     pick="$(pick_artifact "${state}" "${n}")" || fail_output "${pick}"
