@@ -15,6 +15,7 @@ name: Upgrade comparison tests
     - .addon-sync/log.sh
     - .addon-sync/fields.sh
     - .addon-sync/wait_artifacts.sh
+    - .addon-sync/attempt_artifacts.sh
     - .addon-sync/upgrade_runtime.py
     - .addon-sync/test_upgrade_runtime.py
     - .addon-sync/mock_supervisor.py
@@ -37,6 +38,7 @@ name: Upgrade comparison tests
     - .addon-sync/log.sh
     - .addon-sync/fields.sh
     - .addon-sync/wait_artifacts.sh
+    - .addon-sync/attempt_artifacts.sh
     - .addon-sync/upgrade_runtime.py
     - .addon-sync/test_upgrade_runtime.py
     - .addon-sync/mock_supervisor.py

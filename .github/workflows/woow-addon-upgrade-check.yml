@@ -19,9 +19,14 @@
 # DB is more than DB_MAX_AGE_HOURS old) and scans both SBOMs with that DB.
 # The caller does not make this job wait on the build: only after it finds a
 # version change does it wait (at most sbom_wait_minutes) for the SBOM artifact
-# of the same run attempt, through the Actions API (a re-run judges its own
-# build, so re-run all jobs). An add-on with a prebuilt image whose SBOM
-# never arrives fails the check; it is never skipped.
+# of the same run attempt, through the Actions API: a re-run judges its own
+# build. After "Re-run failed jobs" (#131) a job that did not run again uploads
+# nothing in the new attempt, so each of the four per-attempt artifacts (SBOM,
+# image, runtime results, rebuilt SBOMs) is then read from the attempt that job
+# really ran in, for the same head commit, and the summary says which attempt
+# (.addon-sync/attempt_artifacts.sh, upgrade_check.py attempt_artifact()). A job
+# that ran again in this attempt never falls back to an earlier one. An add-on
+# with a prebuilt image whose SBOM never arrives fails the check; it is never skipped.
 # Add-ons built on the device (#146; either side, as each side's config says)
 # get category 4 from the images the runtime job rebuilds for the upgrade test
 # (below): it makes their SBOMs with the same pinned Syft and syft.yaml right
@@ -474,7 +479,8 @@ jobs:
         WAIT_MINUTES: ${{ inputs.sbom_wait_minutes }}
       run: |
         set -euo pipefail
-        # Only this attempt's artifact (plan.jsonl names it -attempt-<N>): a re-run judges its own build.
+        # This attempt's artifact (plan.jsonl names it -attempt-<N>): a re-run judges its own build. After Re-run failed jobs
+        # (#131) the earlier attempt's, when the build that uploaded it did not run again (wait_artifacts.sh).
         # With scan_published_image (new_ref) the new image is pulled and scanned instead: no SBOM to wait for (#147, #148);
         # one built on the device comes from the runtime job (#146).
         jq -r 'select((.ref != "" or .rebuilt_old) and .new_ref == "" and (.rebuilt_new | not)) | [.id, .artifact] | @tsv' plan.jsonl > wanted-sboms.tsv
@@ -487,14 +493,15 @@ jobs:
       run: |
         set -euo pipefail
         mkdir -p sboms
-        while IFS=$'\t' read -r id artifact_id; do
+        while IFS=$'\t' read -r id artifact_id _attempt; do
           gh api "repos/${REPO}/actions/artifacts/${artifact_id}/zip" > "$RUNNER_TEMP/${id}.sbom.zip"
           unzip -o -q "$RUNNER_TEMP/${id}.sbom.zip" "${id}.syft.json" -d sboms
         done < artifacts.tsv
     # #146: images built on the device are rebuilt only in the runtime job (for the upgrade test, or only for these SBOMs
     # when the registry skips that test), which makes their SBOMs with the same pinned Syft and hands them over. compare
     # runs after runtime (needs), so the artifact is there or never will be: no wait. Without it, "Compare with the
-    # comparison target" fails each add-on that needs one.
+    # comparison target" fails each add-on that needs one. After Re-run failed jobs that did not re-run runtime, the attempt
+    # it ran in (#131).
     - name: Download the rebuilt images' SBOMs
       if: (success() || (inputs.sha != '' && !cancelled())) && steps.plan.outputs.rebuilt == 'true'
       env:
@@ -505,13 +512,16 @@ jobs:
       run: |
         set -euo pipefail
         source tooling/.addon-sync/log.sh
-        artifact="$(gh api --paginate "repos/${REPO}/actions/runs/${RUN_ID}/artifacts?per_page=100" \
-          --jq ".artifacts[] | select(.name == \"upgrade-comparison-rebuilt-sboms-attempt-${RUN_ATTEMPT}\") | .id" | tail -n1)"
-        [ -n "${artifact}" ] || exit 0
+        source tooling/.addon-sync/attempt_artifacts.sh
+        state="$(run_state)"
+        pick="$(pick_artifact "${state}" "upgrade-comparison-rebuilt-sboms-attempt-${RUN_ATTEMPT}" runtime)" || fail_output "${pick}"
+        artifact="$(jq -r '.id // ""' <<<"${pick}")"; from="$(jq -r '.attempt' <<<"${pick}")"
+        [ -n "${artifact}" ] || { echo "No SBOMs of rebuilt images: $(jq -r '.note' <<<"${pick}")"; exit 0; }
+        echo "- SBOMs of the rebuilt images from attempt ${from} ($(jq -r '.note' <<<"${pick}"))" >> "$GITHUB_STEP_SUMMARY"
         mkdir -p rebuilt-sboms
         if ! { gh api "repos/${REPO}/actions/artifacts/${artifact}/zip" > "$RUNNER_TEMP/rebuilt-sboms.zip" \
             && unzip -o -q "$RUNNER_TEMP/rebuilt-sboms.zip" -d rebuilt-sboms; }; then
-          fail "cannot download the SBOMs of the rebuilt images (artifact upgrade-comparison-rebuilt-sboms-attempt-${RUN_ATTEMPT}); re-run all jobs"; exit 1
+          fail "cannot download the SBOMs of the rebuilt images (artifact upgrade-comparison-rebuilt-sboms-attempt-${from}); re-run the check"; exit 1
         fi
     - name: Compare with the comparison target
       if: (success() || (inputs.sha != '' && !cancelled())) && steps.detect.outputs.changed == 'true'
@@ -574,17 +584,27 @@ jobs:
         RUN_ID: ${{ github.run_id }}
         RUN_ATTEMPT: ${{ github.run_attempt }}
         RUNTIME_RESULT: ${{ needs.runtime.result }}
+        CHANGED: ${{ steps.detect.outputs.changed }}
       run: |
         set -euo pipefail
         source tooling/.addon-sync/log.sh
+        source tooling/.addon-sync/attempt_artifacts.sh
         mkdir -p runtime-reports; status=0
-        artifact="$(gh api --paginate "repos/${REPO}/actions/runs/${RUN_ID}/artifacts?per_page=100" \
-          --jq ".artifacts[] | select(.name == \"upgrade-comparison-runtime-attempt-${RUN_ATTEMPT}\") | .id" | tail -n1)"
+        # This attempt's results; after Re-run failed jobs that did not re-run the runtime job, the attempt it ran in (#131).
+        state="$(run_state)"
+        pick="$(pick_artifact "${state}" "upgrade-comparison-runtime-attempt-${RUN_ATTEMPT}" runtime)" || fail_output "${pick}"
+        artifact="$(jq -r '.id // ""' <<<"${pick}")"; from="$(jq -r '.attempt' <<<"${pick}")"
+        if [ -z "${artifact}" ] && [ "${from}" != "${RUN_ATTEMPT}" ] && [ "${CHANGED:-}" = true ]; then
+          # The runtime job did not run again, but the results of the attempt it ran in are gone: a version change is never
+          # judged without them (a PR that changes no version has none).
+          fail "the upgrade test results cannot be read: $(jq -r '.note' <<<"${pick}"); use Re-run all jobs"; exit 1
+        fi
         if [ -n "${artifact}" ] && ! { gh api "repos/${REPO}/actions/artifacts/${artifact}/zip" > "$RUNNER_TEMP/runtime-reports.zip" \
             && unzip -o -q "$RUNNER_TEMP/runtime-reports.zip" -d runtime-reports; }; then
-          fail "cannot download the upgrade test results (artifact upgrade-comparison-runtime-attempt-${RUN_ATTEMPT}); re-run all jobs"; exit 1
+          fail "cannot download the upgrade test results (artifact upgrade-comparison-runtime-attempt-${from}); re-run the check"; exit 1
         fi
         echo "## Upgrade test" >> "$GITHUB_STEP_SUMMARY"
+        [ -z "${artifact}" ] || echo "Results from attempt ${from} ($(jq -r '.note' <<<"${pick}"))." >> "$GITHUB_STEP_SUMMARY"
         for result in runtime-reports/*.json; do
           [ -e "${result}" ] || break
           # upgrade_runtime.py's result, the runtime job's note on why the test did not run, or why that job failed.
@@ -962,7 +982,7 @@ jobs:
       run: |
         set -euo pipefail
         source tooling/.addon-sync/log.sh
-        while IFS=$'\t' read -r id artifact_id; do
+        while IFS=$'\t' read -r id artifact_id _attempt; do
           gh api "repos/${REPO}/actions/artifacts/${artifact_id}/zip" > "$RUNNER_TEMP/${id}.image.zip"
           unzip -o -q "$RUNNER_TEMP/${id}.image.zip" "${id}.tar" -d "$RUNNER_TEMP/images"
           rm -f "$RUNNER_TEMP/${id}.image.zip"
@@ -1016,7 +1036,8 @@ jobs:
       if: always() && (github.event_name == 'pull_request' || inputs.sha != '')
       uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
       with:
-        # compare reads this attempt's results; the run attempt keeps a re-run from reading an earlier one.
+        # compare reads this attempt's results; the run attempt keeps a re-run of this job from reading an earlier one, and
+        # after Re-run failed jobs that did not re-run this job, compare reads the attempt it ran in (#131).
         name: upgrade-comparison-runtime-attempt-${{ github.run_attempt }}
         path: runtime-reports/
         if-no-files-found: ignore

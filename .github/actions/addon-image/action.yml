@@ -45,7 +45,8 @@ runs:
   - name: Upload the image
     uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
     with:
-      # The run attempt in the name: a re-run's upgrade test must not pick up an earlier attempt's image.
+      # The run attempt in the name: a re-run's upgrade test reads its own build's image, and an earlier attempt's only when
+      # this build did not run again (Re-run failed jobs, #131).
       name: upgrade-comparison-image-${{ inputs.component }}-attempt-${{ github.run_attempt }}
       path: ${{ runner.temp }}/addon-image/${{ inputs.component }}.tar
       if-no-files-found: error
