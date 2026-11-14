@@ -1,0 +1,9 @@
+---
+# Time limits of the Store's upgrade test (Woow_HA_App_Store
+# .addon-sync/upgrade_check.py SETTINGS_DEFAULTS: 300, 60, 600).
+# hook_timeout covers the whole docker exec. verify's own waits add up to
+# hamh_upgrade.py READY_TIMEOUT 180 + RUNNING_TIMEOUT 240 (the node starts
+# again) + RUNNING_TIMEOUT 240 (the update restarts it) = 660 s, so it is
+# longer than that; the hook then writes its own report before the Store
+# stops it.
+hook_timeout: 900

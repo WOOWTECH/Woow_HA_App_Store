@@ -73,7 +73,7 @@ ha store add https://github.com/WOOWTECH/Woow_HA_App_Store
 | Slug | 名稱 | Ver | 安裝 | 上游 |
 |---|---|---|---|---|
 | `dnsmasq-dhcp` | Dnsmasq-DHCP | 5.1.3 | 預建映像 | [f18m/ha-addon-dnsmasq-dhcp](https://github.com/f18m/ha-addon-dnsmasq-dhcp) |
-| `hamh` | Home-Assistant-Matter-Hub | 2.0.59 | 預建映像 | [riddix/home-assistant-matter-hub](https://github.com/riddix/home-assistant-matter-hub) |
+| `hamh` | Home-Assistant-Matter-Hub | 2.0.60 | 預建映像 | [riddix/home-assistant-matter-hub](https://github.com/riddix/home-assistant-matter-hub) |
 | `frigate` | Frigate | 0.18.2 | 預建映像 | [blakeblackshear/frigate-hass-addons](https://github.com/blakeblackshear/frigate-hass-addons) |
 | `jellyfin` | Jellyfin | 0.4.0 | 預建映像 | [hassio-addons/app-jellyfin](https://github.com/hassio-addons/app-jellyfin) |
 | `music_assistant` | Music Assistant | 2.10.9 | 預建映像 | [music-assistant.io](https://music-assistant.io) |

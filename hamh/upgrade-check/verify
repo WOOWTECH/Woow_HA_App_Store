@@ -1,0 +1,5 @@
+#!/usr/bin/env python3
+"""Upgrade test hook: read the seeded hamh bridge back on the new version (see hamh_upgrade.py)."""
+import hamh_upgrade
+
+hamh_upgrade.main("verify")

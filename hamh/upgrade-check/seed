@@ -1,0 +1,5 @@
+#!/usr/bin/env python3
+"""Upgrade test hook: create a hamh bridge on the comparison target (see hamh_upgrade.py)."""
+import hamh_upgrade
+
+hamh_upgrade.main("seed")
