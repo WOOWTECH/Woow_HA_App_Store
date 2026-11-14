@@ -85,9 +85,21 @@ jobs:
 
         git -C "$target" sparse-checkout set release/addons
 
-        git -C "$target" fetch --depth=1 --filter=blob:none origin main
+        # GitHub can briefly refuse a valid deploy key. Both commands reach the network:
 
-        git -C "$target" checkout -B main FETCH_HEAD
+        # the blobless checkout fetches its blobs lazily.
+
+        for attempt in 1 2 3; do
+
+          if git -C "$target" fetch --depth=1 --filter=blob:none origin main && git -C "$target" checkout -B main FETCH_HEAD; then break; fi
+
+          if [ "$attempt" -eq 3 ]; then echo "::error::Could not fetch ha-rebrand after 3 attempts"; exit 1; fi
+
+          echo "::warning::ha-rebrand fetch attempt $attempt failed; retrying in $((attempt * 15))s"
+
+          sleep $((attempt * 15))
+
+        done
 
         python3 .addon-sync/rebrand_sync.py rebrand --store "$GITHUB_WORKSPACE" --target "$target" --push
 
