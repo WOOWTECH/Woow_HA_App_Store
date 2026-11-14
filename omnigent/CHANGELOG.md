@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.1.22
+
+- Login grants now last 365 days, the value the WOOW PaaS server uses.
+  Omnigent's default is 30. A runner or `omnigent login` has to sign in again
+  a year after its grant was approved instead of a month. The limit is
+  checked against each grant's approval time, so it also covers grants issued
+  before this update.
+- To use a different number of days, add `OMNIGENT_GRANT_MAX_LIFETIME_DAYS`
+  to `env_vars` (for example `30` for the previous behavior).
+- Public access is now off by default, as on the WOOW PaaS server. Omnigent's
+  default is on. A public session can be opened from its link by anyone who can
+  sign in to this add-on, without being invited to it; people without an
+  account cannot read it either way. While public access is off, owners cannot
+  make a session public. Sessions that are already public stay that way, and
+  owners can still turn it off.
+- An admin can turn public access on again in **Settings → Sharing**. The
+  add-on keeps that choice across restarts and updates. If an admin already
+  chose there before this update, that choice is kept.
+- No database migration.
+
 ## 0.1.21
 
 - A new install no longer needs `admin_password` before the first start. If

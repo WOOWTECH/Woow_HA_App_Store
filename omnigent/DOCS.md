@@ -56,6 +56,20 @@ boot, so editing the option afterwards does **not** change an existing account:
 While the retired default is still the configured value, the add-on logs a
 warning at every start.
 
+A runner or `omnigent login` keeps its session through a login grant. Since
+0.1.22 the grant stops refreshing 365 days after it was approved, as on the
+WOOW PaaS server, and the runner has to sign in again. To use a different
+number of days, set `OMNIGENT_GRANT_MAX_LIFETIME_DAYS` in `env_vars`.
+
+Public access lets anyone who can sign in to this Omnigent open a session from
+its link and read it, without being invited to it: the whole conversation,
+including tool output and sub-agent sessions. People without an account still
+cannot read it. Since 0.1.22 it is off by default, as on the WOOW PaaS server.
+While it is off, owners cannot make a session public; sessions that are already
+public stay that way until their owners turn it off. An admin can turn it on in
+**Settings → Sharing**; the add-on keeps that choice across restarts and
+updates.
+
 If you updated from 0.1.15 or earlier without ever saving the Configuration
 tab, `admin_password` is empty. 0.1.16 refused to start in that state; since
 0.1.17 the add-on starts, logs a warning, and the account keeps its current

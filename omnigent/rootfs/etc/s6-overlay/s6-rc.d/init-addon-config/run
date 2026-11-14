@@ -140,6 +140,15 @@ set_env OMNIGENT_AUTH_ENABLED "1"
 set_env ARTIFACT_DIR "/data/artifacts"
 set_env OMNIGENT_ADMIN_CREDENTIALS_PATH "/data/admin-credentials"
 set_env HOME "/data/omnigent-home"
+# Login grants (runners, `omnigent login`) stop refreshing this many days after
+# approval. 365 is the WOOW PaaS value (Omnigent's default is 30); an env_vars
+# entry below still overrides it.
+set_env OMNIGENT_GRANT_MAX_LIFETIME_DAYS "365"
+# Public access (anyone who can sign in may open a session from its link) starts
+# off, as on the WOOW PaaS server. An admin can turn it on in Settings → Sharing,
+# which is kept in /data and wins over this default; an env_vars entry below can
+# change the default too.
+set_env OMNIGENT_PUBLIC_SHARING "0"
 mkdir -p /data/omnigent-home /data/artifacts
 
 # --- Optional extra env vars (arbitrary user passthrough) ------------------
