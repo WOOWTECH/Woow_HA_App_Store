@@ -1,0 +1,5 @@
+#!/usr/bin/env python3
+"""Upgrade test hook: read the seeded Music Assistant data back on the new version (see music_assistant_upgrade.py)."""
+import music_assistant_upgrade
+
+music_assistant_upgrade.main("verify")

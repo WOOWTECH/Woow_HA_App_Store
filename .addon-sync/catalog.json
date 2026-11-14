@@ -2198,22 +2198,22 @@
     "music_assistant": {
       "id": "music_assistant",
       "name": "Music Assistant",
-      "version": "2.10.9",
+      "version": "2.10.11",
       "repository": "WOOWTECH/Woow_ha_music_assistant_add_on",
-      "source_sha": "4112468f76d60a584d961e2b69b207f173dc94d3",
+      "source_sha": "e774e26fdaaff58e826aa62b49edd3daf9ae0da9",
       "source_path": "music_assistant",
       "config_file": "config.yaml",
-      "config_sha256": "sha256:6ac994e365d3ddb16212cce6c9fb8fb5f74ed41e0a3aecf9be544294eee6e37b",
-      "archive_sha256": "sha256:2729bc2040d1d6414b7a369814d89367439a70cc8fcd4ee8733fd7e40cda55cc",
-      "context_fingerprint": "sha256:8db7713dff6146cbcbef571bb7a88d962a16b00299815b9c6167a248b9450413",
-      "material_fingerprint": "sha256:99e0e9b486a602d9e6c520e6a205ea0362c41751ab83d76224495526ce6c1ac5",
+      "config_sha256": "sha256:15719f94fe36c601586fb1f5318c1a395bbb61fd1ed06f7beb5462e78439bd4a",
+      "archive_sha256": "sha256:4b5b8f4522a99b6a4cba77079d8503533352662b1604d4bb203bd99cce6ae16b",
+      "context_fingerprint": "sha256:a3b057a58148c9fbe0ca0055ad2e30346fdf9d54e4bb96e53685cb5a64d48ff7",
+      "material_fingerprint": "sha256:b0bc8c596e2f659105a6266a1653c377301f4377a45b76290e6e8d23e4bc3ad9",
       "architectures": [
         "amd64",
         "aarch64"
       ],
       "config": {
         "name": "Music Assistant",
-        "version": "2.10.9",
+        "version": "2.10.11",
         "slug": "music_assistant",
         "description": "The Music Assistant server is a free, opensource Media library manager that connects to your streaming services and a wide range of connected speakers.",
         "url": "https://music-assistant.io",
@@ -2225,7 +2225,8 @@
         "hassio_api": true,
         "hassio_role": "manager",
         "discovery": [
-          "music_assistant"
+          "music_assistant",
+          "mcp"
         ],
         "auth_api": true,
         "host_network": true,
@@ -2267,21 +2268,21 @@
       "source_build_supported": false,
       "images": {
         "amd64": {
-          "reference": "ghcr.io/woowtech/ha-mirror-ghcr-io-music-assistant-server:2.10.9",
-          "index_digest": "sha256:4ac0d5844363fbbefd6a61251df09d96cd546e05e01b8c1cc1a28803f0935e07",
-          "digest": "sha256:b4f5b466ff2967d775da270a02de75372c1fec128f383886dfb4a8c7e607a642",
-          "source_revision": "912308ecfda2a01985dfcf555978815c7dda11a6"
+          "reference": "ghcr.io/woowtech/ha-mirror-ghcr-io-music-assistant-server:2.10.11",
+          "index_digest": "sha256:b14d5c1c93d776f33b9670a3c6febe3f072566d7b2f4f431a09dcca79bd8ac05",
+          "digest": "sha256:8bb2bdeb76b0ac370928d8530caac49da84a29a0570de482d43a734bd2241526",
+          "source_revision": "959b5b20a98951263a18e1ac9b05903b0120a8ce"
         },
         "aarch64": {
-          "reference": "ghcr.io/woowtech/ha-mirror-ghcr-io-music-assistant-server:2.10.9",
-          "index_digest": "sha256:4ac0d5844363fbbefd6a61251df09d96cd546e05e01b8c1cc1a28803f0935e07",
-          "digest": "sha256:d42dd377d27b280151ab7bf96bf72caab8dc8851446299c1b9161eacc6c319e5",
-          "source_revision": "912308ecfda2a01985dfcf555978815c7dda11a6"
+          "reference": "ghcr.io/woowtech/ha-mirror-ghcr-io-music-assistant-server:2.10.11",
+          "index_digest": "sha256:b14d5c1c93d776f33b9670a3c6febe3f072566d7b2f4f431a09dcca79bd8ac05",
+          "digest": "sha256:30ecb897a9fa7b79c35532f3b9b262077232f04784cb62d97cbffc6b3ca5a231",
+          "source_revision": "959b5b20a98951263a18e1ac9b05903b0120a8ce"
         }
       },
       "delivery": "published-image",
       "validation": "manifest+architecture-images+configured-CI",
-      "publisher_run_id": "41193578671",
+      "publisher_run_id": "43552240105",
       "channel": "stable",
       "store_path": "music_assistant"
     },
@@ -3708,5 +3709,5 @@
       "store_path": "woow_mcp_headscale"
     }
   },
-  "catalog_id": "sha256:918c380e01391dfb1fff083ea1e31a65fb36709a83f06f6b520b451665a760dd"
+  "catalog_id": "sha256:3e8c81890e772ab6c701e9d8c9c0d560e4cc5ee94997d7330618f28ce8f1a5b9"
 }
