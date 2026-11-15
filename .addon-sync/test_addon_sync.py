@@ -218,6 +218,37 @@ class Tests(unittest.TestCase):
             target=pathlib.Path(tmp)/'test';target.mkdir();(target/'config.yaml').write_text('slug: test\nversion: 0.9.0\n')
             report,catalog=s.consume(GH(),registry,tmp)
             self.assertEqual(report[0]['state'],'waiting');self.assertIn('0.9.0',(target/'config.yaml').read_text());self.assertEqual(catalog['components'],{})
+    def test_consumer_does_not_restore_store_excluded_addons(self):
+        raw=archive();e=entry(raw);kept={**e,'id':'kept'}
+        class GH:
+            def outbox(self,repo):return {'components':{'test':e,'kept':kept}}
+            def api(self,repo,path):return {'conclusion':'success','status':'completed','path':'.github/workflows/woow-addon-sync.yml','event':'push','head_repository':{'full_name':repo}}
+            def fingerprint(self,*args,**kwargs):return 'fp'
+        components=[self.release_component('test','pkg',store_enabled=False),self.release_component('kept','kept')]
+        registry={'providers':{'WOOWTECH/test':{'components':components}}}
+        for only in (None,['test','kept'],['test']):
+            with self.subTest(only=only),tempfile.TemporaryDirectory() as tmp,patch.object(s,'enforce_source_policy'),patch.object(s,'source_archive',return_value=raw),patch.object(s,'image_ready',return_value=e['images']['amd64']):
+                root=pathlib.Path(tmp);(root/'.addon-sync').mkdir();(root/'kept').mkdir()
+                marker=root/'kept/config.yaml';marker.write_text('slug: kept\nversion: 1.0.0\n')
+                (root/'.addon-sync/catalog.json').write_text(json.dumps({'schema':1,'components':{'kept':kept}}))
+                report,catalog=s.consume(GH(),registry,root,only=only)
+                self.assertFalse((root/'test').exists(),'a source notification restored the delisted add-on')
+                self.assertEqual(catalog['components'],{'kept':kept})
+                self.assertEqual(marker.read_text(),'slug: kept\nversion: 1.0.0\n')
+                self.assertEqual(report,[] if only==['test'] else [{'id':'kept','state':'unchanged'}])
+                self.assertEqual(catalog['catalog_id'],s.digest(s.canonical({'kept':kept})))
+    def test_store_exclusion_keeps_source_publication_and_releases_enabled(self):
+        raw=archive();component=self.release_component('test','pkg',store_enabled=False)
+        for policy in ('main','release'):
+            with self.subTest(policy=policy),patch.object(s,'source_archive',return_value=raw),patch.object(s,'image_ready',return_value={'digest':'sha256:'+'a'*64}):
+                registry={'providers':{'WOOWTECH/test':{'ref_policy':policy,'components':[component]}}}
+                report,outbox=s.publish(self.publish_gh(),registry,'WOOWTECH/test')
+                self.assertEqual(report[0]['state'],'ready',report)
+                self.assertIn('test',outbox['components'])
+        gh=self.release_gh({'pkg/config.yaml':'name: Test\nslug: test\nversion: 1.2.0\n'})
+        report=s.release(gh,registry,'WOOWTECH/test','a'*40,apply=True)
+        self.assertEqual(report,[{'id':'test','state':'released','tag':'v1.2.0','version':'1.2.0'}])
+        self.assertEqual([c['tag_name'] for c in gh.created],['v1.2.0'])
     def test_summary_annotations_cannot_inject_commands(self):
         out=io.StringIO()
         with patch('sys.stdout',out),patch.dict(s.os.environ,{},clear=False):

@@ -2,7 +2,7 @@
 
 [![Open your Home Assistant instance and show the add add-on repository dialog with a specific repository URL pre-filled.](https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg)](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2FWOOWTECH%2FWoow_HA_App_Store)
 
-一鍵加入 43 個 WOOWTECH 自製／鏡像維護 Home Assistant App 的統一 store repo。
+一鍵加入 38 個 WOOWTECH 自製／鏡像維護 Home Assistant App 的統一 store repo。
 
 ## 使用方式
 
@@ -16,14 +16,14 @@
    ```
    https://github.com/WOOWTECH/Woow_HA_App_Store
    ```
-4. 按 **Add** → 關閉 → 頁面下拉即可看到 43 個 App
+4. 按 **Add** → 關閉 → 頁面下拉即可看到 38 個 App
 
 ### 方法三：CLI (HAOS SSH)
 ```bash
 ha store add https://github.com/WOOWTECH/Woow_HA_App_Store
 ```
 
-## 內含 Apps（43 個）
+## 內含 Apps（38 個）
 
 > 單一 App 的版本欄會隨 catalog 同步更新；即時版本以各目錄的 `config.yaml` 與 `.addon-sync/catalog.json` 為準。
 > 「本機建置」= 沒有預建映像，安裝時由 Supervisor 在裝置上 build，耗時且吃記憶體，小機器請留意。
@@ -51,7 +51,7 @@ ha store add https://github.com/WOOWTECH/Woow_HA_App_Store
 
 把對應軟體的完整工具以 MCP（Streamable HTTP，Bearer token）提供給 AI client；所有工具與寫入預設開啟，HA 管理員可在 add-on 面板逐支停用工具或取消寫入。0.4.11 起 manifest 標為 `stage: stable`，商店不再顯示「實驗性」。圖示與所連接的軟體相同。來源與完整文件：[WOOWTECH/Woow_ha_mcp_addons](https://github.com/WOOWTECH/Woow_ha_mcp_addons)。
 同一套 add-on 也在該 repo 自己的 store；兩個 store 的同名 add-on 在 HA 裡是不同的 add-on（slug 前綴不同，設定不互通），同一台 HA 只裝其中一個來源的。
-下面 6 支只同步正式 Release，和其他來源 repo 一樣：升版的 PR 通過該 repo 的 `WOOW addon release` 檢查並合併後，自動發 `<slug>-v<版本>` 正式 Release，本 store 才會前進到該版本。原本的第 7 支 `woow_mcp_opendesign` 已於 2026-10-15 下架（見下方說明）。
+下面 7 支只同步正式 Release，和其他來源 repo 一樣：升版的 PR 通過該 repo 的 `WOOW addon release` 檢查並合併後，自動發 `<slug>-v<版本>` 正式 Release，本 store 才會前進到該版本。`woow_mcp_opendesign` 已於 2026-10-15 下架（見下方說明）。
 
 | Slug | 名稱 | Ver | 安裝 | 用途 |
 |---|---|---|---|---|
@@ -61,13 +61,13 @@ ha store add https://github.com/WOOWTECH/Woow_HA_App_Store
 | `woow_mcp_emqx` | Woow EMQX MCP Server | 0.4.13 | 預建映像（amd64） | EMQX 的 MCP server |
 | `woow_mcp_litellm` | Woow LiteLLM MCP Server | 0.4.13 | 預建映像（amd64） | LiteLLM（本 store 沒有 LiteLLM add-on，需自備） 的 MCP server |
 | `woow_mcp_nextcloud` | Woow Nextcloud MCP Server | 0.4.13 | 預建映像（amd64） | Nextcloud（一個帳號的檔案、行事曆與任務） 的 MCP server |
+| `woow_mcp_headscale` | Woow Headscale MCP Server | 0.4.18 | 預建映像（amd64） | Headscale 的 MCP server |
 
 ### 🧩 HA Core 實例
 | Slug | 名稱 | Ver | 安裝 | 用途 |
 |---|---|---|---|---|
 | `woow_ha_core_1..5` | Woowtech HA Core 1-5 | 2.3.0 | 本機建置 | 巢狀 HA Core 實例（每個獨立 onboarding，預設 port 8124-8128） |
 | `apporo_ha_core_1..5` | Apporo HA Core 1-5 | 2.3.0 | 本機建置 | Apporo 品牌的巢狀 HA Core 實例。**與同編號的 `woow_ha_core_N` 預設使用相同 host port**，不要同時啟用，或先改其中一個的 port |
-| `woow_ha_core` | Home Assistant Core (official image) | 2026.9.1-1 | 本機建置 | 獨立的官方 HA Core 2026.9.1，無品牌改動或預設設定；manifest 標為 **experimental** |
 
 ### 🪞 WOOWTECH 鏡像維護（防上游失聯）
 | Slug | 名稱 | Ver | 安裝 | 上游 |
@@ -77,12 +77,20 @@ ha store add https://github.com/WOOWTECH/Woow_HA_App_Store
 | `frigate` | Frigate | 0.18.2 | 預建映像 | [blakeblackshear/frigate-hass-addons](https://github.com/blakeblackshear/frigate-hass-addons) |
 | `jellyfin` | Jellyfin | 0.4.0 | 預建映像 | [hassio-addons/app-jellyfin](https://github.com/hassio-addons/app-jellyfin) |
 | `music_assistant` | Music Assistant | 2.10.12 | 預建映像 | [music-assistant.io](https://music-assistant.io) |
-| `local_audio` | Local Audio | 0.2.0 | 預建映像 | [music-assistant/local-audio-addon](https://github.com/music-assistant/local-audio-addon)；manifest 標為 **experimental** |
-| `netease_cloud_music_api` | NetEase Cloud Music API | 0.1.1 | 本機建置 | [NeteaseCloudMusicApiEnhanced/api-enhanced](https://github.com/NeteaseCloudMusicApiEnhanced/api-enhanced)（Music Assistant 用） |
-| `ytm_po_token_generator` | YT Music PO Token Generator | 2.0.2 | 預建映像 | [Brainicism/bgutil-ytdlp-pot-provider](https://github.com/Brainicism/bgutil-ytdlp-pot-provider) |
 | `knxd` | KNXD daemon | 0.6.1 | 預建映像 | [da-anda/hass-io-addons](https://github.com/da-anda/hass-io-addons/tree/main/knxd) |
-| `ha_mcp` | Home Assistant MCP Server | 7.14.1 | 預建映像（上游 homeassistant-ai 映像） | [homeassistant-ai/ha-mcp](https://github.com/homeassistant-ai/ha-mcp) |
-| `ha_mcp_webhook_proxy` | Webhook Proxy for HA MCP | 2.0.4 | 本機建置 | [homeassistant-ai/ha-mcp](https://github.com/homeassistant-ai/ha-mcp) |
+
+### 已下架（2026-11-15）
+
+依維護者要求，以下 6 個 App 已從本 store 與 Local Download 下架：
+
+- NetEase Cloud Music API（`netease_cloud_music_api`）
+- YT Music PO Token Generator（`ytm_po_token_generator`）
+- Local Audio（`local_audio`）
+- Nabu Casa - Webhook Proxy for HA MCP（`ha_mcp_webhook_proxy`）
+- Home Assistant MCP Server（`ha_mcp`）
+- Home Assistant Core (official image)（`woow_ha_core`）
+
+來源 repo 仍保留其套件與發版能力。已安裝的 App 不會自動解除安裝；本 store 不再提供這 6 個 App 的安裝或更新。
 
 ## 相依 store（HA 內建，非本 repo）
 
@@ -202,7 +210,8 @@ Hermes Paseo 的最新[安裝與首次 project 建立教學](https://github.com/
   3. 全部通過後才更新 App 目錄與 [`.addon-sync/catalog.json`](.addon-sync/catalog.json)。
   
   細節見 [`.addon-sync/README.md`](.addon-sync/README.md)。
-- **只同步正式 Release**（ADR-0002）：43 個 App 裡 41 個（含 6 個 `woow_mcp_*`）。以下 2 個仍跟隨來源 repo 的預設分支：`ha_mcp`、`ha_mcp_webhook_proxy`（`Woow_ha_ai_mcp` 是上游 fork，不跑升版比對；同步前要求 `ci.yml` 在該 commit 上成功）。每個來源的設定以 [`registry.json`](.addon-sync/registry.json) 的 `ref_policy` 為準。
+- **只同步正式 Release**（ADR-0002）：目前上架的 38 個 App（含 7 個 `woow_mcp_*`）全部只同步正式 Release。原先跟隨來源預設分支的 `ha_mcp`、`ha_mcp_webhook_proxy` 已於 2026-11-15 下架。每個來源的設定以 [`registry.json`](.addon-sync/registry.json) 的 `ref_policy` 為準。
+- **僅從本 store 下架**：registry 的 component 設 `store_enabled: false` 並記錄 `reason`，同一個 PR 移除套件目錄與 catalog 項目。consumer 不再同步該項，舊通知也無法加回；`enabled` 保留為 true，來源 repo 的通知發布、正式 Release 與升版比對繼續運作。`enabled: false` 則代表整個共用發布流程退役，不能用來取代單純的商店下架。
 - 觸發方式（盡力而為，不是即時）：
   - 排程每 5 分鐘一次，錯開整點。此帳號的 GitHub 排程實測常延遲 2–7 小時。
   - 來源 repo 寫出新的通知後（共用發布 workflow 的 output `ready` 為 `true`），由該 repo `woow-addon-sync.yml` 的 `notify-store` job 送 `repository_dispatch`（`woow-addon-ready`），幾分鐘內同步。來源 repo 要設 `APP_STORE_DISPATCH_TOKEN`，沒設時等排程。目前 26 個來源 repo 都已設（2026-10-13 起）；token 的權限與輪替見 `.addon-sync/SOURCES.md` 的「Store dispatch token」。
@@ -232,7 +241,7 @@ python3 download_addon.py woow_ha_pi_agent --destination ./local-addons --arch a
 
 各 addon 保留其原始授權：
 - WOOWTECH 自主 addon：見各子目錄 LICENSE
-- 鏡像 addon（`dnsmasq-dhcp`, `frigate`, `hamh`, `jellyfin`, `knxd`, `music_assistant`, `local_audio`, `netease_cloud_music_api`, `ytm_po_token_generator`, `ha_mcp`, `ha_mcp_webhook_proxy`）：
+- 鏡像 addon（`dnsmasq-dhcp`, `frigate`, `hamh`, `jellyfin`, `knxd`, `music_assistant`）：
   各自沿用 upstream 授權。Dnsmasq-DHCP、Frigate（blakeblackshear）與 Jellyfin
   （hassio-addons）皆為 MIT
 
