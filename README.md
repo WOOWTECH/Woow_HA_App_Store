@@ -25,7 +25,7 @@ ha store add https://github.com/WOOWTECH/Woow_HA_App_Store
 
 ## 內含 Apps（38 個）
 
-> 單一 App 的版本欄會隨 catalog 同步更新；即時版本以各目錄的 `config.yaml` 與 `.addon-sync/catalog.json` 為準。
+> 版本欄會隨 catalog 同步更新（`woow_ha_core_1..5` 這類多實例列顯示各實例的版本，版本不一致時依序列出）；即時版本以各目錄的 `config.yaml` 與 `.addon-sync/catalog.json` 為準。
 > 「本機建置」= 沒有預建映像，安裝時由 Supervisor 在裝置上 build，耗時且吃記憶體，小機器請留意。
 
 ### 🏢 WOOWTECH 自主開發

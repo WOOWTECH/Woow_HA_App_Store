@@ -680,19 +680,32 @@ def consume(gh, registry, workspace, only=None):
     except Exception as e:report.append({'id':'README.md','state':'blocked','reason':str(e) if isinstance(e,Blocked) else type(e).__name__})
     return report,catalog
 
+def readme_row_members(slug):
+    """Catalog IDs one README row stands for: its own slug, or for a numbered range such as
+    `woow_ha_core_1..5`, each ID from woow_ha_core_1 to woow_ha_core_5."""
+    numbered=re.fullmatch(r'(?P<base>[a-z0-9_-]*?)(?P<lo>[0-9]+)\.\.(?P<hi>[0-9]+)',slug)
+    if not numbered:return [slug]
+    lo,hi=int(numbered['lo']),int(numbered['hi'])
+    if not lo<=hi<=lo+99:return []
+    return [numbered['base']+str(n) for n in range(lo,hi+1)]
+
 def sync_readme_versions(workspace,catalog):
-    """Refresh existing catalog table versions without replacing editorial text."""
+    """Refresh existing catalog table versions without replacing editorial text.
+    A range row shows its members' version; members on different versions are listed in member order."""
     path=pathlib.Path(workspace)/'README.md'
     if not path.exists():return False
     if path.is_symlink():raise Blocked('README is a symlink')
     before=path.read_text(encoding='utf-8')
     def update(match):
-        entry=catalog['components'].get(match['slug'])
-        if entry is None:return match[0]
-        version=str(entry['version'])
+        versions=[]
+        for cid in readme_row_members(match['slug']):
+            entry=catalog['components'].get(cid)
+            if entry is not None and str(entry['version']) not in versions:versions.append(str(entry['version']))
+        if not versions:return match[0]
+        version=' / '.join(versions)
         if any(c in version for c in '|\r\n'):raise Blocked('Unsafe README version')
         return match['prefix']+version+match['suffix']
-    after=re.sub(r'(?m)^(?P<prefix>\| `(?P<slug>[a-z0-9_-]+)` \| [^\n|]* \| )[^\n|]*(?P<suffix> \|[^\n]*)$',update,before)
+    after=re.sub(r'(?m)^(?P<prefix>\| `(?P<slug>[a-z0-9_-]+(?:\.\.[0-9]+)?)` \| [^\n|]* \| )[^\n|]*(?P<suffix> \|[^\n]*)$',update,before)
     if after==before:return False
     path.write_text(after,encoding='utf-8')
     return True

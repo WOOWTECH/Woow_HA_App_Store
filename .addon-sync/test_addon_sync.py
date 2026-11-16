@@ -31,13 +31,58 @@ class Tests(unittest.TestCase):
     def test_readme_versions_follow_catalog_preserving_editorial_content(self):
         with tempfile.TemporaryDirectory() as tmp:
             root=pathlib.Path(tmp);readme=root/'README.md'
-            readme.write_text('# Store\n\n| `woow_ha_pi_agent` | Pi Agent | 0.14.5 | 預建映像 | 說明 |\n| `unregistered` | Keep | 1.0 | build | note |\n\nOther text\n')
+            readme.write_text('# Store\n\n| `woow_ha_pi_agent` | Pi Agent | 0.14.5 | 預建映像 | 說明 |\n| `unregistered` | Keep | 1.0 | build | note |\n\nOther text\n',encoding='utf-8')
             catalog={'components':{'woow_ha_pi_agent':{'version':'0.15.0'}}}
             self.assertTrue(s.sync_readme_versions(root,catalog))
-            self.assertIn('| Pi Agent | 0.15.0 | 預建映像 | 說明 |',readme.read_text())
-            self.assertIn('| `unregistered` | Keep | 1.0 | build | note |',readme.read_text())
-            self.assertTrue(readme.read_text().endswith('Other text\n'))
+            self.assertIn('| Pi Agent | 0.15.0 | 預建映像 | 說明 |',readme.read_text(encoding='utf-8'))
+            self.assertIn('| `unregistered` | Keep | 1.0 | build | note |',readme.read_text(encoding='utf-8'))
+            self.assertTrue(readme.read_text(encoding='utf-8').endswith('Other text\n'))
             self.assertFalse(s.sync_readme_versions(root,catalog))
+    def test_readme_range_rows_follow_catalog_preserving_editorial_content(self):
+        # #194: rows such as `woow_ha_core_1..5` stand for five catalog components.
+        with tempfile.TemporaryDirectory() as tmp:
+            root=pathlib.Path(tmp);readme=root/'README.md'
+            rows=['| `woow_ha_core_1..5` | Woowtech HA Core 1-5 | 2.3.0 | 本機建置 | 巢狀 HA Core（port 8124-8128） |',
+                  '| `apporo_ha_core_1..3` | Apporo HA Core 1-3 | 2.3.0 | 本機建置 | **與同編號的 `woow_ha_core_N` 相同 port** |',
+                  '| `partial_1..3` | Partial | 0.9 | build | only 2 is in the catalog |',
+                  '| `absent_1..2` | Absent | 0.1 | build | keep |',
+                  '| `reversed_5..1` | Reversed | 0.2 | build | keep |']
+            readme.write_text('# Store\n\n'+'\n'.join(rows)+'\n\nOther text\n',encoding='utf-8')
+            catalog={'components':{**{f'woow_ha_core_{n}':{'version':'2.4.4'} for n in range(1,6)},
+                                   'apporo_ha_core_1':{'version':'2.4.4'},'apporo_ha_core_2':{'version':'2.5.0'},'apporo_ha_core_3':{'version':'2.4.4'},
+                                   'partial_2':{'version':'1.0'},'reversed_1':{'version':'9.9'},'reversed_5':{'version':'9.9'}}}
+            self.assertTrue(s.sync_readme_versions(root,catalog))
+            text=readme.read_text(encoding='utf-8')
+            self.assertIn('| `woow_ha_core_1..5` | Woowtech HA Core 1-5 | 2.4.4 | 本機建置 | 巢狀 HA Core（port 8124-8128） |\n',text)
+            # Members on different versions are all shown, in member order, without repeats.
+            self.assertIn('| `apporo_ha_core_1..3` | Apporo HA Core 1-3 | 2.4.4 / 2.5.0 | 本機建置 | **與同編號的 `woow_ha_core_N` 相同 port** |\n',text)
+            self.assertIn('| `partial_1..3` | Partial | 1.0 | build | only 2 is in the catalog |\n',text)
+            self.assertIn(rows[3]+'\n',text);self.assertIn(rows[4]+'\n',text)
+            self.assertTrue(text.endswith('Other text\n'))
+            self.assertFalse(s.sync_readme_versions(root,catalog))
+    def test_readme_range_row_does_not_swallow_a_single_slug(self):
+        self.assertEqual(s.readme_row_members('woow_ha_core_1'),['woow_ha_core_1'])
+        self.assertEqual(s.readme_row_members('woow_ha_core_1..3'),['woow_ha_core_1','woow_ha_core_2','woow_ha_core_3'])
+        self.assertEqual(s.readme_row_members('core10..11'),['core10','core11'])
+    def test_store_readme_sync_changes_only_version_cells(self):
+        # The real Store README and catalog: every row the sync rewrites keeps all cells but the version,
+        # and the HA Core range rows show their components' catalog versions.
+        here=pathlib.Path(__file__).resolve().parent
+        catalog=json.loads((here/'catalog.json').read_text(encoding='utf-8'))
+        before=(here.parent/'README.md').read_text(encoding='utf-8')
+        with tempfile.TemporaryDirectory() as tmp:
+            root=pathlib.Path(tmp);(root/'README.md').write_text(before,encoding='utf-8')
+            s.sync_readme_versions(root,catalog)
+            after=(root/'README.md').read_text(encoding='utf-8')
+        old,new=before.split('\n'),after.split('\n');self.assertEqual(len(old),len(new))
+        for a,b in zip(old,new):
+            if a!=b:
+                ca,cb=a.split(' | '),b.split(' | ');self.assertEqual(len(ca),len(cb),b)
+                self.assertEqual(ca[:2]+ca[3:],cb[:2]+cb[3:],b)
+        for base in ('woow_ha_core_','apporo_ha_core_'):
+            row=next(l for l in new if l.startswith(f'| `{base}1..5` |'))
+            expected=list(dict.fromkeys(str(catalog['components'][f'{base}{n}']['version']) for n in range(1,6)))
+            self.assertEqual(row.split(' | ')[2],' / '.join(expected),row)
     def test_readme_versions_reject_symlink(self):
         with tempfile.TemporaryDirectory() as tmp:
             root=pathlib.Path(tmp);other=root/'other';other.write_text('keep')
@@ -48,9 +93,9 @@ class Tests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root=pathlib.Path(tmp);(root/'.addon-sync').mkdir()
             (root/'.addon-sync/catalog.json').write_text(json.dumps({'schema':1,'components':{'test':{'version':'1.2.0'}}}))
-            (root/'README.md').write_text('| `test` | Test | 1.0.0 | build | note |\n')
+            (root/'README.md').write_text('| `test` | Test | 1.0.0 | build | note |\n',encoding='utf-8')
             report,catalog=s.consume(None,{'providers':{}},root)
-            self.assertEqual(report,[]);self.assertIn('| 1.2.0 |',(root/'README.md').read_text())
+            self.assertEqual(report,[]);self.assertIn('| 1.2.0 |',(root/'README.md').read_text(encoding='utf-8'))
     def test_consume_reports_blocked_readme_without_failing(self):
         with tempfile.TemporaryDirectory() as tmp:
             root=pathlib.Path(tmp);(root/'.addon-sync').mkdir();other=root/'other';other.write_text('keep')
