@@ -5,7 +5,7 @@
 #   - Postgres 16                 (bundled — no MariaDB add-on dependency)
 #   - nginx                       (HA Ingress path rewriter for the React SPA)
 #   - s6-overlay v3.2.1.0         (supervises the three long-lived processes)
-#   - bashio v0.17.5              (options.json → env in init scripts)
+#   - bashio v0.18.1              (the base image's start banner; see below)
 #
 # What's NOT inside (by design — Option 3 in the design doc):
 #   - No pi CLI      — external runners bring their own pi + auth
@@ -59,6 +59,28 @@ RUN apk add --no-cache \
         py3-pip \
         py3-psycopg \
         tzdata
+
+# --- bashio 0.18.1 over the base image's 0.18.0 ---------------------------
+# The base image's start banner (base-addon-banner) reads this add-on's name
+# and version with bashio. bashio 0.18.0 asks the Supervisor for GET
+# /store/addons first, even for its own add-on, and the Supervisor refuses that
+# path to an add-on with the default hassio_role. Every start then logged
+# "ERROR: Unable to access the API, forbidden" four times, and the banner
+# showed an empty name and version. 0.18.1 reads /addons/self/info only
+# (upstream hassio-addons/bashio#287). Remove this block once BUILD_FROM is a
+# base image that ships bashio 0.18.1 or later (hassio-addons/base 21.x does).
+ARG BASHIO_VERSION=v0.18.1
+ARG BASHIO_SHA256=6b8df70b5284a34a74ff24c3afd00115f5bd75f79b06c6a2ff690ba698eeb77c
+RUN curl -fsSL -o /tmp/bashio.tar.gz \
+        "https://github.com/hassio-addons/bashio/archive/${BASHIO_VERSION}.tar.gz" \
+ && echo "${BASHIO_SHA256}  /tmp/bashio.tar.gz" | sha256sum -c - \
+ && mkdir /tmp/bashio \
+ && tar zxf /tmp/bashio.tar.gz --strip 1 -C /tmp/bashio \
+ && rm -rf /usr/lib/bashio \
+ && mv /tmp/bashio/lib /usr/lib/bashio \
+ && ln -sf /usr/lib/bashio/bashio /usr/bin/bashio \
+ && rm -rf /tmp/bashio /tmp/bashio.tar.gz \
+ && grep -qF '(! bashio::var.equals "${slug}" "self"' /usr/lib/bashio/apps.sh
 
 # --- omnigent (upstream Python package) --------------------------------------
 # The pypi package pulls a lot of psycopg / grpc / uvicorn wheels — no

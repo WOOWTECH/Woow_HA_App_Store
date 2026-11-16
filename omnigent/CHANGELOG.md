@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.1.23
+
+- Starting the add-on no longer logs `ERROR: Unable to access the API,
+  forbidden` four times, followed by `ERROR: Failed to get addons info from
+  Supervisor API`. The start banner showed an empty app name and version at
+  the same time. The cause is the bashio library in the base image (0.18.0):
+  to read the add-on's own name and version it asked the Supervisor for the
+  whole store list, which an add-on without extra rights may not read. The
+  image now ships bashio 0.18.1, which reads only the add-on's own info. The
+  add-on worked the same way before; only the log and the banner change.
+- No change to options or data.
+
 ## 0.1.22
 
 - Login grants now last 365 days, the value the WOOW PaaS server uses.
