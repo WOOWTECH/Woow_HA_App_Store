@@ -66,8 +66,8 @@ ha store add https://github.com/WOOWTECH/Woow_HA_App_Store
 ### 🧩 HA Core 實例
 | Slug | 名稱 | Ver | 安裝 | 用途 |
 |---|---|---|---|---|
-| `woow_ha_core_1..5` | Woowtech HA Core 1-5 | 2.3.0 | 本機建置 | 巢狀 HA Core 實例（每個獨立 onboarding，預設 port 8124-8128） |
-| `apporo_ha_core_1..5` | Apporo HA Core 1-5 | 2.3.0 | 本機建置 | Apporo 品牌的巢狀 HA Core 實例。**與同編號的 `woow_ha_core_N` 預設使用相同 host port**，不要同時啟用，或先改其中一個的 port |
+| `woow_ha_core_1..5` | Woowtech HA Core 1-5 | 2.4.4 | 本機建置 | 巢狀 HA Core 實例（每個獨立 onboarding，預設 port 8124-8128） |
+| `apporo_ha_core_1..5` | Apporo HA Core 1-5 | 2.4.4 | 本機建置 | Apporo 品牌的巢狀 HA Core 實例。**與同編號的 `woow_ha_core_N` 預設使用相同 host port**，不要同時啟用，或先改其中一個的 port |
 
 ### 🪞 WOOWTECH 鏡像維護（防上游失聯）
 | Slug | 名稱 | Ver | 安裝 | 上游 |
