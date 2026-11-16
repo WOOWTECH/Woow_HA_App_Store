@@ -177,7 +177,9 @@
           "config_file": "config.yaml",
           "store_path": "woow_ha_core",
           "channel": "stable",
-          "enabled": true
+          "enabled": true,
+          "store_enabled": false,
+          "reason": "Delisted from the central Store at the owner's request on 2026-11-15; source releases remain enabled."
         }
       ]
     },
@@ -248,7 +250,9 @@
           "store_path": "ha_mcp_webhook_proxy",
           "channel": "stable",
           "enabled": true,
-          "note": "External homeassistant-ai runtime where image is declared; webhook proxies are local source builds. Fork image workflow produces a different image namespace and is not claimed as provenance."
+          "note": "External homeassistant-ai runtime where image is declared; webhook proxies are local source builds. Fork image workflow produces a different image namespace and is not claimed as provenance.",
+          "store_enabled": false,
+          "reason": "Delisted from the central Store at the owner's request on 2026-11-15; source releases remain enabled."
         },
         {
           "id": "ha_mcp",
@@ -257,7 +261,9 @@
           "store_path": "ha_mcp",
           "channel": "stable",
           "enabled": true,
-          "note": "External homeassistant-ai runtime where image is declared; webhook proxies are local source builds. Fork image workflow produces a different image namespace and is not claimed as provenance."
+          "note": "External homeassistant-ai runtime where image is declared; webhook proxies are local source builds. Fork image workflow produces a different image namespace and is not claimed as provenance.",
+          "store_enabled": false,
+          "reason": "Delisted from the central Store at the owner's request on 2026-11-15; source releases remain enabled."
         }
       ]
     },
@@ -671,7 +677,9 @@
           "config_file": "config.yaml",
           "store_path": "local_audio",
           "channel": "stable",
-          "enabled": true
+          "enabled": true,
+          "store_enabled": false,
+          "reason": "Delisted from the central Store at the owner's request on 2026-11-15; source releases remain enabled."
         },
         {
           "id": "music_assistant",
@@ -715,7 +723,9 @@
           "config_file": "config.yaml",
           "store_path": "netease_cloud_music_api",
           "channel": "stable",
-          "enabled": true
+          "enabled": true,
+          "store_enabled": false,
+          "reason": "Delisted from the central Store at the owner's request on 2026-11-15; source releases remain enabled."
         },
         {
           "id": "ytm_po_token_generator",
@@ -723,7 +733,9 @@
           "config_file": "config.yaml",
           "store_path": "ytm_po_token_generator",
           "channel": "stable",
-          "enabled": true
+          "enabled": true,
+          "store_enabled": false,
+          "reason": "Delisted from the central Store at the owner's request on 2026-11-15; source releases remain enabled."
         }
       ]
     },
