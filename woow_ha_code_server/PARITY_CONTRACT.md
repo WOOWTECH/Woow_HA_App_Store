@@ -6,7 +6,7 @@
 
 | | |
 |---|---|
-| Version | **1.3 candidate (2026-11-10)** — adds Codex CLI/ACP, deployment-private shared skills and MCP, and common migration checks. Runtime deployment and account authorization are tracked separately; this contract states the required behavior. |
+| Version | **1.3 (2026-11-13)** — adds Codex CLI/ACP as the third agent, deployment-private shared skills and MCP, and common migration checks; no existing §2 value changes. Changes are listed in §9. Runtime deployment and account authorization are tracked separately; this contract states the required behavior. 1.2 (2026-10-01) made the k3s leg the WOOW PaaS code-server cloud service; 1.1 (2026-09-30) moved the baseline to code-server 4.139.1, pi 0.99.1, pi-acp 0.0.34 and added Claude Code; 1.0 was 2026-09-10. |
 | Baseline | `Woow_podman_code_server_package` @ `2df94fc` — parity is levelled **UP** to this feature set |
 | Targets | `Woow_podman_code_server_package`, `Woow_ha_code_server_add_on`, `Woow_k3s_code_server_package` (since 1.2 a read-only mirror of the WOOW PaaS code-server cloud service; source of truth on the internal Gitea) |
 | Authority | Where this file and a recon report, a README, or `docs/K3S_BLUEPRINT.md` disagree, **this file wins.** `docs/K3S_BLUEPRINT.md` is stale (StatefulSet / ingress-nginx / oauth2-proxy / Velero) and is superseded here by the realized `Woow_k3s_pi_agent_package` + `opendesign-2.0.0` house style. |
@@ -42,13 +42,15 @@ These are identical on every platform. A target that cannot reach one of these v
 | `PI_ACP_VERSION` | `0.0.34` | npm `pi-acp@0.0.34`. 0.0.x — expect churn; pin hard. |
 | `CLAUDE_CODE_VERSION` | `2.1.285` | npm `@anthropic-ai/claude-code@2.1.285` (native binary via its optionalDependencies). Installed in npm's default prefix like pi. Self-update off (`DISABLE_AUTOUPDATER=1`). |
 | `CLAUDE_AGENT_ACP_VERSION` | `0.84.0` | npm `@agentclientprotocol/claude-agent-acp@0.84.0` — the ACP adapter the sidebar's `claude` agent runs. |
+| `CODEX_CLI_VERSION` | `0.167.0` | npm `@openai/codex@0.167.0` (1.3), locked with its transitive dependencies in the shared `/opt/woow-agent-tools/package-lock.json`. `codex` on `PATH` is the `woow-codex` wrapper around this CLI (§2.3). |
+| `CODEX_ACP_VERSION` | `2.6.0` | npm `@agentclientprotocol/codex-acp@2.6.0` (1.3) — the ACP adapter the sidebar's `codex` agent runs through `codex-code`. Same lockfile. |
 | `CLAUDE_CODE_EXTENSION_VERSION` | `2.1.285` | `anthropic.claude-code`, from **open-vsx only**, per-platform build (linux-x64 / linux-arm64). |
 | `ACP_CLIENT_VERSION` | `0.2.0` | `formulahendry.acp-client`, fetched from **open-vsx only**. |
 | `NODE_MAJOR` | `22` | pi runs as a subprocess and needs Node ≥ 22. code-server's own bundled Node is never touched. |
 | Extension gallery | `https://open-vsx.org/vscode/gallery` / `https://open-vsx.org/vscode/item` | MS Marketplace ToS forbids third-party clients. Never `marketplace.visualstudio.com`. |
 | Installed extension set | exactly `formulahendry.acp-client@0.2.0` + `anthropic.claude-code@2.1.285` (+ whatever the platform's base image already ships) | Three ACP adapters are pre-configured: `pi`, `claude`, and `codex`. See THREE_AGENTS.md for shared skills/MCP and separate authorization. |
 
-Codex CLI `0.167.0` and Codex ACP `2.6.0` are pinned in the shared npm lockfile. The three-agent candidate adds deployment-private shared skills and MCP; this contract is a requirement, not a claim that a running tenant has been upgraded.
+The three-agent baseline (1.3) adds deployment-private shared skills and MCP; this contract is a requirement, not a claim that a running tenant has been upgraded.
 
 ### 2.2 pi data directory layout (identical on all three)
 
@@ -80,7 +82,7 @@ Image also ships `/opt/pi-agent-skel/` — the canonical empty skeleton (`home/.
 | `PI_SKIP_VERSION_CHECK` | `1` | container env + `pi.sh` + `pi-code` |
 | `CLAUDE_CONFIG_DIR` | `/data/pi-agent/claude` | container env **and** `/etc/profile.d/claude.sh` (1.1). Must reach the code-server process so the extension host, the sidebar adapter and the Claude Code extension all inherit it. |
 | `CODEX_HOME` | `/data/pi-agent/codex` | container env + `codex.sh`; ACP and terminal use one private Codex state |
-| `CODEX_PATH` | `/opt/woow-agent-tools/node_modules/.bin/codex` | ACP uses the same pinned CLI as the terminal |
+| `CODEX_PATH` | `/usr/local/bin/codex` | container env + `codex-code`. ACP uses the same CLI as the terminal: `/usr/local/bin/codex` is the `woow-codex` wrapper, which puts the bubblewrap compatibility shim on `PATH` and execs the pinned CLI at `/opt/woow-agent-tools/node_modules/.bin/codex` (since HA #19 / podman #19 / k3s #7). |
 | `DISABLE_AUTOUPDATER` | `1` | container env + `claude.sh` (1.1) |
 | `TZ` | `Asia/Taipei` | container env |
 | `LANG`, `LC_ALL` | `C.UTF-8` | container env |
@@ -483,6 +485,18 @@ Never bump one target alone. The old lockstep rationale ("the shared volume sche
 ---
 
 ## 9. Contract changelog
+
+### 1.3 — 2026-11-13
+
+- **Codex joins the baseline as the third agent.** New §2.1 pins `CODEX_CLI_VERSION` **0.167.0** (`@openai/codex`) and `CODEX_ACP_VERSION` **2.6.0** (`@agentclientprotocol/codex-acp`), both locked in the shared `/opt/woow-agent-tools/package-lock.json`. No existing §2 value changes.
+- §2.3: `CODEX_HOME=/data/pi-agent/codex` (one private Codex state for ACP and terminal) and `CODEX_PATH=/usr/local/bin/codex`, the `woow-codex` wrapper since HA #19 / podman #19 / k3s #7 (the 1.3 candidate named the raw npm binary).
+- §2.5: `acp.agents.codex` = `codex-code`; §2.6 adds `codex` / `codex-acp`, `codex-code` and `woow-agent-sync`.
+- §2.4: the manifest is `rootfs/opt/SHA256SUMS`, checked by podman and HA; PaaS inherits the files from its digest-pinned podman base. It also covers `codex-code`, `woow-agent-sync`, `codex.sh` and the shared tools/lockfile.
+- §3: podman settings are merged into the persistent `User` volume after `pi-seed`; extension install rows updated (pins in the built-in dir, user installs persist on all three).
+- §4: P08/P41 use the target-specific built-in extension check in `tests/lib/parity.sh`; P09 requires `claude`, `codex` and `pi` while preserving user-added agents, the same on all three (the HA copy had required codex since 0.1.12; podman and k3s still checked only `claude` and `pi`).
+- §6: podman now keeps runtime-installed extensions in a private volume.
+- **"Same day" in the change-control rule is measured in Asia/Taipei.**
+- **Recorded minor violations.** HA #13 and podman #13 shipped the Codex pins (2026-11-09 23:28 / 23:25 Asia/Taipei) about 3 h before the contract edit (HA #15 / podman #14, 2026-11-10 02:27). k3s #5 (mirror merge 2026-11-10 02:34 Asia/Taipei) landed a Taipei day after HA/podman #13 (same UTC day). No §2 value ever shipped on only one target; recorded, not reverted.
 
 ### 1.2 — 2026-10-01
 

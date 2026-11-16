@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.15
+
+- Start no longer logs two `ERROR: Got unexpected response from the API: Service not enabled` lines when no MariaDB or Mosquitto add-on is running. The upstream `init-mysql` and `init-mosquitto` probes asked `GET /services/<name>`, and bashio logs that refusal at ERROR even though the probe tries to discard it. They now read the service's `available` flag from `GET /services`, which never errors. When MariaDB or Mosquitto is running, the MySQL and Mosquitto client configuration is written as before.
+- Pi, Claude Code, Codex, extensions, the base image, options and the data layout are unchanged.
+
 ## 0.1.14
 
 - Paseo / Omnigent extensions 0.1.6 release connector controls when an action completes, without waiting for notification dismissal.

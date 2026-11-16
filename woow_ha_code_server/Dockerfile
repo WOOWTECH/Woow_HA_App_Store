@@ -33,6 +33,25 @@ RUN set -euo pipefail; \
     sed -i 's|^export CLAUDE_CONFIG_DIR="/data/claude"$|export CLAUDE_CONFIG_DIR="/data/pi-agent/claude"|' "$run"; \
     grep -Fxq 'export CLAUDE_CONFIG_DIR="/data/pi-agent/claude"' "$run"
 
+# Upstream init-mysql and init-mosquitto probe the optional mysql / mqtt
+# services with `bashio::services.available`, i.e. GET /services/<name>. When
+# no provider is running, Supervisor answers "Service not enabled" and bashio
+# logs it at ERROR on its own log fd ($LOG_FD), which the probe's
+# `>/dev/null 2>&1` cannot silence. Every start without a running MariaDB or
+# Mosquitto then logged two ERROR lines (pipeline unattended-pipeline/31). Ask
+# GET /services instead: it reports each service's `available` flag without an
+# error. Fail the build if upstream changes the probe so it is reviewed.
+RUN set -euo pipefail; \
+    for svc in mysql:init-mysql mqtt:init-mosquitto; do \
+        name=${svc%%:*}; run=/etc/s6-overlay/s6-rc.d/${svc#*:}/run; \
+        old="if bashio::services.available \"${name}\"; then"; \
+        new="if bashio::var.true \"\$(bashio::api.supervisor GET /services false '.services[] | select(.slug == \"${name}\") | .available')\"; then"; \
+        grep -Fxq "$old" "$run"; \
+        OLD="$old" NEW="$new" python3 -c 'import os,sys; p=sys.argv[1]; s=open(p).read(); o=os.environ["OLD"]+"\n"; assert s.count(o)==1; open(p,"w").write(s.replace(o, os.environ["NEW"]+"\n"))' "$run"; \
+        grep -Fxq "$new" "$run"; \
+        if grep -Fq 'bashio::services.available' "$run"; then exit 1; fi; \
+    done
+
 # --- nginx (F2 fallback only) + xz-utils (Node tarball below) --------------
 # nginx: the upstream vscode image ships no nginx at all — code-server is
 # reached purely through HA Supervisor ingress, and that stays true by
