@@ -31,12 +31,12 @@ class Tests(unittest.TestCase):
     def test_readme_versions_follow_catalog_preserving_editorial_content(self):
         with tempfile.TemporaryDirectory() as tmp:
             root=pathlib.Path(tmp);readme=root/'README.md'
-            readme.write_text('# Store\n\n| `woow_ha_pi_agent` | Pi Agent | 0.14.5 | 預建映像 | 說明 |\n| `unregistered` | Keep | 1.0 | build | note |\n\nOther text\n')
+            readme.write_text('# Store\n\n| `woow_ha_pi_agent` | Pi Agent | 0.14.5 | 預建映像 | 說明 |\n| `unregistered` | Keep | 1.0 | build | note |\n\nOther text\n',encoding='utf-8')
             catalog={'components':{'woow_ha_pi_agent':{'version':'0.15.0'}}}
             self.assertTrue(s.sync_readme_versions(root,catalog))
-            self.assertIn('| Pi Agent | 0.15.0 | 預建映像 | 說明 |',readme.read_text())
-            self.assertIn('| `unregistered` | Keep | 1.0 | build | note |',readme.read_text())
-            self.assertTrue(readme.read_text().endswith('Other text\n'))
+            self.assertIn('| Pi Agent | 0.15.0 | 預建映像 | 說明 |',readme.read_text(encoding='utf-8'))
+            self.assertIn('| `unregistered` | Keep | 1.0 | build | note |',readme.read_text(encoding='utf-8'))
+            self.assertTrue(readme.read_text(encoding='utf-8').endswith('Other text\n'))
             self.assertFalse(s.sync_readme_versions(root,catalog))
     def test_readme_versions_reject_symlink(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -48,9 +48,9 @@ class Tests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root=pathlib.Path(tmp);(root/'.addon-sync').mkdir()
             (root/'.addon-sync/catalog.json').write_text(json.dumps({'schema':1,'components':{'test':{'version':'1.2.0'}}}))
-            (root/'README.md').write_text('| `test` | Test | 1.0.0 | build | note |\n')
+            (root/'README.md').write_text('| `test` | Test | 1.0.0 | build | note |\n',encoding='utf-8')
             report,catalog=s.consume(None,{'providers':{}},root)
-            self.assertEqual(report,[]);self.assertIn('| 1.2.0 |',(root/'README.md').read_text())
+            self.assertEqual(report,[]);self.assertIn('| 1.2.0 |',(root/'README.md').read_text(encoding='utf-8'))
     def test_consume_reports_blocked_readme_without_failing(self):
         with tempfile.TemporaryDirectory() as tmp:
             root=pathlib.Path(tmp);(root/'.addon-sync').mkdir();other=root/'other';other.write_text('keep')
