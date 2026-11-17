@@ -1,0 +1,5 @@
+#!/usr/bin/env python3
+"""Upgrade test hook: upload a file to Nextcloud on the comparison target (see nextcloud_upgrade.py)."""
+import nextcloud_upgrade
+
+nextcloud_upgrade.main("seed")

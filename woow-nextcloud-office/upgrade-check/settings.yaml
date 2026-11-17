@@ -1,0 +1,5 @@
+# Upgrade test time limits (Woow_HA_App_Store upgrade_runtime.py), in seconds.
+# First boot installs Nextcloud into the bundled PostgreSQL and starts Redis and
+# Collabora; an upgrade runs occ upgrade before nginx answers. Both passed within
+# the 300 s default (#143); the margin covers slower runners.
+startup_timeout: 600

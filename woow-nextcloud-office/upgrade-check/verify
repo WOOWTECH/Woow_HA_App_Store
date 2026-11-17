@@ -1,0 +1,5 @@
+#!/usr/bin/env python3
+"""Upgrade test hook: read the seeded file back and check Nextcloud status on the new version (see nextcloud_upgrade.py)."""
+import nextcloud_upgrade
+
+nextcloud_upgrade.main("verify")

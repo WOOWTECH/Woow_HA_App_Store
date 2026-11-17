@@ -3,6 +3,17 @@ set -euo pipefail
 source /run/woow-office/env
 until pg_isready -q -h /run/postgresql -U postgres; do sleep 1; done
 until redis-cli -s /run/redis/redis.sock ping >/dev/null 2>&1; do sleep 1; done
+# An install that was stopped before it finished (container killed during the first-run install:
+# Supervisor watchdog during a slow first start, power cut) leaves a config.php without
+# 'installed' => true and a partial schema. The upgrade step refuses that ("Nextcloud is not installed"),
+# so the add-on would never start again. Only when config.php parses and is not installed: drop it
+# and the partial database and install again. A config.php that does not parse is left alone.
+if [[ -s /data/nextcloud/config/config.php ]] && php -r 'try { include $argv[1]; } catch (Throwable $e) { exit(2); } exit(isset($CONFIG) && is_array($CONFIG) && empty($CONFIG["installed"]) ? 0 : 1);' -- /data/nextcloud/config/config.php; then
+  echo "Nextcloud install did not finish last time; discarding the partial install and installing again."
+  # Database first: if this is cut off, config.php is still there and the next start does this again.
+  gosu postgres dropdb -h /run/postgresql --if-exists nextcloud
+  rm -f /data/nextcloud/config/config.php
+fi
 # DB/user are idempotent under local socket trust.
 DB_PASS_SQL=${DB_PASS//\'/\'\'}
 gosu postgres psql -h /run/postgresql -tc "SELECT 1 FROM pg_roles WHERE rolname='nextcloud'" | grep -q 1 || gosu postgres psql -h /run/postgresql -c "CREATE ROLE nextcloud LOGIN PASSWORD '${DB_PASS_SQL}'"

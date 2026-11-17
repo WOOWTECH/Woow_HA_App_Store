@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.4
+
+- 第一次啟動的安裝若中途被中斷（例：Supervisor 的 watchdog 在安裝期間重啟 add-on、斷電），下次啟動會丟掉未完成的安裝（`config.php` 與資料庫 `nextcloud`）並重新安裝；之前會一直停在「Nextcloud upgrade failed」，port 8000／8090 都不會開。只在 `config.php` 讀得懂且沒有 `installed` 時才這樣做，已安裝完成的資料不受影響。
+- Nextcloud 版本不變（35.0.1）。
+
 ## 0.2.3
 
 - Nextcloud 35.0.1（大版本 35）；建置時驗證官方 SHA256 與發行簽章。
