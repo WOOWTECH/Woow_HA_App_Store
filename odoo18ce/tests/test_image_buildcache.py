@@ -124,14 +124,28 @@ def test_the_pins_say_what_changing_them_costs() -> None:
 
 # --- CI -------------------------------------------------------------------
 
-@pytest.mark.parametrize("arch", ARCHES)
-def test_ci_reads_the_registry_cache_first_then_the_gha_cache(arch: str) -> None:
-    step = ci_build_step(arch)
+def test_ci_aarch64_reads_the_registry_cache_first_then_the_gha_cache() -> None:
+    step = ci_build_step("aarch64")
     assert lines(step["cache-from"]) == [
-        "type=registry,ref=${{ env.IMAGE_BASE }}-" + f"{arch}:buildcache",
-        f"type=gha,scope={arch}",
+        "type=registry,ref=${{ env.IMAGE_BASE }}-aarch64:buildcache",
+        "type=gha,scope=aarch64",
     ], "the registry cache comes first; the gha cache stays as the fallback"
     assert document(CI)["env"]["IMAGE_BASE"] == IMAGE_BASE
+
+
+def test_ci_amd64_reads_only_the_registry_cache_when_the_version_changes() -> None:
+    """The Upgrade comparison scans this image (pipeline #89, user story 19).
+
+    With the gha cache also listed, BuildKit took an older CI build's apt
+    layer for a version-bump PR (libexpat1 deb12u4) although the Release
+    would reuse the rebuilt layer from :buildcache, so the scan reported
+    vulnerabilities the Release would not ship. Other PRs keep the fallback.
+    """
+    assert lines(ci_build_step("amd64")["cache-from"]) == [
+        "type=registry,ref=${{ env.IMAGE_BASE }}-amd64:buildcache",
+        "${{ needs.static.outputs.version_changed != 'true' && 'type=gha,scope=amd64' || '' }}",
+    ]
+    assert document(CI)["jobs"]["build-amd64"]["needs"] == "static"
 
 
 @pytest.mark.parametrize("arch", ARCHES)
@@ -213,3 +227,51 @@ def test_a_release_listing_that_fails_fails_the_size_step() -> None:
     assert len(listing) == 1, statements
     assert "||" not in listing[0], (
         "a listing that failed must fail the step, not compare against nothing")
+
+
+# --- declarations from upgrade-notes.yaml (pipeline #89, ticket 119) ------
+
+DECLARATIONS = "Declarations from upgrade-notes.yaml"
+
+
+def test_the_declarations_join_the_notes_before_the_release_is_created() -> None:
+    assert (step_index("Release notes from the CHANGELOG")
+            < step_index(DECLARATIONS)
+            < step_index("Tag and GitHub Release"))
+
+
+def declarations_job() -> dict:
+    return document(RELEASE)["jobs"]["declarations"]
+
+
+def test_the_declarations_come_from_the_store_comparison_tool() -> None:
+    """Same text as the shared release flow writes, so every Release reads alike."""
+    steps = declarations_job()["steps"]
+    run = next(step["run"] for step in steps if step.get("name") == DECLARATIONS)
+    assert "set -euo pipefail" in run
+    assert "upgrade_check.py release-notes" in run
+    assert '--notes "${ADDON_DIR}/upgrade-notes.yaml"' in run
+    assert "continue-on-error" not in declarations_job(), (
+        "a malformed upgrade-notes.yaml fails the Release instead of hiding a breaking change")
+    release = document(RELEASE)["jobs"]["release"]
+    assert "declarations" in release["needs"]
+    assert "needs.declarations.result == 'success'" in release["if"]
+    joined = release_steps()[step_index(DECLARATIONS)]["run"]
+    assert "needs.declarations.outputs.notes" in str(
+        release_steps()[step_index(DECLARATIONS)]["env"])
+    assert "release-notes.md" in joined
+
+
+def test_store_code_never_runs_with_a_token_that_can_write() -> None:
+    """Woow_HA_App_Store@main is another repo's code: it runs in a job that
+    can only read, in a step with no token, and never in the release job."""
+    job = declarations_job()
+    assert job["permissions"] == {"contents": "read"}
+    for step in job["steps"]:
+        if step.get("uses", "").startswith("actions/checkout"):
+            assert step["with"]["persist-credentials"] is False
+        if "tooling/" in step.get("run", ""):
+            assert "secrets." not in str(step.get("env", {})), step["name"]
+    assert not [step for step in release_steps()
+                if step.get("with", {}).get("repository") == "WOOWTECH/Woow_HA_App_Store"]
+    assert "tooling/" not in str(release_steps())

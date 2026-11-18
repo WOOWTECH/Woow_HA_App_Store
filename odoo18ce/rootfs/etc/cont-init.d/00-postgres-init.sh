@@ -32,6 +32,32 @@ if [ ! -f "${PG_DATA}/PG_VERSION" ]; then
     bashio::log.info "PostgreSQL cluster initialized at ${PG_DATA}"
 fi
 
+# ---------- 1b. Give an existing cluster back to postgres ----------
+# A Home Assistant restore wipes /data and copies the backup back as root
+# (Supervisor's shutil.copytree keeps no owner), so every file of the cluster
+# arrives owned by root and PostgreSQL, which runs as postgres, cannot open
+# its own data directory. Only what is wrong is changed: on an ordinary
+# start, and after initdb above, nothing matches and this is one walk of the
+# directory. find does not follow symbolic links (-P is its default) and
+# chown -h changes a link itself, never what it points to. PostgreSQL
+# refuses a data directory whose mode is neither 0700 nor 0750; initdb makes
+# it 0700, and that is the mode it is given back.
+REPAIRED=""
+NOT_OWNED=$(find "${PG_DATA}" \( ! -user postgres -o ! -group postgres \) -printf '.' | wc -c)
+if [ "${NOT_OWNED}" -gt 0 ]; then
+    find "${PG_DATA}" \( ! -user postgres -o ! -group postgres \) \
+        -exec chown -h postgres:postgres {} +
+    REPAIRED="${NOT_OWNED} files given back to postgres:postgres"
+fi
+PG_DATA_MODE=$(stat -c '%a' "${PG_DATA}")
+if [ "${PG_DATA_MODE}" != "700" ]; then
+    chmod 0700 "${PG_DATA}"
+    REPAIRED="${REPAIRED:+${REPAIRED}, }mode ${PG_DATA_MODE} -> 700"
+fi
+if [ -n "${REPAIRED}" ]; then
+    bashio::log.info "Repaired ${PG_DATA} (a restore copies it back owned by root): ${REPAIRED}"
+fi
+
 # ---------- 2. Write pg_hba.conf ----------
 bashio::log.info "Writing pg_hba.conf..."
 cat > "${PG_DATA}/pg_hba.conf" <<'EOF'

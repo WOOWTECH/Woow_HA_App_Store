@@ -1,0 +1,5 @@
+#!/usr/bin/env python3
+"""Upgrade test hook: read the seeded Odoo data back on the new version (see odoo_upgrade.py)."""
+import odoo_upgrade
+
+odoo_upgrade.main("verify")

@@ -1,5 +1,61 @@
 # Changelog
 
+## 0.4.13 — 2026-11-18
+
+Only `00-postgres-init.sh` changes in the image: updating reuses the base,
+apt, Odoo and add-ons layers and downloads only the layers from the rootfs
+copy down. The Odoo nightly bump (#301) and the base-image bump (#328) are
+not in this Release.
+
+### Fixed
+- The add-on starts after Home Assistant restores it from a backup. Supervisor
+  restores an add-on by extracting the backup and copying it into `/data` as
+  root with `shutil.copytree`, which keeps no owner, so every file of the
+  PostgreSQL cluster came back owned by `root` and `00-postgres-init.sh`
+  stopped at `pg_ctl: could not open PID file "/data/postgres/postmaster.pid":
+  Permission denied`: the container exited and the add-on showed an error.
+  Seen on an HA OS test box with Supervisor 2026.11.0 after a partial restore
+  of a backup Home Assistant made. `/data/odoo` and `/data/addons` were not
+  affected, because `10-odoo-config.sh` gives them back to `odoo` on every
+  start; nothing did that for `/data/postgres`, whose owner was set only when
+  initdb created a new cluster. Now every start, before PostgreSQL runs, gives
+  each entry under `/data/postgres` that is not `postgres:postgres` back to
+  `postgres` -- only those, so an ordinary start is one walk of the directory
+  and logs nothing -- and sets `/data/postgres` itself back to `0700`, the
+  mode initdb makes: PostgreSQL refuses a data directory at any mode but
+  `0700` or `0750`, and a restore that does not keep directory modes leaves
+  `0755`. Symbolic links are not followed: a link is given back itself, never
+  the file it points to. A start that repaired something logs one line, for
+  example `Repaired /data/postgres (a restore copies it back owned by root):
+  1303 files given back to postgres:postgres`.
+- A backup records the version it was taken on and Home Assistant restores
+  that version, so **a backup taken on 0.4.12 or older still comes back on a
+  version without this repair** and stops the same way. Update the add-on and
+  start it: the first start of this version repairs the files.
+
+### Testing
+- `tests/in_image/postgres_after_restore.sh` runs in `build (amd64)` on the
+  image the pull request built. A first start makes a real cluster and writes
+  a row. The add-on is stopped and restored the way Supervisor restores it,
+  with the modes the test box showed afterwards (files `0644`, directories
+  `0755`, `/data/postgres` `0700`) and a symbolic link to a root-only file
+  planted in the cluster; the next start must log one repair, start
+  PostgreSQL and read the row back, leave nothing under `/data/postgres` that
+  is not `postgres:postgres`, and leave the link's target root's. A second
+  restore puts `/data/postgres` at `0755` and the start must set it back to
+  `0700`. On the 0.4.12 image the first restored start stops with the error
+  above. The image needs a Supervisor to start at all (bashio reads the
+  options from it), so `tests/in_image/supervisor_stub.py` answers the few
+  reads a start makes.
+- `tests/test_postgres_after_restore.py` runs the repair section itself in
+  bash against a temporary tree, with a `chown` on `PATH` that records
+  instead of changing owners: a healthy cluster is left alone and logs
+  nothing, a wrong owner or a wrong group alone is given back, links are
+  given back as links and never traversed, and any other mode is set back to
+  `0700`. It also holds the section between initdb and the first
+  `pg_ctl start`, the log line to the one the Build tier counts, and the
+  Build tier step to the image the pull request built.
+
 ## 0.4.12 — 2026-10-27
 
 Only the base image changes the add-on: it sits below every layer, so this

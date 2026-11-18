@@ -458,3 +458,18 @@ before creating a backup to ensure data consistency. Cache, logs, and sessions
 are excluded from backups.
 
 Backups include the PostgreSQL cluster, filestore, Odoo master/database passwords and optional SMTP credentials. Use encrypted HA backups, strictly control downloads, and rotate credentials after any suspected backup disclosure.
+
+### Restore
+
+Home Assistant restores the add-on by copying the backup back into `/data`
+as root, so the PostgreSQL files arrive owned by root. Since 0.4.13 every
+start gives them back to the `postgres` user and sets `/data/postgres` to
+`0700` before PostgreSQL starts, and the log says so in one line:
+`Repaired /data/postgres (a restore copies it back owned by root): ...`.
+A start with nothing to repair logs nothing.
+
+A backup comes back on the add-on version it was taken on. One taken on
+0.4.12 or older therefore stops after the restore with
+`pg_ctl: could not open PID file "/data/postgres/postmaster.pid": Permission denied`.
+Update the add-on to 0.4.13 or later and start it; that first start repairs
+the files. Nothing in the database is lost.
