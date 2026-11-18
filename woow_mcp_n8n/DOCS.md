@@ -11,7 +11,7 @@
 真 HA 上管理員 Ingress 與 token 操作已通過（見上）；整合獨立規格及新安全審查仍待完成。
 不得注入 test verifier 或直接編輯 state 解鎖；`panel_admin` 不是角色授權。
 
-**支援的 Core 版本**：管理面板只在本版審查過的 HA Core 版本運作（0.1.6–0.1.8：2026.7.2–2026.9.4 與 2026.10.0；0.1.9 起再加 2026.10.1；0.4.2 起再加 2026.10.2–2026.10.4）。
+**支援的 Core 版本**：管理面板只在本版審查過的 HA Core 版本運作（0.1.6–0.1.8：2026.7.2–2026.9.4 與 2026.10.0；0.1.9 起再加 2026.10.1；0.4.2 起再加 2026.10.2–2026.10.4；0.4.14 起再加 2026.11.0–2026.11.2）。
 其他版本（含之後的 patch 與 beta）整個管理面板都回 403；0.4.1 以前看起來和「不是管理員」完全一樣（add-on 紀錄也沒有訊息），0.4.2 起管理面板改顯示「這個 HA Core 版本尚未審核：<版本>」，add-on 紀錄也記一行同樣的說明（不含權杖）；
 MCP 端點（Bearer token）不經這項檢查，不受影響。新的 Core 版本要等 add-on 發新版才支援，升級 Core 前請先對照這份清單。0.4.3 起，舊版升級後自動全開的設定在未審核的 Core 上也無法用管理面板還原或調整：請先把 add-on 更新到審過這個 Core 的版本，再到管理面板「還原升級前的限制」；需要立刻限制 MCP 時先停止 add-on（進階的離線還原步驟見 [legacy migration](https://github.com/WOOWTECH/Woow_ha_mcp_addons/blob/claude-delivery/docs/operations/legacy-migration.md#when-the-panel-refuses-an-unreviewed-core)）。
 

@@ -2,17 +2,19 @@
 
 ## 目前狀態
 
-**0.4.17 已發布並上架；0.4.18 是輸出 schema 發布候選版。** 0.4.17 包含 Core 2026.11 相容性、密鑰網址 Origin 防護及多 DNS 位址連線退避；0.4.18 再讓 11 支 Headscale 工具公開已審查的物件輸出 schema，不變更 29 項原生操作、輸入或權限。正式可用狀態以 [Release](https://github.com/WOOWTECH/Woow_ha_mcp_addons/releases) 和商店版號為準。
+**0.4.18 已發布並上架；0.4.19 是維修版候選，映像尚未建置。** 0.4.18 包含 Core 2026.11.0／2026.11.1 相容性、密鑰網址 Origin 防護、多 DNS 位址連線退避，以及 11 支 Headscale 工具已審查的物件輸出 schema。0.4.19 的主因是管理面板接受 Core 2026.11.2（0.4.18 在 Core 2026.11.2 上拒絕每個管理面板請求，MCP 端點不受影響），並帶出 0.4.18 之後合併的共用變更（逐項見本 add-on 的 CHANGELOG）。正式可用狀態以 [Release](https://github.com/WOOWTECH/Woow_ha_mcp_addons/releases) 和商店版號為準。
 
 ## 從商店安裝
 
-在 Home Assistant「設定 → Add-ons → Add-on 商店」加入自訂來源 `https://github.com/WOOWTECH/Woow_HA_App_Store`，重新整理商店，搜尋 **Woow Headscale MCP Server**。0.4.18 完成正式 Release 與商店同步後，確認商店版本為 0.4.18，再按「安裝」與「啟動」，開啟 Web UI。同步前商店顯示已發布的 0.4.17；安裝與更新狀態以 Home Assistant 顯示為準。
+在 Home Assistant「設定 → Add-ons → Add-on 商店」加入自訂來源 `https://github.com/WOOWTECH/Woow_HA_App_Store`，重新整理商店，搜尋 **Woow Headscale MCP Server**。0.4.19 完成正式 Release 與商店同步後，確認商店版本為 0.4.19，再按「安裝」與「啟動」，開啟 Web UI。同步前商店顯示已發布的 0.4.18；安裝與更新狀態以 Home Assistant 顯示為準。
 
 ## 連線與權限
 
 在 HA 的 Ingress 管理面板填入一台 Headscale 控制伺服器的網址及**專用 API key**。網址填伺服器 origin，例如 `https://headscale.example.com`，也可填該 origin 的 `/api/v1`；不要填其他路徑、查詢參數或使用者資訊。子程序會自行加上 `/api/v1`，並拒絕 loopback 後端、轉址及未通過 TLS 驗證的連線。請優先使用 HTTPS，妥善保管 API key。連線設定及 MCP 政策保存在 `/data/mcp`，不是 HA Add-on options。
 
 管理面板只允許 HA owner 或系統管理員進入。Add-on 為驗證身分使用 `homeassistant_api: true`，其 Supervisor token 具有廣泛的 HA Core 權限，只交給管理程序，不交給 Headscale 子程序。`hassio_api`、host 網路及 Docker API 均未啟用。
+
+**支援的 Core 版本**：管理面板只在本版審查過的 HA Core 版本運作（0.4.13：2026.7.2–2026.10.4；0.4.14 起再加 2026.11.0–2026.11.1；0.4.19 起再加 2026.11.2；和其他七支共用同一個驗證器）。其他版本（含之後的 patch 與 beta）整個管理面板都回 403，管理面板顯示「這個 HA Core 版本尚未審核：<版本>」，add-on 紀錄也記一行同樣的說明（不含權杖）；MCP 端點（Bearer token）不經這項檢查，不受影響。新的 Core 版本要等 add-on 發新版才支援，升級 Core 前請先對照這份清單。
 
 新安裝時，11 個工具與 21 個寫入 grant 預設開啟；管理員可在面板逐一停用工具或撤銷寫入。這些工具涵蓋使用者、節點、註冊、預先授權金鑰、API 金鑰、ACL 政策、核准路由及健康檢查等 Headscale v0.29.4 操作。`headscale_routes_replace` **整組取代**節點已核准的路由，傳入空清單會撤銷全部；政策寫入也可能影響整個網路的存取。MCP 權杖代表所設定 API key 可執行的權限，請先在面板限制不需要的工具與寫入，再把權杖交給用戶端。本版不假設 Headscale API key 本身能設定細分權限。完整工具與參數以 [工具對照](https://github.com/WOOWTECH/Woow_ha_mcp_addons/blob/claude-delivery/docs/tool-surface.md) 為準。
 
