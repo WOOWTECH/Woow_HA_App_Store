@@ -371,6 +371,70 @@ class Tests(unittest.TestCase):
             self.assertEqual(report[0]['state'],'ready');self.assertEqual(outbox['components']['test']['source_sha'],'a'*40)
             report,outbox=s.publish(gh,{'providers':{'WOOWTECH/test':{'ref_policy':'main','components':[component]}}},'WOOWTECH/test')
             self.assertEqual(report[0]['state'],'unchanged')
+    def test_publish_refreshes_an_unchanged_context_whose_archive_identity_changed(self):
+        # A repository rename changes codeload's tarball root directory, so the same commit gives other archive bytes.
+        raw=archive();component={'id':'test','source_path':'pkg','config_file':'config.yaml'}
+        registry={'providers':{'WOOWTECH/test':{'ref_policy':'main','components':[component]}}}
+        current={**entry(raw),'source_sha':'b'*40,'context_fingerprint':'same','material_fingerprint':'same'}
+        for name,previous in [('archive',{**current,'archive_sha256':'sha256:'+'0'*64}),('repository',{**current,'repository':'WOOWTECH/old'})]:
+            with self.subTest(changed=name):
+                gh=self.publish_gh();gh.fingerprint=lambda *args,**kwargs:'same'
+                gh.outbox=lambda repo,previous=previous:{'schema':1,'repository':repo,'components':{'test':previous}}
+                with patch.object(s,'source_archive',return_value=raw) as fetched,patch.object(s,'image_ready',return_value={'digest':'sha256:'+'a'*64}):
+                    report,outbox=s.publish(gh,registry,'WOOWTECH/test')
+                self.assertEqual(report[0],{'id':'test','state':'ready','version':'1.0.0'})
+                refreshed=outbox['components']['test']
+                self.assertEqual((refreshed['repository'],refreshed['archive_sha256'],refreshed['source_sha'],refreshed['version']),('WOOWTECH/test',s.digest(raw),'b'*40,'1.0.0'))
+                self.assertEqual(fetched.call_args.args,('WOOWTECH/test','b'*40))
+    def test_publish_keeps_an_identical_notification_unchanged(self):
+        raw=archive();component={'id':'test','source_path':'pkg','config_file':'config.yaml'}
+        gh=self.publish_gh();gh.fingerprint=lambda *args,**kwargs:'same'
+        previous={**entry(raw),'source_sha':'b'*40,'context_fingerprint':'same','material_fingerprint':'same'}
+        gh.outbox=lambda repo:{'schema':1,'repository':repo,'components':{'test':previous}}
+        with patch.object(s,'source_archive',return_value=raw),patch.object(s,'image_ready',side_effect=AssertionError('no image check for an unchanged entry')):
+            report,outbox=s.publish(gh,{'providers':{'WOOWTECH/test':{'ref_policy':'main','components':[component]}}},'WOOWTECH/test')
+        self.assertEqual(report,[{'id':'test','state':'unchanged'}]);self.assertEqual(outbox['components']['test'],previous)
+    def test_publish_does_not_download_when_the_context_changed_anyway(self):
+        # The archive check only adds a download where publish previously downloaded nothing.
+        raw=archive();component={'id':'test','source_path':'pkg','config_file':'config.yaml'}
+        gh=self.publish_gh()
+        gh.outbox=lambda repo:{'schema':1,'repository':repo,'components':{'test':{**entry(raw),'context_fingerprint':'old','material_fingerprint':'fp-'+'b'*40}}}
+        with patch.object(s,'source_archive',return_value=raw) as fetched,patch.object(s,'image_ready',return_value={'digest':'sha256:'+'a'*64}):
+            report,_=s.publish(gh,{'providers':{'WOOWTECH/test':{'ref_policy':'main','components':[component]}}},'WOOWTECH/test')
+        self.assertEqual(report[0]['state'],'ready');self.assertEqual(fetched.call_count,1)
+    def consume_with_catalog(self,previous,e,raw):
+        class GH:
+            def outbox(self,repo):return {'components':{'test':e}}
+            def api(self,repo,path):
+                if path.startswith('compare/'):return {'status':'ahead'}
+                raise AssertionError(path)
+        registry={'providers':{'WOOWTECH/test':{'components':[{'id':'test','source_path':'pkg','config_file':'config.yaml','store_path':'test'}]}}}
+        with tempfile.TemporaryDirectory() as tmp,patch.object(s,'validate_entry') as validated,patch.object(s,'enforce_source_policy'),patch.object(s,'source_archive',return_value=raw),patch.object(s,'image_ready',return_value=e['images']['amd64']):
+            root=pathlib.Path(tmp);(root/'.addon-sync').mkdir()
+            (root/'.addon-sync/catalog.json').write_text(json.dumps({'schema':1,'components':{'test':{**previous,'store_path':'test'}}}))
+            store=root/'test';store.mkdir();(store/'config.yaml').write_text('slug: test\nversion: 1.0.0\n')
+            report,catalog=s.consume(GH(),registry,tmp)
+            return report,catalog,validated.call_count,(store/'config.yaml').read_text()
+    def test_consumer_resyncs_a_same_version_entry_whose_archive_identity_changed(self):
+        raw=archive();e=entry(raw)
+        for name,previous in [('repository',{**e,'repository':'WOOWTECH/old','archive_sha256':'sha256:'+'0'*64}),
+                              ('archive',{**e,'archive_sha256':'sha256:'+'0'*64}),('source_sha',{**e,'source_sha':'c'*40})]:
+            with self.subTest(changed=name):
+                report,catalog,validated,config=self.consume_with_catalog(previous,e,raw)
+                self.assertEqual(report[0],{'id':'test','state':'synced','version':'1.0.0'})
+                self.assertEqual(validated,1);self.assertEqual(catalog['components']['test'],{**e,'store_path':'test'})
+                self.assertIn('image: ghcr.io/example/test',config)
+    def test_consumer_keeps_an_identical_entry_unchanged(self):
+        raw=archive();e=entry(raw)
+        report,catalog,validated,config=self.consume_with_catalog(e,e,raw)
+        self.assertEqual(report,[{'id':'test','state':'unchanged'}]);self.assertEqual(validated,0)
+        self.assertEqual(config,'slug: test\nversion: 1.0.0\n')
+    def test_consumer_still_blocks_a_refreshed_entry_whose_archive_does_not_match(self):
+        raw=archive();e={**entry(raw),'archive_sha256':'sha256:'+'1'*64}
+        previous={**entry(raw),'repository':'WOOWTECH/old','archive_sha256':'sha256:'+'0'*64}
+        report,catalog,validated,config=self.consume_with_catalog(previous,e,raw)
+        self.assertEqual(report,[{'id':'test','state':'blocked','reason':'Source archive checksum mismatch'}])
+        self.assertEqual(catalog['components']['test'],{**previous,'store_path':'test'});self.assertEqual(config,'slug: test\nversion: 1.0.0\n')
     def test_publish_reads_a_release_from_before_a_move_at_the_previous_path(self):
         # releases/latest predates the move until the next Release: its context is previous_config's directory.
         raw=archive();component={'id':'test','source_path':'addon','config_file':'config.yaml','previous_config':'pkg/config.yaml'}
