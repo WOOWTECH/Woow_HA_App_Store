@@ -662,7 +662,10 @@ class ReusableWorkflow(unittest.TestCase):
         self.assertLess(rnames.index('Install pinned Syft'),rnames.index('Build the images of add-ons built on the device'))
         build=runtime[rnames.index('Build the images of add-ons built on the device')]['run']
         self.assertIn('scan "docker:upgrade-comparison/$1:$2" --config tooling/.github/actions/addon-sbom/syft.yaml',build)
-        self.assertIn('scan "docker:${image}" --config tooling/.github/actions/addon-sbom/syft.yaml',self.step("SBOMs of the comparison targets' images"))
+        # Published images are read from the registry, not exported from the daemon (Docker 29 lost a config blob there).
+        published=self.step("SBOMs of the comparison targets' images")
+        self.assertIn('scan "registry:${image}" --platform linux/amd64 --config tooling/.github/actions/addon-sbom/syft.yaml',published)
+        self.assertNotIn('scan "docker:',published)
     def test_runtime_plans_with_the_same_steps_as_compare(self):
         # Both jobs judge the same add-ons and comparison targets: runtime repeats compare's steps up to the plan.
         compare,runtime=self.wf['jobs']['compare']['steps'],self.wf['jobs']['runtime']['steps']
@@ -875,20 +878,22 @@ if args[:2]==['image','rm']:
     sys.exit(0)
 sys.exit(1)
 '''
-# Stub Syft: `syft scan <source> --config ... -o syft-json=<file>` writes {"source": <source>} to <file>; it fails for
-# the source docker:$SYFT_FAIL.
+# Stub Syft: `syft scan <source> ... -o syft-json=<file>` writes {"source": <source>} to <file>; it fails for the image
+# $SYFT_FAIL whichever source names it (docker:<image> from the daemon, registry:<image> from the registry).
 SYFT_STUB=r'''#!/usr/bin/env python3
 import json,os,sys
 args=sys.argv[1:];out=next(a for a in args if a.startswith('syft-json=')).split('=',1)[1]
-if args[1]=='docker:'+os.environ.get('SYFT_FAIL','-'):print('syft: cannot read the image',file=sys.stderr);sys.exit(1)
+scheme,_,image=args[1].partition(':')
+if scheme in ('docker','registry') and image==os.environ.get('SYFT_FAIL','-'):print('syft: cannot read the image',file=sys.stderr);sys.exit(1)
 json.dump({'source':args[1]},open(out,'w'))
 '''
-# Stub Grype: `grype sbom:<file> -o json --file <out>`; one High fixable match when the SBOM is of $VULNERABLE.
+# Stub Grype: `grype sbom:<file> -o json --file <out>`; one High fixable match when the SBOM is of the image $VULNERABLE.
 GRYPE_STUB=r'''#!/usr/bin/env python3
 import json,os,sys
 args=sys.argv[1:];source=json.load(open(args[0].split(':',1)[1]))['source']
+scheme,_,image=source.partition(':')
 match={'vulnerability':{'id':'CVE-2026-0001','severity':'High','fix':{'state':'fixed','versions':['3.0.9']}},'artifact':{'name':'openssl'}}
-scan={'matches':[match] if source=='docker:'+os.environ.get('VULNERABLE','') else [],
+scan={'matches':[match] if scheme in ('docker','registry') and image==os.environ.get('VULNERABLE','') else [],
     'descriptor':{'db':{'status':{'built':'2026-11-01T00:00:00Z','from':'https://grype.anchore.io/db'}}}}
 json.dump(scan,open(args[args.index('--file')+1],'w'))
 '''
@@ -1225,7 +1230,7 @@ class DeviceBuiltVulnerabilityComparison(StepHarness):
         r,_,_=self.run_step(self.RUNTIME[:3]+("SBOMs of the comparison targets' images",self.RUNTIME[3]),
             files=self.FILES,tarball=self.TARBALL,**kw)
         self.assertEqual(r.returncode,0,r.stdout+r.stderr)
-        self.assertEqual(json.loads((self.tmp/'sboms/t.syft.json').read_text()),{'source':'docker:'+new})
+        self.assertEqual(json.loads((self.tmp/'sboms/t.syft.json').read_text()),{'source':'registry:'+new})
         self.assertEqual(json.loads((self.tmp/'rebuilt-sboms/t.old.syft.json').read_text()),{'source':'docker:upgrade-comparison/t:old'})
         r=self.compare(VULNERABLE=new)
         self.assertEqual(r.returncode,1,r.stdout+r.stderr)
@@ -1550,8 +1555,8 @@ class PublishedImageScan(StepHarness):
         r,_,_=self.run_step(self.SBOMS,extra=self.APPROVED,images=(self.OLD,self.NEW))
         self.assertEqual(r.returncode,0,r.stdout+r.stderr)
         # Where the compare step reads them: the old one in RUNNER_TEMP, the new one where a downloaded artifact would be.
-        self.assertEqual(json.loads((self.tmp/'t.old.syft.json').read_text()),{'source':'docker:'+self.OLD})
-        self.assertEqual(json.loads((self.tmp/'sboms/t.syft.json').read_text()),{'source':'docker:'+self.NEW})
+        self.assertEqual(json.loads((self.tmp/'t.old.syft.json').read_text()),{'source':'registry:'+self.OLD})
+        self.assertEqual(json.loads((self.tmp/'sboms/t.syft.json').read_text()),{'source':'registry:'+self.NEW})
     @needs_shell
     def test_an_unpublished_version_fails_saying_its_image_is_not_published(self):
         r,_,_=self.run_step(self.SBOMS,extra=self.APPROVED,images=(self.OLD,))
@@ -1579,8 +1584,8 @@ class PublishedImageScan(StepHarness):
         self.assertIn('wait=false',out)
         for i,(old,new) in refs.items():
             with self.subTest(i):
-                self.assertEqual(json.loads((self.tmp/f'{i}.old.syft.json').read_text()),{'source':'docker:'+old})
-                self.assertEqual(json.loads((self.tmp/f'sboms/{i}.syft.json').read_text()),{'source':'docker:'+new})
+                self.assertEqual(json.loads((self.tmp/f'{i}.old.syft.json').read_text()),{'source':'registry:'+old})
+                self.assertEqual(json.loads((self.tmp/f'sboms/{i}.syft.json').read_text()),{'source':'registry:'+new})
         self.assertFalse((self.tmp/'sboms/odoo.syft.json').exists())
     @needs_shell
     def test_an_unpublished_version_of_one_add_on_fails_naming_it(self):
