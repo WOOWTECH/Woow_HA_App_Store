@@ -1,6 +1,18 @@
-import contextlib,copy,datetime,io,json,pathlib,re,shutil,tempfile,unittest,unittest.mock
+import contextlib,copy,datetime,io,json,os,pathlib,re,shutil,sys,tempfile,unittest,unittest.mock
 import yaml
 import upgrade_check as u
+
+# The Store files outside .addon-sync that tests read (needs_store). An add-on's release job (Woow_ha_odoo's release.yml)
+# checks out only .addon-sync (sparse checkout) and runs this file before upgrade_check.py release-notes: there these tests
+# are skipped and every other test runs. The Store's own CI sets STORE_FULL_CHECKOUT=1, so a missing file stops the run
+# there instead of skipping the tests that read it.
+STORE=pathlib.Path(__file__).resolve().parent.parent
+STORE_FILES=('.github/workflows/woow-addon-upgrade-check.yml','.github/workflows/upgrade-check-tests.yml','.github/actions/addon-image/action.yml',
+    '.github/actions/addon-sbom/action.yml','.github/actions/addon-sbom/scanner-pins.json','README.md')
+MISSING_STORE_FILES=[f for f in STORE_FILES if not (STORE/f).is_file()]
+if MISSING_STORE_FILES and os.environ.get('STORE_FULL_CHECKOUT'):
+    sys.exit(f"STORE_FULL_CHECKOUT is set, but this checkout has no {', '.join(MISSING_STORE_FILES)}: the tests that read them would be skipped")
+needs_store=unittest.skipIf(MISSING_STORE_FILES,'needs the Store files in STORE_FILES: an add-on release job checks out only .addon-sync (sparse checkout)')
 
 # A config shaped like odoo's: flat schema, required password keys whose options default is null.
 BASE={'name':'Test','version':'1.0.0','slug':'test','image':'ghcr.io/woowtech/test-{arch}','arch':['amd64','aarch64'],
@@ -515,6 +527,7 @@ class ComparisonTargetCommand(unittest.TestCase):
             with self.subTest(component=component,releases=releases):
                 code,out=self.main(releases,component)
                 self.assertEqual(code,2);self.assertTrue(out.startswith('::error title=Upgrade comparison failed::'),out)
+    @needs_store
     def test_workflow_leaves_the_filter_and_tag_rule_to_python(self):
         wf=yaml.safe_load((pathlib.Path(__file__).resolve().parent.parent/'.github/workflows/woow-addon-upgrade-check.yml').read_text(encoding='utf-8'))
         plan=next(s for s in wf['jobs']['compare']['steps'] if s.get('id')=='plan')['run']
@@ -537,6 +550,26 @@ class ReleaseNotesCommand(unittest.TestCase):
         path=self.dir/'upgrade-notes.yaml';path.write_text('1.3: {}\n',encoding='utf-8')
         code,out=self.main('--notes',str(path),'--version','1.3.0')
         self.assertEqual(code,2);self.assertIn('::error',out)
+@needs_store
+class SparseReleaseCheckout(unittest.TestCase):
+    """This file as an add-on's release job runs it (Woow_ha_odoo's release.yml): from a checkout of .addon-sync alone, before
+    release-notes. needs_store skips this class there too, so the run does not start itself again."""
+    def run_file(self,**env):
+        import subprocess
+        tmp=pathlib.Path(tempfile.mkdtemp());self.addCleanup(shutil.rmtree,tmp)
+        shutil.copytree(STORE/'.addon-sync',tmp/'tooling/.addon-sync',ignore=shutil.ignore_patterns('__pycache__'))
+        # PYTHON_COLORS=0: plain unittest output to match even where colors are forced (Python 3.14 colors it).
+        env=dict({k:v for k,v in os.environ.items() if k!='STORE_FULL_CHECKOUT'},PYTHON_COLORS='0',**env)
+        return subprocess.run([sys.executable,'tooling/.addon-sync/test_upgrade_check.py','-v'],cwd=tmp,env=env,capture_output=True,text=True)
+    def test_the_tests_that_read_store_files_are_skipped_and_the_rest_pass(self):
+        r=self.run_file()
+        self.assertEqual(r.returncode,0,r.stderr[-5000:]);self.assertRegex(r.stderr,r'\nOK \(skipped=\d+\)\n$')
+        self.assertRegex(r.stderr,r"test_no_secrets_beyond_the_job_token \(__main__\.ReusableWorkflow\S*\) \.\.\. skipped 'needs the Store files in STORE_FILES: ")
+        self.assertRegex(r.stderr,r'test_prints_the_sections_for_the_version \(__main__\.ReleaseNotesCommand\S*\) \.\.\. ok\n')
+    def test_the_store_ci_fails_instead_of_skipping_them(self):
+        r=self.run_file(STORE_FULL_CHECKOUT='1')
+        self.assertEqual(r.returncode,1,r.stderr);self.assertNotIn('Ran ',r.stderr)
+        self.assertIn(f"STORE_FULL_CHECKOUT is set, but this checkout has no {', '.join(STORE_FILES)}: the tests that read them would be skipped\n",r.stderr)
 class ComponentsCommand(unittest.TestCase):
     """What the reusable workflow reads from the registry; the paths follow addon_sync.source_file, as the Release does."""
     def main(self,registry,repo='WOOWTECH/r'):
@@ -586,6 +619,7 @@ class ComponentsCommand(unittest.TestCase):
 # A step that also runs after an earlier one failed in sha mode (#167); on a PR the prefix is success(), as before.
 SHA_GOES_ON="(success() || (inputs.sha != '' && !cancelled())) && "
 ALWAYS_ON_PR_OR_SHA="always() && (github.event_name == 'pull_request' || inputs.sha != '')"
+@needs_store
 class ReusableWorkflow(unittest.TestCase):
     """Shape that callers and the ruleset depend on; the shell itself is verified on pilot PRs (#89 Testing Decisions)."""
     def setUp(self):
@@ -608,6 +642,9 @@ class ReusableWorkflow(unittest.TestCase):
         self.assertNotIn('test_',self.text)
         ci=yaml.safe_load((pathlib.Path(__file__).resolve().parent.parent/'.github/workflows/upgrade-check-tests.yml').read_text(encoding='utf-8'))
         self.assertIn('python3 .addon-sync/test_upgrade_check.py -v',[s.get('run') for s in ci['jobs']['test']['steps']])
+        # There every file needs_store reads must be present: a missing one stops the run instead of skipping its tests.
+        step=next(s for s in ci['jobs']['test']['steps'] if s.get('run')=='python3 .addon-sync/test_upgrade_check.py -v')
+        self.assertEqual(step.get('env'),{'STORE_FULL_CHECKOUT':'1'})
     def test_no_secrets_beyond_the_job_token(self):
         self.assertNotIn('secrets.',self.text)
     def test_db_is_updated_once_before_scanning_and_has_an_age_limit(self):
@@ -719,6 +756,8 @@ class ReusableWorkflow(unittest.TestCase):
     def step_env(self,name):return next(s for s in self.wf['jobs']['compare']['steps'] if s.get('name')==name)['env']
 SHELL_TOOLS=all(shutil.which(t) for t in ('bash','jq','yq'))
 needs_shell=unittest.skipUnless(SHELL_TOOLS,'needs bash, jq and yq (present on GitHub runners)')
+# setUp reads the workflow, so needs_store also skips every subclass.
+@needs_store
 class StepHarness(unittest.TestCase):
     """Runs a real step script of the reusable workflow against a fake repository, gh stubbed (bash, jq, yq: CI runners)."""
     STORE=pathlib.Path(__file__).resolve().parent.parent
@@ -2310,10 +2349,12 @@ class DataCheckDueCommand(unittest.TestCase):
 class SbomAttempt(unittest.TestCase):
     """A re-run must judge the image its own build made, not an earlier attempt's SBOM."""
     STORE=pathlib.Path(__file__).resolve().parent.parent
+    @needs_store
     def test_artifact_name_carries_the_run_attempt(self):
         action=yaml.safe_load((self.STORE/'.github/actions/addon-sbom/action.yml').read_text(encoding='utf-8'))
         upload=next(s for s in action['runs']['steps'] if s.get('uses','').startswith('actions/upload-artifact@'))
         self.assertEqual(upload['with']['name'],'upgrade-comparison-sbom-${{ inputs.component }}-attempt-${{ github.run_attempt }}')
+    @needs_store
     def test_wait_accepts_only_this_attempts_artifact(self):
         # The plan names each add-on's artifact once, as the action does; the wait looks for exactly that name.
         text=(self.STORE/'.github/workflows/woow-addon-upgrade-check.yml').read_text(encoding='utf-8');wf=yaml.safe_load(text)
@@ -2476,6 +2517,7 @@ class RerunFailedJobs(unittest.TestCase):
         wf=yaml.safe_load((self.STORE/'.github/workflows/woow-addon-upgrade-check.yml').read_text(encoding='utf-8'))
         return next(s for s in wf['jobs'][job]['steps'] if s.get('name')==name)['run']
     WAIT_SBOM="printf 't\\tupgrade-comparison-sbom-t-attempt-2\\n' > wanted.tsv\nbash tooling/.addon-sync/wait_artifacts.sh wanted.tsv found.tsv 'SBOM of the new image' addon-sbom\n"
+    @needs_store
     @needs_shell
     def test_wait_takes_the_sbom_of_the_attempt_the_build_ran_in_and_says_so(self):
         r,summary=self.sh(self.failed_rerun(),self.WAIT_SBOM)
@@ -2508,6 +2550,7 @@ class RerunFailedJobs(unittest.TestCase):
         # In the runtime job (FAIL_LOG set) the reason is handed to compare once.
         self.sh(self.failed_rerun(),self.WAIT_SBOM,GH_FAIL='/jobs?filter=all',FAIL_LOG='fail.log')
         self.assertEqual((self.tmp/'fail.log').read_text().count('cannot read the state of run 1 attempt 2'),1)
+    @needs_store
     @needs_shell
     def test_the_compare_steps_fail_when_the_run_state_cannot_be_read(self):
         plan=json.dumps({'id':'t','notes':'t/upgrade-notes.yaml'})+'\n'
@@ -2524,6 +2567,7 @@ class RerunFailedJobs(unittest.TestCase):
         r,summary=self.sh((run,jobs,arts),self.WAIT_SBOM.replace('attempt-2','attempt-1'),attempt=1)
         self.assertEqual(r.returncode,0,r.stdout+r.stderr);self.assertIn('- t: SBOM of the new image from this attempt (1)',summary)
         self.assertNotIn('jobs',(self.tmp/'gh.log').read_text());self.assertNotIn('/attempts/',(self.tmp/'gh.log').read_text())
+    @needs_store
     @needs_shell
     def test_upgrade_test_result_reads_the_attempt_runtime_ran_in(self):
         script=self.step('compare','Upgrade test result')
@@ -2542,6 +2586,7 @@ class RerunFailedJobs(unittest.TestCase):
         jobs=[x for x in jobs if not (x['run_attempt']==2 and x['name'].endswith('/ runtime'))]+[self.job('Upgrade comparison / runtime',2,'56:45','57:10','failure')]
         r,summary=self.sh((run,jobs,arts+[self.art('runtime',2,'57:09',23)]),f"printf '%s' '{plan}' > plan.jsonl\n"+script,RUNTIME_RESULT='failure')
         self.assertEqual(r.returncode,1);self.assertIn('t: upgrade test failed: it broke',r.stdout);self.assertIn('Results from attempt 2 (this attempt)',summary)
+    @needs_store
     @needs_shell
     def test_rebuilt_sboms_are_read_from_the_attempt_runtime_ran_in(self):
         r,summary=self.sh(self.failed_rerun(),self.step('compare',"Download the rebuilt images' SBOMs"))
@@ -2549,11 +2594,13 @@ class RerunFailedJobs(unittest.TestCase):
         self.assertIn('- SBOMs of the rebuilt images from attempt 1',summary)
         r,_=self.sh(self.all_rerun(),self.step('compare',"Download the rebuilt images' SBOMs"))
         self.assertEqual(r.returncode,0,r.stdout+r.stderr);self.assertFalse((self.tmp/'rebuilt-sboms').exists())
+    @needs_store
     def test_no_message_tells_people_to_use_re_run_all_jobs_for_a_good_build(self):
         for path in ('.addon-sync/wait_artifacts.sh','.github/workflows/woow-addon-upgrade-check.yml','README.md'):
             with self.subTest(path):self.assertNotIn('use Re-run all jobs: an earlier attempt',(self.STORE/path).read_text(encoding='utf-8'))
         self.assertNotIn('重跑請用 Re-run all jobs',(self.STORE/'README.md').read_text(encoding='utf-8'))
 
+@needs_store
 class Scanners(unittest.TestCase):
     ACTION=pathlib.Path(__file__).resolve().parent.parent/'.github/actions/addon-sbom'
     def test_pinned_versions_and_checksums(self):
