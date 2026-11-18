@@ -455,11 +455,15 @@ jobs:
           if [ -n "${new_ref}" ] && ! docker pull --quiet --platform linux/amd64 "${new_ref}"; then
             fail "${id}: $(unpublished_reason "${new_ref}")"; stop "${id}"; continue
           fi
+          # Syft reads each published image from the registry (registry: source), not by exporting it from the Docker
+          # daemon: on ubuntu-latest (26.04, Docker 29) the daemon export of a pulled image lost its config blob ("file
+          # blobs/sha256/<config> not found in tar", WOOWTECH/Woow_ha_mcp_addons#119, n8n 0.4.14). `docker pull` above stays
+          # the existence check behind the error messages; images rebuilt on the runner are still read from the daemon.
           for side in old new; do
             image="${ref}"; sbom="$RUNNER_TEMP/${id}.old.syft.json"
             if [ "${side}" = old ]; then [ -n "${ref}" ] || continue; fi
             if [ "${side}" = new ]; then [ -n "${new_ref}" ] || continue; image="${new_ref}"; sbom="sboms/${id}.syft.json"; fi
-            if ! "$RUNNER_TEMP/scanners/syft" scan "docker:${image}" --config tooling/.github/actions/addon-sbom/syft.yaml -o "syft-json=${sbom}"; then
+            if ! "$RUNNER_TEMP/scanners/syft" scan "registry:${image}" --platform linux/amd64 --config tooling/.github/actions/addon-sbom/syft.yaml -o "syft-json=${sbom}"; then
               fail "${id}: Syft could not read ${image}"; stop "${id}"; continue 2
             fi
             docker image rm --force "${image}" > /dev/null
