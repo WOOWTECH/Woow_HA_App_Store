@@ -61,7 +61,11 @@ jobs:
         persist-credentials: false
     - name: Install dependencies
       run: python3 -m pip install -r .addon-sync/requirements.txt
+    # A full checkout: here a missing Store file stops the run. Only an add-on release's sparse checkout
+    # of .addon-sync skips the tests that read one (needs_store).
     - name: Test the upgrade comparison
+      env:
+        STORE_FULL_CHECKOUT: '1'
       run: python3 .addon-sync/test_upgrade_check.py -v
     # The mock Supervisor as a local server: repo fixtures and the record of unmocked calls (#142).
     - name: Test the mock Supervisor
