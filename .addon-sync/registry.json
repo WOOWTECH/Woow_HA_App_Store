@@ -267,7 +267,7 @@
         }
       ]
     },
-    "WOOWTECH/Woow_ha_cloudflare_tunnel_webgui": {
+    "WOOWTECH/Woow_ha_cf_tunnel_webgui": {
       "default_branch": "main",
       "required_workflows": [
         ".github/workflows/build.yaml"
