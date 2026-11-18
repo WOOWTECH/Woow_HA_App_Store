@@ -266,6 +266,12 @@ def ci_gate(gh, repo, sha, component, required):
         if not ok: raise Blocked('No successful CI for current runtime: '+workflow)
     return fingerprint
 
+def archive_current(repo, previous):
+    """True while a notification's archive identity still holds: the same repository name and archive bytes.
+    A repository rename changes codeload's tarball root directory, so the same commit then yields another digest."""
+    sha=previous.get('source_sha','')
+    return previous.get('repository')==repo and bool(SHA.fullmatch(sha)) and previous.get('archive_sha256')==digest(source_archive(repo,sha))
+
 def publish(gh, registry, repo, apply=False, only=None):
     provider = registry['providers'][repo]
     _,sha = gh.head(repo)
@@ -283,7 +289,7 @@ def publish(gh, registry, repo, apply=False, only=None):
             fp=gh.fingerprint(repo,sha,comp['source_path'])
             previous=old['components'].get(cid)
             # Under release, the outbox must name the Release commit even when its files match an earlier main snapshot.
-            if previous and previous.get('context_fingerprint')==fp and (provider.get('ref_policy')!='release' or previous.get('source_sha')==sha):
+            if previous and previous.get('context_fingerprint')==fp and (provider.get('ref_policy')!='release' or previous.get('source_sha')==sha) and archive_current(repo,previous):
                 report.append({'id':cid,'state':'unchanged'});continue
             material=ci_gate(gh,repo,sha,comp,provider.get('required_workflows',[]))
             raw=source_archive(repo,sha);files=context_files(raw,comp['source_path']);cfg=config_from_files(files,comp['config_file'])
@@ -625,7 +631,8 @@ def consume(gh, registry, workspace, only=None):
         for comp in active:
             cid=comp['id'];entry=outboxes[repo]['components'].get(cid);previous=catalog['components'].get(cid)
             if not entry:report.append({'id':cid,'state':'waiting-for-source-notification'});continue
-            if previous and previous.get('context_fingerprint')==entry.get('context_fingerprint'):
+            # Same context but another repository name, commit or archive digest (e.g. after a rename) is fully re-validated.
+            if previous and all(previous.get(k)==entry.get(k) for k in ('context_fingerprint','repository','source_sha','archive_sha256')):
                 report.append({'id':cid,'state':'unchanged'});continue
             try:
                 if not SLUG.fullmatch(comp['store_path']):raise Blocked('Unsafe registered destination')
