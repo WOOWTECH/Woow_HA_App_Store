@@ -1,0 +1,5 @@
+#!/usr/bin/env python3
+"""Upgrade test hook: create a Frigate user on the comparison target (see frigate_upgrade.py)."""
+import frigate_upgrade
+
+frigate_upgrade.main("seed")

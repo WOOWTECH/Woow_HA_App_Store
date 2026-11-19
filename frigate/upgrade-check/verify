@@ -1,0 +1,5 @@
+#!/usr/bin/env python3
+"""Upgrade test hook: check the seeded Frigate user on the new version (see frigate_upgrade.py)."""
+import frigate_upgrade
+
+frigate_upgrade.main("verify")
