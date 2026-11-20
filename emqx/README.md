@@ -22,7 +22,7 @@ Then navigate to **Settings → Add-ons → Add-on Store**, find "Woow EMQX" and
 
 | 元件 | 版本 | 說明 |
 |------|------|------|
-| Woow EMQX Add-on | 5.9.1 | Add-on 版本（Home Assistant 顯示的版本） |
+| Woow EMQX Add-on | 5.9.2 | Add-on 版本（Home Assistant 顯示的版本） |
 | EMQX | 5.8.9 | MQTT Broker（最後的 Apache-2.0 開源版） |
 | Erlang/OTP | 內建 | EMQX 執行環境 |
 | SQLite | 內建 | 內部設定存儲 |
@@ -51,12 +51,12 @@ Then navigate to **Settings → Add-ons → Add-on Store**, find "Woow EMQX" and
 
 > **安全性提醒**：在 Dashboard 建立驗證器之前，EMQX **允許匿名 MQTT 連線**；
 > 本 Add-on 使用主機網路，同一區網的任何裝置都連得到 1883 與 Dashboard（18083）。
-> 啟用 ngrok 時 1883 會公開到網際網路，**未設定驗證就等於任何人都能匿名連入**。
+> 啟用 ngrok 時 EMQX 的 MQTT 連接埠（預設 1883）會公開到網際網路，**未設定驗證就等於任何人都能匿名連入**。
 > 詳見 [DOCS.md](DOCS.md)「安全性提醒」。
 
 ## 連接埠說明
 
-此 Add-on 使用主機網路模式，直接使用 Home Assistant 主機的連接埠：
+此 Add-on 使用主機網路模式，直接使用 Home Assistant 主機的連接埠（預設值；要與 Mosquitto 同時跑時的改法見「與 Mosquitto Add-on 同時運行」）：
 
 | 連接埠 | 協定 | 說明 |
 |--------|------|------|
@@ -125,9 +125,30 @@ env_vars:
 
 完整環境變數參考：https://www.emqx.io/docs/en/v5.0/admin/cfg.html
 
+### 與 Mosquitto Add-on 同時運行
+
+Mosquitto Add-on 發布 1883、1884（WebSocket）、8883、8884。EMQX 預設使用 1883、8883、8083、8084，
+所以要兩個同時跑，用 `env_vars` 把 EMQX 的 MQTT TCP listener 移到別的連接埠、並關掉它的 SSL listener：
+
+```yaml
+env_vars:
+  - name: EMQX_LISTENERS__TCP__DEFAULT__BIND
+    value: "1885"
+  - name: EMQX_LISTENERS__SSL__DEFAULT__ENABLE
+    value: "false"
+```
+
+- 不要用 1884：那是 Mosquitto 的 MQTT over WebSocket。
+- 8083（WebSocket）、8084（WSS）、18083（Dashboard）不受影響，可照常使用。
+- 這時 MQTT client 要連 EMQX 就用 1885；Home Assistant 的 MQTT 整合自動發現的是 Mosquitto
+  （EMQX 不向 Supervisor 註冊 mqtt 服務）。
+- `bind` 可以只寫連接埠（`1885`，與 EMQX 預設值同一種寫法），也可以寫 `0.0.0.0:1885`。
+- 環境變數優先於 Dashboard 的設定：在 Dashboard 改這個 listener 的連接埠，重啟後會回到 `env_vars` 的值。
+- ngrok 通道會跟著轉發這個連接埠（見下方）。
+
 ### ngrok TCP 通道（選用）
 
-可透過 ngrok 將 raw MQTT（連接埠 1883）開啟為公開的 TCP 通道，
+可透過 ngrok 將 raw MQTT（EMQX 的 TCP listener，預設連接埠 1883）開啟為公開的 TCP 通道，
 並把解析後的公開網址印到 Add-on Log：
 
 ```yaml
@@ -136,7 +157,7 @@ ngrok_authtoken: "<你的 ngrok authtoken>"
 ngrok_tcp_addr: ""
 ```
 
-- `ngrok_enabled`：設為 `true` 以啟用 ngrok TCP 1883 通道（預設 `false`）
+- `ngrok_enabled`：設為 `true` 以啟用 ngrok TCP 通道（預設 `false`）。通道轉發 EMQX 的 MQTT TCP listener：預設 1883；`env_vars` 有 `EMQX_LISTENERS__TCP__DEFAULT__BIND` 時轉發它的連接埠，值讀不出連接埠時 ngrok 不啟動，不會退回 1883
 - `ngrok_authtoken`：ngrok 帳號的 authtoken（啟用 ngrok 時必填）
 - `ngrok_tcp_addr`：可選，指定 ngrok 保留的 TCP 位址以取得「固定」的公開端點；留空則由 ngrok 自動指派臨時位址
 
@@ -205,7 +226,7 @@ ngrok_tcp_addr: ""
 ## 已知問題與限制
 
 ### 連接埠衝突
-- **無法與 Mosquitto Add-on 同時運行**（兩者都使用連接埠 1883）
+- **預設設定下無法與 Mosquitto Add-on 同時運行**（兩者都用 1883、8883）；用 `env_vars` 把 TCP listener 移到 1885、關掉 SSL listener 後可以同時跑，見「與 Mosquitto Add-on 同時運行」
 - EMQX 預設使用連接埠 1883、8083、8084、8883
 - [WebRTC (AlexxIT)](https://github.com/AlexxIT/WebRTC) 整合可能在連接埠 8083 產生衝突
 
@@ -251,7 +272,7 @@ init-emqx (oneshot) → emqx (longrun) → ngrok (longrun) → ngrok-announce (o
 |------|------|------|
 | init-emqx | oneshot | 建立資料目錄 |
 | emqx | longrun | EMQX MQTT Broker（固定節點名稱、產生 Erlang cookie） |
-| ngrok | longrun | ngrok TCP 1883 通道（由 config 控制） |
+| ngrok | longrun | ngrok TCP 通道，轉發 EMQX 的 MQTT TCP listener（預設 1883；由 config 控制） |
 | ngrok-announce | oneshot | 印出解析後的 ngrok 公開網址 |
 
 ### 檔案結構

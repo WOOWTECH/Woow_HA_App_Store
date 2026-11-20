@@ -1,6 +1,6 @@
 ---
 name: Woow EMQX
-version: "5.9.1"
+version: "5.9.2"
 slug: woow-emqx
 description: The most scalable open-source MQTT broker for IoT (WOOWTECH fork)
 url: https://github.com/WOOWTECH/Woow_ha_emqx

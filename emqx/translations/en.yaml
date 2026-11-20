@@ -9,7 +9,9 @@ configuration:
   ngrok_enabled:
     name: Enable ngrok TCP tunnel
     description: >-
-      Open a public ngrok TCP tunnel for raw MQTT on port 1883.
+      Open a public ngrok TCP tunnel for raw MQTT. It forwards the port of
+      EMQX's TCP listener: 1883, or the port set by
+      EMQX_LISTENERS__TCP__DEFAULT__BIND in the environment variables.
   ngrok_authtoken:
     name: ngrok authtoken
     description: >-

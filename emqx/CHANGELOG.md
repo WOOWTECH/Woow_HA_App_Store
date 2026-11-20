@@ -1,5 +1,19 @@
 # Changelog
 
+## v5.9.2
+
+Add-on 5.9.2; EMQX broker 5.8.9 (unchanged).
+
+- ngrok forwards the port EMQX's MQTT TCP listener actually binds. It used to
+  forward 1883 always; with the listener moved through
+  `EMQX_LISTENERS__TCP__DEFAULT__BIND` (for example to run next to the
+  Mosquitto add-on, which keeps 1883) the tunnel would have published
+  whatever else listens on 1883. Both `1885` and `ip:1885` forms are read;
+  a value without a valid port leaves ngrok idle instead of falling back
+  to 1883
+- Docs: how to run EMQX next to the Mosquitto add-on (move the TCP listener
+  to 1885 and turn off the SSL listener with two `env_vars`)
+
 ## v5.9.1
 
 Add-on 5.9.1; EMQX broker 5.8.9 (the last Apache-2.0 open-source release;

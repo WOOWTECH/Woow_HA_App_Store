@@ -9,7 +9,8 @@ configuration:
   ngrok_enabled:
     name: 啟用 ngrok TCP 通道
     description: >-
-      在連接埠 1883（raw MQTT）開啟公開的 ngrok TCP 通道。
+      為 raw MQTT 開啟公開的 ngrok TCP 通道，轉發 EMQX 的 TCP listener：
+      預設 1883；環境變數設了 EMQX_LISTENERS__TCP__DEFAULT__BIND 時轉發它的連接埠。
   ngrok_authtoken:
     name: ngrok authtoken
     description: >-

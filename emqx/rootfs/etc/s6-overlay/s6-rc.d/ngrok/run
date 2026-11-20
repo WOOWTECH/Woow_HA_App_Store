@@ -1,6 +1,10 @@
 #!/command/with-contenv bashio
 # shellcheck shell=bash
-# ngrok tunnel：只負責 raw MQTT tcp 1883；8083 WS 由 Cloudflare 處理。
+# ngrok tunnel：只負責 raw MQTT TCP（EMQX 的 default TCP listener，預設 1883；
+# env_vars 的 EMQX_LISTENERS__TCP__DEFAULT__BIND 改了就跟著改）；8083 WS 由 Cloudflare 處理。
+# shellcheck source-path=SCRIPTDIR source=../../../../usr/lib/woow-emqx/mqtt-listener.sh
+source /usr/lib/woow-emqx/mqtt-listener.sh
+
 if ! bashio::config.true 'ngrok_enabled'; then
     bashio::log.info "ngrok 未啟用（'ngrok_enabled: false'），service idle"
     exec sleep infinity
@@ -11,14 +15,21 @@ if ! bashio::config.has_value 'ngrok_authtoken'; then
     exec sleep infinity
 fi
 
+bind=$(woow_emqx::tcp_bind_from_options)
+if ! target=$(woow_emqx::ngrok_target "${bind}"); then
+    # 不退回 1883：1883 可能是別的 broker（例如 Mosquitto），不能把它公開出去。
+    bashio::log.error "EMQX_LISTENERS__TCP__DEFAULT__BIND 的值讀不出 port；ngrok service idle"
+    exec sleep infinity
+fi
+
 NGROK_AUTHTOKEN=$(bashio::config 'ngrok_authtoken')
 export NGROK_AUTHTOKEN
 
 if bashio::config.has_value 'ngrok_tcp_addr'; then
     addr=$(bashio::config 'ngrok_tcp_addr')
-    bashio::log.info "Starting ngrok tcp 1883 --remote-addr=${addr}"
-    exec ngrok tcp 1883 --remote-addr="${addr}" --log stdout
+    bashio::log.info "Starting ngrok tcp ${target} --remote-addr=${addr}"
+    exec ngrok tcp "${target}" --remote-addr="${addr}" --log stdout
 fi
 
-bashio::log.info "Starting ngrok tcp 1883 (auto address)"
-exec ngrok tcp 1883 --log stdout
+bashio::log.info "Starting ngrok tcp ${target} (auto address)"
+exec ngrok tcp "${target}" --log stdout

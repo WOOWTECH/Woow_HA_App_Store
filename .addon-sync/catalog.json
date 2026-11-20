@@ -1106,22 +1106,22 @@
     "woow-emqx": {
       "id": "woow-emqx",
       "name": "Woow EMQX",
-      "version": "5.9.1",
+      "version": "5.9.2",
       "repository": "WOOWTECH/Woow_ha_emqx",
-      "source_sha": "6e827231fc794613c96e105055df96373defd55c",
+      "source_sha": "8778b6918d2d44b912e809a7cb6383bc404bded9",
       "source_path": "emqx",
       "config_file": "config.yaml",
-      "config_sha256": "sha256:09984699550b5417d02b0cfa4a8cc02ec82aee618e140d24bf2acb6db68a67d5",
-      "archive_sha256": "sha256:1aed41c43b26e831e7476cecd543fca1be78ce7aa20b33e2891a45ad3f1d1c70",
-      "context_fingerprint": "sha256:be92089276421a106e687b858a2eb6b390ca8d80208c32855f2cde5eb7bcd957",
-      "material_fingerprint": "sha256:ed14f7688113404ca6c4ee07d23643413300802f44c197c933150f4f6abb2c61",
+      "config_sha256": "sha256:e1f187565e6fbda80aeadc2919ae42da77d3e62e246d3aa1700f89dfa50def17",
+      "archive_sha256": "sha256:7471f0f61b4d62b317ee28864681c322daaa768497e6436d02280a2f4832dd5f",
+      "context_fingerprint": "sha256:9063f8fc3692b284e84428fc85d739e5467a56a71dc33513b5745308e301bf3a",
+      "material_fingerprint": "sha256:c345dc590ab3b8ed4d451320e0830e1dbcc8c6171253c8274198f4409dd97baa",
       "architectures": [
         "aarch64",
         "amd64"
       ],
       "config": {
         "name": "Woow EMQX",
-        "version": "5.9.1",
+        "version": "5.9.2",
         "slug": "woow-emqx",
         "description": "The most scalable open-source MQTT broker for IoT (WOOWTECH fork)",
         "url": "https://github.com/WOOWTECH/Woow_ha_emqx",
@@ -1164,7 +1164,7 @@
       "images": {},
       "delivery": "local-source-build",
       "validation": "manifest+source-context+configured-CI (runtime build not certified)",
-      "publisher_run_id": "38736411492",
+      "publisher_run_id": "44667769138",
       "channel": "stable",
       "store_path": "emqx"
     },
@@ -3331,5 +3331,5 @@
       "store_path": "woow_mcp_headscale"
     }
   },
-  "catalog_id": "sha256:e4afe7befb7907306bf40f9441e276bd524ab9d0f4d5626d3e21bfffa3603c5d"
+  "catalog_id": "sha256:551cbcb96903f87bccc25c844806eb76879e0e16721516971057d43f2ca5c853"
 }
