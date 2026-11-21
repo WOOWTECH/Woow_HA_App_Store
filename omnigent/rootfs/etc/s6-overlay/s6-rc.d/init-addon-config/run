@@ -120,6 +120,13 @@ if [ -z "${BASE_URL}" ]; then
 fi
 set_env OMNIGENT_ACCOUNTS_BASE_URL "${BASE_URL}"
 
+# --- Native MCP public URL -------------------------------------------------
+# The core validates HTTPS (loopback HTTP is allowed for development). Never
+# derive this from X-Ingress-Path or the browser origin. Extra env_vars below
+# can override it, just like the other explicit options. Always write the
+# empty value too, so clearing the option cannot reuse an old s6 value.
+set_env OMNIGENT_MCP_PUBLIC_BASE_URL "$(optget mcp_public_base_url '')"
+
 # --- Feature flags ---------------------------------------------------------
 # 預設 usage_page,harness_install，不是 omnigent
 # 認得的全部 feature。使用者可用 add-on 的 `features:` 選項覆寫（逗號分隔）。

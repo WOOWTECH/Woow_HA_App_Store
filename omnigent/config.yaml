@@ -1,5 +1,5 @@
 name: Woow Omnigent
-version: 0.1.23
+version: 0.1.24
 slug: woow-omnigent
 image: ghcr.io/woowtech/woow-ha-omnigent-{arch}
 description: >-
@@ -58,6 +58,8 @@ schema:
   # runners registered via that URL use it in webhook links and invite URLs.
   # Leave empty to use http://homeassistant.local:8000 (LAN default).
   base_url: str?
+  # Complete external MCP deployment base, including any path prefix.
+  mcp_public_base_url: str?
   # --- Feature flags forwarded via OMNIGENT_FEATURES= ---------------------
   # 以逗號分隔。預設 "usage_page,harness_install"，不是
   # omnigent 認得的全部 feature。omnigent 0.21.0 另外預設開啟
@@ -72,6 +74,7 @@ options:
   admin_username: woow
   admin_password: ""
   base_url: ""
+  mcp_public_base_url: ""
   features: "usage_page,harness_install"
   env_vars: []
 # No `services:` — Postgres is bundled inside the container via s6 (same

@@ -5,12 +5,10 @@ Store 的升級測試（Woow_HA_App_Store .addon-sync/upgrade_runtime.py）在�
 都在 mock Supervisor 的容器裡執行，只透過 omnigent 自己的 HTTP API（ADDON_URL，
 也就是 8000 port 的 web UI）讀寫，不碰資料庫：
 
-seed     admin 登入；建立一個暫停中的 scheduled task（不需要 runner），以及一個
-         經由 invite → register 建立的記號成員。
-verify   server 起得來（migration 跑完）；admin 用同一組密碼登入；scheduled task
-         的內容不變、仍是暫停、沒有被觸發，新版有 `session_mode` 時必須是 "new"
-         （0.21.0 的 migration d0a1f879a01d 對既有 task 的預設值）；task 指向的 agent
-         還在；記號成員還在、還能用原密碼登入。
+seed     admin 登入；建立 paused task、記號成員、private/shared session、read grant
+         與檔案。舊版已有 MCP 時，另建 active/revoked profile 並保存原 URL。
+verify   migration 後使用原帳密登入，驗 task/agent/session/ACL/檔案 SHA-256；
+         新版建立、使用、撤銷 profile；MCP A→B 升級沿用原 token 與 revoked_at。
 
 verify 需要的 id 與記號成員的密碼存在 HOOK_STATE_DIR（只在 CI 的暫存目錄）。
 每項檢查寫進 $REPORT_DIR/<hook>.json；有任何一項 fail，hook 就 exit 1。
@@ -18,6 +16,10 @@ verify 需要的 id 與記號成員的密碼存在 HOOK_STATE_DIR（只在 CI �
 """
 from __future__ import annotations
 
+import io
+import hashlib
+import tarfile
+import urllib.parse
 import json
 import os
 import secrets
@@ -54,9 +56,10 @@ class Client:
         self.cookies: dict[str, str] = {}
 
     def request(self, method: str, path: str, body: object | None = None,
-                timeout: float = 60) -> tuple[int, object]:
-        data = None if body is None else json.dumps(body).encode()
-        headers = {"Content-Type": "application/json", "Accept": "application/json"}
+                timeout: float = 60, *, content_type: str = "application/json",
+                raw_response: bool = False) -> tuple[int, object]:
+        data = body if isinstance(body, bytes) else (None if body is None else json.dumps(body).encode())
+        headers = {"Content-Type": content_type, "Accept": "application/json, text/event-stream"}
         if self.cookies:
             headers["Cookie"] = "; ".join(f"{k}={v}" for k, v in self.cookies.items())
         req = urllib.request.Request(self.base + path, data=data, method=method, headers=headers)
@@ -66,12 +69,14 @@ class Client:
         except urllib.error.HTTPError as error:
             status, raw, set_cookies = error.code, error.read(), error.headers.get_all("Set-Cookie")
         except (urllib.error.URLError, OSError) as error:
-            return 0, str(error)
+            return 0, type(error).__name__
         for header in set_cookies or ():
             parsed = SimpleCookie()
             parsed.load(header)
             for name, morsel in parsed.items():
                 self.cookies[name] = morsel.value
+        if raw_response:
+            return status, raw
         try:
             return status, json.loads(raw) if raw else None
         except json.JSONDecodeError:
@@ -80,7 +85,7 @@ class Client:
     def ok(self, method: str, path: str, body: object | None = None) -> object:
         status, payload = self.request(method, path, body)
         if not 200 <= status < 300:
-            raise AssertionError(f"{method} {path} -> {status}: {str(payload)[:300]}")
+            raise AssertionError(f"HTTP {method} failed with status {status}")
         return payload
 
     def wait_ready(self) -> str:
@@ -146,6 +151,171 @@ def state_path() -> str:
     return os.path.join(os.environ["HOOK_STATE_DIR"], "omnigent-seed.json")
 
 
+PROFILE_API = "/v1/admin/mcp-server/profiles"
+ARTIFACT = b"Omnigent upgrade fixture: preserve every byte.\n"
+
+
+def multipart(api: Client, path: str, parts: list[tuple[str, str | None, str, bytes]]) -> dict:
+    boundary = "upgrade-" + secrets.token_hex(16)
+    data = bytearray()
+    for name, filename, mime, content in parts:
+        data.extend(f"--{boundary}\r\nContent-Disposition: form-data; name=\"{name}\"".encode())
+        if filename:
+            data.extend(f"; filename=\"{filename}\"".encode())
+        data.extend(f"\r\nContent-Type: {mime}\r\n\r\n".encode() + content + b"\r\n")
+    data.extend(f"--{boundary}--\r\n".encode())
+    status, result = api.request("POST", path, bytes(data), content_type=f"multipart/form-data; boundary={boundary}")
+    assert 200 <= status < 300 and isinstance(result, dict), f"fixture upload failed: HTTP {status}"
+    return result
+
+
+def agent_bundle() -> bytes:
+    data = (b"name: upgrade-fixture\nprompt: Upgrade fixture; never execute.\nexecutor:\n"
+            b"  model: gpt-4o-mini\n  harness: openai-agents\n")
+    out = io.BytesIO()
+    with tarfile.open(fileobj=out, mode="w:gz") as archive:
+        entry = tarfile.TarInfo("agent.yaml")
+        entry.size = len(data)
+        archive.addfile(entry, io.BytesIO(data))
+    return out.getvalue()
+
+
+def member_client(state: dict) -> Client:
+    member = state["member"]
+    client = Client(os.environ["ADDON_URL"])
+    client.login(member["username"], member["password"])
+    return client
+
+
+def seed_sessions(api: Client, state: dict) -> str:
+    sessions = {}
+    for visibility in ("private", "shared"):
+        created = multipart(api, "/v1/sessions", [
+            ("metadata", None, "application/json", json.dumps({"title": f"Upgrade {visibility} fixture"}).encode()),
+            ("bundle", "agent.tar.gz", "application/gzip", agent_bundle()),
+        ])
+        sid = created["session_id"]
+        snapshot = api.ok("GET", f"/v1/sessions/{sid}")
+        sessions[visibility] = {"id": sid, "snapshot": {
+            k: snapshot[k] for k in ("session_id", "id", "title", "agent_id", "created_at", "metadata") if k in snapshot
+        }}
+    state["sessions"] = sessions
+    shared = sessions["shared"]["id"]
+    api.ok("PUT", f"/v1/sessions/{shared}/permissions", {"user_id": state["member"]["username"], "level": 1})
+    uploaded = multipart(api, f"/v1/sessions/{shared}/resources/files",
+                         [("file", "upgrade-marker.txt", "text/plain", ARTIFACT)])
+    state["artifact"] = {"id": uploaded["id"], "sha256": hashlib.sha256(ARTIFACT).hexdigest()}
+    verify_sessions(api, state)
+    return "private/shared sessions, read grant and file bytes recorded"
+
+
+def verify_sessions(api: Client, state: dict) -> str:
+    member = member_client(state)
+    for visibility, saved in state["sessions"].items():
+        current = api.ok("GET", f"/v1/sessions/{saved['id']}")
+        assert all(current.get(k) == v for k, v in saved["snapshot"].items()), "session fields changed"
+        status, _ = member.request("GET", f"/v1/sessions/{saved['id']}")
+        assert status == 200 if visibility == "shared" else status in (403, 404), "session ACL changed"
+    shared = state["sessions"]["shared"]["id"]
+    permissions = api.ok("GET", f"/v1/sessions/{shared}/permissions")["permissions"]
+    assert any(p["user_id"] == state["member"]["username"] and p["level"] == 1 for p in permissions), "read grant changed"
+    artifact = state["artifact"]
+    status, content = member.request("GET", f"/v1/sessions/{shared}/resources/files/{artifact['id']}/content", raw_response=True)
+    assert status == 200 and hashlib.sha256(content).hexdigest() == artifact["sha256"], "artifact content changed"
+    return "session fields, privacy, read grant and artifact SHA-256 unchanged"
+
+
+def create_profile(api: Client, state: dict, name: str) -> dict:
+    member = state["member"]
+    created = api.ok("POST", PROFILE_API, {"name": name, "username": member["username"], "password": member["password"]})
+    # The API is authoritative. A profile URL must never use the HA UI origin.
+    url = urllib.parse.urlsplit(created["connection_url"])
+    assert url.scheme in ("https", "http") and url.hostname, "missing canonical connection URL"
+    assert not url.query and not url.fragment and not url.username, "unsafe connection URL"
+    assert "/api/hassio_ingress/" not in url.path, "connection URL uses HA Ingress"
+    assert url.path.endswith("/mcp/private_" + created["token"]), "connection URL token mismatch"
+    with open(os.path.join(os.environ["DATA_DIR_DATA"], "options.json"), encoding="utf-8") as f:
+        public_base = json.load(f).get("mcp_public_base_url", "").rstrip("/")
+    if public_base:
+        assert created["connection_url"] == public_base + "/mcp/private_" + created["token"], "public base changed or duplicated"
+    return created
+
+
+def rpc(profile: dict, method: str, params: dict | None = None) -> tuple[int, object]:
+    # No browser or HA cookies. Direct ADDON_URL reaches the same server even
+    # when the advertised public hostname is unavailable inside the mock.
+    return Client(os.environ["ADDON_URL"]).request("POST", "/mcp/private_" + profile["token"],
+        {"jsonrpc": "2.0", "id": 1, "method": method, "params": params or {}})
+
+
+def check_profile(profile: dict, *, active: bool, require_history: bool = True) -> str:
+    if not active:
+        status, _ = rpc(profile, "tools/list")
+        assert status == 401, f"revoked token accepted: HTTP {status}"
+        return "revoked token still denied"
+    initialized_status, initialized = rpc(profile, "initialize", {
+        "protocolVersion": "2025-03-26", "capabilities": {},
+        "clientInfo": {"name": "ha-upgrade-check", "version": "1"}})
+    assert initialized_status == 200 and "result" in initialized, "MCP initialization failed"
+    status, result = rpc(profile, "tools/list")
+    assert status == 200 and "result" in result, f"active token failed: HTTP {status}"
+    names = {t["name"] for t in result["result"]["tools"]}
+    required = {"omnigent_session_get", "omnigent_automation_list"}
+    if require_history:
+        required.add("omnigent_session_history")
+    assert required <= names, "MCP tools missing"
+    return "active token works without browser cookies; required live tools available"
+
+
+def seed_profiles(api: Client, state: dict) -> str:
+    status, _ = api.request("GET", PROFILE_API)
+    if status == 404:
+        state["profiles"] = None
+        return "baseline has no MCP API; create/revoke will be checked after upgrade"
+    assert status == 200, f"MCP capability probe failed: HTTP {status}"
+    active = create_profile(api, state, "Upgrade active fixture")
+    revoked = create_profile(api, state, "Upgrade revoked fixture")
+    api.ok("DELETE", PROFILE_API + "/" + revoked["profile"]["id"])
+    listed = {p["id"]: p for p in api.ok("GET", PROFILE_API)["profiles"]}
+    for profile in (active, revoked):
+        profile["profile"] = listed[profile["profile"]["id"]]
+    state["profiles"] = {"active": active, "revoked": revoked}
+    check_profile(active, active=True, require_history=False)
+    check_profile(revoked, active=False)
+    return "active URL and revoked URL recorded privately for the next version"
+
+
+def verify_profiles(api: Client, state: dict) -> str:
+    profiles = state["profiles"]
+    if profiles is None:
+        return "baseline predates MCP; new profile lifecycle checked separately"
+    listed = {p["id"]: p for p in api.ok("GET", PROFILE_API)["profiles"]}
+    for name, saved in profiles.items():
+        current = listed[saved["profile"]["id"]]
+        assert all(current[k] == saved["profile"][k] for k in
+                   ("id", "name", "user_id", "created_by", "created_at", "revoked_at", "active")), "profile identity or revocation changed"
+        check_profile(saved, active=name == "active")
+    return "original tokens, account bindings and revocation timestamps preserved"
+
+
+def new_profile_lifecycle(api: Client, state: dict) -> str:
+    created = create_profile(api, state, "Upgrade lifecycle fixture")
+    try:
+        check_profile(created, active=True)
+        for visibility, saved in state["sessions"].items():
+            for tool in ("omnigent_session_get", "omnigent_session_history"):
+                status, result = rpc(created, "tools/call", {"name": tool, "arguments": {"session_id": saved["id"]}})
+                assert status == 200 and "result" in result, "MCP session call failed"
+                denied = result["result"].get("isError", False)
+                assert denied == (visibility == "private"), "MCP did not preserve session ACL"
+        status, _ = member_client(state).request("GET", PROFILE_API)
+        assert status == 403, "member can administer MCP profiles"
+    finally:
+        api.ok("DELETE", PROFILE_API + "/" + created["profile"]["id"])
+    check_profile(created, active=False)
+    return "create, canonical URL, tools, session ACL and revocation passed"
+
+
 def seed() -> int:
     api, checks, state = Client(os.environ["ADDON_URL"]), Checks(), {}
     ready = checks.run("server ready", api.wait_ready)
@@ -161,6 +331,7 @@ def seed() -> int:
         task = api.ok("GET", f"/v1/scheduled-tasks/{created['id']}")
         assert task.get("state") == "paused", f"state is {task.get('state')!r} after pausing"
         state["task"] = {k: task.get(k) for k in KEPT_FIELDS}
+        state["agent"] = {k: agent.get(k) for k in ("id", "name", "description", "version")}
         return f"{task['id']} (agent {agent.get('name')}, paused)"
     checks.run("scheduled task created", scheduled_task, bool(admin))
 
@@ -176,7 +347,15 @@ def seed() -> int:
         return f"{MARKER_USER} registered through an invite"
     checks.run("member created", member, bool(admin))
 
-    with open(state_path(), "w", encoding="utf-8") as f:
+    checks.run("private/shared sessions and artifact created", lambda: seed_sessions(api, state),
+               bool(admin) and "member" in state)
+    checks.run("MCP profiles seeded when supported", lambda: seed_profiles(api, state),
+               bool(admin) and "member" in state)
+    # State includes synthetic account passwords and bearer URLs. Never publish
+    # this directory as an artifact; only the redacted JSON report is public.
+    fd = os.open(state_path(), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    os.fchmod(fd, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
         json.dump(state, f)
     return checks.finish("seed")
 
@@ -213,7 +392,8 @@ def verify() -> int:
 
     def agent_kept() -> str:
         agent = api.ok("GET", f"/v1/agents/{seeded_task['agent_id']}")
-        return f"{agent.get('name')} ({seeded_task['agent_id']})"
+        assert all(agent.get(k) == v for k, v in state["agent"].items()), "agent fields changed"
+        return "same agent identity and configuration summary"
     checks.run("scheduled task's agent still exists", agent_kept, bool(admin) and seeded_task is not None)
 
     member = state.get("member") if isinstance(state.get("member"), dict) else None
@@ -227,6 +407,11 @@ def verify() -> int:
     checks.run("member logs in with the same password",
                lambda: Client(os.environ["ADDON_URL"]).login(member["username"], member["password"]),
                bool(ready) and member is not None)
+    checks.run("private/shared sessions and artifact kept", lambda: verify_sessions(api, state),
+               bool(admin) and member is not None)
+    checks.run("existing MCP URLs and revoked state kept", lambda: verify_profiles(api, state), bool(admin))
+    checks.run("new MCP profile create/use/revoke", lambda: new_profile_lifecycle(api, state),
+               bool(admin) and member is not None)
     return checks.finish("verify")
 
 

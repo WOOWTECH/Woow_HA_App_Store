@@ -1,0 +1,2 @@
+# Public fixture origin; requests still use ADDON_URL inside the test.
+mcp_public_base_url: https://mcp.example.test

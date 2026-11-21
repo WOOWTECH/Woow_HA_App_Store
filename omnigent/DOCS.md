@@ -1,6 +1,6 @@
 # Woow Omnigent
 
-Omnigent 0.21.0 orchestration server, packaged as a HAOS add-on. Bundles a
+Omnigent 0.21.0 with the WOOW native MCP build `mcp.1`, packaged as a HAOS add-on. Bundles a
 private Postgres 16 so the add-on is self-contained — no MariaDB add-on
 dependency, no external database wiring.
 
@@ -32,6 +32,7 @@ the log; start it again, or set a password yourself first.
 | `admin_username` | `woow`               | Local admin pre-seeded before the server accepts requests on first boot                       |
 | `admin_password` | *(empty)*            | Password of the admin account, used for the web UI. Empty on a new install: a random one is generated on the first start and saved here. Empty on an existing install: nothing is generated, the account keeps its current password |
 | `base_url`       | *(empty)*            | Public URL runners dial in on. Empty = `http://homeassistant.local:8000`                       |
+| `mcp_public_base_url` | *(empty)* | Complete external MCP base URL, including any deployment prefix. Passed as `OMNIGENT_MCP_PUBLIC_BASE_URL` |
 | `features`       | `usage_page,harness_install` | Comma-separated feature flags forwarded as `OMNIGENT_FEATURES=…`                       |
 | `env_vars`       | `[]`                 | Arbitrary passthrough — each item `{key, value}` becomes an env var (key must match `^[A-Z]…`) |
 
@@ -98,6 +99,50 @@ env_vars:
 These are visible to the server process only; runners bring their own
 credentials.
 
+## Native MCP connections
+
+In **Settings → Admin → MCP Server**, create a profile by verifying the linked
+account's username and password. Copy the connection URL returned by the server
+into your MCP client. The profile URL is a bearer credential: keep it private.
+The server stores a token hash and account binding, not the supplied password.
+Revoking a profile immediately blocks its URL; restarting or upgrading preserves
+both active profiles and revocation state.
+
+The HA sidebar remains an Ingress UI. External MCP clients need a separate HTTPS
+route to port 8000, for example:
+
+```yaml
+base_url: https://omnigent.example.com
+mcp_public_base_url: https://mcp.example.com/assistant
+```
+
+`mcp_public_base_url` is the **complete external deployment base**. Its prefix
+is used exactly once; `OMNIGENT_WEB_BASE_PATH` is never appended to an explicit
+value. Configure your external reverse proxy to strip `/assistant` when forwarding
+to this add-on's root API. The copied URL ends in `/assistant/mcp/private_…`.
+No HA cookie is required for the valid profile URL. This option advertises the
+URL; it does not create DNS, a TLS certificate, a tunnel, or a proxy route.
+
+Use HTTPS. HTTP is accepted only for `localhost`, `127.0.0.1`, or `::1` during
+local development. Credentials, query strings, fragments and
+`/api/hassio_ingress/…` paths are rejected. If the option is empty, the server
+uses the trusted `base_url` (accounts base); it appends the web base path only
+when that accounts base has no path. The default LAN HTTP URL is unsuitable
+for an external MCP profile: configure a valid public HTTPS base first.
+The UI copies the API's canonical `connection_url`, independent of its HA origin.
+
+The native endpoint supports Streamable HTTP and session history pagination.
+Clients should discover tools with `tools/list`; this build includes
+`omnigent_session_history`. Profile permissions follow the linked account,
+including private sessions, sharing changes and paused automations.
+
+The bundled Ingress nginx forwards MCP POST/GET/DELETE, media types and streaming
+responses without changing the token path. MCP access logs replace that path
+with `/mcp/[redacted]`; MCP location error logging is disabled because nginx error
+messages include the raw URL. Apply equivalent path redaction to the **external**
+HTTPS proxy and tunnel logs too. The external port 8000 route does not traverse
+the bundled Ingress nginx.
+
 ## Connecting a runner
 
 Server exposes port 8000 on the LAN (`ports:` in `config.yaml`). From any
@@ -128,6 +173,12 @@ the invite links match the public hostname.
 Add-on backups are cold and include `/data` — the full Postgres cluster
 **including `pg_wal`**, artifacts, admin credentials, and Omnigent state.
 Only logs are excluded. The WAL is needed to restore the database safely.
+
+Take a cold backup before updating to 0.1.24. Its MCP profile migration adds
+`za3b4c5d6e7f` after `d0a1f879a01d`; profiles and revocation state live in the
+database. The Store does not permit a version downgrade. To roll back, restore
+the complete backup taken before the update, including PostgreSQL and artifacts.
+Changing only the image or migration-version string is not a rollback.
 
 Restoring a backup restores the DB and admin claim; runners re-register
 themselves on next handshake.

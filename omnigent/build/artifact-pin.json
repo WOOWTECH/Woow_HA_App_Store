@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "coreVersion": "0.21.0",
+  "buildId": "mcp.1",
+  "sourceCommit": "459340b0d9516fd3ecb4c35a95eb6e17cc3a5340",
+  "wheelImage": "ghcr.io/woowtech/omnigent-server-kubernetes@sha256:ca7d431c241388f7ed7ae4db6b7583bd3952f303a68a53467985d5a1f33539e5",
+  "wheelPath": "/opt/woow-artifact/omnigent-0.21.0-py3-none-any.whl",
+  "wheelSha256": "734ca85fcfbead7abf940df9ac9670fb70e2189d4ae5195e8b9ba4d9ed7a9087",
+  "uiSha256": "e77b6a5fcf3e0531a5665d410b6e10a58c92820c94094dace3d9ea1dd8036a3e",
+  "platforms": [
+    {
+      "architecture": "linux/amd64",
+      "image": "ghcr.io/woowtech/omnigent-server-kubernetes@sha256:6ce1c77267f61ff51f7cc703015a1fe1b700ca4ee3afe62047953c6e8b322d07"
+    },
+    {
+      "architecture": "linux/arm64",
+      "image": "ghcr.io/woowtech/omnigent-server-kubernetes@sha256:7262c0c3e99345fab5924230639ba246795a7f05c3daf88dd2a47e4c54247f87"
+    }
+  ],
+  "runId": "44896274348",
+  "runAttempt": "1"
+}

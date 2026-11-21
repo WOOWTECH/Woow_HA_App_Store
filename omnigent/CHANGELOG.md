@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.1.24
+
+**Back up this add-on before updating.** This release adds the MCP profile
+migration `za3b4c5d6e7f` after `d0a1f879a01d`. The Store does not allow version
+downgrades. To roll back, restore the complete backup taken before the update.
+
+- Bundle the 0.21.0-based WOOW native MCP build `mcp.1` from the shared,
+  verified wheel. Upstream package and runner versions stay at 0.21.0.
+- Create and revoke account-bound MCP profiles in Settings → Admin → MCP
+  Server. Session history can be read with cursor pagination; permissions
+  follow the linked account.
+- Add `mcp_public_base_url` for the complete external HTTPS base, including
+  an optional prefix. The UI copies the server's canonical connection URL
+  even when opened through Home Assistant Ingress.
+- Forward Streamable HTTP MCP without path rewriting or buffering. Redact
+  MCP access-log paths and suppress raw MCP URLs in nginx error logs.
+- Refresh Ingress asset URLs for 0.1.24. Upgrade checks now cover passwords,
+  private/shared sessions, paused automation, agents, file content, and MCP
+  profile creation, revocation and persistence.
+
 ## 0.1.23
 
 - Starting the add-on no longer logs `ERROR: Unable to access the API,

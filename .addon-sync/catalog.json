@@ -2298,22 +2298,22 @@
     "woow-omnigent": {
       "id": "woow-omnigent",
       "name": "Woow Omnigent",
-      "version": "0.1.23",
+      "version": "0.1.24",
       "repository": "WOOWTECH/Woow_ha_omnigent_addon",
-      "source_sha": "191577fb937b1c131117083908e2fb54f5991e15",
+      "source_sha": "23ea9c20c73e82513e4d7e8dfc51cc2d9c00f30e",
       "source_path": "omnigent",
       "config_file": "config.yaml",
-      "config_sha256": "sha256:719c4bf219e7d176c5cffe1f6514dacc2c2fc1f47682a0a7b48b6ead565b5ade",
-      "archive_sha256": "sha256:e3225d167799034fb108ac60f6965d95524b6ad1eff321ab5f3221350de985b4",
-      "context_fingerprint": "sha256:a233d80b90e093bf667bff3025bd32280266d7f406acb318e343a98a25f37114",
-      "material_fingerprint": "sha256:1520f0a96515d4c0a2d1b91b98714440d787540577aecb3631ce231d5b29d05e",
+      "config_sha256": "sha256:ae717d9cd303a5c69cf9323b4bdca988809a78d64de64adeb092bbefe073d4fc",
+      "archive_sha256": "sha256:f778a50ce8c0c338371d38e1350603db11713494c10a2256cd38baafa07c6cd3",
+      "context_fingerprint": "sha256:842fb108e9197ae6d6b2c2ed2165caa8d649ac67451b57e0cc1e95430b656726",
+      "material_fingerprint": "sha256:ef658ed5aaded95ba1d4336e5aa10e65a1366633dd71ba5b141dc922ef883629",
       "architectures": [
         "amd64",
         "aarch64"
       ],
       "config": {
         "name": "Woow Omnigent",
-        "version": "0.1.23",
+        "version": "0.1.24",
         "slug": "woow-omnigent",
         "image": "ghcr.io/woowtech/woow-ha-omnigent-{arch}",
         "description": "Omnigent 0.21.0 meta-harness — orchestration server + bundled Postgres. External runners (pi / claude / codex / …) register from wherever via `omnigent host --server http://homeassistant.local:8000`. HTTP for LAN; pair with the Cloudflared add-on for HTTPS.",
@@ -2361,6 +2361,7 @@
           "admin_username": "str",
           "admin_password": "password",
           "base_url": "str?",
+          "mcp_public_base_url": "str?",
           "features": "str?",
           "env_vars": [
             {
@@ -2373,6 +2374,7 @@
           "admin_username": "woow",
           "admin_password": "",
           "base_url": "",
+          "mcp_public_base_url": "",
           "features": "usage_page,harness_install",
           "env_vars": []
         }
@@ -2380,21 +2382,21 @@
       "source_build_supported": true,
       "images": {
         "amd64": {
-          "reference": "ghcr.io/woowtech/woow-ha-omnigent-amd64:0.1.23",
-          "index_digest": "sha256:86d316c08de48166c942823362cef86f9c3e8680417b005a9ecead1b8921aa3e",
-          "digest": "sha256:2ea588125d3a1cd60fd737ae8e2683b87349113a76e1867a31bca2e9a0ae9d16",
-          "source_revision": "0101855defe81ac8b156c68d6eb411a7ae874d0b"
+          "reference": "ghcr.io/woowtech/woow-ha-omnigent-amd64:0.1.24",
+          "index_digest": "sha256:f2082e6041b8b03f72bde692c8631c29f0d85cb7836db38371822ba913c7099b",
+          "digest": "sha256:8a7394b8253d06fa27504941e7f6de172140c1ceffe3b46a1d765d75f3c451c4",
+          "source_revision": "459340b0d9516fd3ecb4c35a95eb6e17cc3a5340"
         },
         "aarch64": {
-          "reference": "ghcr.io/woowtech/woow-ha-omnigent-aarch64:0.1.23",
-          "index_digest": "sha256:aee84b0ca0e8a90b163c57baba7c34430be4da58b1b5397a545b9716e44011e4",
-          "digest": "sha256:2986418053fc4bc3a8f0a73213f605fbb40dce3460b857d4258f12379abcb14a",
-          "source_revision": "0101855defe81ac8b156c68d6eb411a7ae874d0b"
+          "reference": "ghcr.io/woowtech/woow-ha-omnigent-aarch64:0.1.24",
+          "index_digest": "sha256:493f0c8bc8ec45ef854cb749116265ab63e1037894e85d295839121591d5d618",
+          "digest": "sha256:0a86c065eadc217d95dd047bf5f2ea1ba7de3d4ff1f95adf5fae883e72e50874",
+          "source_revision": "459340b0d9516fd3ecb4c35a95eb6e17cc3a5340"
         }
       },
       "delivery": "published-image",
       "validation": "manifest+architecture-images+configured-CI",
-      "publisher_run_id": "43828963001",
+      "publisher_run_id": "44961039587",
       "channel": "stable",
       "store_path": "omnigent"
     },
@@ -3331,5 +3333,5 @@
       "store_path": "woow_mcp_headscale"
     }
   },
-  "catalog_id": "sha256:fd74dfecede55e91655398e1c09b3609cd71974cf7685645ed927bb91413a680"
+  "catalog_id": "sha256:e1a041921dd1635667c83a89c65d3a47c4836f55435163228b9319a14d61d6e9"
 }
