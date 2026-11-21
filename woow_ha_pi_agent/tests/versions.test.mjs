@@ -7,6 +7,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import { createHash } from 'node:crypto';
 
 const root = path.resolve(import.meta.dirname, '..');
 const read = file => fs.readFileSync(path.join(root, file), 'utf8');
@@ -15,11 +16,16 @@ const SEMVER = /^\d+\.\d+\.\d+$/;
 const escape = value => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const mentions = (text, literal) => new RegExp(`(?<![\\w.])${escape(literal)}(?![\\w.])`).test(text);
 
-test('versions.json pins exact versions and an immutable plugin release', () => {
+test('versions.json pins exact versions and the hash-checked frozen plugin archive', () => {
   for (const name of ['omnigentPlugin', 'omnigent', 'claude', 'codex']) assert.match(pins[name]?.version ?? '', SEMVER, `${name}.version`);
-  const { version, url, sha256 } = pins.omnigentPlugin;
-  assert.equal(url, `https://github.com/WOOWTECH/pi-omnigent-plugin/releases/download/v${version}/woowtech-pi-omnigent-plugin-${version}.tgz`);
+  const { version, archive, sha256, sourceCommit } = pins.omnigentPlugin;
+  assert.equal(archive, `candidate-packages/woowtech-pi-omnigent-plugin-${version}.tgz`);
   assert.match(sha256, /^[0-9a-f]{64}$/);
+  assert.match(sourceCommit, /^[0-9a-f]{40}$/);
+  assert.equal(createHash('sha256').update(fs.readFileSync(path.join(root, archive))).digest('hex'), sha256);
+  const candidate = JSON.parse(read('candidate-packages/manifest.json')).artifacts.find(row => row.file === path.basename(archive));
+  assert.equal(candidate?.sha256, sha256);
+  assert.equal(candidate?.sourceCommit, sourceCommit);
 });
 
 test('the Claude Code and Codex package locks install the pinned versions', () => {

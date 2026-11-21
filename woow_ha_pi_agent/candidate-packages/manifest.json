@@ -1,0 +1,24 @@
+{
+  "schema": 1,
+  "artifacts": [
+    {
+      "file": "woowtech-pi-agent-shared-runtime-0.1.6.tgz",
+      "sha256": "0914069fb0cf83f258cf81034bb16573f6e4242e8779cea47b4a5e841f98a937",
+      "status": "unpublished candidate; not a registry/release asset",
+      "sourceCommit": "e51849dfa340a2f91bcc7041092749d1b4859c70"
+    },
+    {
+      "file": "woowtech-pi-paseo-0.1.20.tgz",
+      "sha256": "1574c1bd1d0023c7b536c9feb773e1cdded929104d79cfb05b1deda5846203f8",
+      "status": "unpublished candidate; not a registry/release asset",
+      "sourceCommit": "aea2da4a83dbd220d8e9aa532ff91f9ac4e2c206",
+      "runtimeRevision": "0.11.2-r4-4cf9d40940bf"
+    },
+    {
+      "file": "woowtech-pi-omnigent-plugin-0.3.34.tgz",
+      "sha256": "e9e80783881f8a036cbf922d2f50fad860dac3bd23e170dda768ab3c56107945",
+      "status": "unpublished candidate; not a registry/release asset",
+      "sourceCommit": "d8652e971bdf66133d699052ab9003d39ff69159"
+    }
+  ]
+}

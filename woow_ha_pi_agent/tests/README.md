@@ -25,14 +25,14 @@ phone settings, the MCP-adjacent order, blank/masked credentials, two model
 selections, disconnect confirmation, Escape, remount and the standalone page.
 The Omnigent runtime is a fixture: these tests do not validate provider logins,
 paid model responses or real HA Supervisor ingress. Paseo tests use the
-checksum-verified public 0.1.15 client and cover deep links, assets and gzip.
+checksum-verified public 0.1.17 client and cover deep links, assets and gzip.
 
 CI runs these checks with Playwright 1.62.1 and retains screenshots/receipts.
 Set `CHROMIUM_EXECUTABLE` to reuse an installed Chromium locally. Continue to
 run `tests/omnigent-browser.mjs` for the independent fallback form. It also
 covers an offline host after a confirmed login: the plugin's issue hint in the
 page language (issue contract, plugin 0.3.30+), the code-and-message fallback
-of plugin 0.3.31, and **重新連線** (resume). A release also requires both
+of plugin 0.3.34, and **重新連線** (resume). A release also requires both
 architecture image builds and real Supervisor acceptance; the compiled browser
 test does not replace them.
 

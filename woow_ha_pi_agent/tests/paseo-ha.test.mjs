@@ -203,3 +203,68 @@ test('retired and missing static routes are 404; only listed codes reach the pag
   assert.ok(['ENOENT', 'EACCES', 'ERR_MODULE_NOT_FOUND'].every(value => logged.some(line => line.includes(`(${value})`))), logged.join('\n'));
   assert.ok(logged.every(line => !/private-(file|module)/.test(line)), 'the add-on log keeps the code, never the message');
 });
+
+test('pairing validates the selected brand, exact public origin and permitted Paseo landing paths', () => {
+  const prefix = '/api/hassio_ingress/fixture01234567890123';
+  assert.equal(pairUrl('/paseo-web/welcome#offer=private', prefix), prefix + '/paseo-web/welcome#offer=private');
+  for (const [target, origin] of [['woowtech', 'https://smart.woowtech.io'], ['apporo', 'https://smart.apporo.ai']]) {
+    const link = origin + '/#offer=private';
+    assert.equal(pairUrl(link, prefix, target), link);
+    for (const invalid of [origin + '.evil.test/#offer=private', origin + ':444/#offer=private', origin + '/welcome#offer=private',
+      origin + '/?offer=private', origin + '/#unknown=private', origin + '/#offer=bad!', origin + '/#', origin + '/#offer=private\n', origin.replace('https://', 'https://user@') + '/#offer=private',
+      'javascript:alert(1)', '//smart.woowtech.io/#offer=private', '/paseo-web/#offer=private']) {
+      assert.throws(() => pairUrl(invalid, prefix, target), { code: 'PAIRING_ORIGIN_INVALID' }, invalid);
+    }
+    assert.throws(() => pairUrl(link, prefix, target === 'woowtech' ? 'apporo' : 'woowtech'), { code: 'PAIRING_ORIGIN_INVALID' });
+    assert.throws(() => pairUrl(link, prefix), { code: 'PAIRING_ORIGIN_INVALID' });
+  }
+  assert.throws(() => pairUrl('/paseo-web/welcome#offer=private', prefix, 'custom'), { code: 'INVALID_TARGET' });
+});
+function targetedPlugin() {
+  const calls = [];
+  const state = { phase: 'ready', settings: { target: 'paseo', name: 'Private display label', secret: 'private-field' },
+    activeTarget: 'paseo', configurationPending: false, daemon: { running: true }, webClient: { ready: true },
+    connectionTargets: ['paseo', 'woowtech', 'apporo'].map(id => ({ id, appUrl: 'https://untrusted.test', secret: 'private-field' })), providers: [] };
+  const plugin = { enabled: true, version: 'candidate', api: {
+    status: async () => state,
+    saveConfig: async input => { calls.push(input); state.settings.target = input.target; state.configurationPending = state.daemon.running; },
+    pair: async () => { calls.push('pair'); return { target: state.settings.target, url: state.settings.target === 'paseo' ? '/paseo-web/welcome#offer=private' : `https://smart.${state.settings.target === 'apporo' ? 'apporo.ai' : 'woowtech.io'}/#offer=private` }; },
+    lifecycle: async input => { calls.push(input.action); state.daemon.running = input.action === 'enable'; if (state.daemon.running) { state.activeTarget = state.settings.target; state.configurationPending = false; } },
+  } };
+  return { state, calls, plugin, bridge: createPaseoBridge(async () => plugin) };
+}
+test('target save is strict, retains name in the package, projects only known fields and waits for restart', async () => {
+  const f = targetedPlugin();
+  const status = await f.bridge.read();
+  assert.deepEqual(status.settings, { target: 'paseo' }); assert.equal(status.targetSelectionAvailable, true);
+  assert.ok(!JSON.stringify(status).includes('private-field')); assert.ok(!JSON.stringify(status).includes('untrusted.test'));
+  for (const body of [{ action: 'save', target: 'custom' }, { action: 'save' }, { action: 'save', target: 'apporo', relayUrl: 'https://evil.test' }]) {
+    await assert.rejects(f.bridge.act(body), error => ['INVALID_TARGET', 'INVALID_SETTINGS'].includes(error.code));
+  }
+  assert.deepEqual(f.calls, []);
+  const saved = await f.bridge.act({ action: 'save', target: 'apporo' });
+  assert.equal(saved.configurationPending, true); assert.equal(saved.selectedTarget, 'apporo');
+  assert.equal(f.state.settings.name, 'Private display label'); assert.deepEqual(f.calls, [{ target: 'apporo' }]);
+  await assert.rejects(f.bridge.act({ action: 'pair', target: 'apporo' }), { code: 'CONFIGURATION_PENDING' });
+  assert.deepEqual(f.calls, [{ target: 'apporo' }]);
+  await f.bridge.act({ action: 'stop' }); await f.bridge.act({ action: 'start' });
+  assert.deepEqual(await f.bridge.act({ action: 'pair', target: 'apporo' }), { target: 'apporo', url: 'https://smart.apporo.ai/#offer=private' });
+});
+test('pair receipts bind to the saved target and reject concurrent settings changes or a foreign origin', async () => {
+  const f = targetedPlugin();
+  f.state.settings.target = 'woowtech'; f.state.activeTarget = 'woowtech';
+  await assert.rejects(f.bridge.act({ action: 'pair', target: 'apporo' }), { code: 'CONFIGURATION_PENDING' });
+  assert.deepEqual(f.calls, []);
+  f.plugin.api.pair = async () => ({ target: 'apporo', url: 'https://smart.apporo.ai/#offer=private' });
+  await assert.rejects(f.bridge.act({ action: 'pair' }), { code: 'CONFIGURATION_PENDING' });
+  f.plugin.api.pair = async () => ({ target: 'woowtech', url: 'https://smart.apporo.ai/#offer=private' });
+  await assert.rejects(f.bridge.act({ action: 'pair' }), { code: 'PAIRING_ORIGIN_INVALID' });
+  f.plugin.api.pair = async () => { f.state.settings.target = 'apporo'; return { target: 'woowtech', url: 'https://smart.woowtech.io/#offer=private' }; };
+  await assert.rejects(f.bridge.act({ action: 'pair' }), { code: 'CONFIGURATION_PENDING' });
+});
+test('legacy package remains usable with Paseo but cannot silently accept a new target', async () => {
+  const f = fakePlugin();
+  const state = await f.bridge.read(); assert.equal(state.selectedTarget, 'paseo'); assert.equal(state.targetSelectionAvailable, false);
+  await assert.rejects(f.bridge.act({ action: 'save', target: 'woowtech' }), { code: 'TARGET_SELECTION_UNSUPPORTED' });
+  assert.deepEqual(await f.bridge.act({ action: 'pair' }), { target: 'paseo', url: '/paseo-web/#fixture' });
+});

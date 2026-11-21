@@ -2,9 +2,26 @@
 
 import { cpSync, existsSync, lstatSync, mkdirSync, readFileSync, readlinkSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 
 const data = process.env.PI_AGENT_DATA_DIR || process.env.PI_CODING_AGENT_DIR || "/data/pi-agent";
 const home = process.env.HOME || path.join(data, "home");
+// Prefer the shared package when delivered by this distribution. Its seed
+// respects explicit disable/removal and external packages; never fall back to
+// the legacy writer after that decision. HOME stays the provider caller's.
+const bundle = process.env.PI_SHARED_RUNTIME_BUNDLE_DIR || '/opt/woow/pi-agent-shared-runtime';
+if (bundle && existsSync(path.join(bundle, 'src/distribution.mjs'))) {
+  // This short-lived helper shares resources, not a Pi session. Bridge mode
+  // keeps SDK skill authority while suppressing user extensions and the shared
+  // extension's launcher/bootstrap. It cannot change the parent CLI environment.
+  process.env.PI_SHARED_BRIDGE = '1';
+  const { synchronizeDistribution } = await import(pathToFileURL(path.join(bundle, 'src/distribution.mjs')).href);
+  const canonicalData = process.env.PI_SHARED_DATA_DIR || data;
+  const result = await synchronizeDistribution({ loc: { home, data: canonicalData, state: path.join(canonicalData, 'shared-runtime') } });
+  console.log(`Shared runtime: ${result.status || (result.busy ? 'busy' : 'unknown')}`);
+  process.exit(0);
+}
+
 const skills = path.join(data, "skills");
 const workspace = path.join(data, "workspace");
 const piExtensions = path.join(data, "plugins/pi");

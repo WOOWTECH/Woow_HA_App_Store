@@ -54,7 +54,7 @@ const calls = [];
 let lifecycle = { active: true, registered: true };
 const current = { phase: 'needs-login', enabled: true, loginConfirmed: false, host: { id: 'fixture', connected: false },
   engines: { pi: { available: true, version: '1.1.0' } } };
-const plugin = { locations: () => ({ stateDir }), version: '0.3.31', lifecycle: async () => lifecycle,
+const plugin = { locations: () => ({ stateDir }), version: '0.3.34', lifecycle: async () => lifecycle,
   runtime: { status: async () => current,
     catalog: async () => ({ data: { engines: { pi: { models: [{ id: 'test-a', displayName: 'Test A' }, { id: 'test-b', displayName: 'Test B' }] } } } }),
     initialize: async input => { calls.push({ action: 'connect', ...input }); Object.assign(current, { loginConfirmed: true, server: input.server, host: { connected: true } }); return { ok: true }; },
@@ -157,7 +157,7 @@ try {
     await page.waitForTimeout(1100);
     assert.notEqual(new URL(page.url()).searchParams.get('session'), omniSession.id, 'legacy setup session stays closed');
     assert.equal(await page.getByRole('link', { name: 'Omnigent', exact: true }).count(), 0, 'no floating Omnigent link on home');
-    assert.equal(await page.getByRole('link', { name: 'Paseo', exact: true }).count(), 0, 'no floating Paseo link on home');
+    assert.equal(await page.getByRole('link', { name: 'Agent Connect', exact: true }).count(), 0, 'no floating Paseo link on home');
     assert.equal((await context.request.get(base + '/omnigent/onboarding')).status(), 404);
     assert.equal((await context.request.get(base + '/omnigent/launcher.js')).status(), 404);
     assert.equal((await context.request.get(base + '/paseo/launcher.js')).status(), 404, 'retired Paseo launcher route, not a 503 naming the errno');
@@ -170,23 +170,25 @@ try {
     await page.getByRole('button', { name: 'Settings', exact: true }).click();
     const dialog = page.locator('.settings-dialog-surface'); await dialog.waitFor();
     const labels = await dialog.locator('.settings-section-tab').allTextContents();
-    assert.equal(labels[labels.indexOf('Omnigent') + 1], 'Paseo');
+    assert.equal(labels[labels.indexOf('Omnigent') + 1], 'Agent Connect');
     assert.equal(labels[labels.indexOf('MCP') + 1], 'Omnigent', 'native settings must put Omnigent immediately after MCP');
     const options = await dialog.locator('.settings-mobile-section-picker option').evaluateAll(nodes => nodes.map(node => node.value));
     assert.equal(options[options.indexOf('omnigent') + 1], 'paseo');
     assert.equal(options[options.indexOf('mcp') + 1], 'omnigent', 'mobile native settings must have the same order');
     const select = async section => {
       if (await dialog.locator('.settings-mobile-section-picker').isVisible()) await dialog.locator('.settings-mobile-section-picker').selectOption(section);
-      else await dialog.getByRole('button', { name: section === 'paseo' ? 'Paseo' : section === 'omnigent' ? 'Omnigent' : section === 'mcp' ? 'MCP' : 'General', exact: true }).click();
+      else await dialog.getByRole('button', { name: section === 'paseo' ? 'Agent Connect' : section === 'omnigent' ? 'Omnigent' : section === 'mcp' ? 'MCP' : 'General', exact: true }).click();
     };
     await select('paseo');
-    const paseoFrame = page.frameLocator('iframe[title="Paseo"]');
+    const paseoFrame = page.frameLocator('iframe[title="Agent Connect"]');
     // The embedded pages show enabled controls until app.js starts its first status read; on a real
     // HAOS (Ingress latency) `:enabled` matched while the page still said 讀取中…. Wait for the read.
     await paseoFrame.locator('#notice').filter({ hasNotText: '讀取中' }).waitFor();
     await paseoFrame.locator('#pair:enabled').waitFor();
+    assert.deepEqual(await paseoFrame.locator('#target option').evaluateAll(nodes => nodes.map(node => node.value)), ['paseo', 'woowtech', 'apporo']);
+    assert.equal(await paseoFrame.locator('#target').isDisabled(), true, 'legacy package cannot silently accept a new target');
     assert.equal(await paseoFrame.locator('#onboarding').count(), 0, 'Settings must not link to a setup conversation');
-    assert.equal(await page.locator('iframe[title="Paseo"]').getAttribute('src'), prefix + '/paseo/setup?embedded=1');
+    assert.equal(await page.locator('iframe[title="Agent Connect"]').getAttribute('src'), prefix + '/paseo/setup?embedded=1');
     await paseoFrame.locator('#pair').click();
     await paseoFrame.locator('#pair-link:not([hidden])').waitFor();
     assert.equal(await paseoFrame.locator('#pair-link').getAttribute('href'), prefix + '/paseo-web/#fixture-pairing');

@@ -31,6 +31,11 @@ test('real compiled client and SSR patch, all flight references change, repeat i
     const text = fs.readFileSync(path.join(root, item.file), 'utf8');
     assert.ok(text.includes(name)); assert.ok(!text.includes('page-b3286479e7c79f5d.js'));
   }
+  for (const item of receipt.slice(0, 2)) {
+    const text = fs.readFileSync(path.join(root, item.file), 'utf8');
+    assert.ok(text.includes('label:"Agent Connect"')); assert.ok(text.includes('title:"Agent Connect"'));
+    assert.ok(!text.includes('label:"Paseo"'));
+  }
   const before = snapshot(root); assert.ok(patchSettings(root).every(item => !item.changed));
   assert.deepEqual(snapshot(root), before);
 });

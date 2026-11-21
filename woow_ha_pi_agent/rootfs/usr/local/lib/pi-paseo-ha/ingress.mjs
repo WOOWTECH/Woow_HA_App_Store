@@ -40,11 +40,28 @@ export function ingressPrefix(value) {
   return typeof value === 'string' && /^\/api\/hassio_ingress\/[A-Za-z0-9_-]{16,128}$/.test(value) ? value : '';
 }
 
-export function pairUrl(value, prefix = '') {
-  if (typeof value !== 'string' || !/^\/paseo-web\/#\S+$/.test(value) || /[\\\x00-\x20\x7f]/.test(value)) {
-    throw Object.assign(new Error('Invalid pairing URL'), { code: 'PAIRING_ORIGIN_INVALID' });
+export const connectionTargets = Object.freeze([
+  Object.freeze({ id: 'paseo', label: 'Paseo', appUrl: '/paseo-web/' }),
+  Object.freeze({ id: 'woowtech', label: 'Woowtech Smart', appUrl: 'https://smart.woowtech.io' }),
+  Object.freeze({ id: 'apporo', label: 'Apporo Smart', appUrl: 'https://smart.apporo.ai' }),
+]);
+export function targetId(value = 'paseo') {
+  if (!connectionTargets.some(target => target.id === value)) throw Object.assign(new Error('Invalid target'), { code: 'INVALID_TARGET' });
+  return value;
+}
+export function pairUrl(value, prefix = '', target = 'paseo') {
+  target = targetId(target);
+  const invalid = () => { throw Object.assign(new Error('Invalid pairing URL'), { code: 'PAIRING_ORIGIN_INVALID' }); };
+  if (typeof value !== 'string' || /[\\\x00-\x20\x7f]/.test(value)) return invalid();
+  if (target === 'paseo') {
+    if (!/^\/paseo-web\/(?:welcome)?#\S+$/.test(value)) return invalid();
+    return ingressPrefix(prefix) + value;
   }
-  return ingressPrefix(prefix) + value;
+  let url;
+  try { url = new URL(value); } catch { return invalid(); }
+  const origin = connectionTargets.find(item => item.id === target).appUrl;
+  if (url.origin !== origin || url.username || url.password || url.pathname !== '/' || url.search || !/^#offer=[A-Za-z0-9_-]+$/.test(url.hash) || !value.startsWith(origin + '/#')) return invalid();
+  return value;
 }
 
 // Expo Router embeds the base URL in its routing and dynamic chunk loader,

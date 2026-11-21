@@ -1,20 +1,41 @@
-# Paseo managed web client in Home Assistant
+# Agent Connect in Home Assistant
 
 This change retains the official Pi Web 0.12.0 npm build and its SDK 1.1
 compatibility pins. It does **not** install the plugins' Pi Web 0.10 overlay.
-The native desktop tabs and mobile picker are MCP → Omnigent → Paseo.
+The native desktop tabs and mobile picker are MCP → Omnigent → Agent Connect.
+
+## Target selection candidate
+
+The Agent Connect settings page selects Paseo, Woowtech Smart or Apporo Smart.
+It uses the shared plugin's `settings.target` and `saveConfig({target})` API;
+missing target settings retain Paseo. The protected bridge projects only known
+status fields and fixes branded origins to `https://smart.woowtech.io` and
+`https://smart.apporo.ai`. Paseo continues through the HA Ingress web client;
+branded clients open their selected HTTPS origin with the pairing data only in
+the fragment. Pair receipts are checked against the selected target before and
+after the request. Draft changes and a pending daemon restart block pairing.
+Saving a target does not interrupt a running conversation: stop and start the
+service when convenient to apply the new target, then generate a fresh link.
+
+This source candidate pins the locally packed, unpublished Agent Connect
+0.1.20 archive. Its exact checksum is recorded below and in
+`AGENT_CONNECT_CANDIDATE.md`. Builds that fetch the public URL must wait for
+that exact artifact to be published. The selector remains disabled with an
+upgrade message when a user-selected older plugin lacks target support.
+Image, Ingress, upgrade-comparison and upgrade tests are required before
+publication. Existing paths and package identity remain compatible.
 
 ## Immutable image inputs
 
-- Paseo plugin 0.1.15, source `2d5531fd65f80a58a15ed19c709a4f29e52d3723` (public release archive verified with
-  SHA256 `1a8fd99a503d544a6bd324b93d080ed46dd0bb94cefbff863580580d9c72d4f5`).
-- Paseo daemon 0.11.2, locked runtime revision `0.11.2-r3-6d8dbe515479`.
+- Agent Connect plugin 0.1.20, unpublished local candidate archive
+  SHA256 `1574c1bd1d0023c7b536c9feb773e1cdded929104d79cfb05b1deda5846203f8`.
+- Paseo daemon 0.11.2, locked runtime revision `0.11.2-r4-4cf9d40940bf`.
 - Fixed web client 0.13.0-woow.1, source
   `68388f19198f1f696efe18906df42049e208d135`, stream repair
   `043aa8286b90418eb1f4e9982ca1a349c84f2a3d`, archive SHA256
   `7e7495f70f721e96e121f76bd91573150cf91aa112143d9f4d51a3fcf9dc8bce`.
-- Omnigent 0.3.31, source `a5671f00b280e14c3a376d84bfa4ec65f9aeefd9`, public archive SHA256
-  `b62059cdb6e5035c577e0e759d01a2586f1353768b40da2d190ec2db6f3bb4e7`.
+- Omnigent 0.3.34, source `d8652e971bdf66133d699052ab9003d39ff69159`, unpublished vendored archive SHA256
+  `e9e80783881f8a036cbf922d2f50fad860dac3bd23e170dda768ab3c56107945`.
   HA 0.15.19 keeps authorized-host recovery and native Pi Web 0.12 settings;
   Omnigent setup runs only from Settings. There is no floating link, setup
   conversation or link to one (0.15.14, which had them, is withdrawn).
@@ -88,7 +109,10 @@ but cannot be tied to its original process remains rejected without trusted
 proof and needs ownership diagnosis. Recovery does not delete that record
 or signal the foreign process. Native 0.11.2 dead-process and cross-boot checks
 remain in place. The image
-bundles r3 only; it does not copy the previous image's r2 runtime directory.
+bundles r4 only; it does not copy previous images' runtime directories.
+The r4 candidate adds selected-target brand identity. An old running runtime
+requires explicit stop/start. On non-Linux hosts the recorded PID, startedAt
+and runtime revision must match; new starts record their revision automatically.
 
 New users still need to authorize the provider CLIs through their official
 login flows. This integration does not migrate or create provider credentials.

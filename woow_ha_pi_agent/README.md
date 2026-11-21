@@ -264,6 +264,20 @@ Multi-arch images built by [`.github/workflows/build.yml`](.github/workflows/bui
 
 Base: `ghcr.io/hassio-addons/debian-base:9.1.0`.
 
+The 0.15.22 source candidate contains the exact checksum-pinned archives in
+`candidate-packages/manifest.json`: `@woowtech/pi-paseo` 0.1.20,
+`@woowtech/pi-omnigent-plugin` 0.3.34 and
+`@woowtech/pi-agent-shared-runtime` 0.1.6. Both image architectures and the
+Store local-source build consume these files directly. No npm publication or
+plugin GitHub Release is needed to build this source candidate.
+
+Release preparation stays in a draft PR until the exact artifacts are reviewed.
+Merging a version change to `main` starts image publication and the Store release
+pipeline; it is a publication action. A manual build defaults to `push: false`.
+The published 0.15.21 image is immutable and must not be overwritten with this
+candidate. Successful image/mock-Supervisor CI is not a real HAOS upgrade or
+user provider acceptance.
+
 **The Dockerfile is multi-stage as of v0.14.0.** pi-web 0.9.0's terminal pulls in `node-pty`, a native addon with no linux prebuild, so `node-gyp rebuild` runs during the build. A compiler is therefore needed to *build* the add-on but not to *run* it — and the agent's bash tool executes model-authored commands inside this container — so `build-essential` lives in a throwaway builder stage and only the finished tree is copied into the shipped image. The builder uses the same `${BUILD_FROM}` base as the runtime stage, not a plain Debian image: the add-on builds for amd64 and aarch64, and a native module compiled against a different glibc or Node ABI than the one that loads it yields a terminal that attaches and never prompts. A cross-stage `require()` assertion turns that into a failed build.
 
 ## Security
@@ -380,7 +394,7 @@ Bundled upstream packages retain their own licenses (`@agegr/pi-web` MIT, `@eare
 
 ## Omnigent
 
-映像已包含固定的 `pi-omnigent-plugin v0.3.31`、Python 3.12 與 Omnigent SDK 0.16.0。首次啟動自動註冊插件；不建立設定對話，網址、帳號及密碼由 **Settings → Omnigent** 輸入。
+映像已包含固定的 `pi-omnigent-plugin v0.3.34`、Python 3.12 與 Omnigent SDK 0.16.0。首次啟動自動註冊插件；不建立設定對話，網址、帳號及密碼由 **Settings → Omnigent** 輸入。
 
 1. 開啟 HA 側邊欄的 Pi Agent，進入 **Settings → Omnigent**（緊接 MCP；手機從設定下拉選單選取）。原生設定分頁會開啟受 HA ingress 保護的設定表單。
 2. 每次全新設定都需輸入 Server URL、帳號及密碼；不內建預設 server、不沿用另一容器的登入。密碼欄位遮罩，送出／離開頁面後清空，不存於對話。
@@ -398,4 +412,4 @@ Bundled upstream packages retain their own licenses (`@agegr/pi-web` MIT, `@eare
 
 ## Paseo managed web client
 
-See [HA integration, Ingress and upgrade notes](docs/PASEO_HA.md). The image bundles Paseo 0.1.15 and Omnigent 0.3.31, keeps Paseo beside Omnigent in Settings and retains Pi Web 0.12.0. Both bindings remain in Settings and create no setup conversation at startup.
+See [HA integration, Ingress and upgrade notes](docs/PASEO_HA.md). The image bundles Agent Connect 0.1.20 and Omnigent 0.3.34, keeps Paseo beside Omnigent in Settings and retains Pi Web 0.12.0. Both bindings remain in Settings and create no setup conversation at startup.

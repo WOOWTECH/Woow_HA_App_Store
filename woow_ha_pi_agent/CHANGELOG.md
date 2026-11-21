@@ -1,3 +1,10 @@
+## 0.15.22
+
+- Bundle the exact reviewed Agent Connect 0.1.20, Omnigent plugin 0.3.34 and shared runtime 0.1.6 archives. Settings can select woowtech smart, Apporo smart or Paseo, one target at a time, while retaining the existing npm package names.
+- Share MCP, skills and memory between Claude Code, Codex and Pi on the same host. Hosts retain independent data. Resource synchronization does not load user extensions or install a launcher; installed cold/warm MCP bridge gates cover the headless theme regression.
+- Agent Connect preserves the selected brand and waits for the real supervisor shutdown. An older running runtime needs an explicit stop/start before the replacement revision is used.
+- Keep Pi Web 0.12.0, add-on options, ports and architectures. The source-build path includes all three frozen archives and does not require publishing their npm versions first. CI uses a mock Supervisor; real user HAOS upgrade and provider acceptance remain separate.
+
 ## 0.15.21
 
 - Settings → Omnigent no longer offers a Pi model that does not exist. The 0.15.20 model-options patch read every two-word line printed by `pi --list-models` as a model, but when Pi has nothing configured it prints a "No models available. Use /login …" notice on stdout (exit code 0) instead of a table, and that notice became a model called `No/models` that cannot start. The patch now reads only the rows under the `provider  model` header, so an add-on with nothing configured lists nothing again; gateways declared on the Models page and a real Pi login behave exactly as in 0.15.20.

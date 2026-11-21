@@ -13,11 +13,12 @@ const files = new Map([['/paseo', ['index.html', 'text/html']], ['/paseo/', ['in
 // the page. A Node or system code (ENOENT, EACCES, ERR_*, ...) is logged, code only.
 const publicCodes = new Set(['PLUGIN_UNAVAILABLE', 'INVALID_ACTION', 'PAIRING_ORIGIN_INVALID', 'PAIRING_UNAVAILABLE',
   'WEB_CLIENT_NOT_READY', 'DAEMON_UNREACHABLE', 'DAEMON_REQUEST_TIMEOUT', 'PROVIDER_MODELS_UNAVAILABLE',
+  'INVALID_TARGET', 'INVALID_SETTINGS', 'TARGET_SELECTION_UNSUPPORTED', 'CONFIGURATION_PENDING',
   'LOCK_BUSY', 'RUNTIME_BUSY', 'STATE_BUSY', 'RESTART_REQUIRED', 'COMMAND_FAILED', 'COMMAND_UNAVAILABLE']);
 const logCode = error => [error?.code, error?.name].find(value => typeof value === 'string' && /^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(value)) || 'unknown';
 function safeCode(error) {
   if (publicCodes.has(error?.code)) return error.code;
-  console.error(`Paseo settings request failed (${logCode(error)}).`);
+  console.error(`Agent Connect settings request failed (${logCode(error)}).`);
   return 'PASEO_FAILED';
 }
 
@@ -84,7 +85,7 @@ export function createServer({ bridge = createPaseoBridge(), directory = staticR
       res.end(content);
     } catch (error) {
       const code = safeCode(error);
-      reply(code.startsWith('INVALID_') ? 400 : code === 'PLUGIN_UNAVAILABLE' ? 409 : 503, { error: { code } });
+      reply(code.startsWith('INVALID_') ? 400 : ['PLUGIN_UNAVAILABLE', 'CONFIGURATION_PENDING', 'TARGET_SELECTION_UNSUPPORTED'].includes(code) ? 409 : 503, { error: { code } });
     }
   });
 }

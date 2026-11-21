@@ -1,8 +1,8 @@
-// The released Omnigent plugin that the image bundles, driven by the add-on's
+// The frozen Omnigent plugin that the image bundles, driven by the add-on's
 // own seed, lifecycle and Settings bridge: seed → loadPlugin → lifecycle →
 // status → bridge.read, with no Docker, network, server or login. Runs in the
 // required test job long before the image build. Needs:
-//   OMNIGENT_PLUGIN_TGZ  the release tarball named in cli-runtime/versions.json
+//   OMNIGENT_PLUGIN_TGZ  the vendored archive named in cli-runtime/versions.json
 //   PI_WEB_ROOT          official Pi Web 0.12.0 with its production
 //                        dependencies; the image links its node_modules into
 //                        the plugin, and so does this test.
@@ -19,9 +19,9 @@ const root = path.resolve(import.meta.dirname, '..');
 const pins = JSON.parse(fs.readFileSync(path.join(root, 'cli-runtime/versions.json'), 'utf8'));
 const tarball = process.env.OMNIGENT_PLUGIN_TGZ;
 const piWeb = process.env.PI_WEB_ROOT;
-assert.ok(tarball && piWeb, 'OMNIGENT_PLUGIN_TGZ (the released plugin) and PI_WEB_ROOT (Pi Web with production dependencies) are required');
+assert.ok(tarball && piWeb, 'OMNIGENT_PLUGIN_TGZ (the frozen plugin) and PI_WEB_ROOT (Pi Web with production dependencies) are required');
 assert.equal(createHash('sha256').update(fs.readFileSync(tarball)).digest('hex'), pins.omnigentPlugin.sha256,
-  'OMNIGENT_PLUGIN_TGZ is the release pinned in cli-runtime/versions.json');
+  'OMNIGENT_PLUGIN_TGZ is the archive pinned in cli-runtime/versions.json');
 const release = pins.omnigentPlugin.version;
 const SERVER = 'https://omnigent.example.test';
 const VIEW_KEYS = ['installed', 'active', 'version', 'phase', 'server', 'loginConfirmed', 'host', 'issue', 'engines'];

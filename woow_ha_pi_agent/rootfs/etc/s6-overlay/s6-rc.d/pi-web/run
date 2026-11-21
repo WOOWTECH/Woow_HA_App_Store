@@ -151,6 +151,9 @@ export PORT=30141
 # is persistent per-addon and covered by HA snapshots) so user work survives.
 export HOME="${DATA_DIR}/home"
 export PATH="${HOME}/.local/bin:/usr/local/bin:${PATH}"
+export PI_SHARED_RUNTIME_BUNDLE_DIR="/opt/woow/pi-agent-shared-runtime"
+export PI_SHARED_DATA_DIR="${DATA_DIR}"
+export PI_SHARED_SDK_ROOT="/usr/local/lib/node_modules/@agegr/pi-web"
 PI_AGENT_DATA_DIR="${DATA_DIR}" node /usr/local/bin/pi-agent-share-state.mjs
 cd "${HOME}"
 
