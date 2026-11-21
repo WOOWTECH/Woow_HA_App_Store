@@ -76,7 +76,7 @@ ha store add https://github.com/WOOWTECH/Woow_HA_App_Store
 | `hamh` | Home-Assistant-Matter-Hub | 2.0.60 | 預建映像 | [riddix/home-assistant-matter-hub](https://github.com/riddix/home-assistant-matter-hub) |
 | `frigate` | Frigate | 0.18.3 | 預建映像 | [blakeblackshear/frigate-hass-addons](https://github.com/blakeblackshear/frigate-hass-addons) |
 | `jellyfin` | Jellyfin | 0.4.0 | 預建映像 | [hassio-addons/app-jellyfin](https://github.com/hassio-addons/app-jellyfin) |
-| `music_assistant` | Music Assistant | 2.10.12 | 預建映像 | [music-assistant.io](https://music-assistant.io) |
+| `music_assistant` | Music Assistant | 2.10.13 | 預建映像 | [music-assistant.io](https://music-assistant.io) |
 | `knxd` | KNXD daemon | 0.6.1 | 預建映像 | [da-anda/hass-io-addons](https://github.com/da-anda/hass-io-addons/tree/main/knxd) |
 
 ### 已下架（2026-11-15）
