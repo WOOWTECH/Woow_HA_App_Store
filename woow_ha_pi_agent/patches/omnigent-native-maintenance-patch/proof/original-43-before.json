@@ -1,0 +1,174 @@
+{
+  "actual5164/native/native_bridge_common.py": {
+    "sha256": "2a80d492f6f844a8da0e7dbb3e8aaec396a2bbd525f6d042ddc3cf2eed6bccc6",
+    "bytes": 8754
+  },
+  "actual5164/harnesses/codex_native/bridge.py": {
+    "sha256": "ff83cc72917c7e5a0478b414cdf32f1dfea6e1b248f0830d0daccc7559a25d80",
+    "bytes": 54688
+  },
+  "actual5164/host/maintenance.py": {
+    "sha256": "aed33f3ce3d4b543d2af7cb82452bee7ce11a8d7d2ea8f78d511b6c9e7ee3cc4",
+    "bytes": 10410
+  },
+  "actual5164/runner/_entry.py": {
+    "sha256": "f36a4c150a004314ad815127a81e195ea8d49e5acebdd1a42f50273a404c3963",
+    "bytes": 92084
+  },
+  "actual5164/inner/codex_executor.py": {
+    "sha256": "aa4ccd1220ae5a287411868d05c5e69c2d40d0db1907ee3889bdb76a350f49dd",
+    "bytes": 211662
+  },
+  "actual5164/inner/codex_native_harness.py": {
+    "sha256": "024d7842cfe3d8bf952a54ac29d2a2772fdeb0356ee878e54278640098cbc48b",
+    "bytes": 829
+  },
+  "actual5164/inner/terminal.py": {
+    "sha256": "520a24b5d17d96fa74bff93c544e80a7e92cbe6039d0f4b3a7eddfccd03e2234",
+    "bytes": 122076
+  },
+  "actual5164/runner/native/orchestration.py": {
+    "sha256": "c7bf262233ecc4a8a90c25499ab581d3c0c93c24e9fc8a88a712f96f9edd8fb8",
+    "bytes": 463958
+  },
+  "actual5164/harnesses/codex_native/process_registry.py": {
+    "sha256": "7eb934f3e46e258a3fde3cc5b99a2f03f9a5d38447536fafb5b544902a074fd3",
+    "bytes": 19534
+  },
+  "actual5164/stores/conversation_store/__init__.py": {
+    "sha256": "8d2b091e17a22bd3391661ab0cbeebb0ce39dba2c19442b1885bc0067c20dbec",
+    "bytes": 90452
+  },
+  "actual5164/config.py": {
+    "sha256": "25c353aa979e16531d3f4f8f7ae27bc9bd2ff0f7de2daeb7d24735b2a1e2e077",
+    "bytes": 7667
+  },
+  "actual5164/image-source/opt/woow/pi-omnigent-plugin/src/web.mjs": {
+    "sha256": "68438fc856b3742246d720ab29f250f8c3bfb612cb7f33bc63674a7d99b8debb",
+    "bytes": 26937
+  },
+  "actual5164/image-source/opt/woow/pi-omnigent-plugin/src/runtime.mjs": {
+    "sha256": "a9aeecb7413d54938101fa5892d7c0f6a7354d079b3dc4f8519f48b1f4d1cc59",
+    "bytes": 26471
+  },
+  "actual5164/image-source/opt/woow/pi-omnigent-plugin/src/omnigent.py": {
+    "sha256": "e45d6ef07ba45db3dd7b60cfb2bc8d8a07c0f13a115d07a8868f1026c30feaa7",
+    "bytes": 73206
+  },
+  "actual5164/image-source/opt/woow/pi-omnigent-plugin/src/installer.mjs": {
+    "sha256": "e22821fb6491ed735d18dbc198a3f7657e14bb9f0f0494ba653301d462717c86",
+    "bytes": 16220
+  },
+  "actual5164/image-source/usr/local/bin/pi-omnigent-seed.mjs": {
+    "sha256": "2148f62b50c935339df2be4aa2a7bf239bb8a6a5b34301c15634b33deae9b1ce",
+    "bytes": 12096
+  },
+  "actual5164/image-source/usr/local/bin/pi-web-start.sh": {
+    "sha256": "e33336e5e1f53e5e793c68af08c05a65591fbdbe0d0ad5e8e348d003376718e2",
+    "bytes": 5759
+  },
+  "actual5164/image-source/usr/local/bin/omnigent": {
+    "sha256": "ee12521024fde7dbb51103e98f393d9549b7f2e031df00c40ffc4e5d82c85828",
+    "bytes": 307
+  },
+  "actual5164/harnesses/codex_native/main.py": {
+    "sha256": "aa4e8c7d7fa84e638f4c55d6e1e12b2153e89d64bad61c7757e138485bf9d84f",
+    "bytes": 124650
+  },
+  "actual5164/runner/app.py": {
+    "sha256": "c38b016a8145deb6d1ad22b07ca57eaf31d5e64de5030c3c0e933e15ede84e2f",
+    "bytes": 624252
+  },
+  "actual5164/stores/conversation_store/sqlalchemy_store.py": {
+    "sha256": "9e87ad1f0e01b7c3ebe19b6a358b46e801d61605fcefc5eec0baa7b9ab99abbe",
+    "bytes": 243051
+  },
+  "actual5164/harnesses/codex_native/forwarder.py": {
+    "sha256": "fe95ff60556c99ad21d67102d1ed01f8102e440b7801a92065e20a316033b54e",
+    "bytes": 329296
+  },
+  "actual5164/host/__init__.py": {
+    "sha256": "96f034a203328c4f6501df1d853bea8946e551fc77ff26d2eea9620a6022b92e",
+    "bytes": 583
+  },
+  "actual5164/db/db_models.py": {
+    "sha256": "c93975803f21870b564f0e17179d52eb2e6e78006e1ca30d7a2aac13d7245ec5",
+    "bytes": 82659
+  },
+  "actual5164/host/connect.py": {
+    "sha256": "1093a7c89de966c39e598f683b2651073abf613152e4e875676135bd28138ad1",
+    "bytes": 230629
+  },
+  "actual5164/native/_native_post_delivery.py": {
+    "sha256": "d8da3c51e92c99a97fafb7cf207efd2e28c18d4cfed98483c059541edbcc3574",
+    "bytes": 25575
+  },
+  "actual5164/image-source/opt/woow/pi-omnigent-plugin/package.json": {
+    "sha256": "14e91f862bb049f85adc0a13da51d5381e78fb4bc4aab80532434d37f8a042c0",
+    "bytes": 1275
+  },
+  "actual6144/native/native_bridge_common.py": {
+    "sha256": "2a80d492f6f844a8da0e7dbb3e8aaec396a2bbd525f6d042ddc3cf2eed6bccc6",
+    "bytes": 8754
+  },
+  "actual6144/harnesses/codex_native/bridge.py": {
+    "sha256": "ff83cc72917c7e5a0478b414cdf32f1dfea6e1b248f0830d0daccc7559a25d80",
+    "bytes": 54688
+  },
+  "actual6144/harnesses/codex_native/main.py": {
+    "sha256": "aa4e8c7d7fa84e638f4c55d6e1e12b2153e89d64bad61c7757e138485bf9d84f",
+    "bytes": 124650
+  },
+  "actual6144/host/maintenance.py": {
+    "sha256": "aed33f3ce3d4b543d2af7cb82452bee7ce11a8d7d2ea8f78d511b6c9e7ee3cc4",
+    "bytes": 10410
+  },
+  "actual6144/runner/_entry.py": {
+    "sha256": "f36a4c150a004314ad815127a81e195ea8d49e5acebdd1a42f50273a404c3963",
+    "bytes": 92084
+  },
+  "actual6144/runner/app.py": {
+    "sha256": "c38b016a8145deb6d1ad22b07ca57eaf31d5e64de5030c3c0e933e15ede84e2f",
+    "bytes": 624252
+  },
+  "actual6144/runner/native/orchestration.py": {
+    "sha256": "c7bf262233ecc4a8a90c25499ab581d3c0c93c24e9fc8a88a712f96f9edd8fb8",
+    "bytes": 463958
+  },
+  "actual6144/inner/codex_executor.py": {
+    "sha256": "aa4ccd1220ae5a287411868d05c5e69c2d40d0db1907ee3889bdb76a350f49dd",
+    "bytes": 211662
+  },
+  "actual6144/image-source/opt/woow/pi-omnigent-plugin/package.json": {
+    "sha256": "8bd8cd57ac7d3060d6bce1a19dc2a9b673007280286f5190e01c044276ba026d",
+    "bytes": 1275
+  },
+  "actual6144/image-source/opt/woow/pi-omnigent-plugin/src/web.mjs": {
+    "sha256": "68438fc856b3742246d720ab29f250f8c3bfb612cb7f33bc63674a7d99b8debb",
+    "bytes": 26937
+  },
+  "actual6144/image-source/opt/woow/pi-omnigent-plugin/src/runtime.mjs": {
+    "sha256": "a9aeecb7413d54938101fa5892d7c0f6a7354d079b3dc4f8519f48b1f4d1cc59",
+    "bytes": 26471
+  },
+  "actual6144/image-source/opt/woow/pi-omnigent-plugin/src/omnigent.py": {
+    "sha256": "252b2a3aa75ec53402c437af1c6331d6a18e4078d5cdd96dc111577b1ccf7b88",
+    "bytes": 72594
+  },
+  "actual6144/image-source/usr/local/bin/pi-omnigent-seed.mjs": {
+    "sha256": "2148f62b50c935339df2be4aa2a7bf239bb8a6a5b34301c15634b33deae9b1ce",
+    "bytes": 12096
+  },
+  "actual6144/image-source/usr/local/bin/pi-web-start.sh": {
+    "sha256": "e33336e5e1f53e5e793c68af08c05a65591fbdbe0d0ad5e8e348d003376718e2",
+    "bytes": 5759
+  },
+  "actual6144/host/connect.py": {
+    "sha256": "1093a7c89de966c39e598f683b2651073abf613152e4e875676135bd28138ad1",
+    "bytes": 230629
+  },
+  "actual6144/harnesses/codex_native/forwarder.py": {
+    "sha256": "fe95ff60556c99ad21d67102d1ed01f8102e440b7801a92065e20a316033b54e",
+    "bytes": 329296
+  }
+}

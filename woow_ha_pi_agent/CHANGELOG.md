@@ -1,3 +1,8 @@
+## 0.15.23
+
+- Preserve native session history, generated config and undelivered posts during automatic Omnigent maintenance. Apply the exact reviewed source patch to the pinned SDK at image build time; unknown source bytes fail the build. Explicit session deletion keeps its existing behavior. This change does not recover previously removed files.
+- Add bounded synthetic seed/verify upgrade hooks to check file hashes, sizes, modes and ownership across the shared-data image upgrade. The hooks report file survival only; they do not claim automatic maintenance executed. Keep Omnigent 0.16.0 and all existing plugin/runtime pins. Actual HA upgrade acceptance remains separate from source and CI fixture checks.
+
 ## 0.15.22
 
 - Bundle the exact reviewed Agent Connect 0.1.20, Omnigent plugin 0.3.34 and shared runtime 0.1.6 archives. Settings can select woowtech smart, Apporo smart or Paseo, one target at a time, while retaining the existing npm package names.

@@ -1,0 +1,155 @@
+--- a/omnigent/native/native_bridge_common.py
++++ b/omnigent/native/native_bridge_common.py
+@@ -27,6 +27,7 @@
+ import logging
+ import os
+ import shutil
++import stat
+ from collections.abc import Callable, Iterator
+ from contextlib import contextmanager
+ from pathlib import Path
+@@ -38,6 +39,93 @@
+ 
+ OWNER_PID_FILENAME = "owner.pid"
+ _LOCK_DIR_NAME = ".locks"
++
++# A safety bound is a veto, never permission to delete a partly scanned tree.
++_MAINTENANCE_MAX_ENTRIES = 1024
++_MAINTENANCE_MAX_DEPTH = 16
++
++
++def _maintenance_path_is_unlinked_directory(path: Path) -> bool:
++    """Reject absent, relative, traversing, symlinked or unreadable paths."""
++    if not path.is_absolute() or ".." in path.parts:
++        return False
++    try:
++        return all(stat.S_ISDIR(part.lstat().st_mode) for part in (path, *path.parents))
++    except OSError:
++        return False
++
++
++def _maintenance_bridge_is_disposable(bridge_dir: Path) -> bool:
++    """Prove this bridge contains only owner.pid and empty directories.
++
++    All other leaves veto automatic cleanup, including unknown history formats,
++    zero-byte or rotated dead letters, auth/config and opaque symlinks. Do not
++    open any file here. Retention is in place, with no copies or chmod/chown.
++    Explicit session deletion does not call this maintenance-only predicate.
++    The existing bridge lock coordinates preparation. Two bounded descriptor
++    scans detect changes during inspection; this is not a lock on arbitrary
++    uncoordinated writers after the final check.
++    """
++    if not _maintenance_path_is_unlinked_directory(bridge_dir):
++        return False
++
++    def identity(info: os.stat_result) -> tuple[int, ...]:
++        return (info.st_dev, info.st_ino, info.st_mode, info.st_nlink,
++                info.st_uid, info.st_gid, info.st_size, info.st_mtime_ns, info.st_ctime_ns)
++
++    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
++    try:
++        with contextlib.ExitStack() as stack:
++            root_fd = os.open(bridge_dir, flags)
++            stack.callback(os.close, root_fd)
++            root_info = os.fstat(root_fd)
++
++            def snapshot() -> list[tuple[tuple[str, ...], tuple[int, ...]]]:
++                result = []
++                count = 0
++
++                def visit(fd: int, parts: tuple[str, ...]) -> None:
++                    nonlocal count
++                    if len(parts) > _MAINTENANCE_MAX_DEPTH:
++                        raise ValueError("maintenance scan depth bound")
++                    before = os.fstat(fd)
++                    if before.st_dev != root_info.st_dev:
++                        raise ValueError("maintenance scan filesystem boundary")
++                    result.append((parts, identity(before)))
++                    with os.scandir(fd) as children:
++                        for child in children:
++                            count += 1
++                            if count > _MAINTENANCE_MAX_ENTRIES:
++                                raise ValueError("maintenance scan entry bound")
++                            info = child.stat(follow_symlinks=False)
++                            child_parts = (*parts, child.name)
++                            if stat.S_ISDIR(info.st_mode):
++                                child_fd = os.open(child.name, flags, dir_fd=fd)
++                                try:
++                                    if identity(os.fstat(child_fd)) != identity(info):
++                                        raise ValueError("maintenance directory changed")
++                                    visit(child_fd, child_parts)
++                                finally:
++                                    os.close(child_fd)
++                            elif (not parts and child.name == OWNER_PID_FILENAME
++                                  and stat.S_ISREG(info.st_mode)
++                                  and info.st_nlink == 1 and 0 < info.st_size <= 32):
++                                result.append((child_parts, identity(info)))
++                            else:
++                                raise ValueError("maintenance bridge has retained state")
++                    if identity(os.fstat(fd)) != identity(before):
++                        raise ValueError("maintenance directory changed during scan")
++
++                visit(root_fd, ())
++                return sorted(result)
++
++            first = snapshot()
++            second = snapshot()
++            return (first == second
++                    and identity(bridge_dir.lstat()) == identity(os.fstat(root_fd))
++                    and _maintenance_path_is_unlinked_directory(bridge_dir))
++    except (OSError, ValueError):
++        return False
+ 
+ 
+ def _bridge_dir_lock(bridge_dir: Path) -> FileLock:
+@@ -113,18 +201,28 @@
+     :param bridge_root: The harness's bridge root, e.g.
+         ``~/.omnigent/codex-native``.
+     :param should_prune: Optional harness-specific eligibility predicate called
+-        only after the owner is proven dead. ``None`` removes every dead-owner
+-        directory.
++        only after the owner is proven dead and the maintenance safety veto
++        allows it. Regardless of this predicate, only owner.pid plus empty
++        directories may be removed. Every other leaf is retained in place.
+     :returns: The number of orphaned bridge dirs removed.
+     """
+-    if not bridge_root.exists():
++    if not _maintenance_path_is_unlinked_directory(bridge_root):
+         return 0
+-    from omnigent.inner.native_attachments import attachment_cache_dir
+     from omnigent.inner.terminal import _process_alive
+ 
+     pruned = 0
+     for entry in bridge_root.iterdir():
+         if not entry.is_dir() or entry.name == _LOCK_DIR_NAME:
++            continue
++        # Inspect before touching the owner marker or lock file: never follow
++        # a bridge/auth/owner alias, and never clear an unknown payload.
++        if not _maintenance_bridge_is_disposable(entry):
++            continue
++        lock_dir = bridge_root / _LOCK_DIR_NAME
++        try:
++            if lock_dir.is_symlink() or (lock_dir / f"{entry.name}.lock").is_symlink():
++                continue
++        except OSError:
+             continue
+         with _try_bridge_dir_cleanup_lock(entry) as acquired:
+             if not acquired:
+@@ -150,10 +248,14 @@
+                 continue
+             if confirmed_pid != pid or _process_alive(confirmed_pid):
+                 continue
+-            cache_dir = attachment_cache_dir(entry)
++            # Repeat under the preparation lock after all owner/age callbacks.
++            # A newly created rollout/dead letter must veto the pending delete.
++            if not _maintenance_bridge_is_disposable(entry):
++                continue
+             shutil.rmtree(entry, ignore_errors=True)
+-            if not entry.exists():
+-                shutil.rmtree(cache_dir, ignore_errors=True)
++            # Attachment caches may outlive this bridge and contain user data.
++            # Maintenance never removes them, even for a disposable bridge.
++            # Deliberate explicit session deletion keeps its existing cleanup.
+             pruned += 1
+     return pruned
+ 

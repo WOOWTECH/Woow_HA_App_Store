@@ -1,0 +1,16 @@
+{
+  "schema": "native-maintenance-preservation-source-lock-v1",
+  "scope": "build-time-source-only; maintenance-veto; explicit-delete-unchanged",
+  "capturedCoreVersion": "0.16.0",
+  "imageConfig": "sha256:5164e41f68e9b3917dd81f56a4095239dae67c1646cb01b92e7f7e597d4ac0a7",
+  "files": [
+    {
+      "target": "omnigent/native/native_bridge_common.py",
+      "beforeSha256": "2a80d492f6f844a8da0e7dbb3e8aaec396a2bbd525f6d042ddc3cf2eed6bccc6",
+      "afterSha256": "68f4c2a3c0a3aa75436a15828e325bd279995435d83931d93b12516cca303962",
+      "beforeBytes": 8754,
+      "afterBytes": 13872,
+      "payload": "overlay/omnigent/native/native_bridge_common.py"
+    }
+  ]
+}

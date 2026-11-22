@@ -1,0 +1,74 @@
+{
+  "archiveRoot": "omnigent-native-maintenance-patch",
+  "files": {
+    "IMPLEMENTATION-PLAN.md": {
+      "bytes": 2416,
+      "sha256": "f68c6495cc180c45d01c3175d119c777f780cc4a08937cf2e0734050ad0fa9d2"
+    },
+    "INTEGRATION.md": {
+      "bytes": 4322,
+      "sha256": "8027d9761194ab372cc7cbf1118e56249ca5abd983be0fc7331182fb0cd7a6f8"
+    },
+    "README.md": {
+      "bytes": 7633,
+      "sha256": "9cad094ca699b5c7deeb12b104105be610ff7600a1cd917a21717f4a8552bdda"
+    },
+    "apply_maintenance_patch.py": {
+      "bytes": 5949,
+      "sha256": "98355f8dd825b1642d5bb8d4b613954de838754c3b56fa401c7ce03c0f9b24ac"
+    },
+    "fixtures/captured-fragments.json": {
+      "bytes": 1101,
+      "sha256": "79fbfc41b0f9315ccabce591ac654c6003fd1516461d8aa6b7f92f242a512c30"
+    },
+    "fixtures/captured/harnesses/codex_native/bridge.py": {
+      "bytes": 1505,
+      "sha256": "849c2f2f19cc2c4884a1a636e1b940d924685543a552b5be5910448f027ffa41"
+    },
+    "fixtures/captured/inner/terminal.py": {
+      "bytes": 1332,
+      "sha256": "8fc45965b6192ca949ed66696c719d187efb730c3ed591d70acebfd2519d5310"
+    },
+    "fixtures/captured/native/native_bridge_common.py": {
+      "bytes": 8754,
+      "sha256": "2a80d492f6f844a8da0e7dbb3e8aaec396a2bbd525f6d042ddc3cf2eed6bccc6"
+    },
+    "fixtures/captured/runner/native/orchestration.py": {
+      "bytes": 4717,
+      "sha256": "6fea813f39f93bbb5c5ead02fcefc91e5a21f7b3ddadf8550036324d65145400"
+    },
+    "maintenance-preservation.diff": {
+      "bytes": 7162,
+      "sha256": "bb5da0a71764fda01caa175820197f750c55be128a9fe476457824ae14e86a97"
+    },
+    "overlay/omnigent/native/native_bridge_common.py": {
+      "bytes": 13872,
+      "sha256": "68f4c2a3c0a3aa75436a15828e325bd279995435d83931d93b12516cca303962"
+    },
+    "proof/original-43-before.json": {
+      "bytes": 6811,
+      "sha256": "0c594d7a0cf21089db91b816a46d67070943a52309717c2113faf396f93a624a"
+    },
+    "proof/red-baseline.json": {
+      "bytes": 338,
+      "sha256": "6c16ec354f50c5e7da18ab62a3c7467d5cc6f6970ab97bc98e0be5732302c9cd"
+    },
+    "source-lock.json": {
+      "bytes": 663,
+      "sha256": "3a3a30222dec807e18f785f34b1fc4201251d4ba43e005c7c8e510edb62133ab"
+    },
+    "tests/test_build_patch.py": {
+      "bytes": 10549,
+      "sha256": "9698b5b9887bacefdb451da68c3fbd39ec2c7423e25ebb80f1c2b229642c4076"
+    },
+    "tests/test_maintenance_preservation.py": {
+      "bytes": 23364,
+      "sha256": "f444db76cbcdc12227839a745c8f0dc84e6e8e1f7e4be5852aba1e674d3b29df"
+    },
+    "verify_source_patch.py": {
+      "bytes": 8878,
+      "sha256": "2297ca0c0678ae3ec91aad333d83e75828d6cf4d00a5e9209b6dec4056786eb9"
+    }
+  },
+  "schema": "native-maintenance-preservation-source-bundle-v1"
+}

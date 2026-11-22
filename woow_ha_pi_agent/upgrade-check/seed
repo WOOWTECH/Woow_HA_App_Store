@@ -1,0 +1,8 @@
+#!/usr/bin/env python3
+"""Seed bounded synthetic files on the comparison image's CI data mount."""
+import sys
+
+sys.dont_write_bytecode = True
+from native_history_upgrade import main
+
+raise SystemExit(main("seed"))

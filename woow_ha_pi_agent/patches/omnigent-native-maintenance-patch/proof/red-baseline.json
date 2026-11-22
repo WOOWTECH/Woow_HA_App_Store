@@ -1,0 +1,9 @@
+{
+  "command": "python -B tests/test_maintenance_preservation.py",
+  "candidate": "exact unmodified 2a80d492f6f844a8da0e7dbb3e8aaec396a2bbd525f6d042ddc3cf2eed6bccc6 source copy",
+  "fixtureOnly": true,
+  "testsRun": 2,
+  "failures": 2,
+  "assertion": "1 != 0: both old rollout and old rotated dead letter were deleted",
+  "exitCode": 1
+}

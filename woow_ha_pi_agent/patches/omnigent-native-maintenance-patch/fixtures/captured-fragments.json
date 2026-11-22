@@ -1,0 +1,26 @@
+{
+  "native/native_bridge_common.py": {
+    "sourceSha256": "2a80d492f6f844a8da0e7dbb3e8aaec396a2bbd525f6d042ddc3cf2eed6bccc6",
+    "fragmentSha256": "2a80d492f6f844a8da0e7dbb3e8aaec396a2bbd525f6d042ddc3cf2eed6bccc6",
+    "function": null,
+    "bytes": 8754
+  },
+  "inner/terminal.py": {
+    "sourceSha256": "520a24b5d17d96fa74bff93c544e80a7e92cbe6039d0f4b3a7eddfccd03e2234",
+    "fragmentSha256": "8fc45965b6192ca949ed66696c719d187efb730c3ed591d70acebfd2519d5310",
+    "function": "_process_alive",
+    "bytes": 1332
+  },
+  "harnesses/codex_native/bridge.py": {
+    "sourceSha256": "ff83cc72917c7e5a0478b414cdf32f1dfea6e1b248f0830d0daccc7559a25d80",
+    "fragmentSha256": "849c2f2f19cc2c4884a1a636e1b940d924685543a552b5be5910448f027ffa41",
+    "function": "_codex_orphan_retention_expired",
+    "bytes": 1505
+  },
+  "runner/native/orchestration.py": {
+    "sourceSha256": "c7bf262233ecc4a8a90c25499ab581d3c0c93c24e9fc8a88a712f96f9edd8fb8",
+    "fragmentSha256": "6fea813f39f93bbb5c5ead02fcefc91e5a21f7b3ddadf8550036324d65145400",
+    "function": "_delete_native_bridge_dirs",
+    "bytes": 4717
+  }
+}

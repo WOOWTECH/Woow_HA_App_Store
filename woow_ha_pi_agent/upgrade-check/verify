@@ -1,0 +1,8 @@
+#!/usr/bin/env python3
+"""Read back the seed's files after candidate-image startup; never reseed."""
+import sys
+
+sys.dont_write_bytecode = True
+from native_history_upgrade import main
+
+raise SystemExit(main("verify"))

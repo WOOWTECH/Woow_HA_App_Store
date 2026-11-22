@@ -197,7 +197,7 @@ ENV UV_PYTHON_INSTALL_DIR=/opt/omnigent/python UV_NO_CACHE=1
 COPY --from=pins /pins/omnigent/ /tmp/pins/omnigent/
 COPY cli-runtime/omnigent/requirements.lock /tmp/omnigent-requirements.lock
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates curl python3-venv \
+    && apt-get install -y --no-install-recommends ca-certificates curl python3-venv util-linux \
     && python3 -m venv /tmp/uv \
     && /tmp/uv/bin/pip install --no-cache-dir 'uv==0.12.10' \
     && /tmp/uv/bin/uv python install 3.12.12 \
@@ -239,6 +239,22 @@ RUN SITE_PACKAGES="$(/opt/omnigent/venv/bin/python -c 'import sysconfig; print(s
     && /opt/omnigent/venv/bin/python /opt/patches/omnigent-model-options-patch/omnigent-model-options-patch.py --site-packages "${SITE_PACKAGES}" --strict --expected-version "$(< /tmp/pins/omnigent/version)" \
     && /opt/omnigent/venv/bin/python /opt/patches/tests/omnigent-model-options-patch.test.py \
     && grep -q '_ambient_pi_model_options' "${SITE_PACKAGES}/omnigent/harnesses/pi_native/credentials.py"
+# Preserve native history/config and undelivered posts during automatic
+# maintenance. Reuse PR741's reviewed payload unchanged; unknown SDK source
+# bytes fail the build. Explicit session deletion keeps its existing behavior.
+COPY patches/omnigent-native-maintenance-patch/ /opt/patches/omnigent-native-maintenance-patch/
+RUN --network=none set -eu; \
+    SP="$(/opt/omnigent/venv/bin/python -c 'import sysconfig; print(sysconfig.get_paths()["purelib"])')"; \
+    PATCH=/opt/patches/omnigent-native-maintenance-patch; \
+    /opt/omnigent/venv/bin/python -c 'import importlib.metadata, json, sys; lock=json.load(open(sys.argv[1])); sys.exit(0 if importlib.metadata.version("omnigent") == lock["capturedCoreVersion"] == sys.argv[2] else "maintenance SDK version differs from reviewed source lock")' "$PATCH/source-lock.json" "$(< /tmp/pins/omnigent/version)"; \
+    /opt/omnigent/venv/bin/python -B "$PATCH/apply_maintenance_patch.py" --site-packages "$SP" --strict; \
+    /opt/omnigent/venv/bin/python -B -m unittest discover -s "$PATCH/tests" -p 'test_build_patch.py'; \
+    /opt/omnigent/venv/bin/python -B "$PATCH/apply_maintenance_patch.py" --site-packages "$SP" --strict --check-only; \
+    PI_NATIVE_MAINTENANCE_TEST_SOURCE="$SP/omnigent/native/native_bridge_common.py" \
+      setpriv --reuid=1000 --regid=1000 --clear-groups -- \
+      /opt/omnigent/venv/bin/python -B -m unittest discover -s "$PATCH/tests" -p 'test_maintenance_preservation.py'; \
+    chmod a+r,go-w "$SP/omnigent/native/native_bridge_common.py" \
+      "$SP/omnigent/native/__pycache__"/native_bridge_common.*.pyc
 COPY --from=pins /pins/omnigent-plugin/ /tmp/pins/omnigent-plugin/
 COPY candidate-packages/ /tmp/candidate-packages/
 RUN cp "/tmp/$(< /tmp/pins/omnigent-plugin/archive)" /tmp/plugin.tgz \
