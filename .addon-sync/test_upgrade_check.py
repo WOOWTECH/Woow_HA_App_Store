@@ -402,6 +402,31 @@ class CommandLine(unittest.TestCase):
     def test_scan_note_explains_a_skipped_comparison(self):
         self.main('--old',self.write('old.yaml',BASE),'--new',self.write('new.yaml',new()),'--scan-note','skipped as approved in the Store registry: a reason')
         self.assertIn('not run (skipped as approved in the Store registry: a reason)',self.summary.read_text(encoding='utf-8'))
+    def test_core_requirement_above_the_shipping_core_exits_1_with_an_annotation(self):
+        # #217: a WOOW source's PR fails, the annotation names both versions.
+        code,out=self.main('--old',self.write('old.yaml',BASE),'--new',self.write('new.yaml',new(homeassistant='2026.10.0')),'--name','t',
+            '--shipping-core',self.write('core.json','{"version": "2026.7.2"}'))
+        self.assertEqual(code,1)
+        self.assertIn('::error title=Core requirement above the shipping Core version::t: 要求 HA 2026.10.0，出貨 Core 版本 2026.7.2',out)
+        self.assertIn('要求 HA 2026.10.0',self.summary.read_text(encoding='utf-8'))
+    def test_core_requirement_held_in_sha_mode(self):
+        # #217: in sha mode (a Mirror source) an add-on blocked only by its Core requirement is held (暫緩): exit 4, a warning.
+        core=self.write('core.json','{"version": "2026.7.2"}')
+        args=['--old',self.write('old.yaml',BASE),'--shipping-core',core,'--name','t','--held-ok']
+        code,out=self.main(*args,'--new',self.write('new.yaml',new(homeassistant='2026.10.0')))
+        self.assertEqual(code,u.HELD);self.assertNotIn('::error',out)
+        self.assertIn('::warning title=Held (暫緩)::t: 要求 HA 2026.10.0，出貨 Core 版本 2026.7.2',out)
+        # Blocked for anything else too: failed, not held.
+        code,out=self.main(*args,'--new',self.write('new2.yaml',new(homeassistant='2026.10.0',schema=drop('db_filter'))))
+        self.assertEqual(code,1);self.assertIn('::error title=Core requirement above the shipping Core version::',out)
+        # Not above: passes as before.
+        self.assertEqual(self.main(*args,'--new',self.write('new3.yaml',new(homeassistant='2026.7.2')))[0],0)
+    def test_a_store_copy_or_requirement_that_cannot_be_read_exits_2(self):
+        for name,cfg,core in (('store copy',new(),'{"version": "2026.7"}'),('requirement',new(homeassistant='2026.10'),'{"version": "2026.7.2"}')):
+            with self.subTest(name):
+                code,out=self.main('--old',self.write('old.yaml',BASE),'--new',self.write('new.yaml',cfg),'--name','t','--held-ok',
+                    '--shipping-core',self.write('core.json',core))
+                self.assertEqual(code,2);self.assertIn('::error title=Upgrade comparison failed::t: ',out)
     def commands(self,out):
         # Workflow commands GitHub would run: everything between ::stop-commands::<token> and ::<token>:: is plain text.
         lines=[];stop=None

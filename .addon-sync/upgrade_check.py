@@ -228,7 +228,9 @@ def compare(old, new, old_version, new_version, notes=None, old_scan=None, new_s
     `notes`: parsed upgrade-notes.yaml or None. `old_scan`/`new_scan`: Grype JSON for category 4 (#118), None = not scanned.
     `scan_note`: report text for why there are no scan results.
     ValueError unless new_version is newer than old_version (addon_sync.require_newer; the plan step already checked, check_target).
-    Returns blocked, vulnerabilities (None when not scanned), breaking [{change, key, declared}], notices,
+    `shipping_core`: the shipping Core version for the Core requirement (#217); None reads the Store copy (shipping_core_version()).
+    Returns blocked, held (blocked by the Core requirement alone: a Mirror source's add-on is then held, 暫緩), core
+    (core_requirement(), None without homeassistant:), vulnerabilities (None when not scanned), breaking [{change, key, declared}], notices,
     unmatched declarations, problems, and a Markdown report (_first_report, _report)."""
     name=name or new.get('slug') or 'add-on'
     if old is not None:require_newer(new_version,old_version)
@@ -240,7 +242,7 @@ def compare(old, new, old_version, new_version, notes=None, old_scan=None, new_s
     problems+=[f'{d["version"]}: accepted {d["id"]} {d["package"]} has no reason' for d in accepted if not declaration_text(d,'reason')]
     above=bool(core and core['above'])
     if old is None:
-        return {'blocked':bool(problems) or above,'vulnerabilities':None,'breaking':[],'notices':[],'unmatched':[],'problems':problems,'core':core,
+        return {'blocked':bool(problems) or above,'held':above and not problems,'vulnerabilities':None,'breaking':[],'notices':[],'unmatched':[],'problems':problems,'core':core,
             'report':_first_report(name,new_version,problems,core)}
     found,notes_only=category1(old,new)
     migrations={(d['change'],d['key']):declaration_text(d,'migration') for d in declared if declaration_text(d,'migration')}
@@ -255,8 +257,8 @@ def compare(old, new, old_version, new_version, notes=None, old_scan=None, new_s
             if f['accepted']:f['reason']=reasons[(f['id'],f['package'])]
         listed={(f['id'],f['package']) for f in vulns['new_fixable']}
         vulns['unmatched_accepted']=[{'id':d['id'],'package':d['package'],'version':d['version']} for d in accepted if (d['id'],d['package']) not in listed]
-    blocked=any(not b['declared'] for b in breaking) or bool(problems) or bool(vulns and any(not f['accepted'] for f in vulns['new_fixable'])) or above
-    result={'blocked':blocked,'vulnerabilities':vulns,'breaking':breaking,'notices':notices,'unmatched':unmatched,'problems':problems,'core':core}
+    other=any(not b['declared'] for b in breaking) or bool(problems) or bool(vulns and any(not f['accepted'] for f in vulns['new_fixable']))
+    result={'blocked':other or above,'held':above and not other,'vulnerabilities':vulns,'breaking':breaking,'notices':notices,'unmatched':unmatched,'problems':problems,'core':core}
     return {**result,'report':_report(result,migrations,name,old_version,new_version,notes_path,scan_note)}
 
 def _core_lines(core):
@@ -879,11 +881,14 @@ def _release_notes(a):
     with _failing((ValueError,TypeError,OSError,yaml.YAMLError),f'{a.notes}: ','Release notes failed'):text=release_notes(_load(a.notes,'yaml',optional=True),a.version,a.released)
     print(text,end='');return 0
 
+HELD=4  # compare --held-ok: blocked by the Core requirement alone, so a Mirror source's add-on is held (暫緩, #217); not 1, 2 or 3
+
 def _compare(a):
     with _failing((ValueError,KeyError,TypeError,OSError,yaml.YAMLError),f'{a.name or a.new}: '):
         old,new=_load(a.old,'yaml'),_load(a.new,'yaml')
         r=compare(old,new,old_version=_version(a.old) if old else None,new_version=_version(a.new,True),notes=_load(a.notes,'yaml',optional=True),
-            old_scan=_load(a.old_scan,'json'),new_scan=_load(a.new_scan,'json'),name=a.name,notes_path=a.notes_path,scan_note=a.scan_note)
+            old_scan=_load(a.old_scan,'json'),new_scan=_load(a.new_scan,'json'),name=a.name,notes_path=a.notes_path,scan_note=a.scan_note,
+            shipping_core=shipping_core_version(a.shipping_core))
     # The report quotes PR text; GitHub must not read a line of it as a workflow command.
     token=secrets.token_hex(16);print('::stop-commands::'+token);print(r['report']);print('::'+token+'::')
     if a.summary:
@@ -893,6 +898,10 @@ def _compare(a):
     for f in (r.get('vulnerabilities') or {}).get('new_fixable',[]):
         if not f['accepted']:_error('New fixable vulnerability',f'{f["id"]} {f["package"]} ({f["severity"]}, fixed in {", ".join(f["fixed_in"])}) — upgrade the package or accept it in {a.notes_path}')
     for problem in r['problems']:_error('Invalid declaration',problem)
+    if r['held'] and a.held_ok:
+        # #217: a Mirror source (sha mode) holds the add-on: no Release, shown apart from a failure.
+        print(workflow_command('warning','Held (暫緩)',f'{a.name or a.new}: {core_text(r["core"])}; no Release until the shipping Core version is raised'));return HELD
+    if r['core'] and r['core']['above']:_error('Core requirement above the shipping Core version',f'{a.name or a.new}: {core_text(r["core"])}')
     return 1 if r['blocked'] else 0
 
 def _mounts(a):
@@ -940,6 +949,8 @@ def main(argv=None):
     c.add_argument('--old-scan');c.add_argument('--new-scan');c.add_argument('--name');c.add_argument('--notes-path',default='upgrade-notes.yaml')
     c.add_argument('--scan-note',default='no scan results',help='why there are no scan results (report text)')
     c.add_argument('--summary',default=os.environ.get('GITHUB_STEP_SUMMARY'),help='Markdown file the report is appended to')
+    c.add_argument('--shipping-core',default=str(SHIPPING_CORE),help='the Store copy of the shipping Core version, {"version": "YYYY.M.P"} (#217)')
+    c.add_argument('--held-ok',action='store_true',help=f'sha mode (a Mirror source, #217): an add-on blocked by its Core requirement alone is held (暫緩): a warning and exit {HELD}, not a failure')
     n=sub.add_parser('release-notes',help="print the Release-notes sections for a version's declarations ('' when none)")
     n.add_argument('--notes',required=True,help='upgrade-notes.yaml at the released commit (may be absent)')
     n.add_argument('--version',required=True,help='version being released')
