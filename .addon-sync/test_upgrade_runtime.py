@@ -522,6 +522,9 @@ class HaCoreLifecycle(unittest.TestCase):
             '--mount', f'type=bind,source={env.work / "ha-core"},target=/config', rt.CORE_IMAGE])
         # The image is the version the mock's /core/info reports; its config is no data directory of the add-on.
         self.assertEqual(rt.CORE_IMAGE, f'ghcr.io/home-assistant/qemux86-64-homeassistant:{rt.mock_supervisor.VERSIONS["homeassistant"]}')
+        # #225: that version is the Store copy of the shipping Core version (#217), not one set by hand.
+        shipping = json.loads((pathlib.Path(rt.__file__).with_name('shipping-core.json')).read_text(encoding='utf-8'))['version']
+        self.assertEqual(rt.CORE_IMAGE, f'ghcr.io/home-assistant/qemux86-64-homeassistant:{shipping}')
         self.assertFalse((env.work / 'ha-core').is_relative_to(env.data))
         setup = next(c for c in commands if 'core-setup' in c)
         self.assertEqual(setup, ['docker', 'exec', env.supervisor, 'python', '/tooling/mock_supervisor.py', 'core-setup', '--core', 'http://172.30.32.20:8123',
@@ -595,15 +598,17 @@ class Runtime(unittest.TestCase):
         try:
             (build / 'run.py').write_text(FAKE, encoding='utf-8')
             # The ha-core fake add-on (#174) talks websocket with mock_supervisor's frame code; fake_ha_core.py is the
-            # standard-library HA Core the runtime starts in place of the real image (never pulled in tests).
-            for name in ('mock_supervisor.py', 'fake_ha_core.py'):shutil.copy(rt.TOOLING / name, build / name)
+            # standard-library HA Core the runtime starts in place of the real image (never pulled in tests). mock_supervisor.py
+            # reads the shipping Core version next to it (#225).
+            mock_files = ('mock_supervisor.py', 'shipping_core.py', 'shipping-core.json')
+            for name in (*mock_files, 'fake_ha_core.py'):shutil.copy(rt.TOOLING / name, build / name)
             for mode in ('good', 'crash', 'answer-then-crash', 'forget', 'regress', 'needs-net-admin', 'ha-core'):
-                (build / 'Dockerfile').write_text(f'FROM {rt.MOCK_IMAGE}\nENV MODE={mode}\nCOPY run.py mock_supervisor.py /\nCMD ["python", "-u", "/run.py"]\n')
+                (build / 'Dockerfile').write_text(f'FROM {rt.MOCK_IMAGE}\nENV MODE={mode}\nCOPY run.py {" ".join(mock_files)} /\nCMD ["python", "-u", "/run.py"]\n')
                 tag = f'local/upgrade-test-fake-{mode}:{uuid.uuid4().hex[:8]}'
                 subprocess.run(['docker', 'build', '-q', '-t', tag, str(build)], check=True, capture_output=True)
                 cls.images[mode] = tag
             for mode, args in (('core-running', ''), ('core-never', ', "--never-running"')):
-                (build / 'Dockerfile').write_text(f'FROM {rt.MOCK_IMAGE}\nCOPY fake_ha_core.py mock_supervisor.py /\n'
+                (build / 'Dockerfile').write_text(f'FROM {rt.MOCK_IMAGE}\nCOPY fake_ha_core.py {" ".join(mock_files)} /\n'
                     f'CMD ["python", "-u", "/fake_ha_core.py"{args}]\n')
                 tag = f'local/upgrade-test-fake-{mode}:{uuid.uuid4().hex[:8]}'
                 subprocess.run(['docker', 'build', '-q', '-t', tag, str(build)], check=True, capture_output=True)

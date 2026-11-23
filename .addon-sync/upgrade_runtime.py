@@ -125,7 +125,9 @@ HA Core (#174): --ha-core (the workflow passes it for a component the Store
 registry flags upgrade_comparison.ha_core; config.yaml's homeassistant_api alone
 never does) starts one real HA Core for the whole test: CORE_IMAGE, the
 official image at mock_supervisor.VERSIONS['homeassistant'] (the version the
-mock's /core/info reports; one constant, bumped by hand), on the mock network
+mock's /core/info reports: the Store copy of the shipping Core version,
+.addon-sync/shipping-core.json, #225; a copy that cannot be read stops the
+runtime), on the mock network
 at CORE_IP. No `homeassistant` host name is added; only the mock talks to it.
 Its config directory is <work>/ha-core, not one of the add-on's data
 directories. It starts after the mock and before the comparison target, and
