@@ -22,6 +22,7 @@ name: Upgrade comparison tests
     - .addon-sync/test_mock_supervisor.py
     - .addon-sync/fake_ha_core.py
     - .addon-sync/registry.json
+    - .addon-sync/shipping-core.json
     - .github/workflows/woow-addon-upgrade-check.yml
     - .github/workflows/upgrade-check-tests.yml
     - .github/actions/addon-sbom/**
@@ -45,6 +46,7 @@ name: Upgrade comparison tests
     - .addon-sync/test_mock_supervisor.py
     - .addon-sync/fake_ha_core.py
     - .addon-sync/registry.json
+    - .addon-sync/shipping-core.json
     - .github/workflows/woow-addon-upgrade-check.yml
     - .github/workflows/upgrade-check-tests.yml
     - .github/actions/addon-sbom/**
