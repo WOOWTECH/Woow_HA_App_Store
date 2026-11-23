@@ -288,6 +288,81 @@ class Vulnerabilities(unittest.TestCase):
         r=u.compare(None,new(),None,'1.1.0',new_scan=self.NEW())
         self.assertFalse(r['blocked']);self.assertIn('no comparison target',r['report'])
 
+class CoreRequirement(unittest.TestCase):
+    """#217: config.yaml's homeassistant: (the Core requirement) of the new version is not above the shipping Core version."""
+    def core(self,required,shipping='2026.7.2',old=BASE,notes=None):
+        cfg=new() if required is None else new(homeassistant=required)
+        return u.compare(old,cfg,'1.0.0' if old else None,'1.1.0',notes=notes,shipping_core=shipping)
+    def test_above_the_shipping_core_blocks_and_names_both_versions(self):
+        r=self.core('2026.7.3')
+        self.assertTrue(r['blocked'])
+        self.assertIn('要求 HA 2026.7.3，出貨 Core 版本 2026.7.2',r['report'])
+    def test_above_in_patch_month_or_year_blocks(self):
+        for required in ('2026.7.3','2026.8.0','2026.10.0','2027.1.0'):
+            with self.subTest(required=required):
+                r=self.core(required)
+                self.assertTrue(r['blocked']);self.assertEqual(r['core'],{'required':required,'shipping':'2026.7.2','above':True})
+                self.assertIn(f'要求 HA {required}，出貨 Core 版本 2026.7.2',r['report'])
+    def test_parts_are_compared_as_numbers(self):
+        # 2026.10.0 is above 2026.9.9 although "1" < "9" as text.
+        self.assertTrue(self.core('2026.10.0',shipping='2026.9.9')['blocked'])
+        self.assertFalse(self.core('2026.9.9',shipping='2026.10.0')['blocked'])
+    def test_equal_or_below_passes_and_is_reported(self):
+        for required in ('2026.7.2','2026.7.1','2026.6.9','2024.1.0'):
+            with self.subTest(required=required):
+                r=self.core(required)
+                self.assertFalse(r['blocked']);self.assertFalse(r['core']['above'])
+                self.assertIn(f'homeassistant: {required}, not above the shipping Core version 2026.7.2',r['report'])
+    def test_without_the_key_it_passes_and_the_report_does_not_mention_it(self):
+        for required in (None,):
+            r=self.core(required)
+            self.assertFalse(r['blocked']);self.assertIsNone(r['core'])
+            self.assertNotIn('Core requirement',r['report'].replace('Core requirement above the shipping Core version, or',''))
+            self.assertNotIn('homeassistant:',r['report'])
+    def test_only_the_new_version_counts(self):
+        # The comparison target's value does not matter: the same requirement on both sides still blocks.
+        self.assertTrue(self.core('2026.10.0',old=dict(BASE,homeassistant='2026.10.0'))['blocked'])
+        self.assertFalse(self.core(None,old=dict(BASE,homeassistant='2027.1.0'))['blocked'])
+    def test_a_requirement_that_cannot_be_read_is_an_error(self):
+        # An unquoted 2026.10 is the number 2026.1 in YAML; betas and two-part versions are not YYYY.M.P either.
+        for required in (2026.1,'2026.10','2026.7.0b1','dev','',2026,['2026.7.2']):
+            with self.subTest(required=required):
+                with self.assertRaises(ValueError) as e:self.core(required)
+                self.assertIn('homeassistant:',str(e.exception))
+    def test_a_store_copy_that_cannot_be_read_is_an_error(self):
+        for shipping in (None,'2026.7','latest',2026.7):
+            with self.subTest(shipping=shipping):
+                with self.assertRaises(ValueError):u.compare(BASE,new(homeassistant='2026.1.0'),'1.0.0','1.1.0',shipping_core=shipping if shipping is not None else 0)
+        for name,text in (('missing',None),('not JSON','2026.7.2'),('no version','{}'),('not YYYY.M.P','{"version": "2026.7"}'),('not a mapping','["2026.7.2"]')):
+            with self.subTest(name):
+                path=pathlib.Path(tempfile.mkdtemp())/'shipping-core.json';self.addCleanup(shutil.rmtree,path.parent)
+                if text is not None:path.write_text(text,encoding='utf-8')
+                with self.assertRaises(ValueError) as e:u.shipping_core_version(path)
+                self.assertIn('shipping-core.json',str(e.exception))
+        # Without the key the copy is still read: a broken copy never passes, whatever the add-on.
+        with self.assertRaises(ValueError):self.core(None,shipping='2026.7')
+    def test_a_breaking_declaration_does_not_let_it_pass(self):
+        for change in ('core-requirement','homeassistant'):
+            with self.subTest(change=change):
+                notes={'1.1.0':{'breaking':[{'change':change,'key':'homeassistant','migration':'Update Home Assistant first.'}]}}
+                r=self.core('2026.10.0',notes=notes)
+                self.assertTrue(r['blocked']);self.assertEqual(r['unmatched'],[{'change':change,'key':'homeassistant','version':'1.1.0'}])
+    def test_no_comparison_target_is_checked_too(self):
+        r=self.core('2026.10.0',old=None)
+        self.assertTrue(r['blocked']);self.assertIn('要求 HA 2026.10.0，出貨 Core 版本 2026.7.2',r['report'])
+        self.assertIn('**Blocked**: Core requirement above the shipping Core version; no comparison target',r['report'])
+        self.assertFalse(self.core('2026.7.2',old=None)['blocked'])
+    def test_the_store_copy_is_read_by_default(self):
+        self.assertEqual(u.shipping_core_version(),json.loads(u.SHIPPING_CORE.read_text(encoding='utf-8'))['version'])
+        r=u.compare(BASE,new(homeassistant='2099.1.0'),'1.0.0','1.1.0')
+        self.assertTrue(r['blocked']);self.assertEqual(r['core']['shipping'],u.shipping_core_version())
+    @needs_store
+    def test_hamh_passes(self):
+        # hamh is the only Store add-on with homeassistant: (2024.1.0).
+        cfg=yaml.safe_load((STORE/'hamh'/'config.yaml').read_text(encoding='utf-8'))
+        r=u.compare(cfg,cfg|{'version':'99.0.0'},str(cfg['version']),'99.0.0')
+        self.assertFalse(r['core']['above']);self.assertEqual(r['core']['required'],'2024.1.0')
+
 class CommandLine(unittest.TestCase):
     def setUp(self):
         self.dir=pathlib.Path(tempfile.mkdtemp());self.summary=self.dir/'summary.md'
