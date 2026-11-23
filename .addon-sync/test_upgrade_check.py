@@ -1898,7 +1898,7 @@ class ShaCommands(unittest.TestCase):
             with self.subTest(kw):
                 code,out=self.change(['v1.0.0'],'1.1.0',**kw)
                 self.assertEqual(code,2);self.assertIn(why,out);self.assertTrue(out.startswith('::error title=Upgrade comparison failed::'))
-    def verdicts(self,plan=('a','b','c'),compared=('a','b','c'),results=None,unchanged=(),runtime_failed=(),components=('a','b','c','d')):
+    def verdicts(self,plan=('a','b','c'),compared=('a','b','c'),results=None,unchanged=(),runtime_failed=(),components=('a','b','c','d'),held=None):
         d=pathlib.Path(tempfile.mkdtemp());self.addCleanup(shutil.rmtree,d);(d/'reports').mkdir()
         (d/'provider.json').write_text(json.dumps({'components':[{'id':i} for i in components]}))
         (d/'plan.jsonl').write_text(''.join(json.dumps({'id':i})+'\n' for i in plan))
@@ -1906,8 +1906,22 @@ class ShaCommands(unittest.TestCase):
         for i,passed in (results if results is not None else {'a':True,'b':True,'c':True}).items():(d/'reports'/f'{i}.json').write_text(json.dumps({'name':i,'passed':passed}))
         with contextlib.redirect_stdout(io.StringIO()) as out:
             code=u.main(['sha-verdicts','--provider',str(d/'provider.json'),'--unchanged',str(d/'unchanged.txt'),'--plan',str(d/'plan.jsonl'),
-                '--compared',str(d/'compared.txt'),'--runtime-reports',str(d/'reports'),'--runtime-failed',str(d/'failed.txt')])
+                '--compared',str(d/'compared.txt'),'--runtime-reports',str(d/'reports'),'--runtime-failed',str(d/'failed.txt')]
+                +(['--held',str(d/'held.txt')] if held is not None and (d/'held.txt').write_text(''.join(i+'\n' for i in held)) is not None else []))
         return code,json.loads(out.getvalue())
+    def test_held_is_neither_passed_nor_failed(self):
+        # #217: compare --held-ok exited HELD (the Core requirement alone blocks): held.txt, not compared.txt. Held needs the same
+        # evidence as passed otherwise; it gets no Release and does not fail the run.
+        code,v=self.verdicts(compared=('b','c'),held=('a',),unchanged=('d',))
+        self.assertEqual((code,v['passed'],v['held']),(0,['b','c'],['a']))
+        self.assertEqual(v['verdicts'][0],{'id':'a','verdict':'held'})
+        # Held but its upgrade test failed: failed, as any add-on with failed evidence.
+        for kw in ({'results':{'a':False,'b':True,'c':True}},{'runtime_failed':('a',)},{'plan':('b','c')}):
+            with self.subTest(kw):
+                code,v=self.verdicts(compared=('b','c'),held=('a',),unchanged=('d',),**kw)
+                self.assertEqual((code,v['held'],v['verdicts'][0]),(1,[],{'id':'a','verdict':'failed'}))
+        # Without --held, nothing is held.
+        self.assertEqual(self.verdicts(unchanged=('d',))[1]['held'],[])
     def test_passed_needs_both_jobs_evidence(self):
         code,v=self.verdicts(unchanged=('d',))
         self.assertEqual((code,v['passed']),(0,['a','b','c']))

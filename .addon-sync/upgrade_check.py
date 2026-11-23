@@ -348,9 +348,11 @@ def catalog_entry(catalog, repo, component):
     entry=catalog['components'].get(component)
     return entry if isinstance(entry,dict) and entry.get('repository')==repo else None
 
-def sha_verdicts(components, unchanged, planned, compared, results, runtime_failed):
+def sha_verdicts(components, unchanged, planned, compared, results, runtime_failed, held=frozenset()):
     """sha mode (#167): each add-on's verdict, in the order of `components` (the ids `components()` gives):
-    'unchanged' (in `unchanged`: its version is its latest stable Release's, not compared), 'passed' or 'failed'.
+    'unchanged' (in `unchanged`: its version is its latest stable Release's, not compared), 'passed', 'held' or 'failed'.
+    Held (暫緩, #217): in `held` instead of `compared` (compare --held-ok exited HELD: the Core requirement alone blocked
+    categories 1 and 4) with the same runtime evidence as passed; it gets no Release and does not fail the run.
     Passed needs positive evidence from both jobs: the add-on is in the compare job's plan (`planned`), its comparison
     (categories 1 and 4) passed (`compared`), and its upgrade test result (categories 2 and 3; `results`, the runtime
     job's runtime-reports, {name: passed}) is there and not failed: passed true, or null when the test did not run (no
@@ -360,7 +362,8 @@ def sha_verdicts(components, unchanged, planned, compared, results, runtime_fail
     out=[]
     for cid in components:
         if cid in unchanged:verdict='unchanged'
-        elif cid in planned and cid in compared and cid in results and results[cid] is not False and cid not in runtime_failed:verdict='passed'
+        elif cid in planned and (cid in compared or cid in held) and cid in results and results[cid] is not False and cid not in runtime_failed:
+            verdict='passed' if cid in compared else 'held'
         else:verdict='failed'
         out.append({'id':cid,'verdict':verdict})
     return out
@@ -865,8 +868,9 @@ def _sha_verdicts(a):
         for p in sorted(pathlib.Path(a.runtime_reports).glob('*.json')) if a.runtime_reports else []:
             with contextlib.suppress(ValueError,KeyError,TypeError,AttributeError,OSError):
                 r=json.loads(p.read_text(encoding='utf-8'));results[r['name']]=r.get('passed')
-        verdicts=sha_verdicts(components,set(_lines(a.unchanged)),planned,set(_lines(a.compared)),results,set(_lines(a.runtime_failed)))
-    print(json.dumps({'passed':[v['id'] for v in verdicts if v['verdict']=='passed'],'verdicts':verdicts}))
+        verdicts=sha_verdicts(components,set(_lines(a.unchanged)),planned,set(_lines(a.compared)),results,set(_lines(a.runtime_failed)),
+            set(_lines(a.held)) if a.held else set())
+    print(json.dumps({'passed':[v['id'] for v in verdicts if v['verdict']=='passed'],'held':[v['id'] for v in verdicts if v['verdict']=='held'],'verdicts':verdicts}))
     return 1 if any(v['verdict']=='failed' for v in verdicts) else 0
 
 def _version_command(a):
@@ -995,11 +999,12 @@ def main(argv=None):
     w.add_argument('--registry',required=True,help='Store registry.json');w.add_argument('--repo',required=True,help='source repository, owner/name')
     w.add_argument('--component',required=True,help='add-on id in the registry');w.add_argument('--version',required=True,help='its version at the commit, as written')
     w.add_argument('--sha',required=True,help='the commit (the workflow input sha), a full commit id')
-    y=sub.add_parser('sha-verdicts',help="sha mode (#167): print {passed: [add-on ids], verdicts: [{id, verdict}]} as JSON from what the compare job wrote (sha_verdicts()); "
+    y=sub.add_parser('sha-verdicts',help="sha mode (#167): print {passed: [add-on ids], held: [add-on ids], verdicts: [{id, verdict}]} as JSON from what the compare job wrote (sha_verdicts()); "
         "exits 1 when an add-on failed")
     y.add_argument('--provider',required=True,help="provider.json (upgrade_check.py components)");y.add_argument('--unchanged',required=True,help='ids whose version is unchanged, one per line (may be absent)')
     y.add_argument('--plan',required=True,help="the compare job's plan.jsonl (may be absent)");y.add_argument('--compared',required=True,help='ids whose comparison passed, one per line (may be absent)')
     y.add_argument('--runtime-reports',required=True,help="directory of the runtime job's results, <id>.json");y.add_argument('--runtime-failed',required=True,help="ids 'Upgrade test result' failed, one per line (may be absent)")
+    y.add_argument('--held',help="ids compare --held-ok held (暫緩, #217): blocked by the Core requirement alone, one per line (may be absent)")
     z=sub.add_parser('attempt-artifact',help="#131: read this run's state ({run, jobs, artifacts}, GitHub API JSON) on stdin and print which attempt's "
         "artifact to read, as JSON {id, attempt, note} (attempt_artifact(); id null when there is none to read yet)")
     z.add_argument('--name',required=True,help="the artifact's name in this attempt, <base>-attempt-<attempt>");z.add_argument('--attempt',required=True,type=int,help='this run attempt')
