@@ -98,7 +98,7 @@ fi
 # Disable MagicDNS ingress proxy service when userspace-networking is enabled
 if bashio::config.true "userspace_networking"; then
     rm /etc/s6-overlay/s6-rc.d/forwarding/dependencies.d/magicdns-ingress-proxy
-    rm /etc/s6-overlay/s6-rc.d/user/contents.d/magicdns-ingress-proxy
+    rm /etc/s6-overlay/s6-rc.d/logged-in/contents.d/magicdns-ingress-proxy
     rm /etc/s6-overlay/s6-rc.d/tailscaled/dependencies.d/init-magicdns-ingress-proxy
 fi
 
@@ -116,20 +116,20 @@ fi
 
 # Disable forwarding service when userspace-networking is enabled
 if bashio::config.true "userspace_networking"; then
-    rm /etc/s6-overlay/s6-rc.d/user/contents.d/forwarding
+    rm /etc/s6-overlay/s6-rc.d/logged-in/contents.d/forwarding
 fi
 
 # Disable mss-clamping service when userspace-networking is enabled
 if bashio::config.true "userspace_networking"; then
-    rm /etc/s6-overlay/s6-rc.d/user/contents.d/mss-clamping
+    rm /etc/s6-overlay/s6-rc.d/logged-in/contents.d/mss-clamping
 fi
 
 # Disable taildrop service when it has been explicitly disabled
 if bashio::config.false 'taildrop'; then
-    rm /etc/s6-overlay/s6-rc.d/user/contents.d/taildrop
+    rm /etc/s6-overlay/s6-rc.d/logged-in/contents.d/taildrop
 fi
 
 # Disable share-homeassistant service when it has been explicitly disabled
 if bashio::config.equals 'share_homeassistant' 'disabled'; then
-    rm /etc/s6-overlay/s6-rc.d/user/contents.d/share-homeassistant
+    rm /etc/s6-overlay/s6-rc.d/logged-in/contents.d/share-homeassistant
 fi

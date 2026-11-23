@@ -22,19 +22,20 @@ class ArtifactTests(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         self.root = Path(self.tmp.name)
-        self.wheel = self.root / "omnigent-0.21.0-py3-none-any.whl"
+        self.wheel = self.root / f"omnigent-{artifact.CORE_VERSION}-py3-none-any.whl"
         self.ui = {"index.html": b"<head></head>", "assets/app.js":
                    b"__OMNIGENT_BASE_PATH__ /admin/mcp-server/profiles"}
         self.entries = {n: b"# fixture\n" for n in artifact.REQUIRED}
         self.entries.update({artifact.UI + n: v for n, v in self.ui.items()})
         self.entries[artifact.REQUIRED[0]] = b"omnigent_session_history OMNIGENT_MCP_PUBLIC_BASE_URL connection_url"
-        self.entries["omnigent-0.21.0.dist-info/METADATA"] = b"Name: omnigent\nVersion: 0.21.0\n"
+        self.entries[f"omnigent-{artifact.CORE_VERSION}.dist-info/METADATA"] = (
+            f"Name: omnigent\nVersion: {artifact.CORE_VERSION}\n".encode())
         self.write_wheel()
-        self.receipt = {"schemaVersion": 1, "coreVersion": "0.21.0", "buildId": "mcp.1",
+        self.receipt = {"schemaVersion": 1, "coreVersion": artifact.CORE_VERSION, "buildId": artifact.BUILD_ID,
                         "sourceCommit": "a" * 40, "wheelSha256": self.sha(),
                         "uiSha256": artifact.ui_hash(self.ui),
                         "wheelImage": "ghcr.io/woowtech/omnigent-server-kubernetes@sha256:" + "b" * 64,
-                        "wheelPath": "/opt/woow-artifact/omnigent-0.21.0-py3-none-any.whl"}
+                        "wheelPath": f"/opt/woow-artifact/omnigent-{artifact.CORE_VERSION}-py3-none-any.whl"}
 
     def write_wheel(self):
         with zipfile.ZipFile(self.wheel, "w") as z:

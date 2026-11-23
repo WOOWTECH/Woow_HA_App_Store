@@ -14,12 +14,17 @@ from email.parser import Parser
 from pathlib import Path, PurePosixPath
 
 UI = "omnigent/server/static/web-ui/"
+# 上游基底版本；WOOW build ID 每個基底版本從 mcp.1 起算。
+CORE_VERSION = "0.23.0"
+BUILD_ID = "mcp.1"
 REQUIRED = (
     "omnigent/server/mcp_server.py",
     "omnigent/server/mcp_profile_store.py",
     "omnigent/server/routes/mcp_server_profiles.py",
     "omnigent/db/migrations/versions/za3b4c5d6e7f_add_mcp_server_profiles.py",
     UI + "index.html",
+    # MCP profiles 分支與上游 v0.23.0 head 的 merge revision。
+    "omnigent/db/migrations/versions/zb4c5d6e7f80_merge_mcp_profiles_and_v0230_head.py",
 )
 
 
@@ -32,8 +37,8 @@ def read_receipt(path: Path) -> dict:
     data = json.loads(path.read_text())
     require(isinstance(data, dict), "receipt must be an object")
     require(data.get("schemaVersion") == 1, "unsupported receipt schema")
-    require(data.get("coreVersion") == "0.21.0", "expected upstream base 0.21.0")
-    require(data.get("buildId") == "mcp.1", "expected WOOW build mcp.1")
+    require(data.get("coreVersion") == CORE_VERSION, f"expected upstream base {CORE_VERSION}")
+    require(data.get("buildId") == BUILD_ID, f"expected WOOW build {BUILD_ID}")
     for name, length in (("sourceCommit", 40), ("wheelSha256", 64), ("uiSha256", 64)):
         require(isinstance(data.get(name), str) and
                 re.fullmatch(r"[0-9a-f]{%d}" % length, data[name]) is not None,
@@ -41,7 +46,7 @@ def read_receipt(path: Path) -> dict:
     require(isinstance(data.get("wheelImage"), str) and re.fullmatch(
         r"ghcr\.io/woowtech/omnigent-server-kubernetes@sha256:[0-9a-f]{64}", data["wheelImage"]) is not None,
         "wheelImage unresolved or invalid; pin the public Kubernetes candidate digest")
-    require(data.get("wheelPath") == "/opt/woow-artifact/omnigent-0.21.0-py3-none-any.whl",
+    require(data.get("wheelPath") == f"/opt/woow-artifact/omnigent-{CORE_VERSION}-py3-none-any.whl",
             "unexpected shared wheel path")
     return data
 

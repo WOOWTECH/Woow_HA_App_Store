@@ -3,7 +3,16 @@
 export LOG_FD
 # ==============================================================================
 # Home Assistant Community App: Tailscale
-# Runs after the machine has been logged in into the Tailscale network
+# Logs in to the Tailscale network, then starts the services that need it
+#
+# This is a longrun on purpose. Before the first login `tailscale up` waits for
+# the user to open the authentication URL, possibly for days. As a oneshot it
+# kept s6's start-up transition open, and stopping the app waited for that
+# transition until Supervisor killed the container (exit code 137). As a
+# longrun without readiness notification s6-rc counts it as up once it is
+# spawned, so the start-up completes and a stop just sends it SIGTERM.
+# The services that need a logged-in node are in the `logged-in` bundle,
+# outside the start-up set; this service starts them once Tailscale is Running.
 # ==============================================================================
 declare interface
 declare -a options
@@ -16,6 +25,7 @@ declare keyexpiry
 declare tailscale_bin="${TAILSCALE_BIN:-/opt/tailscale}"
 declare auth_key_file=""
 declare auth_key=""
+declare tailscale_up_pid
 
 # Default options
 options+=(--hostname "$(bashio::info.hostname)")
@@ -126,9 +136,20 @@ then
 fi
 
 # Start Tailscale
-if ! "${tailscale_bin}" up "${options[@]}"; then
+# Before the first login `tailscale up` waits until the user logs in. Run it in
+# the background and wait for it, so that s6's SIGTERM on stop is handled at
+# once: pass it on to `tailscale up`, remove the pairing key file, and end by
+# SIGTERM, which this service's finish treats as a normal stop.
+"${tailscale_bin}" up "${options[@]}" &
+tailscale_up_pid=$!
+trap 'kill -TERM "${tailscale_up_pid}" 2> /dev/null
+  if [[ -n "${auth_key_file:-}" ]]; then rm -f -- "${auth_key_file}"; fi
+  trap - TERM EXIT
+  kill -TERM "$$"' TERM
+if ! wait "${tailscale_up_pid}"; then
   bashio::exit.nok "Unable to start up Tailscale"
 fi
+trap - TERM
 
 # Wait for the network to be available and logged in
 pairing_started=$(date +%s)
@@ -221,3 +242,14 @@ if bashio::config.true "userspace_networking"; then
   bashio::log.notice \
     "Please check your configuration based on the app's documentation under \"Option: userspace_networking\""
 fi
+
+# Start the services that need a logged-in node (forwarding, MSS clamping,
+# MagicDNS ingress proxy, Serve/Funnel, Taildrive, Taildrop).
+# -b waits for the start-up transition to finish if it is still running.
+if ! s6-rc -b -u change logged-in; then
+  bashio::exit.nok "Unable to start the services that need a logged-in Tailscale"
+fi
+
+# Stay up: the logged-in services depend on this one, and s6 stops them before
+# it. sleep is the supervised process here, so a stop ends it at once.
+exec sleep infinity

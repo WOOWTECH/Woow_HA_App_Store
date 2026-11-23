@@ -26,7 +26,7 @@ HEAD = "a" * 40
 TREE = "b" * 40
 
 
-def registry_fixture(version="0.1.24", *, revision="pushed"):
+def registry_fixture(version=host.CANDIDATE_VERSION, *, revision="pushed"):
     config = json.dumps({"architecture": "amd64", "os": "linux", "config": {"Labels": {
         "io.hass.version": version}}}).encode()
     config_id = "sha256:" + hashlib.sha256(config).hexdigest()
@@ -217,7 +217,7 @@ class HostTests(unittest.TestCase):
         for mismatch in (False, True):
             with self.subTest(mismatch=mismatch), tempfile.TemporaryDirectory() as d:
                 h = host.Host(d)
-                tag = "haos-acceptance-baseline:0.1.23"
+                tag = "haos-acceptance-baseline:" + host.BASELINE_VERSION
                 fixture, config_id, _ = ArchiveIdentityTests().archive(d, tag=tag)
                 def command(argv, **kwargs):
                     if argv[:3] == ["docker", "image", "inspect"]:
@@ -243,7 +243,7 @@ class HostTests(unittest.TestCase):
             with self.subTest(status=status, size=len(body)), tempfile.TemporaryDirectory() as d:
                 h = host.Host(d)
                 def respond(request):
-                    self.assertEqual(str(request.url), "http://127.0.0.1:15000/v2/omnigent-acceptance/manifests/0.1.24")
+                    self.assertEqual(str(request.url), "http://127.0.0.1:15000/v2/omnigent-acceptance/manifests/" + host.CANDIDATE_VERSION)
                     return httpx.Response(status, content=body, headers={
                         "Docker-Content-Digest": "sha256:" + "d"*64, "Location": "https://invalid.example"})
                 with httpx.Client(transport=httpx.MockTransport(respond), trust_env=False) as client:
@@ -253,16 +253,16 @@ class HostTests(unittest.TestCase):
                         return client.stream(method, url, **kwargs)
                     with patch("haos.host.httpx.stream", side_effect=stream):
                         if status == 200 and len(body) <= 1024*1024:
-                            self.assertEqual(h._registry_metadata("manifests/0.1.24")[0], body)
+                            self.assertEqual(h._registry_metadata("manifests/" + host.CANDIDATE_VERSION)[0], body)
                         else:
                             with self.assertRaises(RuntimeError):
-                                h._registry_metadata("manifests/0.1.24")
+                                h._registry_metadata("manifests/" + host.CANDIDATE_VERSION)
                 self.assertNotIn("invalid.example", json.dumps(h.registry_progress))
                 with self.assertRaises(RuntimeError):
                     h._registry_metadata("https://invalid.example/private")
 
     def test_pushed_manifest_binding_handles_host_config_guest_manifest_for_both_versions(self):
-        for version in ("0.1.23", "0.1.24"):
+        for version in (host.BASELINE_VERSION, host.CANDIDATE_VERSION):
             with self.subTest(version=version), tempfile.TemporaryDirectory() as d:
                 h = host.Host(d)
                 config, config_id, manifest, pushed_id = registry_fixture(version)
@@ -274,7 +274,7 @@ class HostTests(unittest.TestCase):
                 h.run = Mock(side_effect=[SimpleNamespace(returncode=0, stdout=b"", stderr=b"")]*2 + [
                     SimpleNamespace(returncode=0, stdout=json.dumps([image]).encode(), stderr=b"")])
                 h._registry_metadata = Mock(side_effect=[(manifest, pushed_id), (config, config_id)])
-                source = host.BASELINE_IMAGE if version == "0.1.23" else host.IMAGE_TAG
+                source = host.BASELINE_IMAGE if version == host.BASELINE_VERSION else host.IMAGE_TAG
                 h.publish_local(source, version, identity=anchor)
                 for guest_id in (pushed_id, config_id):
                     h.ssh = Mock(return_value=SimpleNamespace(stdout=json.dumps([
@@ -326,7 +326,7 @@ class HostTests(unittest.TestCase):
             h.run = Mock(side_effect=[SimpleNamespace(returncode=0, stdout=b"", stderr=b""),
                 host.subprocess.TimeoutExpired(["docker", "synthetic-secret"], 240)])
             with self.assertRaises(host.subprocess.TimeoutExpired):
-                h.publish_local(host.IMAGE_TAG, "0.1.24", identity={"config_digest": "sha256:" + "c"*64, "producer_image_id": "sha256:" + "c"*64})
+                h.publish_local(host.IMAGE_TAG, host.CANDIDATE_VERSION, identity={"config_digest": "sha256:" + "c"*64, "producer_image_id": "sha256:" + "c"*64})
             self.assertEqual(h.registry_progress["stage"], "candidate_push")
             self.assertEqual(h.registry_progress["commands"][-1], {
                 "stage": "candidate_push", "exit": None, "timeout": True, "error_codes": []})
@@ -353,7 +353,7 @@ class HostTests(unittest.TestCase):
             h.run = Mock(side_effect=[SimpleNamespace(returncode=0, stdout=b"", stderr=b"")]*2 + [
                 SimpleNamespace(returncode=0, stdout=json.dumps([image]).encode(), stderr=b"")])
             with self.assertRaisesRegex(RuntimeError, "wrong add-on version"):
-                h.publish_local(host.BASELINE_IMAGE, "0.1.23", identity={"config_digest": "sha256:" + "c"*64, "producer_image_id": "sha256:" + "c"*64})
+                h.publish_local(host.BASELINE_IMAGE, host.BASELINE_VERSION, identity={"config_digest": "sha256:" + "c"*64, "producer_image_id": "sha256:" + "c"*64})
             self.assertEqual(h.registry_progress["stage"], "baseline_version")
             self.assertTrue(all(c["exit"] == 0 for c in h.registry_progress["commands"]))
 
@@ -426,7 +426,7 @@ class HostTests(unittest.TestCase):
                 h.run = Mock(side_effect=[SimpleNamespace(returncode=0, stdout=b"", stderr=b"")]*2 + [
                     SimpleNamespace(returncode=0, stdout=payload, stderr=b"")])
                 with self.assertRaises((ValueError, RuntimeError)):
-                    h.publish_local(host.IMAGE_TAG, "0.1.24", identity={"config_digest": "sha256:" + "c"*64, "producer_image_id": "sha256:" + "c"*64})
+                    h.publish_local(host.IMAGE_TAG, host.CANDIDATE_VERSION, identity={"config_digest": "sha256:" + "c"*64, "producer_image_id": "sha256:" + "c"*64})
                 self.assertEqual(h.registry_progress["stage"], stage)
                 self.assertFalse(h.registry_progress["states"][stage])
 
@@ -1028,7 +1028,7 @@ class HostTests(unittest.TestCase):
 
     def test_install_config_is_discovered_in_current_supervisor_local_apps(self):
         # Supervisor 2026.11.0 config.APPS_LOCAL and StoreData.update use apps/local.
-        for version in ("0.1.23", "0.1.24"):
+        for version in (host.BASELINE_VERSION, host.CANDIDATE_VERSION):
             with self.subTest(version=version), tempfile.TemporaryDirectory() as d:
                 root = Path(d)
                 local = root / "apps/local"
@@ -1059,7 +1059,7 @@ class HostTests(unittest.TestCase):
                 self.assertFalse((root / "addons").exists())
 
     def test_install_config_requires_existing_root_and_exact_catalog_entry(self):
-        config = {"slug": "woow-omnigent", "version": "0.1.23"}
+        config = {"slug": "woow-omnigent", "version": host.BASELINE_VERSION}
         with tempfile.TemporaryDirectory() as d:
             h = host.Host(d)
             def ssh(command, **kwargs):
@@ -1071,7 +1071,7 @@ class HostTests(unittest.TestCase):
                 h.install_config(config)
             h.supervisor.assert_not_called()
             self.assertFalse((Path(d) / "apps").exists())
-        entry = {"slug": "local_woow-omnigent", "repository": "local", "version_latest": "0.1.23"}
+        entry = {"slug": "local_woow-omnigent", "repository": "local", "version_latest": host.BASELINE_VERSION}
         for field in entry:
             with self.subTest(field=field), tempfile.TemporaryDirectory() as d:
                 h = host.Host(d)
@@ -1215,16 +1215,18 @@ class AcceptanceTests(unittest.TestCase):
                         self.assertFalse(progress["closed"])
 
     def test_install_uses_bound_guest_manifest_for_baseline_and_candidate(self):
-        for baseline in (True, False):
-            with self.subTest(baseline=baseline), tempfile.TemporaryDirectory() as d:
-                version = "0.1.23" if baseline else "0.1.24"
+        # candidate 停在 baseline 的 migration head 時，回滾檢查分不出兩版，要直接失敗。
+        for baseline, head in ((True, "fixture_head"), (False, "fixture_head"),
+                               (False, host.BASELINE_MIGRATION)):
+            with self.subTest(baseline=baseline, head=head), tempfile.TemporaryDirectory() as d:
+                version = host.BASELINE_VERSION if baseline else host.CANDIDATE_VERSION
                 config, config_id, manifest, pushed_id = registry_fixture(version)
                 suite = acceptance.Acceptance.__new__(acceptance.Acceptance)
                 h = suite.host = host.Host(d)
                 h.image_identities[config_id] = provenance.registry_identity(manifest, pushed_id, config, config_id)
                 suite.old_image = suite.new_image = {"Id": config_id}
-                suite.old_config = {"version": "0.1.23", "options": {}}
-                suite.config = {"version": "0.1.24", "options": {}}
+                suite.old_config = {"version": host.BASELINE_VERSION, "options": {}}
+                suite.config = {"version": host.CANDIDATE_VERSION, "options": {}}
                 suite.username, suite.password = "fixture-user", "fixture-password"
                 suite.pin, suite.evidence = {"fixture": "pin"}, {}
                 suite.wait_addon = Mock()
@@ -1237,18 +1239,45 @@ class AcceptanceTests(unittest.TestCase):
                     elif "SHOW server_version" in command:
                         value = "16.10"
                     elif "SELECT version_num" in command:
-                        value = "fixture_head"
+                        value = head
                     else:
                         value = ""
                     return SimpleNamespace(stdout=value.encode())
                 h.ssh = Mock(side_effect=ssh)
                 h.verify_guest_image = Mock(wraps=h.verify_guest_image)
+                if not baseline and head == host.BASELINE_MIGRATION:
+                    with self.assertRaisesRegex(RuntimeError, "baseline migration head"):
+                        suite.install(baseline=baseline)
+                    continue
                 suite.install(baseline=baseline)
                 h.verify_guest_image.assert_called_once_with(config_id)
                 self.assertEqual(suite.container, "app_local_woow-omnigent")
+                # baseline 也有 MCP，seed hook 檢查的公開網址兩版都要設。
+                options = next(c.args[2] for c in h.supervisor.call_args_list
+                               if c.args[1].endswith("/options"))["options"]
+                self.assertEqual(options["mcp_public_base_url"], acceptance.PUBLIC_BASE)
+
+    def test_baseline_rollback_requires_baseline_migration_head(self):
+        for head, restored in ((host.BASELINE_MIGRATION, True), ("candidate_head", False)):
+            with self.subTest(head=head):
+                suite = acceptance.Acceptance.__new__(acceptance.Acceptance)
+                suite.host = Mock()
+                suite.host.verify_guest_image.return_value = "app_local_woow-omnigent"
+                suite.host.ssh.return_value.stdout = head.encode()
+                suite.old_image, suite.baseline_backup, suite.evidence = {"Id": "old"}, "abcd", {}
+                suite.restore = Mock()
+                if restored:
+                    suite.baseline_rollback()
+                    self.assertEqual(suite.evidence["rollback_database"], {"migration_head": head})
+                else:
+                    with self.assertRaisesRegex(RuntimeError, "candidate database"):
+                        suite.baseline_rollback()
+                suite.restore.assert_called_once_with("abcd", host.BASELINE_VERSION, "old")
+                suite.host.verify_guest_image.assert_called_once_with("old")
+                self.assertIn("SELECT version_num FROM alembic_version", suite.host.ssh.call_args.args[0])
 
     def test_backup_restore_and_coldboot_use_bound_guest_manifest_for_both_versions(self):
-        for version in ("0.1.23", "0.1.24"):
+        for version in (host.BASELINE_VERSION, host.CANDIDATE_VERSION):
             with self.subTest(version=version), tempfile.TemporaryDirectory() as d:
                 config, config_id, manifest, pushed_id = registry_fixture(version)
                 suite = acceptance.Acceptance.__new__(acceptance.Acceptance)
@@ -1273,7 +1302,7 @@ class AcceptanceTests(unittest.TestCase):
                     return SimpleNamespace(stdout=data)
                 h.ssh = Mock(side_effect=ssh)
                 h.verify_guest_image = Mock(wraps=h.verify_guest_image)
-                self.assertEqual(suite.backup("baseline" if version == "0.1.23" else "candidate"), "abcd")
+                self.assertEqual(suite.backup("baseline" if version == host.BASELINE_VERSION else "candidate"), "abcd")
                 self.assertEqual(h.verify_guest_image.call_count, 2)
                 suite.restore("abcd", version, config_id)
                 h.cold_shutdown, h.boot, h.registry_tunnel = Mock(), Mock(), Mock()
@@ -1292,7 +1321,7 @@ class AcceptanceTests(unittest.TestCase):
                 suite.host.registry = Mock()
                 suite.host.publish_local = Mock(side_effect=[{}, {
                     "Id": new_id, "Config": {"Labels": {"org.opencontainers.image.revision": revision}}}])
-                suite.config = {"version": "0.1.24"}
+                suite.config = {"version": host.CANDIDATE_VERSION}
                 suite.producer = {"image_id": "expected", "checkout_commit": HEAD, "addon_tree": TREE}
                 suite.baseline_identity = {"config_digest": "baseline-config", "producer_image_id": "baseline-id"}
                 suite.candidate_identity = {"config_digest": "linked-config", "producer_image_id": "expected",
@@ -1332,7 +1361,7 @@ class AcceptanceTests(unittest.TestCase):
         suite.host = Mock()
         suite.old_image = {"Id": "old"}
         suite.new_image = {"Id": "new"}
-        suite.config = {"version": "0.1.24"}
+        suite.config = {"version": host.CANDIDATE_VERSION}
         suite.wait_addon = Mock()
         suite.host.verify_guest_image.return_value = "app_local_woow-omnigent"
         suite.host.supervisor.side_effect = [

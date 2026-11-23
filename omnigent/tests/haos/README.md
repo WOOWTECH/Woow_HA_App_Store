@@ -50,8 +50,10 @@ Supervisor/Core downloads must be reachable.
 
 ## Candidate and baseline identity
 
-The baseline is version 0.1.23 with both its config source/checksum and published
-amd64 image digest fixed in `host.py`. The candidate is the current PR's existing
+The baseline is the latest stable Release, version 0.1.24. Its version, config
+source/checksum, published amd64 image digest and database migration head are
+fixed in `host.py`, next to `CANDIDATE_VERSION`. Update them together when the
+next Release becomes the baseline. The candidate is the current PR's existing
 amd64 build tar, downloaded without publishing a PR tag or rebuilding it.
 
 Acceptance checks out the explicit PR head. The existing producer retains its
@@ -108,9 +110,11 @@ or the catalog differs; it does not create an alternate legacy directory.
 
 ## Checks and receipt
 
-The sequence installs 0.1.23 through Supervisor, seeds the existing upgrade
-fixtures, creates a Supervisor cold backup, updates to 0.1.24, and checks the
-task/agent fields, member login, session ACLs and artifact bytes.
+The sequence installs 0.1.24 through Supervisor, seeds the existing upgrade
+fixtures (including an active and a revoked MCP profile, because the baseline
+already has MCP), creates a Supervisor cold backup, updates to 0.1.25, and checks
+the task/agent fields, member login, session ACLs, artifact bytes and the
+original MCP profile URLs and revocation state.
 
 The real HA owner signs in through Chromium and opens the HA sidebar Ingress.
 The harness registers a filtered `framenavigated` expectation before clicking the
@@ -149,7 +153,8 @@ Actual Supervisor backup/restore checks include:
 - Cleanly power off HAOS, start a new QEMU process with the same disk, require a
   changed kernel boot ID, and recheck data plus the original profile URLs.
 - Restore the baseline backup; require the old image/version, original data,
-  member credentials and absence of the candidate MCP API.
+  member credentials and the baseline database migration head. The candidate
+  must have moved the head first, so the check tells the two databases apart.
 
 Only `haos-acceptance.json` is uploaded. It includes controlled stage outcomes,
 artifact/image/source identities, physical resource counts, Supervisor version,
@@ -229,8 +234,8 @@ ephemeral runner and remaining Docker images.
 
 This covers actual amd64 HAOS/Supervisor on a newly provisioned CI guest. It does
 not establish native arm64 runtime, Internet-public HTTPS or Pi connectivity,
-distinct MCP-capable version A-to-B migration, external runner/terminal operation,
-LAN browser login, or long-lived SSE behavior. The baseline predates MCP.
+external runner/terminal operation, LAN browser login, or long-lived SSE
+behavior.
 Poweroff/container-restart checks also do not assert the exact PostgreSQL shutdown
 log lines in the manual H3 checklist. These remain separate acceptance evidence.
 

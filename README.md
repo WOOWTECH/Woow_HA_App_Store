@@ -35,7 +35,7 @@ ha store add https://github.com/WOOWTECH/Woow_HA_App_Store
 | `odoo18ce` | Woow Odoo 18 | 0.4.13 | 預建映像 | Odoo 18 社群版 + PostgreSQL 16 一站式 |
 | `woow-emqx` | Woow EMQX | 5.9.2 | 本機建置 | EMQX 5.x MQTT broker（企業級，內建 ngrok） |
 | `woow-headscale` | Woow Headscale VPN | 0.1.3 | 本機建置 | 自架 Headscale + Headplane GUI |
-| `woow-tailscale` | Woow Tailscale | 0.1.5 | 本機建置 | Tailscale / Headscale VPN 用戶端 |
+| `woow-tailscale` | Woow Tailscale | 0.1.6 | 本機建置 | Tailscale / Headscale VPN 用戶端 |
 | `woow-immich` | Woow Immich | 2.5.7 | 本機建置 | 自架相簿（Google Photos 替代） |
 | `woow_lan_gateway` | Woow LAN Gateway | 0.1.7 | 本機建置（amd64） | 工廠註冊 LAN 的 fail-closed 公網 IPv4 閘道 |
 | `woow-n8n` | Woow n8n | 2.43.6 | 預建映像 | AI/自動化 workflow |
@@ -45,7 +45,7 @@ ha store add https://github.com/WOOWTECH/Woow_HA_App_Store
 | `woow_ha_code_server` | Woow Code Server | 0.1.15 | 預建映像 | code-server + pi coding agent + Claude Code + ACP 側邊欄（取代原 `vscode` 鏡像） |
 | `woow_ha_pi_agent` | Woow HA Pi Agent | 0.15.23 | 預建映像 | pi-web + coding agent SDK + 影音管線 |
 | `woow_ha_opendesign` | Woow HA OpenDesign | 0.2.15 | 預建映像 | Ingress-only BYOK 設計工作台 + PDF／圖片／PPTX 匯出 |
-| `woow-omnigent` | Woow Omnigent | 0.1.24 | 預建映像 | Omnigent 編排伺服器 + 內建 Postgres（外部 runner 註冊制） |
+| `woow-omnigent` | Woow Omnigent | 0.1.25 | 預建映像 | Omnigent 編排伺服器 + 內建 Postgres（外部 runner 註冊制） |
 
 ### 🤖 MCP Server（WOOWTECH 自主開發）
 

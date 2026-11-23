@@ -130,8 +130,9 @@ set_env OMNIGENT_MCP_PUBLIC_BASE_URL "$(optget mcp_public_base_url '')"
 # --- Feature flags ---------------------------------------------------------
 # 預設 usage_page,harness_install，不是 omnigent
 # 認得的全部 feature。使用者可用 add-on 的 `features:` 選項覆寫（逗號分隔）。
-# omnigent 0.21.0 預設開啟的 feature 不必列出，要關閉寫 -<name>。
-# 不認得的名稱會讓 omnigent-server 拒絕啟動。
+# omnigent 0.23.0 預設開啟的 feature 不必列出，要關閉寫 -<name>。
+# 已退役的 custom_agents_settings_ui 由 omnigent 忽略並記警告；
+# 其他不認得的名稱會讓 omnigent-server 拒絕啟動。
 FEATURES="$(optget features 'usage_page,harness_install')"
 [ -n "${FEATURES}" ] && set_env OMNIGENT_FEATURES "${FEATURES}"
 

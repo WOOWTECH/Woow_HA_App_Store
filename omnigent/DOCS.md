@@ -1,6 +1,6 @@
 # Woow Omnigent
 
-Omnigent 0.21.0 with the WOOW native MCP build `mcp.1`, packaged as a HAOS add-on. Bundles a
+Omnigent 0.23.0 with the WOOW native MCP build `mcp.1`, packaged as a HAOS add-on. Bundles a
 private Postgres 16 so the add-on is self-contained — no MariaDB add-on
 dependency, no external database wiring.
 
@@ -82,9 +82,14 @@ above and then fill in the option.
 - `usage_page` — enable the Usage report tab
 - `harness_install` — allow one-click harness install from the web
 
-Omnigent 0.21.0 also turns on `session_orchestration`, `claude_osc_status`
-and `codex_plan_at_launch` by default. You do not need to list them; write
-`-<name>` to turn one off. An unknown name stops the server from starting.
+Omnigent 0.23.0 also turns these on by default: `session_orchestration`,
+`sibling_sessions`, `peer_session_messaging`, `codex_plan_at_launch`,
+`automations`, `automations_v2`, `user_inbox`, `claude_osc_status`,
+`grid_sessions_display_ui`, `sidebar_grouping_ui`, `workspace_content_search`
+and `project_repository_creation`. You do not need to list them; write
+`-<name>` to turn one off. The retired name `custom_agents_settings_ui` is
+ignored with a warning in the log. Any other unknown name stops the server from
+starting.
 
 ### Example `env_vars` for OpenRouter or OpenAI keys
 
@@ -151,14 +156,17 @@ machine on the same network:
 ```bash
 # Install pi + omnigent runner
 npm install -g @earendil-works/pi-coding-agent@0.85.1
-pip install omnigent==0.21.0
+pip install omnigent==0.23.0
 
 # Register as a host — this opens a tunnel back to the addon
 omnigent host --server http://homeassistant.local:8000
 ```
 
 Keep runners on the server's version when you can. A runner on omnigent
-0.20.0 still connects to this 0.21.0 server (the host protocol is unchanged).
+0.20.0 or 0.21.0 still connects to this 0.23.0 server (the host protocol major
+version is unchanged). On a 0.23.0 runner, agents on native harnesses (for
+example Claude Code or Codex) use the harness's own shell and file tools instead
+of Omnigent's `sys_os_*` tools.
 Since 0.21.0, `omnigent opencode` on a runner needs OpenCode 2.0 (2.0.18 or a
 later 2.0.x); OpenCode 1.x (`opencode-ai`) is no longer supported.
 
@@ -174,11 +182,13 @@ Add-on backups are cold and include `/data` — the full Postgres cluster
 **including `pg_wal`**, artifacts, admin credentials, and Omnigent state.
 Only logs are excluded. The WAL is needed to restore the database safely.
 
-Take a cold backup before updating to 0.1.24. Its MCP profile migration adds
-`za3b4c5d6e7f` after `d0a1f879a01d`; profiles and revocation state live in the
-database. The Store does not permit a version downgrade. To roll back, restore
-the complete backup taken before the update, including PostgreSQL and artifacts.
-Changing only the image or migration-version string is not a rollback.
+Take a cold backup before updating to 0.1.25. It runs the Omnigent 0.22 and
+0.23 database migrations, then the merge revision `zb4c5d6e7f80`, which joins
+them with the MCP profile revision `za3b4c5d6e7f` from 0.1.24. MCP profiles and
+revocation state live in the database. The Store does not permit a version
+downgrade. To roll back, restore the complete backup taken before the update,
+including PostgreSQL and artifacts. Changing only the image or
+migration-version string is not a rollback.
 
 Restoring a backup restores the DB and admin claim; runners re-register
 themselves on next handshake.
@@ -230,7 +240,7 @@ This add-on runs the Omnigent **server**. To create and reuse Hermes skills,
 install the Hermes Omnigent plugin (`hermes-omnigent-plugin`, v0.1.0-rc.20 or
 later) in the Hermes runtime on the same host as each Omnigent Hermes runner.
 The plugin installs its own private Omnigent 0.20.0 for the runner, and that
-runner connects to this 0.21.0 server. The runner must keep
+runner connects to this 0.23.0 server. The runner must keep
 its Hermes profile skills directory persistent and writable. This server image
 alone does not install Hermes or the plugin.
 

@@ -1,9 +1,9 @@
 name: Woow Omnigent
-version: 0.1.24
+version: 0.1.25
 slug: woow-omnigent
 image: ghcr.io/woowtech/woow-ha-omnigent-{arch}
 description: >-
-  Omnigent 0.21.0 meta-harness — orchestration server + bundled Postgres.
+  Omnigent 0.23.0 meta-harness — orchestration server + bundled Postgres.
   External runners (pi / claude / codex / …) register from wherever via
   `omnigent host --server http://homeassistant.local:8000`. HTTP for LAN;
   pair with the Cloudflared add-on for HTTPS.
@@ -62,9 +62,13 @@ schema:
   mcp_public_base_url: str?
   # --- Feature flags forwarded via OMNIGENT_FEATURES= ---------------------
   # 以逗號分隔。預設 "usage_page,harness_install"，不是
-  # omnigent 認得的全部 feature。omnigent 0.21.0 另外預設開啟
-  # session_orchestration、claude_osc_status、codex_plan_at_launch，不必列出，
-  # 要關閉寫 -<name>。不認得的名稱會讓 server 拒絕啟動。
+  # omnigent 認得的全部 feature。omnigent 0.23.0 另外預設開啟
+  # session_orchestration、sibling_sessions、peer_session_messaging、
+  # codex_plan_at_launch、automations、automations_v2、user_inbox、
+  # claude_osc_status、grid_sessions_display_ui、sidebar_grouping_ui、
+  # workspace_content_search、project_repository_creation，不必列出，
+  # 要關閉寫 -<name>。已退役的 custom_agents_settings_ui 會被忽略（log 警告）；
+  # 其他不認得的名稱會讓 server 拒絕啟動。
   features: str?
   # --- Extra env vars (arbitrary passthrough) ------------------------------
   env_vars:

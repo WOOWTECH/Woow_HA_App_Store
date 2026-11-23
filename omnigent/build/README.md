@@ -1,6 +1,6 @@
 # Shared MCP artifact consumption
 
-The core package remains 0.21.0 and the WOOW build is `mcp.1`. The release input
+The core package is 0.23.0 and the WOOW build is `mcp.1`. The release input
 is the combined `candidate-image.json` from
 `woow-mcp-candidate-server-kubernetes-<runId>-<runAttempt>`, produced by
 [the core artifact workflow](https://github.com/WOOWTECH/omnigent/blob/main/docs/WOOW_MCP_ARTIFACT.md).
@@ -48,8 +48,8 @@ Local builds use the same defaults and the normal architecture base image. A bui
 ```sh
 sh omnigent/tests/test-admin-password.sh
 python3 -m unittest discover -s omnigent/tests -p 'test_mcp*.py' -v
-python3 .claude/skills/omnigent-upgrade/scripts/addon-preflight.py 0.21.0 \
-  --to-wheel /path/to/omnigent-0.21.0-py3-none-any.whl \
+python3 .claude/skills/omnigent-upgrade/scripts/addon-preflight.py 0.23.0 --from 0.21.0 \
+  --to-wheel /path/to/omnigent-0.23.0-py3-none-any.whl \
   --receipt omnigent/build/artifact-pin.json
 python3 omnigent/tests/test-upgrade-runtime.py \
   --old-python /path/to/published-venv/bin/python \

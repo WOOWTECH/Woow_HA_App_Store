@@ -22,7 +22,7 @@ import yaml
 
 from . import browser
 from .host import (BASELINE_COMMIT, BASELINE_CONFIG_SHA256, BASELINE_IMAGE,
-                   HAOS_SHA256, HAOS_URL, HA_PORTS, IMAGE_TAG, Host, candidate_artifact,
+                   BASELINE_MIGRATION, BASELINE_VERSION, CANDIDATE_VERSION, HAOS_SHA256, HAOS_URL, HA_PORTS, IMAGE_TAG, Host, candidate_artifact,
                    download, require, wait_for)
 from .provenance import archive_identity, validate_source
 
@@ -33,7 +33,6 @@ ROOT = Path(__file__).resolve().parents[2]
 EXCLUDED = [
     "Internet-public HTTPS/Pi client acceptance",
     "Native arm64 HAOS runtime",
-    "Distinct MCP candidate A-to-B upgrade",
     "External runner sessions and terminal WebSocket",
     "Long-duration MCP SSE delivery and reconnect (GET establishment only)",
 ]
@@ -70,7 +69,7 @@ class Acceptance:
         self.ha_password = secrets.token_urlsafe(24)
         self.pin = json.loads((ROOT / "build/artifact-pin.json").read_text())
         self.config = yaml.safe_load((ROOT / "config.yaml").read_text())
-        require(self.config["version"] == "0.1.24" and self.config["backup"] == "cold",
+        require(self.config["version"] == CANDIDATE_VERSION and self.config["backup"] == "cold",
                 "candidate acceptance configuration mismatch")
         self.state = {}
         self.ssl_context = None
@@ -153,18 +152,18 @@ class Acceptance:
                  + BASELINE_COMMIT + "/omnigent/config.yaml", baseline,
                  BASELINE_CONFIG_SHA256, limit=256 * 1024)
         self.old_config = yaml.safe_load(baseline.read_text())
-        require(self.old_config["version"] == "0.1.23" and self.old_config["backup"] == "cold",
+        require(self.old_config["version"] == BASELINE_VERSION and self.old_config["backup"] == "cold",
                 "baseline configuration mismatch")
         self.host.run(["docker", "pull", "--platform", "linux/amd64", BASELINE_IMAGE], timeout=300)
         self.baseline_identity = self.host.baseline_identity()
         self.host.run(["docker", "load", "-i", str(self.private / "candidate.tar")], timeout=180)
         (self.private / "candidate.tar").unlink()
-        self.evidence["baseline"] = {"version": "0.1.23", "source_commit": BASELINE_COMMIT,
+        self.evidence["baseline"] = {"version": BASELINE_VERSION, "source_commit": BASELINE_COMMIT,
                                      "image": BASELINE_IMAGE, "archive_identity": self.baseline_identity}
 
     def registry(self):
         self.host.registry()
-        self.old_image = self.host.publish_local(BASELINE_IMAGE, "0.1.23", identity=self.baseline_identity)
+        self.old_image = self.host.publish_local(BASELINE_IMAGE, BASELINE_VERSION, identity=self.baseline_identity)
         self.new_image = self.host.publish_local(IMAGE_TAG, self.config["version"], identity=self.candidate_identity)
         with self.host.registry_stage("candidate_producer_image_id"):
             require(self.new_image["Id"] in (self.candidate_identity["producer_image_id"],
@@ -189,9 +188,9 @@ class Acceptance:
             self.host.supervisor("POST", f"/store/addons/{ADDON}/install", {})
         else:
             self.host.supervisor("POST", f"/store/addons/{ADDON}/update", {})
-        options = dict(config["options"], admin_username=self.username, admin_password=self.password)
-        if not baseline:
-            options["mcp_public_base_url"] = PUBLIC_BASE
+        # baseline 也有 MCP：seed hook 會在 baseline 建 profile，兩邊用同一個公開網址。
+        options = dict(config["options"], admin_username=self.username, admin_password=self.password,
+                       mcp_public_base_url=PUBLIC_BASE)
         self.host.supervisor("POST", f"/addons/{ADDON}/options",
                              {"options": options, "boot": "auto", "ingress_panel": True})
         # update may restart the add-on before new options are applied.
@@ -207,15 +206,18 @@ class Acceptance:
             installed = json.loads(self.host.ssh(
                 command + " cat /usr/share/omnigent/artifact-pin.json").stdout)
             require(installed == self.pin, "guest wheel receipt mismatch")
-            def sql(query):
-                return self.host.ssh(shlex.join([
-                    "docker", "exec", "-u", "postgres", self.container, "psql", "-d",
-                    "omnigent", "-Atc", query])).stdout.decode().strip()
-            postgres = sql("SHOW server_version")
-            migration = sql("SELECT version_num FROM alembic_version")
+            postgres = self.sql("SHOW server_version")
+            migration = self.sql("SELECT version_num FROM alembic_version")
             require(re.fullmatch(r"16\.[0-9]+", postgres), "unexpected guest database version")
             require(re.fullmatch(r"[a-zA-Z0-9_]{1,64}", migration), "invalid migration head")
+            # 回滾檢查靠 head 分辨兩版；candidate 沒有前進就無從驗證回滾。
+            require(migration != BASELINE_MIGRATION, "candidate kept the baseline migration head")
             self.evidence["guest_database"] = {"postgres": postgres, "migration_head": migration}
+
+    def sql(self, query):
+        return self.host.ssh(shlex.join([
+            "docker", "exec", "-u", "postgres", self.container, "psql", "-d",
+            "omnigent", "-Atc", query])).stdout.decode().strip()
 
     def backup(self, name):
         expected = self.old_image["Id"] if name == "baseline" else self.new_image["Id"]
@@ -230,7 +232,7 @@ class Acceptance:
         info = self.host.supervisor("GET", "/backups/" + slug + "/info")
         require(any(a.get("slug") == ADDON for a in info.get("addons", [])),
                 "backup does not contain the add-on")
-        self.wait_addon("0.1.23" if name == "baseline" else self.config["version"])
+        self.wait_addon(BASELINE_VERSION if name == "baseline" else self.config["version"])
         self.host.verify_guest_image(expected)
         after = self.host.ssh(command).stdout.strip()
         require(before and after and before != after, "cold backup did not restart the add-on")
@@ -243,6 +245,14 @@ class Acceptance:
         self.wait_addon(version)
         self.host.verify_guest_image(image_id)
         self.data_preserved()
+
+    def baseline_rollback(self):
+        self.restore(self.baseline_backup, BASELINE_VERSION, self.old_image["Id"])
+        # baseline 也有 MCP API，改看資料庫 head：image 與資料庫都要退回 baseline。
+        self.container = self.host.verify_guest_image(self.old_image["Id"])
+        migration = self.sql("SELECT version_num FROM alembic_version")
+        require(migration == BASELINE_MIGRATION, "baseline rollback kept the candidate database")
+        self.evidence["rollback_database"] = {"migration_head": migration}
 
     def tls(self):
         h, p = self.host, self.private
@@ -426,10 +436,7 @@ http {{
         self.step("observable post-backup profile mutation", self.invalidate_after_backup)
         self.step("Supervisor candidate restore and original profile URLs", self.candidate_restored)
         self.step("clean shutdown and fresh kernel cold boot", self.cold_boot)
-        self.step("Supervisor baseline backup rollback", lambda: self.restore(
-            self.baseline_backup, "0.1.23", self.old_image["Id"]))
-        status, _ = self.api().request("GET", self.hooks.PROFILE_API)
-        require(status == 404, "baseline rollback retained candidate MCP API")
+        self.step("Supervisor baseline backup rollback", self.baseline_rollback)
 
 
 def main():

@@ -24,9 +24,16 @@ from .provenance import MANIFEST_TYPES, archive_identity, registry_identity
 
 HAOS_URL = "https://github.com/home-assistant/operating-system/releases/download/18.1/haos_ova-18.1.qcow2.xz"
 HAOS_SHA256 = "60df08773901e1eac9b9cfe03d53e1d939e67b669c172c3a41037fb3cd295b9d"
-BASELINE_COMMIT = "191577fb937b1c131117083908e2fb54f5991e15"
-BASELINE_CONFIG_SHA256 = "719c4bf219e7d176c5cffe1f6514dacc2c2fc1f47682a0a7b48b6ead565b5ade"
-BASELINE_IMAGE = "ghcr.io/woowtech/woow-ha-omnigent-amd64@sha256:86d316c08de48166c942823362cef86f9c3e8680417b005a9ecead1b8921aa3e"
+# 升級起點是最新的正式 Release。換 baseline 時，下面五個值要一起換：
+# Release 的 commit、該 commit 的 config.yaml SHA-256、amd64 image 的 index
+# digest，以及該版 omnigent 的 alembic head（回滾後資料庫要回到這裡）。
+BASELINE_VERSION = "0.1.24"
+BASELINE_COMMIT = "23ea9c20c73e82513e4d7e8dfc51cc2d9c00f30e"
+BASELINE_CONFIG_SHA256 = "ae717d9cd303a5c69cf9323b4bdca988809a78d64de64adeb092bbefe073d4fc"
+BASELINE_IMAGE = "ghcr.io/woowtech/woow-ha-omnigent-amd64@sha256:f2082e6041b8b03f72bde692c8631c29f0d85cb7836db38371822ba913c7099b"
+BASELINE_MIGRATION = "za3b4c5d6e7f"
+# 這張 PR 的 add-on 版本，必須等於 config.yaml 的 version。
+CANDIDATE_VERSION = "0.1.25"
 REGISTRY_IMAGE = "registry:2@sha256:a3d8aaa63ed8681a604f1dea0aa03f100d5895b6a58ace528858a7b332415373"
 IMAGE_TAG = "upgrade-comparison/woow-omnigent:new"
 HA_PORTS = (18080, 18123)
@@ -698,7 +705,7 @@ rc=$?; probe curl_exit "$rc"; exit "$rc"
 
     def baseline_identity(self):
         # Export only the image pulled by immutable digest, then discard the tar.
-        tag, archive = "haos-acceptance-baseline:0.1.23", self.private / "baseline-image.tar"
+        tag, archive = "haos-acceptance-baseline:" + BASELINE_VERSION, self.private / "baseline-image.tar"
         result = self._registry_run("baseline_anchor_inspect", ["docker", "image", "inspect",
                                     "--format", "{{.Id}}", BASELINE_IMAGE])
         image_id = result.stdout.decode().strip()
@@ -711,7 +718,8 @@ rc=$?; probe curl_exit "$rc"; exit "$rc"
             archive.unlink(missing_ok=True)
 
     def _registry_metadata(self, suffix):
-        require(re.fullmatch(r"(?:manifests/0\.1\.(?:23|24)|blobs/sha256:[0-9a-f]{64})", suffix),
+        versions = "|".join(re.escape(v) for v in (BASELINE_VERSION, CANDIDATE_VERSION))
+        require(re.fullmatch(r"(?:manifests/(?:" + versions + r")|blobs/sha256:[0-9a-f]{64})", suffix),
                 "unexpected registry metadata path")
         diagnostic = {"object": "manifest" if suffix.startswith("manifests/") else "config",
                       "http_status": None, "bytes": 0}
@@ -729,10 +737,10 @@ rc=$?; probe curl_exit "$rc"; exit "$rc"
             return bytes(data), response.headers.get("Docker-Content-Digest")
 
     def publish_local(self, source, version, *, identity):
-        require(version in ("0.1.23", "0.1.24"), "unexpected acceptance image version")
+        require(version in (BASELINE_VERSION, CANDIDATE_VERSION), "unexpected acceptance image version")
         require(all(re.fullmatch(r"sha256:[0-9a-f]{64}", identity.get(key, ""))
                     for key in ("config_digest", "producer_image_id")), "invalid anchored identity")
-        role = "baseline" if version == "0.1.23" else "candidate"
+        role = "baseline" if version == BASELINE_VERSION else "candidate"
         target = "127.0.0.1:15000/omnigent-acceptance:" + version
         self._registry_run(role + "_tag", ["docker", "tag", source, target])
         self._registry_run(role + "_push", ["docker", "push", target], timeout=240)

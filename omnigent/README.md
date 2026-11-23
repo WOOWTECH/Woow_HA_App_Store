@@ -1,6 +1,6 @@
 # Woow Omnigent — HAOS add-on
 
-Runs [Omnigent](https://github.com/omnigent-ai/omnigent) 0.21.0 as a Home
+Runs [Omnigent](https://github.com/omnigent-ai/omnigent) 0.23.0 as a Home
 Assistant OS add-on.
 
 **Server-only build.** No pi / claude / codex CLI is bundled — external
@@ -14,7 +14,7 @@ omnigent host --server http://homeassistant.local:8000
 
 | Component        | Version | Notes                                                     |
 |------------------|---------|-----------------------------------------------------------|
-| omnigent         | 0.21.0  | verified WOOW MCP wheel (`mcp.1`)                                   |
+| omnigent         | 0.23.0  | verified WOOW MCP wheel (`mcp.1`)                                   |
 | PostgreSQL       | 16      | bundled — loopback only, persisted in `/data/postgres`    |
 | nginx            | latest  | HA Ingress path rewriter for the React SPA                |
 | s6-overlay       | 3.2.1.0 | via `ghcr.io/hassio-addons/base`                          |
@@ -47,7 +47,7 @@ MIT.
 
 ## Native MCP
 
-Version 0.1.24 bundles the 0.21.0-based WOOW MCP build `mcp.1`, including
+Version 0.1.25 bundles the 0.23.0-based WOOW MCP build `mcp.1`, including
 account-bound profiles and paginated session history. Configure
 `mcp_public_base_url` with the complete external HTTPS base, then copy the
 profile URL from **Settings → Admin → MCP Server**. HA Ingress remains the UI

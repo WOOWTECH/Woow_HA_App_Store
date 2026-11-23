@@ -2298,25 +2298,25 @@
     "woow-omnigent": {
       "id": "woow-omnigent",
       "name": "Woow Omnigent",
-      "version": "0.1.24",
+      "version": "0.1.25",
       "repository": "WOOWTECH/Woow_ha_omnigent_addon",
-      "source_sha": "23ea9c20c73e82513e4d7e8dfc51cc2d9c00f30e",
+      "source_sha": "e7b0bc0ec835e7f5abf9476321a5f50fc06631d9",
       "source_path": "omnigent",
       "config_file": "config.yaml",
-      "config_sha256": "sha256:ae717d9cd303a5c69cf9323b4bdca988809a78d64de64adeb092bbefe073d4fc",
-      "archive_sha256": "sha256:f778a50ce8c0c338371d38e1350603db11713494c10a2256cd38baafa07c6cd3",
-      "context_fingerprint": "sha256:842fb108e9197ae6d6b2c2ed2165caa8d649ac67451b57e0cc1e95430b656726",
-      "material_fingerprint": "sha256:ef658ed5aaded95ba1d4336e5aa10e65a1366633dd71ba5b141dc922ef883629",
+      "config_sha256": "sha256:f9a4197e0bf41d74a93cdf25ce7ed59756c32dc83ab8964498615d38735ef6bf",
+      "archive_sha256": "sha256:53bbb7d8e27001fbd2cf8bd84aae48d500fd085ecb79ea496999031b82bfa639",
+      "context_fingerprint": "sha256:9b0108f3aa5ae6c39b70a1b6873f17b6bfddd861d4ebf5c52f7d5cd28e947d8f",
+      "material_fingerprint": "sha256:f8c5cbb99060d9f3cade75b93a9f5d18699fce70da5561203df8d2b5adb82be3",
       "architectures": [
         "amd64",
         "aarch64"
       ],
       "config": {
         "name": "Woow Omnigent",
-        "version": "0.1.24",
+        "version": "0.1.25",
         "slug": "woow-omnigent",
         "image": "ghcr.io/woowtech/woow-ha-omnigent-{arch}",
-        "description": "Omnigent 0.21.0 meta-harness — orchestration server + bundled Postgres. External runners (pi / claude / codex / …) register from wherever via `omnigent host --server http://homeassistant.local:8000`. HTTP for LAN; pair with the Cloudflared add-on for HTTPS.",
+        "description": "Omnigent 0.23.0 meta-harness — orchestration server + bundled Postgres. External runners (pi / claude / codex / …) register from wherever via `omnigent host --server http://homeassistant.local:8000`. HTTP for LAN; pair with the Cloudflared add-on for HTTPS.",
         "url": "https://github.com/WOOWTECH/Woow_ha_omnigent_addon",
         "arch": [
           "amd64",
@@ -2382,21 +2382,21 @@
       "source_build_supported": true,
       "images": {
         "amd64": {
-          "reference": "ghcr.io/woowtech/woow-ha-omnigent-amd64:0.1.24",
-          "index_digest": "sha256:f2082e6041b8b03f72bde692c8631c29f0d85cb7836db38371822ba913c7099b",
-          "digest": "sha256:8a7394b8253d06fa27504941e7f6de172140c1ceffe3b46a1d765d75f3c451c4",
-          "source_revision": "459340b0d9516fd3ecb4c35a95eb6e17cc3a5340"
+          "reference": "ghcr.io/woowtech/woow-ha-omnigent-amd64:0.1.25",
+          "index_digest": "sha256:7bba628e5b2583ea0548b87201aab09476578344ccbbe2f629c0319d68172313",
+          "digest": "sha256:29f7973a53a98bbd69acec9d929e0cfc9e1d6d1dfa1452a244cd827476342e95",
+          "source_revision": "164c61f071d5598a9f8d7b4def278b66e906bfe3"
         },
         "aarch64": {
-          "reference": "ghcr.io/woowtech/woow-ha-omnigent-aarch64:0.1.24",
-          "index_digest": "sha256:493f0c8bc8ec45ef854cb749116265ab63e1037894e85d295839121591d5d618",
-          "digest": "sha256:0a86c065eadc217d95dd047bf5f2ea1ba7de3d4ff1f95adf5fae883e72e50874",
-          "source_revision": "459340b0d9516fd3ecb4c35a95eb6e17cc3a5340"
+          "reference": "ghcr.io/woowtech/woow-ha-omnigent-aarch64:0.1.25",
+          "index_digest": "sha256:c2d19a6ad1bdb1a7adac9d556cd41fb30d4f184ee63a081814d3eb93d2747eb2",
+          "digest": "sha256:0d7b86c1122d495cc80c378ed47c4d054acf87a99da251da890852cec1cf6d4d",
+          "source_revision": "164c61f071d5598a9f8d7b4def278b66e906bfe3"
         }
       },
       "delivery": "published-image",
       "validation": "manifest+architecture-images+configured-CI",
-      "publisher_run_id": "44961039587",
+      "publisher_run_id": "45125837307",
       "channel": "stable",
       "store_path": "omnigent"
     },
@@ -2690,22 +2690,22 @@
     "woow-tailscale": {
       "id": "woow-tailscale",
       "name": "Woow Tailscale",
-      "version": "0.1.5",
+      "version": "0.1.6",
       "repository": "WOOWTECH/Woow_ha_vpn_tailscale_package",
-      "source_sha": "3b01860e282c983ce873f439ff5f21174ec07da9",
+      "source_sha": "49ede7eb400a7d49cce7beb058175ffa9c25fdb2",
       "source_path": "tailscale",
       "config_file": "config.yaml",
-      "config_sha256": "sha256:fdb98c2a472c32c7b3979a580c42f42889adfa767dbbb2181027d55b02fe9c64",
-      "archive_sha256": "sha256:6e4cb86a978682623d35b40de2102982e29d82b85849554ce2e15f70e129fcbe",
-      "context_fingerprint": "sha256:4535441e8711c55cb4a049bcc050bad38a4b51aa2ee2f7513bf1ac16ef49fd2d",
-      "material_fingerprint": "sha256:f866bbffc4ecdaaa9122be15a2da290fae85fb4d1d57d58347df27dce20592fb",
+      "config_sha256": "sha256:bad19dfa9d1c623282e9d646268fc0a8cb48fba2949436e761a0616204051054",
+      "archive_sha256": "sha256:23b5069ebbf1f2b207262d442194133694c9cbeb8d6e7823378bdb1d3a1ea625",
+      "context_fingerprint": "sha256:dbe374f23d8a43c0a24b268fe11930b522b76fd6784a4fa4bb3c8e650e083248",
+      "material_fingerprint": "sha256:298f0f526ff12da85876b313fb0bde18803bc24242f667364a503456cdc06575",
       "architectures": [
         "aarch64",
         "amd64"
       ],
       "config": {
         "name": "Woow Tailscale",
-        "version": "0.1.5",
+        "version": "0.1.6",
         "slug": "woow-tailscale",
         "description": "Tailscale client for Tailscale and Headscale",
         "url": "https://github.com/WOOWTECH/Woow_ha_vpn_tailscale_package",
@@ -2831,7 +2831,7 @@
       "images": {},
       "delivery": "local-source-build",
       "validation": "manifest+source-context+configured-CI (runtime build not certified)",
-      "publisher_run_id": "42987881086",
+      "publisher_run_id": "45125887305",
       "channel": "stable",
       "store_path": "woow-tailscale"
     },
@@ -3333,5 +3333,5 @@
       "store_path": "woow_mcp_headscale"
     }
   },
-  "catalog_id": "sha256:6b1f4c4045d20f7459e687ba37e6c659203f13b403970f6f48d8584679662bcc"
+  "catalog_id": "sha256:fd5b137affb5c7e198efdc6fe741f9b8f7c0c9b52f31094bc3706d7384e83253"
 }

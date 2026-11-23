@@ -1,5 +1,36 @@
 # Changelog
 
+## 0.1.25
+
+**Back up this add-on before updating.** This release runs the Omnigent 0.22
+and 0.23 database migrations, then the merge revision `zb4c5d6e7f80`, which
+joins them with the MCP profile revision `za3b4c5d6e7f` from 0.1.24. The Store
+does not allow version downgrades. To roll back, restore the complete backup
+taken before the update.
+
+- Upgrade the bundled Omnigent server from 0.21.0 to 0.23.0, as the
+  0.23.0-based WOOW native MCP build `mcp.1` from the shared, verified wheel.
+  The WOOW changes in 0.1.24 carry over. Existing MCP profile URLs and
+  revocations are kept.
+- Upstream highlights: automations can start from a schedule or from Jira,
+  Slack, GitHub, Linear or PagerDuty, and can be shared read-only; type `@` in
+  the composer to tag sessions and files; session grids and workspace content
+  search are on by default; `/rewind` in Claude chats; better pull request
+  review. See the upstream 0.22.0 and 0.23.0 release notes for the full list.
+- Omnigent 0.23.0 turns on more features by default, including automations,
+  the user inbox, session grids, sidebar grouping and workspace content search.
+  DOCS lists them all; write `-<name>` in `features` to turn one off. The custom
+  agents settings are now always on: `custom_agents_settings_ui` in `features`
+  is ignored with a warning in the log.
+- Runners: a runner on omnigent 0.20.0 or 0.21.0 still connects, including the
+  one the Hermes Omnigent plugin installs. DOCS now installs 0.23.0 on new
+  runners. On a 0.23.0 runner, agents on native harnesses use the harness's own
+  shell and file tools instead of Omnigent's `sys_os_*` tools.
+- Refresh Ingress asset URLs for 0.1.25. The HAOS acceptance test now upgrades
+  from 0.1.24, so it also checks that MCP profile URLs and revocations created
+  before the update keep working, and that restoring the backup brings back the
+  0.1.24 database.
+
 ## 0.1.24
 
 **Back up this add-on before updating.** This release adds the MCP profile

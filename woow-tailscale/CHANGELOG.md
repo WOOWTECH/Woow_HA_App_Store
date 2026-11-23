@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.1.6
+
+- Stopping the app before its first login now ends in **stopped** after about
+  3.5 seconds (measured on an N2840 HAOS box). Until now the start-up step
+  that runs `tailscale up` waited for the login inside s6's start-up, so a
+  stop waited for it too until Supervisor killed the container after 10
+  seconds (`exit code 137`). This was the known limitation listed under
+  0.1.3. Waiting for the login is now a long-running service; the
+  authentication URL still appears in the log.
+- The services that need a logged-in node (forwarding, MSS clamping, the
+  MagicDNS ingress proxy, Serve/Funnel, Taildrive, Taildrop) start once
+  Tailscale is connected, as before, now from that service. A node that is
+  already logged in reconnects on start as before.
+- On stop, `tailscaled` itself now receives SIGTERM and shuts down. Outside
+  debug mode it used to run in a pipeline, so the signal went to its shell
+  and `tailscaled` was only killed with the container. Its log is still cut
+  after 200 lines. A `tailscale up` still waiting for the login is stopped
+  the same way.
+- The image builds again. Alpine no longer serves `nginx=1.30.6-r0`, which
+  0.1.5 pinned; the pin is now `nginx=1.30.7-r0`. The other pins are
+  unchanged.
+- CI runs the new `tests/test-login-wait-layout.sh` and
+  `tests/test-tailscaled-signal.sh`.
+
 ## 0.1.5
 
 - Add a masked, optional one-use Headscale pairing key to the Home Assistant

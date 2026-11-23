@@ -1,22 +1,22 @@
 {
   "schemaVersion": 1,
-  "coreVersion": "0.21.0",
+  "coreVersion": "0.23.0",
   "buildId": "mcp.1",
-  "sourceCommit": "459340b0d9516fd3ecb4c35a95eb6e17cc3a5340",
-  "wheelImage": "ghcr.io/woowtech/omnigent-server-kubernetes@sha256:ca7d431c241388f7ed7ae4db6b7583bd3952f303a68a53467985d5a1f33539e5",
-  "wheelPath": "/opt/woow-artifact/omnigent-0.21.0-py3-none-any.whl",
-  "wheelSha256": "734ca85fcfbead7abf940df9ac9670fb70e2189d4ae5195e8b9ba4d9ed7a9087",
-  "uiSha256": "e77b6a5fcf3e0531a5665d410b6e10a58c92820c94094dace3d9ea1dd8036a3e",
+  "sourceCommit": "164c61f071d5598a9f8d7b4def278b66e906bfe3",
+  "wheelImage": "ghcr.io/woowtech/omnigent-server-kubernetes@sha256:9757a792bbbf0b5ef1653aae584baa8e52a5b6cc35fede0e6e52a47df53327ef",
+  "wheelPath": "/opt/woow-artifact/omnigent-0.23.0-py3-none-any.whl",
+  "wheelSha256": "2ab28336ecf9827289a1bcdb87170ebf997092cd7692413ee4b0e160e763ce6f",
+  "uiSha256": "f32b478d8903ffdcd0a0f660845f393ce31f0f9e25751176f35fd35e60434477",
   "platforms": [
     {
       "architecture": "linux/amd64",
-      "image": "ghcr.io/woowtech/omnigent-server-kubernetes@sha256:6ce1c77267f61ff51f7cc703015a1fe1b700ca4ee3afe62047953c6e8b322d07"
+      "image": "ghcr.io/woowtech/omnigent-server-kubernetes@sha256:a3c6fa1d2ce8c57781c371644784557f3105857a37e7503efcd7d64a699b805d"
     },
     {
       "architecture": "linux/arm64",
-      "image": "ghcr.io/woowtech/omnigent-server-kubernetes@sha256:7262c0c3e99345fab5924230639ba246795a7f05c3daf88dd2a47e4c54247f87"
+      "image": "ghcr.io/woowtech/omnigent-server-kubernetes@sha256:521251ee8ad8efcad9d3f08f29d45019a54cd07cd5c0cf6dfc55a04336bb2ebf"
     }
   ],
-  "runId": "44896274348",
-  "runAttempt": "1"
+  "runId": "45106559096",
+  "runAttempt": "2"
 }
