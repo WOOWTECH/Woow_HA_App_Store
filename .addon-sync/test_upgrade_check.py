@@ -866,7 +866,8 @@ class StepHarness(unittest.TestCase):
     def step(self,ident):return next(s for j in ('compare','runtime') for s in self.wf['jobs'][j]['steps'] if ident in (s.get('id'),s.get('name')))
     def run_step(self,ident,*,policy='release',extra=None,releases=('v1.0.0',),old_config=True,new_config=True,skip='',sbom='',version='1.1.0',old=None,old_path='',
             new_path='addon/config.yaml',new=None,files=None,raw_version=None,history=None,changed=1,gh_fail='',images=(),vulnerable='',image_artifact='',
-            tarball=None,build_fail='',news=None,syft_fail='',sha='',keep_going=False,results=None,runtime='success',on_base=None,catalog=None):
+            tarball=None,build_fail='',news=None,syft_fail='',sha='',keep_going=False,results=None,runtime='success',on_base=None,catalog=None,
+            shipping_core='2026.7.2'):
         """ident: one step, or a tuple run in order until one fails. new_path: where the PR has the config; new: changes to it;
         files: more files of the PR checkout; raw_version: {'old'/'new': the version line's YAML as written, e.g. 1.10 unquoted}.
         history: the PR base's history, newest first, [(sha, {path: changes to the config, or None for no file})]; the first
@@ -884,7 +885,8 @@ class StepHarness(unittest.TestCase):
         does (self.runs has each step's CompletedProcess); results: {id: the runtime job's runtime-reports/<id>.json};
         runtime: the runtime job's result (RUNTIME_RESULT). on_base: what the detect step reports in changed.jsonl (#135);
         default: the PR base has the config (old_config), never in sha mode. catalog: the Store catalog's components
-        ({id: entry}, tooling/.addon-sync/catalog.json; default none: every add-on is new to the Store, #135).
+        ({id: entry}, tooling/.addon-sync/catalog.json; default none: every add-on is new to the Store, #135). shipping_core: the
+        Store copy of the shipping Core version (tooling/.addon-sync/shipping-core.json, #217).
         self.tmp is the job's directory (also RUNNER_TEMP); self.plans is every line of plan.jsonl."""
         import os,subprocess
         tmp=self.tmp=pathlib.Path(tempfile.mkdtemp());self.addCleanup(shutil.rmtree,tmp)
@@ -894,6 +896,7 @@ class StepHarness(unittest.TestCase):
         (tmp/'tooling/.addon-sync/registry.json').write_text(json.dumps({'providers':{'WOOWTECH/t':{'ref_policy':policy,'components':[
             {'id':'t','source_path':'addon','config_file':'config.yaml'}],**(extra or {})}}}))
         (tmp/'tooling/.addon-sync/catalog.json').write_text(json.dumps({'schema':1,'components':catalog or {}}))
+        (tmp/'tooling/.addon-sync/shipping-core.json').write_text(json.dumps({'version':shipping_core}))
         cfg=dict(BASE,image='ghcr.io/da-anda/addon-{arch}')
         def dump(c,side):
             text=yaml.safe_dump(c)
