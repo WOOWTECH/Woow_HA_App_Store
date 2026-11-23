@@ -1750,6 +1750,16 @@ class PublishedImageScan(StepHarness):
         r,_,_=self.run_step(steps,extra=self.APPROVED,images=(self.OLD,self.NEW),vulnerable=self.OLD)
         self.assertEqual(r.returncode,0,r.stdout+r.stderr);self.assertIn('No new fixable vulnerabilities.',r.stdout)
     @needs_shell
+    def test_a_core_requirement_above_the_shipping_core_fails_a_pr(self):
+        # #217: a WOOW source's PR fails (no held on a PR); the Store copy in the tooling decides.
+        steps=self.SBOMS+('Compare with the comparison target',)
+        r,_,_=self.run_step(steps,extra=self.APPROVED,images=(self.OLD,self.NEW),new={'homeassistant':'2026.10.0'})
+        self.assertEqual(r.returncode,1,r.stdout+r.stderr)
+        self.assertIn('::error title=Core requirement above the shipping Core version::t: 要求 HA 2026.10.0，出貨 Core 版本 2026.7.2',r.stdout)
+        self.assertNotIn('Held',r.stdout)
+        r,_,_=self.run_step(steps,extra=self.APPROVED,images=(self.OLD,self.NEW),new={'homeassistant':'2026.10.0'},shipping_core='2026.10.0')
+        self.assertEqual(r.returncode,0,r.stdout+r.stderr)
+    @needs_shell
     def test_a_new_image_with_a_newline_is_rejected(self):
         r,plan,_=self.run_step('plan',extra=self.APPROVED,new={'image':'ghcr.io/x/a-{arch}\n::warning title=Injected::boom'})
         self.assertEqual(r.returncode,1,r.stdout+r.stderr);self.assertIn('control character',r.stdout);self.assertEqual(plan,{})
@@ -1782,7 +1792,7 @@ class ShaMode(StepHarness):
         self.assertEqual(detect['env']['SHA'],'${{ inputs.sha }}');self.assertIn('release-change --registry',detect['run']);self.assertIn('--sha "${SHA}"',detect['run'])
         self.assertEqual(self.step('Check out the pull request')['with']['ref'],'${{ inputs.sha }}')
         passed=self.step('passed');self.assertEqual(passed['if'],"always() && inputs.sha != ''");self.assertIn('upgrade_check.py sha-verdicts',passed['run'])
-        self.assertEqual(self.wf['jobs']['compare']['outputs'],{'passed':'${{ steps.passed.outputs.passed }}'})
+        self.assertEqual(self.wf['jobs']['compare']['outputs'],{'passed':'${{ steps.passed.outputs.passed }}','held':'${{ steps.passed.outputs.held }}'})
         # Without sha, "" as before #167; with sha never "", even when the compare job ended before its last step.
         self.assertEqual(self.wf['on']['workflow_call']['outputs']['passed']['value'],"${{ jobs.compare.outputs.passed || (inputs.sha != '' && '[]' || '') }}")
         # The required check keeps its name, and nothing on a PR depends on sha.
@@ -1852,6 +1862,34 @@ class ShaMode(StepHarness):
     def test_ref_policy_main_is_refused(self):
         code,passed,log,_=self.sha(policy='main',results={})
         self.assertEqual((code,passed),(1,[]),log);self.assertIn('switch the provider to ref_policy release first',log)
+    @needs_shell
+    def test_a_core_requirement_above_the_shipping_core_is_held_not_failed(self):
+        # #217: the snapshot still moves (mirror-sync), but no Release: not in passed, and the run does not fail. The
+        # verdict, the output held, the step summary and the "Held (暫緩)" step say so apart from a failure.
+        code,passed,log,summary=self.sha(new={'homeassistant':'2026.10.0'})
+        self.assertEqual((code,passed),(0,[]),log)
+        self.assertIn('::warning title=Held (暫緩)::t: 要求 HA 2026.10.0，出貨 Core 版本 2026.7.2',log);self.assertNotIn('::error',log)
+        self.assertIn('held=["t"]',(self.tmp/'out').read_text())
+        self.assertIn('- t: **held (暫緩)**: Core requirement above the shipping Core version, no Release',summary)
+        # Not above: passes as before.
+        code,passed,log,_=self.sha(new={'homeassistant':'2026.7.2'})
+        self.assertEqual((code,passed),(0,['t']),log);self.assertIn('held=[]',(self.tmp/'out').read_text())
+    @needs_shell
+    def test_held_and_failed_for_another_reason_is_failed(self):
+        code,passed,log,summary=self.sha(new={'homeassistant':'2026.10.0',**self.NO_WORKERS})
+        self.assertEqual((code,passed),(1,[]),log);self.assertIn('- t: **failed**',summary)
+        self.assertIn('::error title=Core requirement above the shipping Core version::t: 要求 HA 2026.10.0',log)
+    @needs_shell
+    def test_one_add_on_held_leaves_the_other_in_passed(self):
+        code,passed,log,summary=self.multi(two={'homeassistant':'2027.1.0'})
+        self.assertEqual((code,passed),(0,['one']),log)
+        self.assertIn('- one: passed\n',summary);self.assertIn('- two: **held (暫緩)**',summary)
+    def test_the_workflow_outputs_held(self):
+        self.assertEqual(self.wf['jobs']['compare']['outputs']['held'],'${{ steps.passed.outputs.held }}')
+        self.assertEqual(self.wf['on']['workflow_call']['outputs']['held']['value'],"${{ jobs.compare.outputs.held || (inputs.sha != '' && '[]' || '') }}")
+        # A step of its own, so the Actions API (the issue monitor, #169) tells a held run from a passed one without a token.
+        held=next(s for s in self.wf['jobs']['compare']['steps'] if s.get('name')=='Held (暫緩)')
+        self.assertEqual(held['if'],"always() && inputs.sha != '' && steps.passed.outputs.held != '' && steps.passed.outputs.held != '[]'")
     def multi(self,two=None,images=None,**kw):
         """music_assistant's shape: two add-ons with their own image; both bump to 1.1.0; two's config gets `two`."""
         comps=[{'id':i,'source_path':i,'config_file':'config.yaml'} for i in ('one','two')]

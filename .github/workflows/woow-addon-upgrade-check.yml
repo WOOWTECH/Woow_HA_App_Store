@@ -166,6 +166,9 @@ name: Upgrade comparison
         description: sha mode (#167) only, "" otherwise. JSON array of the ids of the add-ons that passed, e.g. ["a","b"] or []; set also when the check fails, for the Release workflow's components input (#168).
         # Never "" in sha mode: a compare job that ended before its last step gives [], so a caller never reads "" (to the Release workflow: every add-on) after a failure.
         value: ${{ jobs.compare.outputs.passed || (inputs.sha != '' && '[]' || '') }}
+      held:
+        description: sha mode (#167) only, "" otherwise. JSON array of the ids of the add-ons held (暫緩, #217) because their Core requirement (config.yaml homeassistant:) is above the shipping Core version and nothing else failed; they are not in passed, get no Release and do not fail the run.
+        value: ${{ jobs.compare.outputs.held || (inputs.sha != '' && '[]' || '') }}
 permissions:
   contents: read
   actions: read
@@ -183,6 +186,7 @@ jobs:
       DB_MAX_AGE_HOURS: '120'
     outputs:
       passed: ${{ steps.passed.outputs.passed }}
+      held: ${{ steps.passed.outputs.held }}
     # A step's `if` that starts with (success() || (inputs.sha != '' && !cancelled())) also runs after an earlier step
     # failed in sha mode (#167), so the add-ons that one step failed do not stop the others; on a PR it is success().
     steps:
@@ -529,6 +533,8 @@ jobs:
         fi
     - name: Compare with the comparison target
       if: (success() || (inputs.sha != '' && !cancelled())) && steps.detect.outputs.changed == 'true'
+      env:
+        SHA: ${{ inputs.sha }}
       run: |
         set -euo pipefail
         source tooling/.addon-sync/log.sh
@@ -574,9 +580,15 @@ jobs:
             echo "${id}: scanned ${old_desc} and ${new_desc} with the same DB"
             args+=(--old-scan "$RUNNER_TEMP/${id}.old.grype.json" --new-scan "$RUNNER_TEMP/${id}.new.grype.json")
           fi
+          # #217: category 1's Core requirement (config.yaml homeassistant:) is checked against the Store copy of the shipping
+          # Core version, tooling/.addon-sync/shipping-core.json. On a PR (a WOOW source) one above it fails; in sha mode (a
+          # Mirror source) an add-on it alone blocks is held (暫緩): compare --held-ok exits 4 with a warning.
+          [ -z "${SHA:-}" ] || args+=(--held-ok)
           rc=0; python3 tooling/.addon-sync/upgrade_check.py compare "${args[@]}" || rc=$?
-          # compared.txt: the add-ons whose categories 1 and 4 passed, for sha mode's verdicts (#167).
-          if [ "${rc}" = 0 ]; then printf '%s\n' "${id}" >> compared.txt; else status=1; fi
+          # compared.txt: the add-ons whose categories 1 and 4 passed, for sha mode's verdicts (#167); held.txt: those held (#217).
+          if [ "${rc}" = 0 ]; then printf '%s\n' "${id}" >> compared.txt
+          elif [ "${rc}" = 4 ] && [ -n "${SHA:-}" ]; then printf '%s\n' "${id}" >> held.txt
+          else status=1; fi
         done < plan.jsonl
         exit "${status}"
     # Category 2 (#137): the runtime job's verdict, whatever happened in the steps above.
@@ -671,8 +683,9 @@ jobs:
           fail "the runtime job (upgrade test) ended ${RUNTIME_RESULT} with no failing add-on result; its log has the reason"; status=1
         fi
         exit "${status}"
-    # sha mode (#167): each add-on's verdict and the output `passed`, whatever happened above (an add-on passes only with
-    # both jobs' evidence, upgrade_check.py sha-verdicts). It fails when an add-on failed, so the job does too.
+    # sha mode (#167): each add-on's verdict and the outputs `passed` and `held` (#217), whatever happened above (an add-on
+    # passes, or is held, only with both jobs' evidence, upgrade_check.py sha-verdicts). It fails when an add-on failed, so
+    # the job does too; a held add-on alone does not.
     - name: Add-ons that passed
       id: passed
       if: always() && inputs.sha != ''
@@ -680,18 +693,27 @@ jobs:
         set -euo pipefail
         source tooling/.addon-sync/log.sh
         rc=0; verdicts="$(python3 tooling/.addon-sync/upgrade_check.py sha-verdicts --provider provider.json --unchanged unchanged.txt --plan plan.jsonl \
-          --compared compared.txt --runtime-reports runtime-reports --runtime-failed runtime-failed.txt)" || rc=$?
-        if [ "${rc}" -gt 1 ] || ! passed="$(jq -c '.passed' <<<"${verdicts}" 2> /dev/null)"; then
+          --compared compared.txt --runtime-reports runtime-reports --runtime-failed runtime-failed.txt --held held.txt)" || rc=$?
+        if [ "${rc}" -gt 1 ] || ! passed="$(jq -c '.passed' <<<"${verdicts}" 2> /dev/null)" || ! held="$(jq -c '.held' <<<"${verdicts}" 2> /dev/null)"; then
           # Not even the add-ons are known (the job ended before it found them): none passed.
-          printf '%s\n' "${verdicts}"; echo "passed=[]" >> "$GITHUB_OUTPUT"
+          printf '%s\n' "${verdicts}"; echo "passed=[]" >> "$GITHUB_OUTPUT"; echo "held=[]" >> "$GITHUB_OUTPUT"
           fail "the verdicts could not be made (the steps above ended early; their log has the reason), so no add-on passed"; exit 1
         fi
-        echo "passed=${passed}" >> "$GITHUB_OUTPUT"
+        echo "passed=${passed}" >> "$GITHUB_OUTPUT"; echo "held=${held}" >> "$GITHUB_OUTPUT"
         echo "## Verdicts (sha mode)" >> "$GITHUB_STEP_SUMMARY"
-        jq -r '.verdicts[] | "- \(.id): \({passed: "passed", failed: "**failed** (the errors above give the reason)", unchanged: "version unchanged, not compared"}[.verdict])"' \
+        jq -r '.verdicts[] | "- \(.id): \({passed: "passed", failed: "**failed** (the errors above give the reason)", unchanged: "version unchanged, not compared",
+          held: "**held (暫緩)**: Core requirement above the shipping Core version, no Release (the warning above gives both versions)"}[.verdict])"' \
           <<<"${verdicts}" >> "$GITHUB_STEP_SUMMARY"
-        echo "Passed: ${passed}"
+        echo "Passed: ${passed}"; echo "Held: ${held}"
         exit "${rc}"
+    # #217: a step of its own that runs only when an add-on is held (暫緩), so the run's jobs (public Actions API, no token)
+    # tell a held run from a passed one: the issue monitor's mirror-sync view (#169) shows it apart from a failure.
+    - name: Held (暫緩)
+      if: always() && inputs.sha != '' && steps.passed.outputs.held != '' && steps.passed.outputs.held != '[]'
+      env:
+        HELD: ${{ steps.passed.outputs.held }}
+      run: |
+        echo "Held (暫緩), no Release: ${HELD}. Their Core requirement is above the shipping Core version (.addon-sync/shipping-core.json); raise it after the shipping Core is raised (#217)."
   # Category 2: the upgrade test of each add-on whose version changed: startup (#137), the seed/verify data hooks (#138),
   # the registry's approved skips and comparison-target failures (#140), add-ons built on the device rebuilt here (#144).
   runtime:
