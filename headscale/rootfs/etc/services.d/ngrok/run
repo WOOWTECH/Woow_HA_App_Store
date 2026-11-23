@@ -11,10 +11,14 @@
 # 取得 public URL 並注入 server_url。
 # ==============================================================================
 
+# 停用時保持 service 為 up、什麼都不做。不可以 s6-svc -O 後 exit：
+# s6-overlay 的 legacy-services 會用 s6-svwait -u 等 services.d 底下每個
+# service 都變成 up，down 掉的 ngrok 讓它永遠等不完，s6 啟動（stage2）不結束，
+# 停止 add-on 時 stage3 也進不去，最後被 Supervisor SIGKILL（exit 137）。
+# 停止時 sleep 收到 SIGTERM 就結束。
 if ! bashio::config.true 'ngrok_enabled'; then
-    bashio::log.info "ngrok 未啟用（'ngrok_enabled: false'），停用 ngrok service"
-    s6-svc -O "$(pwd)"
-    exit 0
+    bashio::log.info "ngrok 未啟用（'ngrok_enabled: false'），ngrok service 閒置"
+    exec sleep infinity
 fi
 
 if ! bashio::config.has_value 'ngrok_authtoken'; then
