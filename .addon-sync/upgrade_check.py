@@ -40,6 +40,8 @@ upgrade-notes.yaml format, version order and Release notes (#119): addon_sync, t
 from __future__ import annotations
 import argparse, contextlib, datetime, functools, json, os, pathlib, re, secrets, sys
 import yaml
+# The Store copy of the shipping Core version (#217) and its YYYY.M.P parser; standard library only (#225).
+from shipping_core import SHIPPING_CORE, calver, shipping_core_version
 # addon_sync owns the Release rules (version order, upgrade-notes.yaml parsing, Release notes); it does not import this module.
 from addon_sync import Blocked, Form, _read, comparison_target, config_version, declaration_text, declarations, find_component, find_provider, locations, markdown_cell, publishes_releases, release_notes, release_tag, require_newer, source_file, stable_versions, version_cmp, workflow_command
 
@@ -185,27 +187,8 @@ def category4(old_scan, new_scan):
     return {'old_count':len(old),'new_count':len(new),'new_fixable':fixable,'not_blocking':skipped}
 
 # Core requirement (#217, category 1): config.yaml's `homeassistant:` is the lowest HA Core Supervisor installs the add-on on.
-# The Store keeps a copy of the shipping Core version (woow_ha_version_control's ha-core.json, private, so the Store CI
-# cannot read it) in SHIPPING_CORE, {"version": "YYYY.M.P"}; woow_ha_version_control's drift check fails when this copy is
-# newer than ha-core.json. Read it with shipping_core_version() (also for the mock Supervisor's HA version, #225).
-SHIPPING_CORE=pathlib.Path(__file__).resolve().with_name('shipping-core.json')
-_CALVER=re.compile(r'(\d{4})\.(\d{1,2})\.(\d+)')
-
-def calver(text, what):
-    """(year, month, patch) of an HA Core version YYYY.M.P, compared part by part as numbers. A ValueError naming `what`
-    for anything else (a beta, YYYY.M, or a number YAML read from an unquoted 2026.10, which would be 2026.1)."""
-    m=_CALVER.fullmatch(text) if isinstance(text,str) else None
-    if not m:raise ValueError(f'{what} is {text!r}, not an HA Core version YYYY.M.P (quote it in YAML)')
-    return tuple(int(x) for x in m.groups())
-
-def shipping_core_version(path=SHIPPING_CORE):
-    """The shipping Core version the Store keeps (SHIPPING_CORE's `version`), checked to be YYYY.M.P; a ValueError when the
-    file cannot be read or parsed, so the upgrade comparison never passes on a broken copy."""
-    try:data=json.loads(pathlib.Path(path).read_text(encoding='utf-8'))
-    except (OSError,ValueError) as e:raise ValueError(f'the Store copy of the shipping Core version ({pathlib.Path(path).name}) cannot be read: {e}') from None
-    version=data.get('version') if isinstance(data,dict) else None
-    calver(version,f'the Store copy of the shipping Core version ({pathlib.Path(path).name})')
-    return version
+# It is compared with the Store copy of the shipping Core version (shipping_core.py: SHIPPING_CORE, calver(),
+# shipping_core_version(); a module of its own because the mock Supervisor reads it too, #225).
 
 def core_requirement(config, shipping):
     """#217: the new version's Core requirement against the shipping Core version, only the new version's value (not the

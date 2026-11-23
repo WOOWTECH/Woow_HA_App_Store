@@ -4,7 +4,7 @@ The mock runs as a real local HTTP server (`mock_supervisor.py serve` on a free
 port), no Docker. Calls come from 127.0.0.2, as an add-on's would come from its
 own address: the mock leaves calls from 127.0.0.1 out of its log.
 """
-import base64, contextlib, hashlib, http.client, http.server, json, os, pathlib, socket, subprocess, sys, tempfile, threading, time, unittest
+import base64, contextlib, hashlib, http.client, http.server, json, os, pathlib, shutil, socket, subprocess, sys, tempfile, threading, time, unittest
 import urllib.request
 import mock_supervisor as m
 
@@ -394,6 +394,36 @@ class Probe(unittest.TestCase):
         self.assertEqual(m.main(['probe', '--url', url, '--header', 'X-Remote-User-Name: upgrade-test', '--header', 'X-Remote-User-Display-Name: a: b']), 0)
         self.assertEqual(m.main(['probe', '--url', url]), 0)
         self.assertEqual(got, [{'x-remote-user-id': 'u1'}, {'x-remote-user-name': 'upgrade-test', 'x-remote-user-display-name': 'a: b'}, {}])
+
+class ShippingCore(unittest.TestCase):
+    """#225: the HA Core version the mock reports is the Store copy of the shipping Core version (#217's shipping-core.json)."""
+    def test_the_reported_ha_version_is_the_store_copy(self):
+        shipping = json.loads((TOOL.parent / 'shipping-core.json').read_text(encoding='utf-8'))['version']
+        self.assertEqual(m.VERSIONS['homeassistant'], shipping)
+        mock = Mock(); self.addCleanup(mock.close)
+        self.assertEqual(mock.call('/core/info')[1]['data']['version'], shipping)
+        self.assertEqual(mock.call('/info')[1]['data']['homeassistant'], shipping)
+    def tooling(self, copy):
+        """A copy of .addon-sync whose shipping-core.json is `copy` (None: no file)."""
+        root = pathlib.Path(tempfile.mkdtemp(prefix='tooling-')) / 'tooling'; self.addCleanup(shutil.rmtree, root.parent)
+        shutil.copytree(TOOL.parent, root, ignore=shutil.ignore_patterns('__pycache__', 'test_*'))
+        (root / 'shipping-core.json').unlink()
+        if copy is not None:(root / 'shipping-core.json').write_text(copy, encoding='utf-8')
+        return root
+    def run_tool(self, root, script, *python):
+        return subprocess.run([sys.executable, *python, str(root / script), '--help'], capture_output=True, text=True, cwd=root.parent)
+    def test_the_mock_runs_on_the_standard_library_alone(self):
+        # In its python:3.12-alpine container there is no PyYAML: -S leaves out site-packages.
+        r = self.run_tool(self.tooling('{"version": "2026.7.2"}'), 'mock_supervisor.py', '-S')
+        self.assertEqual(r.returncode, 0, r.stderr)
+    def test_without_a_readable_copy_the_mock_and_the_upgrade_test_stop(self):
+        # Never a default version: missing, not JSON, no version, not YYYY.M.P.
+        for name, copy in (('missing', None), ('not JSON', '2026.7.2'), ('no version', '{}'), ('not YYYY.M.P', '{"version": "2026.7"}')):
+            root = self.tooling(copy)
+            for script, python in (('mock_supervisor.py', ['-S']), ('fake_ha_core.py', ['-S']), ('upgrade_runtime.py', [])):
+                with self.subTest(name, script=script):
+                    r = self.run_tool(root, script, *python)
+                    self.assertNotEqual(r.returncode, 0); self.assertIn('shipping-core.json', r.stderr)
 
 if __name__ == '__main__':
     unittest.main()

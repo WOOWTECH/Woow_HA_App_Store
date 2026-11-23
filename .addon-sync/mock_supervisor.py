@@ -44,7 +44,8 @@ digits, '.', '_' and '-' are looked up, never one starting with '.'.
 
 HA Core (#174): for a component the Store registry flags
 upgrade_comparison.ha_core, the runtime starts a real HA Core (CORE_IMAGE at
-VERSIONS['homeassistant'], the version /core/info reports) on the mock network
+VERSIONS['homeassistant'], the version /core/info reports: the Store copy of
+the shipping Core version, shipping-core.json, #225) on the mock network
 and writes DIR/core.json with its URL; `core-setup` (run in this container, the
 only one that talks to HA Core) onboards it headlessly with the REST flow of
 version_control's tools/rebuild_real.py (POST /api/onboarding/users ->
@@ -76,16 +77,21 @@ mock forwards what the real Supervisor's api/proxy.py does: /core/api/<path>,
 from __future__ import annotations
 import argparse, base64, collections, hashlib, http.client, http.server, json, os, pathlib, re, secrets, socket, ssl, struct, sys
 import threading, time, urllib.error, urllib.parse, urllib.request
+# The Store copy of the shipping Core version (#217, #225): next to this file, in /tooling in the mock's container.
+from shipping_core import shipping_core_version
 
 TOKEN = os.environ.get('SUPERVISOR_TOKEN', '')
 STATE = pathlib.Path('/state')
 FIXTURES = None  # the repo's fixtures directory (serve --fixtures), or None
 SEGMENT = re.compile(r'[A-Za-z0-9_-][A-Za-z0-9._-]*')
-VERSIONS = {'supervisor': '2026.10.0', 'homeassistant': '2026.10.1', 'os': '16.2', 'dns': '2026.10.0'}
+# #225: 'homeassistant' is the Store copy of the shipping Core version (shipping-core.json, #217), so the upgrade test runs on
+# the HA the boxes ship; a copy that cannot be read stops the mock (and upgrade_runtime.py, which imports it) with a
+# ValueError, never a default version. The others are set by hand.
+VERSIONS = {'supervisor': '2026.10.0', 'homeassistant': shipping_core_version(), 'os': '16.2', 'dns': '2026.10.0'}
 # The mock host's LAN and the add-ons' docker network: /network/info and /dns/info report the same addresses.
 HOST_NAMESERVER = '192.168.1.1'
 DOCKER_DNS = '172.30.32.3'
-# #174: the test HA Core's image (its tag is VERSIONS['homeassistant'], bumped by hand), the runtime's hand-over file in
+# #174: the test HA Core's image (its tag is VERSIONS['homeassistant'], the shipping Core version, #225), the runtime's hand-over file in
 # the state directory, the paths forwarded to it, the request log's mark on a forwarded call, and the onboarded owner.
 CORE_IMAGE = 'ghcr.io/home-assistant/qemux86-64-homeassistant'
 CORE_FILE = 'core.json'
