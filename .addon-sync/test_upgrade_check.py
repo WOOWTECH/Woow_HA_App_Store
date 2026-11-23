@@ -288,6 +288,81 @@ class Vulnerabilities(unittest.TestCase):
         r=u.compare(None,new(),None,'1.1.0',new_scan=self.NEW())
         self.assertFalse(r['blocked']);self.assertIn('no comparison target',r['report'])
 
+class CoreRequirement(unittest.TestCase):
+    """#217: config.yaml's homeassistant: (the Core requirement) of the new version is not above the shipping Core version."""
+    def core(self,required,shipping='2026.7.2',old=BASE,notes=None):
+        cfg=new() if required is None else new(homeassistant=required)
+        return u.compare(old,cfg,'1.0.0' if old else None,'1.1.0',notes=notes,shipping_core=shipping)
+    def test_above_the_shipping_core_blocks_and_names_both_versions(self):
+        r=self.core('2026.7.3')
+        self.assertTrue(r['blocked'])
+        self.assertIn('要求 HA 2026.7.3，出貨 Core 版本 2026.7.2',r['report'])
+    def test_above_in_patch_month_or_year_blocks(self):
+        for required in ('2026.7.3','2026.8.0','2026.10.0','2027.1.0'):
+            with self.subTest(required=required):
+                r=self.core(required)
+                self.assertTrue(r['blocked']);self.assertEqual(r['core'],{'required':required,'shipping':'2026.7.2','above':True})
+                self.assertIn(f'要求 HA {required}，出貨 Core 版本 2026.7.2',r['report'])
+    def test_parts_are_compared_as_numbers(self):
+        # 2026.10.0 is above 2026.9.9 although "1" < "9" as text.
+        self.assertTrue(self.core('2026.10.0',shipping='2026.9.9')['blocked'])
+        self.assertFalse(self.core('2026.9.9',shipping='2026.10.0')['blocked'])
+    def test_equal_or_below_passes_and_is_reported(self):
+        for required in ('2026.7.2','2026.7.1','2026.6.9','2024.1.0'):
+            with self.subTest(required=required):
+                r=self.core(required)
+                self.assertFalse(r['blocked']);self.assertFalse(r['core']['above'])
+                self.assertIn(f'homeassistant: {required}, not above the shipping Core version 2026.7.2',r['report'])
+    def test_without_the_key_it_passes_and_the_report_does_not_mention_it(self):
+        for required in (None,):
+            r=self.core(required)
+            self.assertFalse(r['blocked']);self.assertIsNone(r['core'])
+            self.assertNotIn('Core requirement',r['report'].replace('Core requirement above the shipping Core version, or',''))
+            self.assertNotIn('homeassistant:',r['report'])
+    def test_only_the_new_version_counts(self):
+        # The comparison target's value does not matter: the same requirement on both sides still blocks.
+        self.assertTrue(self.core('2026.10.0',old=dict(BASE,homeassistant='2026.10.0'))['blocked'])
+        self.assertFalse(self.core(None,old=dict(BASE,homeassistant='2027.1.0'))['blocked'])
+    def test_a_requirement_that_cannot_be_read_is_an_error(self):
+        # An unquoted 2026.10 is the number 2026.1 in YAML; betas and two-part versions are not YYYY.M.P either.
+        for required in (2026.1,'2026.10','2026.7.0b1','dev','',2026,['2026.7.2']):
+            with self.subTest(required=required):
+                with self.assertRaises(ValueError) as e:self.core(required)
+                self.assertIn('homeassistant:',str(e.exception))
+    def test_a_store_copy_that_cannot_be_read_is_an_error(self):
+        for shipping in (None,'2026.7','latest',2026.7):
+            with self.subTest(shipping=shipping):
+                with self.assertRaises(ValueError):u.compare(BASE,new(homeassistant='2026.1.0'),'1.0.0','1.1.0',shipping_core=shipping if shipping is not None else 0)
+        for name,text in (('missing',None),('not JSON','2026.7.2'),('no version','{}'),('not YYYY.M.P','{"version": "2026.7"}'),('not a mapping','["2026.7.2"]')):
+            with self.subTest(name):
+                path=pathlib.Path(tempfile.mkdtemp())/'shipping-core.json';self.addCleanup(shutil.rmtree,path.parent)
+                if text is not None:path.write_text(text,encoding='utf-8')
+                with self.assertRaises(ValueError) as e:u.shipping_core_version(path)
+                self.assertIn('shipping-core.json',str(e.exception))
+        # Without the key the copy is still read: a broken copy never passes, whatever the add-on.
+        with self.assertRaises(ValueError):self.core(None,shipping='2026.7')
+    def test_a_breaking_declaration_does_not_let_it_pass(self):
+        for change in ('core-requirement','homeassistant'):
+            with self.subTest(change=change):
+                notes={'1.1.0':{'breaking':[{'change':change,'key':'homeassistant','migration':'Update Home Assistant first.'}]}}
+                r=self.core('2026.10.0',notes=notes)
+                self.assertTrue(r['blocked']);self.assertEqual(r['unmatched'],[{'change':change,'key':'homeassistant','version':'1.1.0'}])
+    def test_no_comparison_target_is_checked_too(self):
+        r=self.core('2026.10.0',old=None)
+        self.assertTrue(r['blocked']);self.assertIn('要求 HA 2026.10.0，出貨 Core 版本 2026.7.2',r['report'])
+        self.assertIn('**Blocked**: Core requirement above the shipping Core version; no comparison target',r['report'])
+        self.assertFalse(self.core('2026.7.2',old=None)['blocked'])
+    def test_the_store_copy_is_read_by_default(self):
+        self.assertEqual(u.shipping_core_version(),json.loads(u.SHIPPING_CORE.read_text(encoding='utf-8'))['version'])
+        r=u.compare(BASE,new(homeassistant='2099.1.0'),'1.0.0','1.1.0')
+        self.assertTrue(r['blocked']);self.assertEqual(r['core']['shipping'],u.shipping_core_version())
+    @needs_store
+    def test_hamh_passes(self):
+        # hamh is the only Store add-on with homeassistant: (2024.1.0).
+        cfg=yaml.safe_load((STORE/'hamh'/'config.yaml').read_text(encoding='utf-8'))
+        r=u.compare(cfg,cfg|{'version':'99.0.0'},str(cfg['version']),'99.0.0')
+        self.assertFalse(r['core']['above']);self.assertEqual(r['core']['required'],'2024.1.0')
+
 class CommandLine(unittest.TestCase):
     def setUp(self):
         self.dir=pathlib.Path(tempfile.mkdtemp());self.summary=self.dir/'summary.md'
@@ -327,6 +402,31 @@ class CommandLine(unittest.TestCase):
     def test_scan_note_explains_a_skipped_comparison(self):
         self.main('--old',self.write('old.yaml',BASE),'--new',self.write('new.yaml',new()),'--scan-note','skipped as approved in the Store registry: a reason')
         self.assertIn('not run (skipped as approved in the Store registry: a reason)',self.summary.read_text(encoding='utf-8'))
+    def test_core_requirement_above_the_shipping_core_exits_1_with_an_annotation(self):
+        # #217: a WOOW source's PR fails, the annotation names both versions.
+        code,out=self.main('--old',self.write('old.yaml',BASE),'--new',self.write('new.yaml',new(homeassistant='2026.10.0')),'--name','t',
+            '--shipping-core',self.write('core.json','{"version": "2026.7.2"}'))
+        self.assertEqual(code,1)
+        self.assertIn('::error title=Core requirement above the shipping Core version::t: 要求 HA 2026.10.0，出貨 Core 版本 2026.7.2',out)
+        self.assertIn('要求 HA 2026.10.0',self.summary.read_text(encoding='utf-8'))
+    def test_core_requirement_held_in_sha_mode(self):
+        # #217: in sha mode (a Mirror source) an add-on blocked only by its Core requirement is held (暫緩): exit 4, a warning.
+        core=self.write('core.json','{"version": "2026.7.2"}')
+        args=['--old',self.write('old.yaml',BASE),'--shipping-core',core,'--name','t','--held-ok']
+        code,out=self.main(*args,'--new',self.write('new.yaml',new(homeassistant='2026.10.0')))
+        self.assertEqual(code,u.HELD);self.assertNotIn('::error',out)
+        self.assertIn('::warning title=Held (暫緩)::t: 要求 HA 2026.10.0，出貨 Core 版本 2026.7.2',out)
+        # Blocked for anything else too: failed, not held.
+        code,out=self.main(*args,'--new',self.write('new2.yaml',new(homeassistant='2026.10.0',schema=drop('db_filter'))))
+        self.assertEqual(code,1);self.assertIn('::error title=Core requirement above the shipping Core version::',out)
+        # Not above: passes as before.
+        self.assertEqual(self.main(*args,'--new',self.write('new3.yaml',new(homeassistant='2026.7.2')))[0],0)
+    def test_a_store_copy_or_requirement_that_cannot_be_read_exits_2(self):
+        for name,cfg,core in (('store copy',new(),'{"version": "2026.7"}'),('requirement',new(homeassistant='2026.10'),'{"version": "2026.7.2"}')):
+            with self.subTest(name):
+                code,out=self.main('--old',self.write('old.yaml',BASE),'--new',self.write('new.yaml',cfg),'--name','t','--held-ok',
+                    '--shipping-core',self.write('core.json',core))
+                self.assertEqual(code,2);self.assertIn('::error title=Upgrade comparison failed::t: ',out)
     def commands(self,out):
         # Workflow commands GitHub would run: everything between ::stop-commands::<token> and ::<token>:: is plain text.
         lines=[];stop=None
@@ -766,7 +866,8 @@ class StepHarness(unittest.TestCase):
     def step(self,ident):return next(s for j in ('compare','runtime') for s in self.wf['jobs'][j]['steps'] if ident in (s.get('id'),s.get('name')))
     def run_step(self,ident,*,policy='release',extra=None,releases=('v1.0.0',),old_config=True,new_config=True,skip='',sbom='',version='1.1.0',old=None,old_path='',
             new_path='addon/config.yaml',new=None,files=None,raw_version=None,history=None,changed=1,gh_fail='',images=(),vulnerable='',image_artifact='',
-            tarball=None,build_fail='',news=None,syft_fail='',sha='',keep_going=False,results=None,runtime='success',on_base=None,catalog=None):
+            tarball=None,build_fail='',news=None,syft_fail='',sha='',keep_going=False,results=None,runtime='success',on_base=None,catalog=None,
+            shipping_core='2026.7.2'):
         """ident: one step, or a tuple run in order until one fails. new_path: where the PR has the config; new: changes to it;
         files: more files of the PR checkout; raw_version: {'old'/'new': the version line's YAML as written, e.g. 1.10 unquoted}.
         history: the PR base's history, newest first, [(sha, {path: changes to the config, or None for no file})]; the first
@@ -784,7 +885,8 @@ class StepHarness(unittest.TestCase):
         does (self.runs has each step's CompletedProcess); results: {id: the runtime job's runtime-reports/<id>.json};
         runtime: the runtime job's result (RUNTIME_RESULT). on_base: what the detect step reports in changed.jsonl (#135);
         default: the PR base has the config (old_config), never in sha mode. catalog: the Store catalog's components
-        ({id: entry}, tooling/.addon-sync/catalog.json; default none: every add-on is new to the Store, #135).
+        ({id: entry}, tooling/.addon-sync/catalog.json; default none: every add-on is new to the Store, #135). shipping_core: the
+        Store copy of the shipping Core version (tooling/.addon-sync/shipping-core.json, #217).
         self.tmp is the job's directory (also RUNNER_TEMP); self.plans is every line of plan.jsonl."""
         import os,subprocess
         tmp=self.tmp=pathlib.Path(tempfile.mkdtemp());self.addCleanup(shutil.rmtree,tmp)
@@ -794,6 +896,7 @@ class StepHarness(unittest.TestCase):
         (tmp/'tooling/.addon-sync/registry.json').write_text(json.dumps({'providers':{'WOOWTECH/t':{'ref_policy':policy,'components':[
             {'id':'t','source_path':'addon','config_file':'config.yaml'}],**(extra or {})}}}))
         (tmp/'tooling/.addon-sync/catalog.json').write_text(json.dumps({'schema':1,'components':catalog or {}}))
+        (tmp/'tooling/.addon-sync/shipping-core.json').write_text(json.dumps({'version':shipping_core}))
         cfg=dict(BASE,image='ghcr.io/da-anda/addon-{arch}')
         def dump(c,side):
             text=yaml.safe_dump(c)
@@ -1647,6 +1750,16 @@ class PublishedImageScan(StepHarness):
         r,_,_=self.run_step(steps,extra=self.APPROVED,images=(self.OLD,self.NEW),vulnerable=self.OLD)
         self.assertEqual(r.returncode,0,r.stdout+r.stderr);self.assertIn('No new fixable vulnerabilities.',r.stdout)
     @needs_shell
+    def test_a_core_requirement_above_the_shipping_core_fails_a_pr(self):
+        # #217: a WOOW source's PR fails (no held on a PR); the Store copy in the tooling decides.
+        steps=self.SBOMS+('Compare with the comparison target',)
+        r,_,_=self.run_step(steps,extra=self.APPROVED,images=(self.OLD,self.NEW),new={'homeassistant':'2026.10.0'})
+        self.assertEqual(r.returncode,1,r.stdout+r.stderr)
+        self.assertIn('::error title=Core requirement above the shipping Core version::t: 要求 HA 2026.10.0，出貨 Core 版本 2026.7.2',r.stdout)
+        self.assertNotIn('Held',r.stdout)
+        r,_,_=self.run_step(steps,extra=self.APPROVED,images=(self.OLD,self.NEW),new={'homeassistant':'2026.10.0'},shipping_core='2026.10.0')
+        self.assertEqual(r.returncode,0,r.stdout+r.stderr)
+    @needs_shell
     def test_a_new_image_with_a_newline_is_rejected(self):
         r,plan,_=self.run_step('plan',extra=self.APPROVED,new={'image':'ghcr.io/x/a-{arch}\n::warning title=Injected::boom'})
         self.assertEqual(r.returncode,1,r.stdout+r.stderr);self.assertIn('control character',r.stdout);self.assertEqual(plan,{})
@@ -1679,7 +1792,7 @@ class ShaMode(StepHarness):
         self.assertEqual(detect['env']['SHA'],'${{ inputs.sha }}');self.assertIn('release-change --registry',detect['run']);self.assertIn('--sha "${SHA}"',detect['run'])
         self.assertEqual(self.step('Check out the pull request')['with']['ref'],'${{ inputs.sha }}')
         passed=self.step('passed');self.assertEqual(passed['if'],"always() && inputs.sha != ''");self.assertIn('upgrade_check.py sha-verdicts',passed['run'])
-        self.assertEqual(self.wf['jobs']['compare']['outputs'],{'passed':'${{ steps.passed.outputs.passed }}'})
+        self.assertEqual(self.wf['jobs']['compare']['outputs'],{'passed':'${{ steps.passed.outputs.passed }}','held':'${{ steps.passed.outputs.held }}'})
         # Without sha, "" as before #167; with sha never "", even when the compare job ended before its last step.
         self.assertEqual(self.wf['on']['workflow_call']['outputs']['passed']['value'],"${{ jobs.compare.outputs.passed || (inputs.sha != '' && '[]' || '') }}")
         # The required check keeps its name, and nothing on a PR depends on sha.
@@ -1749,6 +1862,34 @@ class ShaMode(StepHarness):
     def test_ref_policy_main_is_refused(self):
         code,passed,log,_=self.sha(policy='main',results={})
         self.assertEqual((code,passed),(1,[]),log);self.assertIn('switch the provider to ref_policy release first',log)
+    @needs_shell
+    def test_a_core_requirement_above_the_shipping_core_is_held_not_failed(self):
+        # #217: the snapshot still moves (mirror-sync), but no Release: not in passed, and the run does not fail. The
+        # verdict, the output held, the step summary and the "Held (暫緩)" step say so apart from a failure.
+        code,passed,log,summary=self.sha(new={'homeassistant':'2026.10.0'})
+        self.assertEqual((code,passed),(0,[]),log)
+        self.assertIn('::warning title=Held (暫緩)::t: 要求 HA 2026.10.0，出貨 Core 版本 2026.7.2',log);self.assertNotIn('::error',log)
+        self.assertIn('held=["t"]',(self.tmp/'out').read_text())
+        self.assertIn('- t: **held (暫緩)**: Core requirement above the shipping Core version, no Release',summary)
+        # Not above: passes as before.
+        code,passed,log,_=self.sha(new={'homeassistant':'2026.7.2'})
+        self.assertEqual((code,passed),(0,['t']),log);self.assertIn('held=[]',(self.tmp/'out').read_text())
+    @needs_shell
+    def test_held_and_failed_for_another_reason_is_failed(self):
+        code,passed,log,summary=self.sha(new={'homeassistant':'2026.10.0',**self.NO_WORKERS})
+        self.assertEqual((code,passed),(1,[]),log);self.assertIn('- t: **failed**',summary)
+        self.assertIn('::error title=Core requirement above the shipping Core version::t: 要求 HA 2026.10.0',log)
+    @needs_shell
+    def test_one_add_on_held_leaves_the_other_in_passed(self):
+        code,passed,log,summary=self.multi(two={'homeassistant':'2027.1.0'})
+        self.assertEqual((code,passed),(0,['one']),log)
+        self.assertIn('- one: passed\n',summary);self.assertIn('- two: **held (暫緩)**',summary)
+    def test_the_workflow_outputs_held(self):
+        self.assertEqual(self.wf['jobs']['compare']['outputs']['held'],'${{ steps.passed.outputs.held }}')
+        self.assertEqual(self.wf['on']['workflow_call']['outputs']['held']['value'],"${{ jobs.compare.outputs.held || (inputs.sha != '' && '[]' || '') }}")
+        # A step of its own, so the Actions API (the issue monitor, #169) tells a held run from a passed one without a token.
+        held=next(s for s in self.wf['jobs']['compare']['steps'] if s.get('name')=='Held (暫緩)')
+        self.assertEqual(held['if'],"always() && inputs.sha != '' && steps.passed.outputs.held != '' && steps.passed.outputs.held != '[]'")
     def multi(self,two=None,images=None,**kw):
         """music_assistant's shape: two add-ons with their own image; both bump to 1.1.0; two's config gets `two`."""
         comps=[{'id':i,'source_path':i,'config_file':'config.yaml'} for i in ('one','two')]
@@ -1798,7 +1939,7 @@ class ShaCommands(unittest.TestCase):
             with self.subTest(kw):
                 code,out=self.change(['v1.0.0'],'1.1.0',**kw)
                 self.assertEqual(code,2);self.assertIn(why,out);self.assertTrue(out.startswith('::error title=Upgrade comparison failed::'))
-    def verdicts(self,plan=('a','b','c'),compared=('a','b','c'),results=None,unchanged=(),runtime_failed=(),components=('a','b','c','d')):
+    def verdicts(self,plan=('a','b','c'),compared=('a','b','c'),results=None,unchanged=(),runtime_failed=(),components=('a','b','c','d'),held=None):
         d=pathlib.Path(tempfile.mkdtemp());self.addCleanup(shutil.rmtree,d);(d/'reports').mkdir()
         (d/'provider.json').write_text(json.dumps({'components':[{'id':i} for i in components]}))
         (d/'plan.jsonl').write_text(''.join(json.dumps({'id':i})+'\n' for i in plan))
@@ -1806,8 +1947,22 @@ class ShaCommands(unittest.TestCase):
         for i,passed in (results if results is not None else {'a':True,'b':True,'c':True}).items():(d/'reports'/f'{i}.json').write_text(json.dumps({'name':i,'passed':passed}))
         with contextlib.redirect_stdout(io.StringIO()) as out:
             code=u.main(['sha-verdicts','--provider',str(d/'provider.json'),'--unchanged',str(d/'unchanged.txt'),'--plan',str(d/'plan.jsonl'),
-                '--compared',str(d/'compared.txt'),'--runtime-reports',str(d/'reports'),'--runtime-failed',str(d/'failed.txt')])
+                '--compared',str(d/'compared.txt'),'--runtime-reports',str(d/'reports'),'--runtime-failed',str(d/'failed.txt')]
+                +(['--held',str(d/'held.txt')] if held is not None and (d/'held.txt').write_text(''.join(i+'\n' for i in held)) is not None else []))
         return code,json.loads(out.getvalue())
+    def test_held_is_neither_passed_nor_failed(self):
+        # #217: compare --held-ok exited HELD (the Core requirement alone blocks): held.txt, not compared.txt. Held needs the same
+        # evidence as passed otherwise; it gets no Release and does not fail the run.
+        code,v=self.verdicts(compared=('b','c'),held=('a',),unchanged=('d',))
+        self.assertEqual((code,v['passed'],v['held']),(0,['b','c'],['a']))
+        self.assertEqual(v['verdicts'][0],{'id':'a','verdict':'held'})
+        # Held but its upgrade test failed: failed, as any add-on with failed evidence.
+        for kw in ({'results':{'a':False,'b':True,'c':True}},{'runtime_failed':('a',)},{'plan':('b','c')}):
+            with self.subTest(kw):
+                code,v=self.verdicts(compared=('b','c'),held=('a',),unchanged=('d',),**kw)
+                self.assertEqual((code,v['held'],v['verdicts'][0]),(1,[],{'id':'a','verdict':'failed'}))
+        # Without --held, nothing is held.
+        self.assertEqual(self.verdicts(unchanged=('d',))[1]['held'],[])
     def test_passed_needs_both_jobs_evidence(self):
         code,v=self.verdicts(unchanged=('d',))
         self.assertEqual((code,v['passed']),(0,['a','b','c']))

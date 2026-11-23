@@ -184,24 +184,66 @@ def category4(old_scan, new_scan):
         fixable.append({'id':vid,'package':package,'severity':v.get('severity'),'fixed_in':list(fix.get('versions') or []),'accepted':False})
     return {'old_count':len(old),'new_count':len(new),'new_fixable':fixable,'not_blocking':skipped}
 
-def compare(old, new, old_version, new_version, notes=None, old_scan=None, new_scan=None, name=None, notes_path='upgrade-notes.yaml', scan_note='no scan results'):
+# Core requirement (#217, category 1): config.yaml's `homeassistant:` is the lowest HA Core Supervisor installs the add-on on.
+# The Store keeps a copy of the shipping Core version (woow_ha_version_control's ha-core.json, private, so the Store CI
+# cannot read it) in SHIPPING_CORE, {"version": "YYYY.M.P"}; woow_ha_version_control's drift check fails when this copy is
+# newer than ha-core.json. Read it with shipping_core_version() (also for the mock Supervisor's HA version, #225).
+SHIPPING_CORE=pathlib.Path(__file__).resolve().with_name('shipping-core.json')
+_CALVER=re.compile(r'(\d{4})\.(\d{1,2})\.(\d+)')
+
+def calver(text, what):
+    """(year, month, patch) of an HA Core version YYYY.M.P, compared part by part as numbers. A ValueError naming `what`
+    for anything else (a beta, YYYY.M, or a number YAML read from an unquoted 2026.10, which would be 2026.1)."""
+    m=_CALVER.fullmatch(text) if isinstance(text,str) else None
+    if not m:raise ValueError(f'{what} is {text!r}, not an HA Core version YYYY.M.P (quote it in YAML)')
+    return tuple(int(x) for x in m.groups())
+
+def shipping_core_version(path=SHIPPING_CORE):
+    """The shipping Core version the Store keeps (SHIPPING_CORE's `version`), checked to be YYYY.M.P; a ValueError when the
+    file cannot be read or parsed, so the upgrade comparison never passes on a broken copy."""
+    try:data=json.loads(pathlib.Path(path).read_text(encoding='utf-8'))
+    except (OSError,ValueError) as e:raise ValueError(f'the Store copy of the shipping Core version ({pathlib.Path(path).name}) cannot be read: {e}') from None
+    version=data.get('version') if isinstance(data,dict) else None
+    calver(version,f'the Store copy of the shipping Core version ({pathlib.Path(path).name})')
+    return version
+
+def core_requirement(config, shipping):
+    """#217: the new version's Core requirement against the shipping Core version, only the new version's value (not the
+    comparison target's). None when config.yaml has no `homeassistant:` (not checked, not reported); else {required,
+    shipping, above}: above when it is newer than `shipping`. A ValueError when either cannot be read as YYYY.M.P.
+    Not a breaking change: no declaration lets it pass."""
+    ship=calver(shipping,'the shipping Core version')
+    if config.get('homeassistant') is None:return None
+    required=config['homeassistant']
+    return {'required':required,'shipping':shipping,'above':calver(required,'homeassistant: in config.yaml')>ship}
+
+def core_text(core):
+    """The report line of an above Core requirement (both versions)."""
+    return f'要求 HA {core["required"]}，出貨 Core 版本 {core["shipping"]} (config.yaml homeassistant: {core["required"]} is above the shipping Core version {core["shipping"]}; Supervisor would not install it on the shipping HA)'
+
+def compare(old, new, old_version, new_version, notes=None, old_scan=None, new_scan=None, name=None, notes_path='upgrade-notes.yaml', scan_note='no scan results', shipping_core=None):
     """Judge one add-on.
 
     `old`/`new`: parsed config.yaml; `old` is None when there is no comparison target (first release).
     `notes`: parsed upgrade-notes.yaml or None. `old_scan`/`new_scan`: Grype JSON for category 4 (#118), None = not scanned.
     `scan_note`: report text for why there are no scan results.
     ValueError unless new_version is newer than old_version (addon_sync.require_newer; the plan step already checked, check_target).
-    Returns blocked, vulnerabilities (None when not scanned), breaking [{change, key, declared}], notices,
+    `shipping_core`: the shipping Core version for the Core requirement (#217); None reads the Store copy (shipping_core_version()).
+    Returns blocked, held (blocked by the Core requirement alone: a Mirror source's add-on is then held, 暫緩), core
+    (core_requirement(), None without homeassistant:), vulnerabilities (None when not scanned), breaking [{change, key, declared}], notices,
     unmatched declarations, problems, and a Markdown report (_first_report, _report)."""
     name=name or new.get('slug') or 'add-on'
     if old is not None:require_newer(new_version,old_version)
+    core=core_requirement(new,shipping_core_version() if shipping_core is None else shipping_core)
     sections=declarations(notes,old_version,new_version);declared,accepted=sections['breaking'],sections['accepted_vulnerabilities']
     # The Release notes (#119) publish every migration and reason and fail on an empty one, so check them here
     # with or without a comparison target or scan: the merge is the release approval (ADR-0005).
     problems=[f'{d["version"]}: {d["change"]} {d["key"]} has no migration' for d in declared if not declaration_text(d,'migration')]
     problems+=[f'{d["version"]}: accepted {d["id"]} {d["package"]} has no reason' for d in accepted if not declaration_text(d,'reason')]
+    above=bool(core and core['above'])
     if old is None:
-        return {'blocked':bool(problems),'vulnerabilities':None,'breaking':[],'notices':[],'unmatched':[],'problems':problems,'report':_first_report(name,new_version,problems)}
+        return {'blocked':bool(problems) or above,'held':above and not problems,'vulnerabilities':None,'breaking':[],'notices':[],'unmatched':[],'problems':problems,'core':core,
+            'report':_first_report(name,new_version,problems,core)}
     found,notes_only=category1(old,new)
     migrations={(d['change'],d['key']):declaration_text(d,'migration') for d in declared if declaration_text(d,'migration')}
     breaking=[{'change':c,'key':k,'declared':(c,k) in migrations} for c,k in found]
@@ -215,20 +257,30 @@ def compare(old, new, old_version, new_version, notes=None, old_scan=None, new_s
             if f['accepted']:f['reason']=reasons[(f['id'],f['package'])]
         listed={(f['id'],f['package']) for f in vulns['new_fixable']}
         vulns['unmatched_accepted']=[{'id':d['id'],'package':d['package'],'version':d['version']} for d in accepted if (d['id'],d['package']) not in listed]
-    blocked=any(not b['declared'] for b in breaking) or bool(problems) or bool(vulns and any(not f['accepted'] for f in vulns['new_fixable']))
-    result={'blocked':blocked,'vulnerabilities':vulns,'breaking':breaking,'notices':notices,'unmatched':unmatched,'problems':problems}
+    other=any(not b['declared'] for b in breaking) or bool(problems) or bool(vulns and any(not f['accepted'] for f in vulns['new_fixable']))
+    result={'blocked':other or above,'held':above and not other,'vulnerabilities':vulns,'breaking':breaking,'notices':notices,'unmatched':unmatched,'problems':problems,'core':core}
     return {**result,'report':_report(result,migrations,name,old_version,new_version,notes_path,scan_note)}
 
-def _first_report(name, new_version, problems):
-    """The report when there is no comparison target: only the declarations are checked."""
-    report=[f'### {name} {new_version}','',('**Blocked**: invalid declaration; ' if problems else '**Passed**: ')+'no comparison target (no earlier stable Release), so there is nothing to compare.']
+def _core_lines(core):
+    """The report's Core requirement lines (#217): nothing when config.yaml has no homeassistant:."""
+    if core is None:return []
+    if core['above']:return [f'**Core requirement above the shipping Core version** (not a breaking change; no declaration lets it pass): {core_text(core)}.','']
+    return [f'Core requirement: homeassistant: {core["required"]}, not above the shipping Core version {core["shipping"]}.','']
+
+def _first_report(name, new_version, problems, core=None):
+    """The report when there is no comparison target: only the declarations and the Core requirement are checked."""
+    above=bool(core and core['above'])
+    report=[f'### {name} {new_version}','',('**Blocked**: '+', '.join(w for w,on in (('invalid declaration',problems),('Core requirement above the shipping Core version',above)) if on)+'; ' if problems or above else '**Passed**: ')
+        +'no comparison target (no earlier stable Release), so there is nothing to compare.']
+    if core is not None:report+=['']+_core_lines(core)[:-1]
     if problems:report+=['','Invalid declarations:','']+[f'- {p}' for p in problems]
     return '\n'.join(report)+'\n'
 
 def _report(result, migrations, name, old_version, new_version, notes_path, scan_note):
     """The Markdown report of compare()'s `result`; `migrations`: {(change, key): migration} of the valid declarations."""
     breaking,notices,unmatched,problems,vulns=(result[k] for k in ('breaking','notices','unmatched','problems','vulnerabilities'))
-    r=[f'### {name} {old_version} → {new_version}','',('**Blocked**: undeclared breaking change, new fixable vulnerability, or invalid declaration.' if result['blocked'] else '**Passed**.'),'']
+    r=[f'### {name} {old_version} → {new_version}','',('**Blocked**: undeclared breaking change, new fixable vulnerability, Core requirement above the shipping Core version, or invalid declaration.' if result['blocked'] else '**Passed**.'),'']
+    r+=_core_lines(result['core'])
     if breaking:
         r+=['Breaking changes (each needs an entry in `'+notes_path+'`):','','| change | key | declared | migration |','|---|---|---|---|']
         r+=[f'| `{markdown_cell(b["change"])}` | `{markdown_cell(b["key"])}` | {"yes" if b["declared"] else "**no**"} | {markdown_cell(migrations[(b["change"],b["key"])]) if b["declared"] else ""} |' for b in breaking]
@@ -296,9 +348,11 @@ def catalog_entry(catalog, repo, component):
     entry=catalog['components'].get(component)
     return entry if isinstance(entry,dict) and entry.get('repository')==repo else None
 
-def sha_verdicts(components, unchanged, planned, compared, results, runtime_failed):
+def sha_verdicts(components, unchanged, planned, compared, results, runtime_failed, held=frozenset()):
     """sha mode (#167): each add-on's verdict, in the order of `components` (the ids `components()` gives):
-    'unchanged' (in `unchanged`: its version is its latest stable Release's, not compared), 'passed' or 'failed'.
+    'unchanged' (in `unchanged`: its version is its latest stable Release's, not compared), 'passed', 'held' or 'failed'.
+    Held (暫緩, #217): in `held` instead of `compared` (compare --held-ok exited HELD: the Core requirement alone blocked
+    categories 1 and 4) with the same runtime evidence as passed; it gets no Release and does not fail the run.
     Passed needs positive evidence from both jobs: the add-on is in the compare job's plan (`planned`), its comparison
     (categories 1 and 4) passed (`compared`), and its upgrade test result (categories 2 and 3; `results`, the runtime
     job's runtime-reports, {name: passed}) is there and not failed: passed true, or null when the test did not run (no
@@ -308,7 +362,8 @@ def sha_verdicts(components, unchanged, planned, compared, results, runtime_fail
     out=[]
     for cid in components:
         if cid in unchanged:verdict='unchanged'
-        elif cid in planned and cid in compared and cid in results and results[cid] is not False and cid not in runtime_failed:verdict='passed'
+        elif cid in planned and (cid in compared or cid in held) and cid in results and results[cid] is not False and cid not in runtime_failed:
+            verdict='passed' if cid in compared else 'held'
         else:verdict='failed'
         out.append({'id':cid,'verdict':verdict})
     return out
@@ -813,8 +868,9 @@ def _sha_verdicts(a):
         for p in sorted(pathlib.Path(a.runtime_reports).glob('*.json')) if a.runtime_reports else []:
             with contextlib.suppress(ValueError,KeyError,TypeError,AttributeError,OSError):
                 r=json.loads(p.read_text(encoding='utf-8'));results[r['name']]=r.get('passed')
-        verdicts=sha_verdicts(components,set(_lines(a.unchanged)),planned,set(_lines(a.compared)),results,set(_lines(a.runtime_failed)))
-    print(json.dumps({'passed':[v['id'] for v in verdicts if v['verdict']=='passed'],'verdicts':verdicts}))
+        verdicts=sha_verdicts(components,set(_lines(a.unchanged)),planned,set(_lines(a.compared)),results,set(_lines(a.runtime_failed)),
+            set(_lines(a.held)) if a.held else set())
+    print(json.dumps({'passed':[v['id'] for v in verdicts if v['verdict']=='passed'],'held':[v['id'] for v in verdicts if v['verdict']=='held'],'verdicts':verdicts}))
     return 1 if any(v['verdict']=='failed' for v in verdicts) else 0
 
 def _version_command(a):
@@ -829,11 +885,14 @@ def _release_notes(a):
     with _failing((ValueError,TypeError,OSError,yaml.YAMLError),f'{a.notes}: ','Release notes failed'):text=release_notes(_load(a.notes,'yaml',optional=True),a.version,a.released)
     print(text,end='');return 0
 
+HELD=4  # compare --held-ok: blocked by the Core requirement alone, so a Mirror source's add-on is held (暫緩, #217); not 1, 2 or 3
+
 def _compare(a):
     with _failing((ValueError,KeyError,TypeError,OSError,yaml.YAMLError),f'{a.name or a.new}: '):
         old,new=_load(a.old,'yaml'),_load(a.new,'yaml')
         r=compare(old,new,old_version=_version(a.old) if old else None,new_version=_version(a.new,True),notes=_load(a.notes,'yaml',optional=True),
-            old_scan=_load(a.old_scan,'json'),new_scan=_load(a.new_scan,'json'),name=a.name,notes_path=a.notes_path,scan_note=a.scan_note)
+            old_scan=_load(a.old_scan,'json'),new_scan=_load(a.new_scan,'json'),name=a.name,notes_path=a.notes_path,scan_note=a.scan_note,
+            shipping_core=shipping_core_version(a.shipping_core))
     # The report quotes PR text; GitHub must not read a line of it as a workflow command.
     token=secrets.token_hex(16);print('::stop-commands::'+token);print(r['report']);print('::'+token+'::')
     if a.summary:
@@ -843,6 +902,10 @@ def _compare(a):
     for f in (r.get('vulnerabilities') or {}).get('new_fixable',[]):
         if not f['accepted']:_error('New fixable vulnerability',f'{f["id"]} {f["package"]} ({f["severity"]}, fixed in {", ".join(f["fixed_in"])}) — upgrade the package or accept it in {a.notes_path}')
     for problem in r['problems']:_error('Invalid declaration',problem)
+    if r['held'] and a.held_ok:
+        # #217: a Mirror source (sha mode) holds the add-on: no Release, shown apart from a failure.
+        print(workflow_command('warning','Held (暫緩)',f'{a.name or a.new}: {core_text(r["core"])}; no Release until the shipping Core version is raised'));return HELD
+    if r['core'] and r['core']['above']:_error('Core requirement above the shipping Core version',f'{a.name or a.new}: {core_text(r["core"])}')
     return 1 if r['blocked'] else 0
 
 def _mounts(a):
@@ -890,6 +953,8 @@ def main(argv=None):
     c.add_argument('--old-scan');c.add_argument('--new-scan');c.add_argument('--name');c.add_argument('--notes-path',default='upgrade-notes.yaml')
     c.add_argument('--scan-note',default='no scan results',help='why there are no scan results (report text)')
     c.add_argument('--summary',default=os.environ.get('GITHUB_STEP_SUMMARY'),help='Markdown file the report is appended to')
+    c.add_argument('--shipping-core',default=str(SHIPPING_CORE),help='the Store copy of the shipping Core version, {"version": "YYYY.M.P"} (#217)')
+    c.add_argument('--held-ok',action='store_true',help=f'sha mode (a Mirror source, #217): an add-on blocked by its Core requirement alone is held (暫緩): a warning and exit {HELD}, not a failure')
     n=sub.add_parser('release-notes',help="print the Release-notes sections for a version's declarations ('' when none)")
     n.add_argument('--notes',required=True,help='upgrade-notes.yaml at the released commit (may be absent)')
     n.add_argument('--version',required=True,help='version being released')
@@ -934,11 +999,12 @@ def main(argv=None):
     w.add_argument('--registry',required=True,help='Store registry.json');w.add_argument('--repo',required=True,help='source repository, owner/name')
     w.add_argument('--component',required=True,help='add-on id in the registry');w.add_argument('--version',required=True,help='its version at the commit, as written')
     w.add_argument('--sha',required=True,help='the commit (the workflow input sha), a full commit id')
-    y=sub.add_parser('sha-verdicts',help="sha mode (#167): print {passed: [add-on ids], verdicts: [{id, verdict}]} as JSON from what the compare job wrote (sha_verdicts()); "
+    y=sub.add_parser('sha-verdicts',help="sha mode (#167): print {passed: [add-on ids], held: [add-on ids], verdicts: [{id, verdict}]} as JSON from what the compare job wrote (sha_verdicts()); "
         "exits 1 when an add-on failed")
     y.add_argument('--provider',required=True,help="provider.json (upgrade_check.py components)");y.add_argument('--unchanged',required=True,help='ids whose version is unchanged, one per line (may be absent)')
     y.add_argument('--plan',required=True,help="the compare job's plan.jsonl (may be absent)");y.add_argument('--compared',required=True,help='ids whose comparison passed, one per line (may be absent)')
     y.add_argument('--runtime-reports',required=True,help="directory of the runtime job's results, <id>.json");y.add_argument('--runtime-failed',required=True,help="ids 'Upgrade test result' failed, one per line (may be absent)")
+    y.add_argument('--held',help="ids compare --held-ok held (暫緩, #217): blocked by the Core requirement alone, one per line (may be absent)")
     z=sub.add_parser('attempt-artifact',help="#131: read this run's state ({run, jobs, artifacts}, GitHub API JSON) on stdin and print which attempt's "
         "artifact to read, as JSON {id, attempt, note} (attempt_artifact(); id null when there is none to read yet)")
     z.add_argument('--name',required=True,help="the artifact's name in this attempt, <base>-attempt-<attempt>");z.add_argument('--attempt',required=True,type=int,help='this run attempt')
