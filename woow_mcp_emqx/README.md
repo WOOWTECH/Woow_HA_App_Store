@@ -5,6 +5,7 @@
 
 - 工具：0.2.1 起完整版，上游 39 個工具全部開放，與原始 MCP server 及 PaaS 版一致；全部工具與寫入預設開啟（新安裝與從 0.1.x 升級），可在管理面板逐一停用或取消寫入
   （[逐名工具對照](https://github.com/WOOWTECH/Woow_ha_mcp_addons/blob/claude-delivery/docs/tool-surface.md)）。
+- **多帳號（0.5.0 起）**：同一個 add-on 可以開預設帳號＋最多 3 個額外帳號，每個帳號一組 EMQX 的 url、API key 與 API secret、一把權杖與它的兩條網址、一份工具政策；只想讓模型查詢的帳號建議用 `viewer` 角色的 API key。只看權杖決定是哪個帳號；不宣稱多租戶，所有帳號的子程式是同一個系統帳號，一個被攻破等於全部帳號被控制。既有安裝升級後原本的網址、權杖、設定都不變；說明見 [本產品操作](DOCS.md) 的「多帳號」。
 - **風險：網址＝完整後端權限**。拿到權杖或 Claude.ai 密鑰網址的 MCP client（包括 AI 助理誤判時）不需再授權就能發佈 MQTT 訊息、踢除或封鎖 client、刪除 retained 訊息、管理認證使用者與授權規則。後端錯誤原文回傳（可能含後端內部資訊，add-on 持有的憑證換成 `[REDACTED]`）；後端帳號權限要設對（只給需要的權限），只保留需要的工具與寫入，外洩時立刻在管理面板重新產生權杖（[說明](https://github.com/WOOWTECH/Woow_ha_mcp_addons/blob/claude-delivery/docs/operations/guide.md#寫入預設開啟)）。
 - 連線：EMQX 網址（不含 /api/v5）與 API key／secret。
 - 管理面板在 HA 側邊欄（Ingress），只有 HA 的 owner 或系統管理員能設定後端與管理權杖；為了驗證這個身分，

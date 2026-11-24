@@ -1,11 +1,12 @@
 # Woow Nextcloud MCP Server
 
-獨立 amd64 Home Assistant Add-on：把一個 Nextcloud 帳號的檔案、行事曆與任務以 MCP（Streamable HTTP）提供給 AI client。
+獨立 amd64 Home Assistant Add-on：把 Nextcloud 帳號（每個帳號一個）的檔案、行事曆與任務以 MCP（Streamable HTTP）提供給 AI client。
 0.1.7 起發佈（本產品第一個版本）；目前發佈的版本、映像與在 HA 上的實測狀態見 [本產品操作](DOCS.md) 開頭。
 
 - 工具：上游 9 個全部支援。5 個讀取（檔案樹、讀文字檔、行事曆、任務）與 4 個寫入（建立／更新文字檔、上傳、刪除）
   預設都開啟（新安裝與從 0.1.x 升級），可在管理面板逐一停用或取消寫入
   （[逐名工具對照](https://github.com/WOOWTECH/Woow_ha_mcp_addons/blob/claude-delivery/docs/tool-surface.md)）。
+- **多帳號（0.5.0 起）**：同一個 add-on 可以開預設帳號＋最多 3 個額外帳號，每個帳號一個 Nextcloud 帳號（url、username、App 密碼）、一把權杖與它的兩條網址、一份工具政策；換 url 或 username 會換權杖。只看權杖決定是哪個帳號；不宣稱多租戶，所有帳號的子程式是同一個系統帳號，一個被攻破等於全部帳號被控制。既有安裝升級後原本的網址、權杖、設定都不變；說明見 [本產品操作](DOCS.md) 的「多帳號」。
 - **風險：網址＝這個 Nextcloud 帳號的完整檔案權限**。拿到權杖或 Claude.ai 密鑰網址的 MCP client（包括 AI 助理誤判時）不需再授權就能建立、覆寫、上傳與刪除檔案（刪除進垃圾桶）；錯誤訊息照 Nextcloud 回傳（add-on 持有的憑證換成 `[REDACTED]`）；App 密碼請用權限最小的帳號，只保留需要的寫入，外洩時立刻在管理面板重新產生權杖（[說明](https://github.com/WOOWTECH/Woow_ha_mcp_addons/blob/claude-delivery/docs/operations/guide.md#寫入預設開啟)）。
 - 連線：Nextcloud 根網址、使用者名稱與 **App 密碼**（Nextcloud「個人設定 → 安全性 → 裝置與工作階段」建立，不要用登入密碼）。
 - 管理面板在 HA 側邊欄（Ingress），只有 HA 的 owner 或系統管理員能設定後端與管理權杖；為了驗證這個身分，
