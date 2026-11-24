@@ -208,7 +208,7 @@ Hermes Paseo 的最新[安裝與首次 project 建立教學](https://github.com/
 - 流程：
   0. 來源 repo 的 CI 通過後，由共用的 [`woow-addon-release.yml`](.github/workflows/woow-addon-release.yml) 替新的 addon 版本發正式 Release（單一 addon 的 repo tag 為 `v<版本>`，多個 addon 的 repo 為 `<slug>-v<版本>`）。[`Woow_ha_mcp_addons`](https://github.com/WOOWTECH/Woow_ha_mcp_addons) 的映像在建置 VM 建置，所以它的 CI 另外檢查映像已公開、而且要發的版本有建置 VM 的發佈紀錄。
   1. 個別 repo 的 `woow-addon-sync.yml` 確認必要 CI 與各架構映像都通過，再把固定 commit、雜湊與映像 digest 寫進該 repo 的 `woow-addon-sync` 分支。`ref_policy: release` 的來源，每個 stable addon 從**它自己**最新的正式 Release（照版本排序，tag 是 `v<版本>` 或 `<slug>-v<版本>`）的 commit 發布，同一來源的 addon 可以各自在不同 commit；還沒有自己的 Release 的 addon 不發新通知，Store 保留現有版本（#232）。別的 addon 的 Release 不會帶著它的新版本出貨。prerelease 頻道照舊跟著來源的 `releases/latest`。
-  2. 本 repo 的 `sync-upstreams.yml` 依 registry 重新驗證：正式 Release、CI、預設分支、各架構映像、防降版、防亂序。
+  2. 本 repo 的 `sync-upstreams.yml` 依 registry 重新驗證：該 addon 自己這個版本的正式 Release（tag 指向通知的 commit）、CI、預設分支、各架構映像、防降版、防亂序。
   3. 全部通過後才更新 App 目錄與 [`.addon-sync/catalog.json`](.addon-sync/catalog.json)。
   
   細節見 [`.addon-sync/README.md`](.addon-sync/README.md)。

@@ -626,12 +626,23 @@ def stable_release(gh, repo, sha):
         if gh.api(repo,'commits/'+urllib.parse.quote(r['tag_name'],safe=''))['sha']==sha:return r['tag_name']
     return None
 
+def own_release_at(gh, repo, provider, component, version, sha):
+    """True when the add-on's own stable Release of `version` (release_tag: not a sibling's, not another version's) is
+    published, not draft or prerelease, and its tag names commit sha (#232). Looked up by tag, so any age counts."""
+    tag=release_tag(provider,component,version)
+    r=get_or_none(gh,repo,'releases/tags/'+urllib.parse.quote(tag,safe=''))
+    return r is not None and not r.get('draft') and not r.get('prerelease') and tagged_commit(gh,repo,tag)==sha
+
 def enforce_source_policy(gh, repo, provider, component, entry):
     """The Store's checked-in registry is authoritative: a producer's notification
-    may predate a registry change, so its policy is re-checked here."""
+    may predate a registry change, so its policy is re-checked here. Under ref_policy release a stable add-on must
+    name its own Release of the notified version (own_release_at, #232); a prerelease-channel one any stable Release commit."""
     sha=entry['source_sha']
     if provider.get('ref_policy')=='release':
-        if not stable_release(gh,repo,sha):raise Blocked('Registry requires a published stable Release commit')
+        if publishes_releases(component):
+            if not own_release_at(gh,repo,provider,component,str(entry.get('version')),sha):
+                raise Blocked(f'Registry requires the add-on\'s own stable Release {release_tag(provider,component,str(entry.get("version")))} at the notified commit')
+        elif not stable_release(gh,repo,sha):raise Blocked('Registry requires a published stable Release commit')
     else:
         branch=provider.get('default_branch') or gh.head(repo)[0]
         if gh.api(repo,'compare/'+sha+'...'+urllib.parse.quote(branch,safe=''))['status'] not in ['ahead','identical']:raise Blocked('Snapshot is not on the default branch')

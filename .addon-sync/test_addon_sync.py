@@ -235,14 +235,56 @@ class Tests(unittest.TestCase):
                 raise AssertionError(path)
             def fingerprint(self,*args,**kwargs):return 'material'
         return GH()
-    def test_release_policy_accepts_stable_release_commit(self):
-        gh=self.policy_gh([{'tag_name':'v1.1','prerelease':True},{'tag_name':'v1.0'}],{'v1.1':'b'*40,'v1.0':'a'*40})
-        s.enforce_source_policy(gh,'WOOWTECH/test',{'ref_policy':'release','required_workflows':[]},{'source_path':'pkg'},entry(archive()))
-        self.assertNotIn('commits/v1.1',gh.calls)
-    def test_release_policy_rejects_unreleased_or_prerelease_commit(self):
-        for releases in [[{'tag_name':'v1.0'}],[{'tag_name':'v1.1','prerelease':True}],[{'tag_name':'v1.2','draft':True}],[]]:
-            with self.subTest(releases=releases),self.assertRaisesRegex(s.Blocked,'stable Release'):
-                s.enforce_source_policy(self.policy_gh(releases,{'v1.0':'b'*40,'v1.1':'a'*40,'v1.2':'a'*40}),'WOOWTECH/test',{'ref_policy':'release'},{'source_path':'pkg'},entry(archive()))
+    def own_release_gh(self,releases,tags,recent=None):
+        """releases {tag: Release}; tags {tag: commit}; recent: what releases?per_page=30 lists (default every Release)."""
+        class GH:
+            calls=[]
+            def api(self,repo,path):
+                self.calls.append(path)
+                if path.startswith('releases/tags/'):
+                    tag=s.urllib.parse.unquote(path[len('releases/tags/'):])
+                    if tag not in releases:raise s.Blocked('GitHub '+repo+' HTTP 404')
+                    return {'tag_name':tag,**releases[tag]}
+                if path.startswith('releases?'):return [{'tag_name':k,**v} for k,v in releases.items()] if recent is None else recent
+                if path.startswith('git/ref/tags/'):
+                    tag=s.urllib.parse.unquote(path[len('git/ref/tags/'):])
+                    if tag not in tags:raise s.Blocked('GitHub '+repo+' HTTP 404')
+                    return {'object':{'type':'commit','sha':tags[tag]}}
+                if path.startswith('commits/'):return {'sha':tags[s.urllib.parse.unquote(path[len('commits/'):])]}
+                if '/runs' in path:return {'workflow_runs':[]}
+                raise AssertionError(path)
+            def fingerprint(self,*args,**kwargs):return 'material'
+        return GH()
+    MULTI={'ref_policy':'release','required_workflows':[],'components':[{'id':'test'},{'id':'other'}]}
+    def test_release_policy_accepts_the_add_ons_own_release_at_the_commit(self):
+        e=entry(archive())
+        for provider,tag in ((self.MULTI,'test-v1.0.0'),({'ref_policy':'release','required_workflows':[],'components':[{'id':'test'}]},'v1.0.0')):
+            with self.subTest(tag=tag):
+                gh=self.own_release_gh({tag:{}},{tag:'a'*40})
+                s.enforce_source_policy(gh,'WOOWTECH/test',provider,{'id':'test','source_path':'pkg'},e)
+    def test_release_policy_rejects_a_commit_without_the_add_ons_own_release(self):
+        # #232: a sibling's Release on the same commit does not count, nor does a Release of another version.
+        e=entry(archive())
+        cases={'sibling only':({'other-v2.0.0':{}},{'other-v2.0.0':'a'*40}),
+               'another version':({'test-v0.9.0':{}},{'test-v0.9.0':'a'*40}),
+               'own tag on another commit':({'test-v1.0.0':{}},{'test-v1.0.0':'b'*40}),
+               'prerelease':({'test-v1.0.0':{'prerelease':True}},{'test-v1.0.0':'a'*40}),
+               'draft':({'test-v1.0.0':{'draft':True}},{'test-v1.0.0':'a'*40}),
+               'none':({},{})}
+        for name,(releases,tags) in cases.items():
+            with self.subTest(name),self.assertRaisesRegex(s.Blocked,'stable Release'):
+                s.enforce_source_policy(self.own_release_gh(releases,tags),'WOOWTECH/test',self.MULTI,{'id':'test','source_path':'pkg'},e)
+    def test_release_policy_finds_an_own_release_older_than_the_recent_releases(self):
+        recent=[{'tag_name':f'other-v{n}.0.0'} for n in range(30)]
+        gh=self.own_release_gh({'test-v1.0.0':{}},{'test-v1.0.0':'a'*40},recent=recent)
+        s.enforce_source_policy(gh,'WOOWTECH/test',self.MULTI,{'id':'test','source_path':'pkg'},entry(archive()))
+    def test_release_policy_keeps_the_commit_check_for_a_prerelease_channel(self):
+        provider={'ref_policy':'release','required_workflows':[],'components':[{'id':'test','channel':'prerelease'},{'id':'other'}]}
+        comp={'id':'test','source_path':'pkg','channel':'prerelease'}
+        gh=self.own_release_gh({'other-v2.0.0':{}},{'other-v2.0.0':'a'*40})
+        s.enforce_source_policy(gh,'WOOWTECH/test',provider,comp,entry(archive()))
+        with self.assertRaisesRegex(s.Blocked,'stable Release'):
+            s.enforce_source_policy(self.own_release_gh({'other-v2.0.0':{'prerelease':True}},{'other-v2.0.0':'a'*40}),'WOOWTECH/test',provider,comp,entry(archive()))
     def test_main_policy_rejects_snapshot_off_default_branch(self):
         for status in ['diverged','behind']:
             with self.subTest(status=status),self.assertRaisesRegex(s.Blocked,'default branch'):
