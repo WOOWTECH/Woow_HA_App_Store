@@ -5,6 +5,7 @@ on:
       - '.addon-sync/**'
       - '.github/workflows/*addon*.yml'
       - '.github/workflows/sync-upstreams.yml'
+      - '.github/workflows/apk-pin-check.yml'
       - 'README.md'
   push:
     branches: [main]
@@ -12,6 +13,7 @@ on:
       - '.addon-sync/**'
       - '.github/workflows/*addon*.yml'
       - '.github/workflows/sync-upstreams.yml'
+      - '.github/workflows/apk-pin-check.yml'
 permissions:
   contents: read
 jobs:
@@ -21,3 +23,7 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
       - run: python3 -m pip install -r .addon-sync/requirements.txt
       - run: python3 .addon-sync/test_addon_sync.py -v
+      # The daily apk pin check (apk-pin-check.yml, pipeline #228): parsing, comparison and the Store issue flow, no docker.
+      - run: python3 .addon-sync/test_apk_pin_check.py -v
+        env:
+          STORE_FULL_CHECKOUT: '1'
