@@ -44,6 +44,8 @@ import yaml
 # The Store copy of the shipping Core version (#217) and its YYYY.M.P parser; standard library only (#225).
 from shipping_core import SHIPPING_CORE, calver, shipping_core_version
 # addon_sync owns the Release rules (version order, upgrade-notes.yaml parsing, Release notes); it does not import this module.
+# How Supervisor builds an add-on built on the device (#144), shared with apk_pin_check (#228).
+from addon_build import build_args
 from addon_sync import Blocked, comparison_target, latest_release, config_version, declaration_text, declarations, find_component, find_provider, locations, markdown_cell, publishes_releases, release_notes, release_tag, require_newer, source_file, stable_versions, version_cmp, workflow_command
 
 RANGED={'int','float','str'}
@@ -764,39 +766,6 @@ def startup_probe(config, settings=None):
     else:method,url,below='stays-up','',None
     if url.startswith('tcp://'):below=None
     return {'method':method,'url':url,'below':below,'timeout':limits['startup_timeout'],'stable_seconds':limits['stable_seconds']}
-
-# Add-ons built on the device (#144): the upgrade test rebuilds both images the way Supervisor builds them
-# (supervisor/addons/build.py): build.yaml, .yml or .json next to config.yaml; base image build_from (a string, or
-# one per arch), else Home Assistant's base image; Dockerfile.<arch> when there is one, else Dockerfile.
-BUILD_FILES=('build.yaml','build.yml','build.json')
-
-def build_args(addon_dir, version, arch='amd64'):
-    """How Supervisor builds the add-on in `addon_dir` at `version` for `arch`: {'dockerfile': its path,
-    'args': {build argument: value}}, BUILD_FROM, BUILD_VERSION, BUILD_ARCH and then build.yaml's args."""
-    root=pathlib.Path(addon_dir);build={}
-    found=[root/n for n in BUILD_FILES if (root/n).is_file()]
-    if found:
-        build=(json.loads if found[0].suffix=='.json' else yaml.safe_load)(found[0].read_text(encoding='utf-8')) or {}
-        if not isinstance(build,dict):raise ValueError(f'{found[0].name} is not a mapping')
-    base=build.get('build_from')
-    if isinstance(base,dict):
-        if arch not in base:raise ValueError(f'{found[0].name} build_from has no base image for {arch}')
-        base=base[arch]
-    elif not base:base=f'ghcr.io/home-assistant/{arch}-base:latest'
-    extra=build.get('args') or {}
-    if not isinstance(extra,dict):raise ValueError(f'{found[0].name} args is not a mapping')
-    args={'BUILD_FROM':base,'BUILD_VERSION':version,'BUILD_ARCH':arch,**{str(k):v for k,v in extra.items()}}
-    for k in args:
-        # docker build --build-arg KEY=VALUE: a key that is empty or holds = or whitespace would become another argument.
-        if not k or re.search(r'[=\s]',k):raise ValueError(f'build argument name {k!r} must be non-empty, without = or whitespace')
-    for k,v in args.items():
-        if not isinstance(v,(str,int,float)) or isinstance(v,bool) or re.search(r'[\x00-\x1f\x7f]',f'{k}={v}'):
-            raise ValueError(f'build argument {k} must be one line of text, not {v!r}')
-    args={k:str(v) for k,v in args.items()}
-    dockerfile=root/f'Dockerfile.{arch}'
-    if not dockerfile.is_file():dockerfile=root/'Dockerfile'
-    if not dockerfile.is_file():raise ValueError(f'no Dockerfile (or Dockerfile.{arch}) in {root.as_posix()}')
-    return {'dockerfile':dockerfile.as_posix(),'args':args}
 
 SKIP_KEY='skip_upgrade_test'
 

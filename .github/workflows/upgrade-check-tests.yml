@@ -7,6 +7,7 @@ name: Upgrade comparison tests
   pull_request:
     paths:
     - .addon-sync/upgrade_check.py
+    - .addon-sync/addon_build.py
     - .addon-sync/test_upgrade_check.py
     - .addon-sync/addon_sync.py
     - .addon-sync/test_addon_sync.py
@@ -32,6 +33,7 @@ name: Upgrade comparison tests
     branches: [main]
     paths:
     - .addon-sync/upgrade_check.py
+    - .addon-sync/addon_build.py
     - .addon-sync/test_upgrade_check.py
     - .addon-sync/addon_sync.py
     - .addon-sync/test_addon_sync.py
