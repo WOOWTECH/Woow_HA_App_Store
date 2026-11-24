@@ -53,7 +53,19 @@ ENV LANG=C.UTF-8 \
 # python3 + pip for omnigent, postgresql for the bundled DB, nginx for the
 # HA Ingress reverse proxy, curl + jq for the setup-admin curl loop, tini
 # via s6-overlay for zombie reaping. The base image already ships bashio.
-RUN apk add --no-cache \
+#
+# The `sed` on /etc/apk/world is load-bearing and must run before any other
+# apk operation. Base images record the exact package builds present when
+# they were made (e.g. musl at 1.2.5-r23) as hard constraints in world.
+# Alpine publishes new revisions continuously, so those pins go stale and then
+# EVERY apk operation in the image fails to resolve, including installs
+# unrelated to the pinned package (build-base needs the current musl-dev,
+# openssl-dev the current libcrypto3). Stripping the constraints leaves the
+# package NAMES, so world still describes what the image actually contains
+# and nothing gets purged.
+RUN sed -i 's/[<>=~].*$//' /etc/apk/world \
+ && apk upgrade --no-cache libssl3 libcrypto3 \
+ && apk add --no-cache \
         bash \
         ca-certificates \
         curl \
@@ -65,6 +77,7 @@ RUN apk add --no-cache \
         python3 \
         py3-pip \
         py3-psycopg \
+        py3-re2 \
         tzdata
 
 # --- bashio 0.18.1 over the base image's 0.18.0 ---------------------------
@@ -98,18 +111,15 @@ RUN curl -fsSL -o /tmp/bashio.tar.gz \
 # initialises $HOME/.omnigent/logs as root uid 0, which will collide with
 # the addon's runtime uid mapping. Clean slate on first run.
 # google-re2 is a transitive dep of cel-python (via omnigent) and ships
-# no musllinux wheel — it must build from source, which needs g++ + make.
-# We install a throwaway .build-deps group so the runtime image stays lean.
+# no musllinux wheel. Alpine's py3-re2 (runtime list above) provides it; it has
+# to stay a runtime package, because `apk del .build-deps` would otherwise
+# remove the py3-re2 that re2-dev pulls in, and CEL policies silently drop out
+# of the policy registry (pipeline issue release-gating/242).
 # Do NOT trail with `|| true` — a silent pip failure is what shipped 0.1.5
 # without the omnigent binary and burnt half an afternoon of debugging.
-# google-re2 wheel build needs g++ (build-base) + abseil headers.
-# The other -dev packages were belt-and-braces but they trigger apk
-# version-pinning conflicts on base 20.2.0 (openssl-dev wants
-# libcrypto3-3.5.8 but world pins 3.5.6). Everything else in
-# omnigent's dep tree ships musllinux wheels.
-# Base 20.2.0 pins musl=1.2.5-r23 in /etc/apk/world while Alpine now ships
-# musl-dev 1.2.5-r24 only, so build-base cannot be selected. Re-adding musl
-# without the pin upgrades it to the repository's release first.
+# Because py3-re2 satisfies google-re2, pip builds no wheel from source, and
+# the .build-deps below are probably unused. Removing them is
+# release-gating/244, still to be checked on aarch64.
 COPY --from=woow-mcp-wheel /opt/woow-artifact/ /opt/woow-artifact/
 COPY build/mcp_artifact.py /usr/local/lib/omnigent-build/mcp_artifact.py
 COPY build/artifact-pin.json /usr/share/omnigent/artifact-pin.json
@@ -118,22 +128,22 @@ RUN python3 /usr/local/lib/omnigent-build/mcp_artifact.py verify-artifact \
         --source-commit "${OMNIGENT_SOURCE_COMMIT}" \
         --wheel-image "${OMNIGENT_WHEEL_IMAGE}" --artifact /opt/woow-artifact
 
-RUN apk add --no-cache --upgrade musl \
- && apk add --no-cache --virtual .build-deps \
+RUN apk add --no-cache --virtual .build-deps \
         build-base \
         abseil-cpp-dev \
         re2-dev \
  && pip3 install --no-cache-dir "omnigent==${OMNIGENT_VERSION}" \
  && pip3 install --no-cache-dir --no-deps --no-index --force-reinstall \
         /opt/woow-artifact/omnigent-0.23.0-py3-none-any.whl \
- && pip3 check \
  && python3 /opt/woow-artifact/verify.py runtime \
         --artifact /opt/woow-artifact --source-commit "${OMNIGENT_SOURCE_COMMIT}" \
  && python3 /usr/local/lib/omnigent-build/mcp_artifact.py verify-installed \
         --receipt /usr/share/omnigent/artifact-pin.json \
  && omnigent --version \
  && which omnigent \
- && apk del .build-deps
+ && apk del .build-deps \
+ && pip3 check \
+ && python3 -c "import re2, celpy"
 RUN rm -rf /root/.omnigent /data/omnigent-home/.omnigent 2>/dev/null || true
 
 # --- HA Ingress native base-path support ------------------------------------

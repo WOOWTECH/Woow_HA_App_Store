@@ -26,6 +26,11 @@ HEAD = "a" * 40
 TREE = "b" * 40
 
 
+def migration_fixture(files, heads):
+    return {"files": {name: hashlib.sha256(body.encode()).hexdigest() for name, body in files.items()},
+            "heads": heads}
+
+
 def registry_fixture(version=host.CANDIDATE_VERSION, *, revision="pushed"):
     config = json.dumps({"architecture": "amd64", "os": "linux", "config": {"Labels": {
         "io.hass.version": version}}}).encode()
@@ -1214,41 +1219,99 @@ class AcceptanceTests(unittest.TestCase):
                     else:
                         self.assertFalse(progress["closed"])
 
+    def test_migration_rule_follows_candidate_and_baseline_contents(self):
+        base = migration_fixture({"a_base.py": "1", "b_head.py": "2"}, ["b_head"])
+        same = migration_fixture({"a_base.py": "1", "b_head.py": "2"}, ["b_head"])
+        new = migration_fixture({"a_base.py": "1", "b_head.py": "2", "c_new.py": "3"}, ["c_new"])
+        # merge-only revision 也是新 migration：檔案集合變大就要前進。
+        merge = migration_fixture({"a_base.py": "1", "b_head.py": "2", "m_merge.py": "4"}, ["m_merge"])
+        missing = migration_fixture({"b_head.py": "2", "c_new.py": "3"}, ["c_new"])
+        changed = migration_fixture({"a_base.py": "X", "b_head.py": "2", "c_new.py": "3"}, ["c_new"])
+        cases = (
+            ("new migration, head advanced", new, "c_new", "new"),
+            ("merge-only migration, head advanced", merge, "m_merge", "new"),
+            ("no new migration, head unchanged", same, "b_head", "none"),
+            ("new migration, head kept", new, "b_head", "did not advance"),
+            ("new migration, head elsewhere", new, "a_base", "did not advance"),
+            ("merge-only migration, head kept", merge, "b_head", "did not advance"),
+            ("no new migration, head changed", same, "c_new", "changed without a new migration"),
+            ("no new migration, head went back", same, "a_base", "changed without a new migration"),
+            ("baseline migration missing", missing, "c_new", "baseline migration"),
+            ("baseline migration changed", changed, "c_new", "baseline migration"),
+        )
+        for name, candidate, db_head, expected in cases:
+            with self.subTest(name):
+                if expected in ("new", "none"):
+                    self.assertEqual(acceptance.migration_rule(base, candidate, db_head, "b_head"), expected)
+                else:
+                    with self.assertRaisesRegex(RuntimeError, expected):
+                        acceptance.migration_rule(base, candidate, db_head, "b_head")
+
+    def test_migration_rule_rejects_ambiguous_script_heads(self):
+        base = migration_fixture({"a.py": "1"}, ["a"])
+        two = migration_fixture({"a.py": "1", "b.py": "2", "c.py": "3"}, ["b", "c"])
+        with self.assertRaisesRegex(RuntimeError, "single migration head"):
+            acceptance.migration_rule(base, two, "b", "a")
+
+    def test_migration_listing_parses_and_validates_container_output(self):
+        good = migration_fixture({"a_base.py": "1"}, ["a_base"])
+        suite = acceptance.Acceptance.__new__(acceptance.Acceptance)
+        suite.container, suite.host = "app_local_woow-omnigent", Mock()
+        suite.host.ssh.return_value.stdout = json.dumps(good).encode()
+        self.assertEqual(suite.migrations(), good)
+        command = suite.host.ssh.call_args.args[0]
+        self.assertTrue(command.startswith("docker exec app_local_woow-omnigent python3 -c "))
+        self.assertIn("get_heads", command)
+        self.assertIn("versions", command)
+        for bad in ({"files": {}, "heads": ["a"]}, {"files": {"../x.py": "0" * 64}, "heads": ["x"]},
+                    {"files": {"a.py": "short"}, "heads": ["a"]}, {"files": {"a.py": "0" * 64}, "heads": []},
+                    {"files": {"a.py": "0" * 64}, "heads": ["bad head"]}, ["not", "an", "object"]):
+            with self.subTest(bad=bad):
+                suite.host.ssh.return_value.stdout = json.dumps(bad).encode()
+                with self.assertRaisesRegex(RuntimeError, "migration listing"):
+                    suite.migrations()
+
+    def install_fixture(self, d, *, baseline, head, listing, baseline_listing=None):
+        version = host.BASELINE_VERSION if baseline else host.CANDIDATE_VERSION
+        config, config_id, manifest, pushed_id = registry_fixture(version)
+        suite = acceptance.Acceptance.__new__(acceptance.Acceptance)
+        h = suite.host = host.Host(d)
+        h.image_identities[config_id] = provenance.registry_identity(manifest, pushed_id, config, config_id)
+        suite.old_image = suite.new_image = {"Id": config_id}
+        suite.old_config = {"version": host.BASELINE_VERSION, "options": {}}
+        suite.config = {"version": host.CANDIDATE_VERSION, "options": {}}
+        suite.username, suite.password = "fixture-user", "fixture-password"
+        suite.pin, suite.evidence = {"fixture": "pin"}, {}
+        if baseline_listing is not None:
+            suite.baseline_migrations = baseline_listing
+        suite.wait_addon = Mock()
+        h.install_config, h.supervisor = Mock(), Mock()
+        def ssh(command, **kwargs):
+            if command.startswith("docker inspect app_"):
+                value = json.dumps([{"Image": pushed_id, "Name": "/app_local_woow-omnigent"}])
+            elif " cat /usr/share/omnigent/artifact-pin.json" in command:
+                value = json.dumps(suite.pin)
+            elif "SHOW server_version" in command:
+                value = "16.10"
+            elif "SELECT version_num" in command:
+                value = head
+            elif "get_heads" in command:
+                value = json.dumps(listing)
+            else:
+                value = ""
+            return SimpleNamespace(stdout=value.encode())
+        h.ssh = Mock(side_effect=ssh)
+        h.verify_guest_image = Mock(wraps=h.verify_guest_image)
+        return suite, h, config_id
+
     def test_install_uses_bound_guest_manifest_for_baseline_and_candidate(self):
-        # candidate 停在 baseline 的 migration head 時，回滾檢查分不出兩版，要直接失敗。
-        for baseline, head in ((True, "fixture_head"), (False, "fixture_head"),
-                               (False, host.BASELINE_MIGRATION)):
+        base = migration_fixture({"a.py": "1", host.BASELINE_MIGRATION + "_x.py": "2"}, [host.BASELINE_MIGRATION])
+        new = migration_fixture({"a.py": "1", host.BASELINE_MIGRATION + "_x.py": "2", "n_new.py": "3"}, ["n_new"])
+        for baseline, head, listing in ((True, host.BASELINE_MIGRATION, base), (False, "n_new", new),
+                                        (False, host.BASELINE_MIGRATION, base)):
             with self.subTest(baseline=baseline, head=head), tempfile.TemporaryDirectory() as d:
-                version = host.BASELINE_VERSION if baseline else host.CANDIDATE_VERSION
-                config, config_id, manifest, pushed_id = registry_fixture(version)
-                suite = acceptance.Acceptance.__new__(acceptance.Acceptance)
-                h = suite.host = host.Host(d)
-                h.image_identities[config_id] = provenance.registry_identity(manifest, pushed_id, config, config_id)
-                suite.old_image = suite.new_image = {"Id": config_id}
-                suite.old_config = {"version": host.BASELINE_VERSION, "options": {}}
-                suite.config = {"version": host.CANDIDATE_VERSION, "options": {}}
-                suite.username, suite.password = "fixture-user", "fixture-password"
-                suite.pin, suite.evidence = {"fixture": "pin"}, {}
-                suite.wait_addon = Mock()
-                h.install_config, h.supervisor = Mock(), Mock()
-                def ssh(command, **kwargs):
-                    if command.startswith("docker inspect app_"):
-                        value = json.dumps([{"Image": pushed_id, "Name": "/app_local_woow-omnigent"}])
-                    elif " cat /usr/share/omnigent/artifact-pin.json" in command:
-                        value = json.dumps(suite.pin)
-                    elif "SHOW server_version" in command:
-                        value = "16.10"
-                    elif "SELECT version_num" in command:
-                        value = head
-                    else:
-                        value = ""
-                    return SimpleNamespace(stdout=value.encode())
-                h.ssh = Mock(side_effect=ssh)
-                h.verify_guest_image = Mock(wraps=h.verify_guest_image)
-                if not baseline and head == host.BASELINE_MIGRATION:
-                    with self.assertRaisesRegex(RuntimeError, "baseline migration head"):
-                        suite.install(baseline=baseline)
-                    continue
+                suite, h, config_id = self.install_fixture(d, baseline=baseline, head=head, listing=listing,
+                                                           baseline_listing=None if baseline else base)
                 suite.install(baseline=baseline)
                 h.verify_guest_image.assert_called_once_with(config_id)
                 self.assertEqual(suite.container, "app_local_woow-omnigent")
@@ -1256,6 +1319,36 @@ class AcceptanceTests(unittest.TestCase):
                 options = next(c.args[2] for c in h.supervisor.call_args_list
                                if c.args[1].endswith("/options"))["options"]
                 self.assertEqual(options["mcp_public_base_url"], acceptance.PUBLIC_BASE)
+                if baseline:
+                    self.assertEqual(suite.baseline_migrations, base)
+                    self.assertEqual(suite.evidence["baseline_database"],
+                                     {"migration_head": head, "migration_files": 2})
+                else:
+                    self.assertEqual(suite.evidence["guest_database"], {
+                        "postgres": "16.10", "migration_head": head,
+                        "new_migrations": "new" if listing is new else "none",
+                        "migration_files": len(listing["files"])})
+
+    def test_install_applies_migration_rule_to_collected_contents(self):
+        base = migration_fixture({"a.py": "1", host.BASELINE_MIGRATION + "_x.py": "2"}, [host.BASELINE_MIGRATION])
+        new = migration_fixture({"a.py": "1", host.BASELINE_MIGRATION + "_x.py": "2", "n_new.py": "3"}, ["n_new"])
+        for head, listing, message in ((host.BASELINE_MIGRATION, new, "did not advance"),
+                                       ("n_new", base, "changed without a new migration")):
+            with self.subTest(head=head), tempfile.TemporaryDirectory() as d:
+                suite, h, _ = self.install_fixture(d, baseline=False, head=head, listing=listing,
+                                                   baseline_listing=base)
+                with self.assertRaisesRegex(RuntimeError, message):
+                    suite.install(baseline=False)
+                self.assertNotIn("guest_database", suite.evidence)
+
+    def test_baseline_install_cross_checks_pinned_baseline_head(self):
+        base = migration_fixture({"a.py": "1", host.BASELINE_MIGRATION + "_x.py": "2"}, [host.BASELINE_MIGRATION])
+        other = migration_fixture({"a.py": "1"}, ["other_head"])
+        for head, listing in (("other_head", base), (host.BASELINE_MIGRATION, other)):
+            with self.subTest(head=head), tempfile.TemporaryDirectory() as d:
+                suite, h, _ = self.install_fixture(d, baseline=True, head=head, listing=listing)
+                with self.assertRaisesRegex(RuntimeError, "pinned baseline migration head"):
+                    suite.install(baseline=True)
 
     def test_baseline_rollback_requires_baseline_migration_head(self):
         for head, restored in ((host.BASELINE_MIGRATION, True), ("candidate_head", False)):
@@ -1264,17 +1357,41 @@ class AcceptanceTests(unittest.TestCase):
                 suite.host = Mock()
                 suite.host.verify_guest_image.return_value = "app_local_woow-omnigent"
                 suite.host.ssh.return_value.stdout = head.encode()
-                suite.old_image, suite.baseline_backup, suite.evidence = {"Id": "old"}, "abcd", {}
+                suite.old_image, suite.new_image = {"Id": "old"}, {"Id": "new"}
+                suite.baseline_backup, suite.evidence = "abcd", {}
                 suite.restore = Mock()
                 if restored:
                     suite.baseline_rollback()
-                    self.assertEqual(suite.evidence["rollback_database"], {"migration_head": head})
+                    self.assertEqual(suite.evidence["rollback_database"],
+                                     {"migration_head": head, "image_id": "old"})
                 else:
                     with self.assertRaisesRegex(RuntimeError, "candidate database"):
                         suite.baseline_rollback()
                 suite.restore.assert_called_once_with("abcd", host.BASELINE_VERSION, "old")
                 suite.host.verify_guest_image.assert_called_once_with("old")
                 self.assertIn("SELECT version_num FROM alembic_version", suite.host.ssh.call_args.args[0])
+
+    def test_baseline_rollback_requires_baseline_image(self):
+        # 沒有新 migration 時 head 分不出兩版，要靠執行中的 image 分辨。
+        for name in ("running image is not the baseline", "baseline and candidate images are the same"):
+            with self.subTest(name):
+                suite = acceptance.Acceptance.__new__(acceptance.Acceptance)
+                suite.host = Mock()
+                suite.host.ssh.return_value.stdout = host.BASELINE_MIGRATION.encode()
+                suite.old_image, suite.baseline_backup, suite.evidence = {"Id": "old"}, "abcd", {}
+                suite.restore = Mock()
+                if name.startswith("running"):
+                    suite.new_image = {"Id": "new"}
+                    suite.host.verify_guest_image.side_effect = RuntimeError(
+                        "Supervisor is not running the verified image")
+                    message = "not running the verified image"
+                else:
+                    suite.new_image = {"Id": "old"}
+                    suite.host.verify_guest_image.return_value = "app_local_woow-omnigent"
+                    message = "cannot tell the baseline image from the candidate"
+                with self.assertRaisesRegex(RuntimeError, message):
+                    suite.baseline_rollback()
+                self.assertNotIn("rollback_database", suite.evidence)
 
     def test_backup_restore_and_coldboot_use_bound_guest_manifest_for_both_versions(self):
         for version in (host.BASELINE_VERSION, host.CANDIDATE_VERSION):

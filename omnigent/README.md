@@ -47,7 +47,7 @@ MIT.
 
 ## Native MCP
 
-Version 0.1.25 bundles the 0.23.0-based WOOW MCP build `mcp.1`, including
+Version 0.1.25 and later bundle the 0.23.0-based WOOW MCP build `mcp.1`, including
 account-bound profiles and paginated session history. Configure
 `mcp_public_base_url` with the complete external HTTPS base, then copy the
 profile URL from **Settings → Admin → MCP Server**. HA Ingress remains the UI

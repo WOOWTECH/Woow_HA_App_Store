@@ -27,13 +27,13 @@ HAOS_SHA256 = "60df08773901e1eac9b9cfe03d53e1d939e67b669c172c3a41037fb3cd295b9d"
 # 升級起點是最新的正式 Release。換 baseline 時，下面五個值要一起換：
 # Release 的 commit、該 commit 的 config.yaml SHA-256、amd64 image 的 index
 # digest，以及該版 omnigent 的 alembic head（回滾後資料庫要回到這裡）。
-BASELINE_VERSION = "0.1.24"
-BASELINE_COMMIT = "23ea9c20c73e82513e4d7e8dfc51cc2d9c00f30e"
-BASELINE_CONFIG_SHA256 = "ae717d9cd303a5c69cf9323b4bdca988809a78d64de64adeb092bbefe073d4fc"
-BASELINE_IMAGE = "ghcr.io/woowtech/woow-ha-omnigent-amd64@sha256:f2082e6041b8b03f72bde692c8631c29f0d85cb7836db38371822ba913c7099b"
-BASELINE_MIGRATION = "za3b4c5d6e7f"
+BASELINE_VERSION = "0.1.25"
+BASELINE_COMMIT = "e7b0bc0ec835e7f5abf9476321a5f50fc06631d9"
+BASELINE_CONFIG_SHA256 = "f9a4197e0bf41d74a93cdf25ce7ed59756c32dc83ab8964498615d38735ef6bf"
+BASELINE_IMAGE = "ghcr.io/woowtech/woow-ha-omnigent-amd64@sha256:7bba628e5b2583ea0548b87201aab09476578344ccbbe2f629c0319d68172313"
+BASELINE_MIGRATION = "zb4c5d6e7f80"
 # 這張 PR 的 add-on 版本，必須等於 config.yaml 的 version。
-CANDIDATE_VERSION = "0.1.25"
+CANDIDATE_VERSION = "0.1.26"
 REGISTRY_IMAGE = "registry:2@sha256:a3d8aaa63ed8681a604f1dea0aa03f100d5895b6a58ace528858a7b332415373"
 IMAGE_TAG = "upgrade-comparison/woow-omnigent:new"
 HA_PORTS = (18080, 18123)

@@ -38,6 +38,35 @@ EXCLUDED = [
 ]
 
 
+MIGRATION_HEAD = r"[a-zA-Z0-9_]{1,64}"
+# Runs inside the add-on container: list versions/*.py (name, SHA-256) and the alembic script heads.
+MIGRATION_LISTING = """
+import hashlib, json, pathlib, omnigent
+from alembic.config import Config
+from alembic.script import ScriptDirectory
+root = pathlib.Path(omnigent.__file__).parent / "db" / "migrations"
+files = {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted((root / "versions").glob("*.py"))}
+config = Config()
+config.set_main_option("script_location", str(root))
+print(json.dumps({"files": files, "heads": sorted(ScriptDirectory.from_config(config).get_heads())}))
+"""
+
+
+def migration_rule(baseline, candidate, head, baseline_head):
+    """Return "new" or "none"; the candidate database head must match what its migrations allow."""
+    base, cand = baseline["files"], candidate["files"]
+    require(all(cand.get(name) == digest for name, digest in base.items()),
+            "candidate is missing or changed a baseline migration")
+    if cand == base:
+        require(head == baseline_head, "migration head changed without a new migration")
+        return "none"
+    # 檔案集合變大（含只有 merge revision 的情況）就是有新 migration，head 要前進到 candidate 的 head。
+    require(len(candidate["heads"]) == 1, "candidate migrations do not have a single migration head")
+    require(head == candidate["heads"][0] and head != baseline_head,
+            "candidate has new migrations but the head did not advance to its migration head")
+    return "new"
+
+
 def load_hooks():
     spec = importlib.util.spec_from_file_location("haos_upgrade", ROOT / "upgrade-check/omnigent_upgrade.py")
     module = importlib.util.module_from_spec(spec)
@@ -209,10 +238,39 @@ class Acceptance:
             postgres = self.sql("SHOW server_version")
             migration = self.sql("SELECT version_num FROM alembic_version")
             require(re.fullmatch(r"16\.[0-9]+", postgres), "unexpected guest database version")
-            require(re.fullmatch(r"[a-zA-Z0-9_]{1,64}", migration), "invalid migration head")
-            # 回滾檢查靠 head 分辨兩版；candidate 沒有前進就無從驗證回滾。
-            require(migration != BASELINE_MIGRATION, "candidate kept the baseline migration head")
-            self.evidence["guest_database"] = {"postgres": postgres, "migration_head": migration}
+            require(re.fullmatch(MIGRATION_HEAD, migration), "invalid migration head")
+            listing = self.migrations()
+            # 有沒有新 migration 看兩版實際的 migration 檔案，不看版本號。
+            new = migration_rule(self.baseline_migrations, listing, migration, BASELINE_MIGRATION)
+            self.evidence["guest_database"] = {"postgres": postgres, "migration_head": migration,
+                                               "new_migrations": new, "migration_files": len(listing["files"])}
+        else:
+            migration = self.sql("SELECT version_num FROM alembic_version")
+            listing = self.migrations()
+            # BASELINE_MIGRATION 是手寫的常數，用 baseline 實際的資料庫與 script head 對照。
+            require(migration == BASELINE_MIGRATION and listing["heads"] == [BASELINE_MIGRATION],
+                    "baseline does not match the pinned baseline migration head")
+            self.baseline_migrations = listing
+            self.evidence["baseline_database"] = {"migration_head": migration,
+                                                  "migration_files": len(listing["files"])}
+
+    def migrations(self):
+        """Migration file names with SHA-256, and the alembic script heads, in the running container."""
+        output = self.host.ssh(shlex.join(["docker", "exec", self.container, "python3", "-c",
+                                           MIGRATION_LISTING])).stdout
+        try:
+            listing = json.loads(output)
+        except ValueError:
+            listing = None
+        require(isinstance(listing, dict) and set(listing) == {"files", "heads"}
+                and isinstance(listing["files"], dict) and listing["files"]
+                and all(isinstance(n, str) and re.fullmatch(r"[A-Za-z0-9_]{1,128}\.py", n)
+                        and isinstance(h, str) and re.fullmatch(r"[0-9a-f]{64}", h)
+                        for n, h in listing["files"].items())
+                and isinstance(listing["heads"], list) and listing["heads"]
+                and all(isinstance(h, str) and re.fullmatch(MIGRATION_HEAD, h) for h in listing["heads"]),
+                "invalid migration listing")
+        return listing
 
     def sql(self, query):
         return self.host.ssh(shlex.join([
@@ -252,7 +310,11 @@ class Acceptance:
         self.container = self.host.verify_guest_image(self.old_image["Id"])
         migration = self.sql("SELECT version_num FROM alembic_version")
         require(migration == BASELINE_MIGRATION, "baseline rollback kept the candidate database")
-        self.evidence["rollback_database"] = {"migration_head": migration}
+        # 沒有新 migration 時 head 兩版相同；上面的 verify_guest_image 已確認執行中的是 baseline
+        # image，這裡再確認它和 candidate 是不同的 image，回滾才算分得出兩版。
+        require(self.old_image["Id"] != self.new_image["Id"],
+                "cannot tell the baseline image from the candidate")
+        self.evidence["rollback_database"] = {"migration_head": migration, "image_id": self.old_image["Id"]}
 
     def tls(self):
         h, p = self.host, self.private
