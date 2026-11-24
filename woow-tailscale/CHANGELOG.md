@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.7
+
+- Fix: the app image could stop building whenever Alpine published a newer
+  build of one of its system packages, as happened with nginx in 0.1.6. The
+  image no longer locks those packages to one exact build, and lifts the
+  locks the base image keeps for its own packages before installing
+  anything. Tailscale (v1.102.3) and how the app behaves do not change.
+
 ## 0.1.6
 
 - Stopping the app before its first login now ends in **stopped** after about

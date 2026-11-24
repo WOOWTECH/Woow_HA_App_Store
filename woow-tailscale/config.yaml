@@ -1,6 +1,6 @@
 ---
 name: "Woow Tailscale"
-version: "0.1.6"
+version: "0.1.7"
 slug: "woow-tailscale"
 description: "Tailscale client for Tailscale and Headscale"
 url: "https://github.com/WOOWTECH/Woow_ha_vpn_tailscale_package"

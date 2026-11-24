@@ -11,17 +11,30 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 # Setup base
 ARG BUILD_ARCH=amd64
 ARG TAILSCALE_VERSION="v1.102.3"
+# Alpine packages are not pinned: Alpine keeps only the newest revision of each
+# package, so an exact `-rN` pin stops resolving as soon as the package is
+# rebuilt (0.1.6 had to move nginx from 1.30.6-r0 to 1.30.7-r0 for this).
+#
+# The `sed` on /etc/apk/world is load-bearing. Base images record the exact
+# package builds present when they were made (e.g. libssl3 at 3.5.4-r0) as
+# hard constraints in world. Alpine publishes new revisions continuously, so
+# those pins go stale and then EVERY apk operation in the image fails to
+# resolve, including installs unrelated to the pinned package. Stripping the
+# constraints leaves the package NAMES, so world still describes what the
+# image actually contains and nothing gets purged.
 RUN \
-    apk add --no-cache \
-        bind-tools=9.20.30-r0 \
-        dnsmasq=2.92_p2-r0 \
-        ethtool=7.0-r0 \
-        ipcalc=1.0.3-r1 \
-        iproute2=7.0.0-r0 \
-        iptables=1.8.13-r0 \
-        nginx=1.30.7-r0 \
-        coreutils=9.11-r0 \
-        networkmanager=1.52.2-r0 \
+    sed -i 's/[<>=~].*$//' /etc/apk/world \
+    && apk upgrade --no-cache libssl3 libcrypto3 \
+    && apk add --no-cache \
+        bind-tools \
+        dnsmasq \
+        ethtool \
+        ipcalc \
+        iproute2 \
+        iptables \
+        nginx \
+        coreutils \
+        networkmanager \
     \
     && ln -sf /sbin/xtables-nft-multi /sbin/ip6tables \
     && ln -sf /sbin/xtables-nft-multi /sbin/iptables \
