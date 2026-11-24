@@ -18,7 +18,12 @@ world pins that way).
 
 Results per add-on and arch: pass, cannot install, not checked (an `apk add` the check cannot read: a variable
 without a value, inside a conditional or loop, in another build stage with a pinned package; or a base image with no
-apk), skipped (no Dockerfile, no `apk add`, not Alpine). Not-checked never fails the run.
+apk), skipped (no Dockerfile, no `apk add`, not Alpine). Not-checked alone never fails the run.
+
+A tool error fails the run and leaves the add-on's issue as it is: a base image that cannot be resolved or pulled, a
+check that did not finish, or an `apk add --simulate` that failed without apk's own answer that the packages cannot be
+installed (an index it could not fetch or trust, a database it could not open). An add-on whose Dockerfile adds a
+repository that stays unreachable therefore fails the run every day without an issue, even with a stale pin.
 
 `apk add --simulate` resolves dependencies only: it does not unpack packages, so a file conflict between a new package
 and one in the base (python3-ndbm against an older python3, #241) passes here and still fails the build.
@@ -526,7 +531,8 @@ def open_issues(gh, repo):
 
 def sync_issues(gh, repo, rows, today=None, dry_run=False):
     """Open, update or close one issue per add-on (module docstring). Only add-ons with rows are touched; one whose rows
-    include a tool error keeps its issue as it is, and one is closed only when every row passes. Returns the actions as (action, add-on id, issue number or None)."""
+    include a tool error keeps its issue as it is, and one is closed only when every row passes. Returns the actions as
+    (action, add-on id, issue number or None)."""
     today=today or datetime.date.today().isoformat()
     by_id={}
     for r in rows:by_id.setdefault(r['id'],[]).append(r)
