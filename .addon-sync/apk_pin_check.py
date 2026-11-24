@@ -27,7 +27,7 @@ apk), skipped (no Dockerfile, no `apk add`, not Alpine). Not-checked alone never
 Cannot install is apk's own answer: the simulate's `unable to select packages`, or an install whose every ERROR line
 is a file conflict, `ERROR: <package>: trying to overwrite <path> owned by <package>.` (one line per file, then an
 `N error(s); ...` line). That line was confirmed from real apk output of apk-tools 3.0.9 (Alpine 3.24), 2.14.13 (3.21)
-and 2.12.9 (3.16), natively and with `--root --arch --no-scripts`.
+and 2.12.9 (3.16), natively, and on an exported image with the helper's apk 3.0.9 (`--root --arch --no-scripts`).
 
 A tool error fails the run and leaves the add-on's issue as it is: a base image that cannot be resolved or pulled, a
 check that did not finish, an `apk add --simulate` that failed without apk's own answer that the packages cannot be
