@@ -173,6 +173,19 @@ class Check(Addon):
         world=self.addon({'world':'bash=5.3.3-r1\nnginx\ncurl~8.21\n'})/'world'
         line=[l for l in script.splitlines() if l.startswith('WORLD_PINS=')][0].replace('/etc/apk/world',str(world))
         self.assertEqual(subprocess.run(['sh','-c',line+'\necho "$WORLD_PINS"'],capture_output=True,text=True).stdout.split(),['bash','curl'])
+    def test_world_pins_the_dockerfile_removes_are_not_reported_or_checked(self):
+        # woow-nginxproxymanager strips the base's world pins with sed before installing: the world the build uses has none.
+        d=self.addon({'Dockerfile':"FROM a/b:1\nRUN sed -i 's/[<>=~].*$//' /etc/apk/world && apk add --no-cache nginx\n",
+            'r/etc/alpine-release':'3.24.1\n','r/lib/apk/db/installed':'','r/etc/apk/world':'bash=5.3.3-r1\ncurl=8.21.0-r0\nmusl\n',
+            # A stand-in apk: simulate succeeds, and policy is recorded to see which names the script asks about.
+            'bin/apk':'#!/bin/sh\ncase " $* " in *" policy "*) echo "$*" >> "$(dirname "$0")/policy";; *) echo OK;; esac\n'})
+        (d/'bin/apk').chmod(0o755)
+        row=dict(c.collect(d,'amd64'),id='npm',arch='amd64')
+        text=subprocess.run(['sh','-c',c.container_script(row,str(d/'r'))],capture_output=True,text=True,env=dict(os.environ,PATH=f'{d/"bin"}:{os.environ["PATH"]}')).stdout
+        got=c.evaluate(row,c.parse_output(text))
+        self.assertEqual(got['result'],c.PASS);self.assertEqual(got['world'],['bash','curl','musl'])
+        self.assertEqual(got['world_pins'],[]);self.assertEqual(got['stale'],[])
+        self.assertNotIn('bash',(d/'bin/policy').read_text().split());self.assertNotIn('curl',(d/'bin/policy').read_text().split())
     def test_pass_not_alpine_no_apk_unchecked_and_missing_platform(self):
         rows=[{'id':'x','arch':'aarch64','base':b,'dockerfile':'Dockerfile','adds':[{'file':'Dockerfile','line':2,'text':'apk add a','packages':[c.parse_spec('a')],'repositories':[],'upgrade':False}],
                'unchecked':[],'world_edits':[],'scripts':[]} for b in ('alpine','debian','noapk','hardened','gone')]

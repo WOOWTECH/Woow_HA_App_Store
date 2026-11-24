@@ -312,9 +312,10 @@ def container_script(row, root=''):
         f"{{ sed -n 's/^VERSION_ID=//p' {root}/etc/os-release 2>/dev/null | tr -d '\"'; echo unknown; }}; }} || {{ echo @@NOTALPINE; exit 0; }}",
         (f'[ -f {root}/lib/apk/db/installed ]' if root else
          f'[ -n "$(ls /sbin/apk /usr/sbin/apk /bin/apk /usr/bin/apk 2>/dev/null)" ]')+' || { echo @@NOAPK; exit 0; }',
+        # The Dockerfile's edits of the world first: the world reported and checked is the one the build installs with.
+        'echo @@EDITS']+[f'{e} || echo @@EDITFAILED {i}' for i,e in enumerate(edits)]+[
         f'echo @@WORLD; cat {root}{WORLD} 2>/dev/null',
         f"WORLD_PINS=$(sed -n 's/^\\([^<>=~ ]*\\)[<>=~].*$/\\1/p' {root}{WORLD} 2>/dev/null | tr '\\n' ' ')",
-        'echo @@EDITS']+[f'{e} || echo @@EDITFAILED {i}' for i,e in enumerate(edits)]+[
         'echo @@SIMULATE',
         f'{apk} add {" ".join(flags)} {" ".join(shlex.quote(p) for p in packages)} 2>&1; echo "@@EXIT $?"',
         'echo @@POLICY',
