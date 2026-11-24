@@ -1,7 +1,8 @@
-#!/command/with-contenv bash
+#!/usr/bin/env bash
+# Install/enable richdocuments and point it at the built-in coolwsd. Run once per boot by the
+# s6 longrun svc-richdocuments-config, only when ENABLE_COLLABORA is true.
 set -euo pipefail
 source /run/woow-office/env
-if [[ "$ENABLE_COLLABORA" != "true" ]]; then exit 0; fi
 for i in $(seq 1 90); do curl -fsS http://127.0.0.1:9980/hosting/capabilities >/dev/null 2>&1 && break; sleep 1; done
 for i in $(seq 1 90); do curl -fsS http://127.0.0.1:8000/hosting/discovery >/dev/null 2>&1 && break; sleep 1; done
 # richdocuments lives in the persistent custom_apps. Download only when it is missing
@@ -66,3 +67,4 @@ occ config:app:set --value "$PUBLIC_URL" richdocuments public_wopi_url || true
 occ config:app:get richdocuments wopi_url || true
 occ config:app:get richdocuments public_wopi_url || true
 occ config:app:get richdocuments wopi_callback_url || true
+echo "richdocuments configuration done"

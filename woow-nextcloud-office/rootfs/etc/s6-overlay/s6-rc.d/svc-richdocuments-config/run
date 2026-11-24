@@ -1,0 +1,10 @@
+#!/command/with-contenv bash
+# A longrun, not a oneshot: the configuration waits for coolwsd and runs a dozen occ calls, and
+# s6-overlay's stop waits for a start step that is still running, so as a oneshot it held s6
+# startup open and every stop during it was SIGKILLed (exit 137, pipeline unattended-pipeline/224).
+# s6-supervise restarts a longrun that exits, so stay up on every path.
+source /run/woow-office/env
+if [[ "$ENABLE_COLLABORA" == "true" ]]; then
+  woow-richdocuments-config || echo "richdocuments configuration exited $?; Office stays unavailable until the add-on restarts" >&2
+fi
+exec sleep infinity

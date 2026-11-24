@@ -55,7 +55,8 @@ class PhpRuntimeTests(unittest.TestCase):
                 'php-fpm8.2': 'exit 127',
                 'php-fpm8.4': 'printf "fpm:%s\\n" "$*" >> "$CALL_LOG"',
                 'nginx': 'printf "nginx:%s\\n" "$*" >> "$CALL_LOG"',
-                'php': 'exit 0', 'curl': 'exit 0', 'occ': 'exit 0',
+                'php': 'exit 0', 'curl': 'exit 0', 'occ': 'exit 0', 'sleep': 'exit 0',
+                'woow-richdocuments-config': 'printf "richdocuments-config\\n" >> "$CALL_LOG"',
             }
             for name, body in stubs.items():
                 path = bindir / name
@@ -72,7 +73,7 @@ class PhpRuntimeTests(unittest.TestCase):
             phpdir = root / 'run/php'
             phpdir.mkdir()
             (phpdir / 'php8.4-fpm.pid').write_text('424242\n')
-            text = (SERVICES / service / 'run').read_text()
+            text = (service if isinstance(service, Path) else SERVICES / service / 'run').read_text()
             for prefix in ('/run', '/etc/nginx', '/var/lib/nginx', '/var/www'):
                 text = text.replace(prefix, str(root) + prefix)
             # Stub the shell builtin: never signal a real PID, even on a regression.
@@ -101,12 +102,12 @@ class PhpRuntimeTests(unittest.TestCase):
         self.assertNotIn('php8.2', config)
 
     def test_office_restart_uses_php84_pid(self):
-        result, calls, _, _ = self.run_service('init-richdocuments-config')
+        result, calls, _, _ = self.run_service(BASE / 'rootfs/usr/local/bin/woow-richdocuments-config')
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(calls, ['kill:-TERM 424242'])
 
     def test_disabled_office_does_not_signal_fpm(self):
-        result, calls, _, _ = self.run_service('init-richdocuments-config', enabled=False)
+        result, calls, _, _ = self.run_service('svc-richdocuments-config', enabled=False)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(calls, [])
 

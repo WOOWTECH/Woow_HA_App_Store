@@ -18,7 +18,7 @@ assert "frame-ancestors 'self'" in text
 collabora = (BASE / 'rootfs/etc/s6-overlay/s6-rc.d/init-collabora-config/run').read_text()
 assert 'storage.wopi.host' in collabora
 assert 'coolconfig set ssl.termination true' in collabora
-rich = (BASE / 'rootfs/etc/s6-overlay/s6-rc.d/init-richdocuments-config/run').read_text()
+rich = (BASE / 'rootfs/usr/local/bin/woow-richdocuments-config').read_text()
 assert 'config:app:set --value "http://127.0.0.1:9980" richdocuments wopi_url' in rich
 assert 'richdocuments:activate-config' in rich
 # Repository authenticity is an independent gate from successful package install.
