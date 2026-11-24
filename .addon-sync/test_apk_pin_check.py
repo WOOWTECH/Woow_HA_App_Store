@@ -205,6 +205,11 @@ class Check(Addon):
         text=c.summary(list(got.values()))
         self.assertIn('not checked, Dockerfile:3: `apk add $X` ($X has no value)',text)
         for r in got.values():self.assertIn(r['result'],c.RESULTS)
+    def test_a_base_image_that_cannot_be_resolved_is_a_tool_error(self):
+        d=self.addon({'x/config.yaml':json.dumps({'version':'1','arch':['amd64']}),'x/Dockerfile':'FROM ${NOPE}\nRUN apk add nginx\n'})
+        registry={'providers':{'o/a':{'components':[{'id':'x','store_path':'x','config_file':'config.yaml','channel':'stable','enabled':True}]}}}
+        row=c.plan(registry,d)[0]
+        self.assertEqual(row['result'],c.UNCHECKED);self.assertIn('base image not resolved',row['reason']);self.assertTrue(row.get('error'))
     def test_apk_that_cannot_read_its_repositories_is_a_tool_error_not_cannot_install(self):
         # apk's own text (apk-tools 3.0.9, 2.14.13, 2.12.9): an index it could not fetch or trust leaves the package
         # "no such package", which is not the add-on's fault; nor is a database apk could not open.

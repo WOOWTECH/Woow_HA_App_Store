@@ -281,7 +281,7 @@ def plan(registry, store, arches=ARCHES, only=None):
                 row.update(result=SKIPPED,reason='no Dockerfile (installs the published image)');continue
             try:row.update(collect(root,arch,version))
             except (ValueError,OSError,yaml.YAMLError) as e:
-                row.update(result=UNCHECKED,reason=f'base image not resolved: {e}');continue
+                row.update(result=UNCHECKED,reason=f'base image not resolved: {e}',error=True);continue
             if not row['adds'] and not row['unchecked']:
                 row.update(result=SKIPPED,reason='no apk add in the build')
     return rows
