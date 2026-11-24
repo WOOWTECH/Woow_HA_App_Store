@@ -12,7 +12,11 @@ Scope: the Store registry only, each enabled stable add-on the Store ships (stor
   2. the packages of every `apk add` in the stages that build the final image (the last stage and the stages it starts
      from), and in the add-on's shell scripts those stages run (rootfs/build.sh), with $VARS from ARG and ENV;
   3. one `apk add --simulate` of all of them in the base image, which also resolves the base's /etc/apk/world, and
-     `apk policy` for every version-constrained package, to show the version the repository has now.
+     `apk policy` for every version-constrained package, to show the version the repository has now;
+  4. when the simulate passes, one real `apk add` of the same packages with the same flags (#246), in the same throwaway
+     container. A simulate resolves dependencies only and does not unpack packages, so a package that overwrites a file
+     another package in the base owns (python3-ndbm against the core's older python3, #241) passes step 3 and fails
+     here.
 A `sed` the Dockerfile runs on /etc/apk/world before installing is replayed first (woow-nginxproxymanager strips the
 world pins that way).
 
@@ -20,13 +24,21 @@ Results per add-on and arch: pass, cannot install, not checked (an `apk add` the
 without a value, inside a conditional or loop, in another build stage with a pinned package; or a base image with no
 apk), skipped (no Dockerfile, no `apk add`, not Alpine). Not-checked alone never fails the run.
 
+Cannot install is apk's own answer: the simulate's `unable to select packages`, or an install whose every ERROR line
+is a file conflict, `ERROR: <package>: trying to overwrite <path> owned by <package>.` (one line per file, then an
+`N error(s); ...` line). That line was confirmed from real apk output of apk-tools 3.0.9 (Alpine 3.24), 2.14.13 (3.21)
+and 2.12.9 (3.16), natively and with `--root --arch --no-scripts`.
+
 A tool error fails the run and leaves the add-on's issue as it is: a base image that cannot be resolved or pulled, a
-check that did not finish, or an `apk add --simulate` that failed without apk's own answer that the packages cannot be
-installed (an index it could not fetch or trust, a database it could not open). An add-on whose Dockerfile adds a
+check that did not finish, an `apk add --simulate` that failed without apk's own answer that the packages cannot be
+installed (an index it could not fetch or trust, a database it could not open), or an install that failed with any
+other error (an install script, a download, a package gone since the simulate). An add-on whose Dockerfile adds a
 repository that stays unreachable therefore fails the run every day without an issue, even with a stale pin.
 
-`apk add --simulate` resolves dependencies only: it does not unpack packages, so a file conflict between a new package
-and one in the base (python3-ndbm against an older python3, #241) passes here and still fails the build.
+Limits of the install: one combined `apk add` only approximates the Dockerfile's separate RUN steps (a later step that
+removes or replaces a file is not replayed). On an exported image (rootfs mode, and a base without sh or apk) the
+helper's apk cannot run install scripts of another arch, so it installs with --no-scripts: such a row is marked
+approximate.
 
 Commands: check (one arch; runs docker) writes the results as JSON; report merges them into the job summary and opens,
 updates or closes one Store issue per add-on that cannot install (--dry-run prints the actions instead).
@@ -43,8 +55,10 @@ APK_ARCH={'amd64':'x86_64','aarch64':'aarch64'}
 PASS,FAIL,UNCHECKED,SKIPPED='pass','cannot install','not checked','skipped'
 RESULTS=(PASS,FAIL,UNCHECKED,SKIPPED)
 WORLD='/etc/apk/world'
-FILE_CONFLICT_NOTE=('`apk add --simulate` resolves dependencies only. It does not unpack packages, so it does not detect file '
-    'conflicts (a new package overwriting a file another installed package owns); a build can still fail that way.')
+FILE_CONFLICT_NOTE=('After `apk add --simulate` passes, the check installs the same packages once for real, which finds file '
+    'conflicts (a new package overwriting a file another installed package owns). One combined install only approximates '
+    "the Dockerfile's separate RUN steps, and on an exported image it runs with --no-scripts.")
+ROOTFS_NOTE='installed with --no-scripts (the exported image cannot run install scripts): an approximate result'
 
 # --- apk package arguments -------------------------------------------------------------------------------------------
 
@@ -307,9 +321,11 @@ def container_script(row, root=''):
     alpine-release; their os-release gives the version)."""
     apk=f'apk --root {root} --arch {APK_ARCH[row["arch"]]}' if root else 'apk'
     names=sorted({p['name'].lstrip('!') for p in pins(row)}|{'$WORLD_PINS'})
-    packages=[p['spec'] for add in row['adds'] for p in add['packages']]
-    flags=['--simulate','--no-cache']+(['--upgrade'] if any(a['upgrade'] for a in row['adds']) else [])
+    packages=' '.join(shlex.quote(p['spec']) for add in row['adds'] for p in add['packages'])
+    flags=['--no-cache']+(['--upgrade'] if any(a['upgrade'] for a in row['adds']) else [])
     for repo in dict.fromkeys(r for a in row['adds'] for r in a['repositories']):flags+=['-X',shlex.quote(repo)]
+    # The real install (#246): an exported image of another arch cannot run its packages' install scripts.
+    install=flags+(['--no-scripts'] if root else [])
     edits=[e.replace(WORLD,root+WORLD) for e in row['world_edits']]
     lines=['set -u',
         'echo @@ALPINE',
@@ -322,28 +338,34 @@ def container_script(row, root=''):
         f'echo @@WORLD; cat {root}{WORLD} 2>/dev/null',
         f"WORLD_PINS=$(sed -n 's/^\\([^<>=~ ]*\\)[<>=~].*$/\\1/p' {root}{WORLD} 2>/dev/null | tr '\\n' ' ')",
         'echo @@SIMULATE',
-        f'{apk} add {" ".join(flags)} {" ".join(shlex.quote(p) for p in packages)} 2>&1; echo "@@EXIT $?"',
+        f'{apk} add --simulate {" ".join(flags)} {packages} 2>&1; SIMULATED=$?; echo "@@EXIT $SIMULATED"',
         'echo @@POLICY',
         f'{apk} policy --no-cache {" ".join(shlex.quote(n) if n!="$WORLD_PINS" else n for n in names)} 2>&1',
+        # After policy, which reads the base as it was; only when the simulate passed.
+        'echo @@INSTALL',
+        f'if [ "$SIMULATED" -eq 0 ]; then {apk} add {" ".join(install)} {packages} 2>&1; echo "@@INSTALLEXIT $?"; fi',
         'echo @@END']
     return '\n'.join(lines)+'\n'
 
 def parse_output(text):
     """Sections of container_script()'s output: {'alpine': release or None, 'apk': bool, 'world': [lines], 'edit_failed',
-    'exit', 'simulate', 'policy': {name: {'available': [versions], 'installed': [versions]}}, 'complete'}."""
-    out={'alpine':None,'apk':True,'world':[],'edit_failed':[],'exit':None,'simulate':'','policy':{},
+    'exit', 'simulate', 'policy': {name: {'available': [versions], 'installed': [versions]}}, 'install' (the real apk
+    add's output), 'install_exit' (None when it did not run), 'complete'}."""
+    out={'alpine':None,'apk':True,'world':[],'edit_failed':[],'exit':None,'simulate':'','policy':{},'install':'','install_exit':None,
         'complete':any(m in text.splitlines() for m in ('@@END','@@NOTALPINE','@@NOAPK'))}
-    section=None;sim=[];name=version=None
+    section=None;sim=[];inst=[];name=version=None
     for line in text.splitlines():
         if line=='@@ALPINE':section='alpine';continue
         if line=='@@NOTALPINE':out['alpine']=None;section=None;continue
         if line=='@@NOAPK':out['apk']=False;continue
-        if line in ('@@WORLD','@@EDITS','@@SIMULATE','@@POLICY','@@END'):section=line[2:].lower();continue
+        if line in ('@@WORLD','@@EDITS','@@SIMULATE','@@POLICY','@@INSTALL','@@END'):section=line[2:].lower();continue
         if line.startswith('@@EDITFAILED '):out['edit_failed'].append(int(line.split()[1]));continue
         if line.startswith('@@EXIT '):out['exit']=int(line.split()[1]);continue
+        if line.startswith('@@INSTALLEXIT '):out['install_exit']=int(line.split()[1]);continue
         if section=='alpine' and line.strip():out['alpine']=out['alpine'] or line.strip()
         elif section=='world' and line.strip():out['world'].append(line.strip())
         elif section=='simulate':sim.append(line)
+        elif section=='install':inst.append(line)
         elif section=='policy':
             m=re.fullmatch(r'(\S+) policy:',line)
             if m:name=m[1];out['policy'][name]={'available':[],'installed':[]};version=None;continue
@@ -352,7 +374,7 @@ def parse_output(text):
             if line.startswith('    ') and name and version:
                 kind='installed' if line.strip().endswith('lib/apk/db/installed') else 'available'
                 if version not in out['policy'][name][kind]:out['policy'][name][kind].append(version)
-    out['simulate']='\n'.join(sim).strip()
+    out['simulate']='\n'.join(sim).strip();out['install']='\n'.join(inst).strip()
     return out
 
 def world_pins(world):
@@ -367,8 +389,25 @@ def _unsatisfiable(text):
     return ('ERROR: unable to select packages:' in lines and not any(re.match(r'WARNING: (fetching|Ignoring) ',l) for l in lines)
         and all(l=='ERROR: unable to select packages:' for l in lines if l.startswith('ERROR:')))
 
-def evaluate(row, output):
-    """The row with the result of container_script()'s parsed `output` (module docstring)."""
+_CONFLICT=re.compile(r'ERROR: (?P<package>\S+): trying to overwrite (?P<path>.+) owned by (?P<owner>\S+)\.')
+
+def file_conflicts(text):
+    """[{'package', 'path', 'owner'}] when apk's install output fails on file conflicts only: every ERROR line is
+    `<package>: trying to overwrite <path> owned by <package>.` (module docstring). None when any ERROR line is another
+    error, or there is none."""
+    errors=[l for l in text.splitlines() if l.startswith('ERROR:')]
+    found=[_CONFLICT.fullmatch(l) for l in errors]
+    if not errors or not all(found):return None
+    return [{k:m[k] for k in ('package','path','owner')} for m in found]
+
+def _conflict_reason(conflicts, limit=5):
+    named=[f'{x["package"]} overwrites {x["path"]} owned by {x["owner"]}' for x in conflicts[:limit]]
+    more=f'; and {len(conflicts)-limit} more' if len(conflicts)>limit else ''
+    return 'apk add failed on a file conflict (apk add --simulate passed): '+'; '.join(named)+more
+
+def evaluate(row, output, rootfs=False):
+    """The row with the result of container_script()'s parsed `output` (module docstring); `rootfs` when the script
+    ran on an exported image (the install used --no-scripts)."""
     row=dict(row)
     if not output['complete']:
         row.update(result=UNCHECKED,reason='the check did not finish in the base image',error=True);return row
@@ -383,9 +422,18 @@ def evaluate(row, output):
         if not any(satisfies(v,p['op'],p['version']) for v in policy['available']):stale.append({'spec':p['spec'],'source':where,'available':policy['available'],'installed':policy['installed']})
     row['stale']=stale;row['apk_output']=output['simulate'];row['exit']=output['exit']
     if output['edit_failed']:row['unchecked']=row['unchecked']+[{'file':row['dockerfile'],'line':0,'text':row['world_edits'][i],'reason':f'replaying this edit of {WORLD} failed'} for i in output['edit_failed']]
+    if output['exit']==0:
+        row['install_output']=output['install'];row['install_exit']=output['install_exit']
+        if rootfs and output['install_exit'] is not None:row['approximate']=ROOTFS_NOTE
+    conflicts=file_conflicts(output['install']) if output['exit']==0 and output['install_exit'] else None
     if output['exit']!=0 and not _unsatisfiable(output['simulate']):
         row.update(result=UNCHECKED,reason='apk add --simulate failed without a package answer',error=True)
     elif output['exit']!=0:row.update(result=FAIL,reason='apk add --simulate failed')
+    elif output['install_exit'] is None:
+        row.update(result=UNCHECKED,reason='apk add --simulate passed, but the install did not report an exit code',error=True)
+    elif conflicts:row.update(result=FAIL,reason=_conflict_reason(conflicts),conflicts=conflicts)
+    elif output['install_exit']!=0:
+        row.update(result=UNCHECKED,reason='apk add --simulate passed, but the install failed without a file conflict',error=True)
     elif row['unchecked']:row.update(result=UNCHECKED,reason='some apk add lines were not checked')
     else:row.update(result=PASS,reason='')
     return row
@@ -432,7 +480,7 @@ def run_rows(rows, arch, mode='native', docker=_docker):
                 if '@@ALPINE' not in text.splitlines() or '@@NOAPK' in text.splitlines():via='rootfs'
             if via=='rootfs':text=_on_rootfs(row,arch,image,docker)
             parsed=parse_output(text)
-            done=evaluate(row,parsed)
+            done=evaluate(row,parsed,rootfs=via=='rootfs')
             if via!=mode:done['via']='apk of the check on the exported image (the base has no sh or no apk)'
             if done.get('error'):done['reason']+=f': {text.strip()[-300:]}'
             out.append(done)
@@ -471,9 +519,10 @@ def _details(row):
     parts=[]
     if row.get('reason'):parts.append(row['reason'])
     if row.get('via'):parts.append(row['via'])
+    if row.get('approximate'):parts.append(row['approximate'])
     for s in row.get('stale') or []:
-        # A pass lists only the count of world pins behind the repository; a failure names each.
-        if row.get('result')!=FAIL and s['source']=='base world':continue
+        # A pass or a file conflict lists only the count of world pins behind the repository; a failure to resolve names each.
+        if (row.get('result')!=FAIL or row.get('conflicts')) and s['source']=='base world':continue
         parts.append(f'{s["spec"]} ({s["source"]}): repository has {", ".join(s["available"]) or "none"}')
     if row.get('world_pins'):
         behind=sum(1 for s in row.get('stale') or [] if s['source']=='base world')
@@ -492,8 +541,12 @@ def summary(rows):
         base=f'`{r["base"]}`'+(f' (Alpine {r["alpine"]})' if r.get('alpine') else '') if r.get('base') else ''
         lines.append(f'| {r["id"]} | {r["arch"]} | {markdown_cell(base)} | {_pin_count(r)} | {r["result"]} | {_details(r)} |')
     for r in rows:
-        if r['result']==FAIL:lines+=['',f'### {r["id"]} ({r["arch"]})','','```',r.get('apk_output','')[-4000:],'```']
+        if r['result']==FAIL:lines+=['',f'### {r["id"]} ({r["arch"]})','','```',_failed_output(r)[-4000:],'```']
     return '\n'.join(lines)+'\n'
+
+def _failed_output(row):
+    """apk's output that shows why `row` cannot install: the install's for a file conflict, else the simulate's."""
+    return (row.get('install_output') if row.get('conflicts') else row.get('apk_output')) or ''
 
 # --- Store issues ----------------------------------------------------------------------------------------------------
 
@@ -506,7 +559,14 @@ def issue_body(cid, rows):
     for r in sorted(rows,key=lambda r:ARCHES.index(r['arch'])):
         if r['result']!=FAIL:continue
         lines+=[f'### {r["arch"]}','',f'Base image: `{r["base"]}`'+(f' (Alpine {r["alpine"]})' if r.get('alpine') else ''),'']
+        if r.get('approximate'):lines+=[f'Note: {r["approximate"]}.','']
         stale=r.get('stale') or []
+        if r.get('conflicts'):
+            lines+=['`apk add --simulate` passed, but the real install failed on a file conflict: a package overwrites a file '
+                'another installed package owns.','','| Package | File | Owned by |','|---|---|---|']
+            lines+=[f'| `{x["package"]}` | `{x["path"]}` | `{x["owner"]}` |' for x in r['conflicts']]
+            lines+=['','`apk add` output:','','```',(r.get('install_output') or '')[-4000:],'```','']
+            continue
         if stale:
             lines+=['| Pinned | From | Repository has now |','|---|---|---|']
             lines+=[f'| `{s["spec"]}` | {s["source"]} | {", ".join(s["available"]) or "none"} |' for s in stale]
