@@ -38,7 +38,7 @@ These are identical on every platform. A target that cannot reach one of these v
 | Key | Value | Notes |
 |---|---|---|
 | `CODE_SERVER_VERSION` | `4.139.1` | Code `1.139.1`. Matches the HA base `hassio-addons/vscode` v7.2.0, which ships 4.139.1 (its Dockerfile `CODE_SERVER_VERSION`). |
-| `PI_CODING_AGENT_VERSION` | `0.99.1` | npm `@earendil-works/pi-coding-agent@0.99.1`. Bumped with `pi-acp@0.0.34` + `acp-client@0.2.0` in 1.1; `patches/fix-unicode-space-paths.mjs` still patches both `path-utils.js` call sites. Bumping it is a three-repo, same-day operation (§8). |
+| `PI_CODING_AGENT_VERSION` | `0.99.1` | npm `@earendil-works/pi-coding-agent@0.99.1`. Bumped with `pi-acp@0.0.34` + `acp-client@0.2.0` in 1.1; `patches/fix-unicode-space-paths.mjs` patches every `path-utils.js` plus the `dist/bundle/chunks/` chunk(s) the `pi` CLI actually loads (picked by content); it requires the module-core and bundle-core shapes and fails on any hunk that doesn't match exactly once (see `KNOWN_UPSTREAM_ISSUES.md` F1). Bumping it is a three-repo, same-day operation (§8). |
 | `PI_ACP_VERSION` | `0.0.34` | npm `pi-acp@0.0.34`. 0.0.x — expect churn; pin hard. |
 | `CLAUDE_CODE_VERSION` | `2.1.285` | npm `@anthropic-ai/claude-code@2.1.285` (native binary via its optionalDependencies). Installed in npm's default prefix like pi. Self-update off (`DISABLE_AUTOUPDATER=1`). |
 | `CLAUDE_AGENT_ACP_VERSION` | `0.84.0` | npm `@agentclientprotocol/claude-agent-acp@0.84.0` — the ACP adapter the sidebar's `claude` agent runs. |

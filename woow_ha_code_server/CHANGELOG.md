@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.16
+
+- Fix: terminal `pi`, the ACP sidebar's pi and Omnigent's pi no longer fold Unicode spaces in file paths. Reading `Q1<U+3000>報告.txt` returned the contents of the neighbouring `Q1 報告.txt`, and writing or editing a path with U+3000 (ideographic space) or U+202F landed on the ASCII-space name instead. Since pi 0.84.3 the `pi` command runs a bundled copy of the path code that our Unicode-space patch did not reach, so add-on versions shipped with pi 0.84.3–0.99.1 still had this bug; the patch now covers the bundle too, and the build checks the bundle's own read/write/edit tools (pipeline #222). Details: `KNOWN_UPSTREAM_ISSUES.md`, F1.
+- Reading a path pasted with a no-break space still finds the ASCII-space file. Pi, Claude Code, Codex, extensions, the base image, options and the data layout are unchanged.
+
 ## 0.1.15
 
 - Start no longer logs two `ERROR: Got unexpected response from the API: Service not enabled` lines when no MariaDB or Mosquitto add-on is running. The upstream `init-mysql` and `init-mosquitto` probes asked `GET /services/<name>`, and bashio logs that refusal at ERROR even though the probe tries to discard it. They now read the service's `available` flag from `GET /services`, which never errors. When MariaDB or Mosquitto is running, the MySQL and Mosquitto client configuration is written as before.
