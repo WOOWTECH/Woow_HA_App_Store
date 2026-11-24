@@ -1917,6 +1917,10 @@ class ShaMode(StepHarness):
         r,_,_=self.run_step(('plan',"SBOMs of the comparison targets' images"),extra=self.APPROVED,images=())
         self.assertEqual(r.returncode,1);self.assertFalse((self.tmp/'unscanned.txt').exists())
 
+def _ids(d, flag, ids):
+    """Writes `ids` one per line to a file in `d` named after `flag`, and returns its path."""
+    f=d/(flag.strip('-')+'.txt');f.write_text(''.join(i+'\n' for i in ids));return str(f)
+
 class ShaCommands(unittest.TestCase):
     """The two rules sha mode adds (#167): what changed at a commit (release-change) and what passed (sha-verdicts)."""
     SHA='0123456789abcdef0123456789abcdef01234567'
@@ -1939,7 +1943,7 @@ class ShaCommands(unittest.TestCase):
             with self.subTest(kw):
                 code,out=self.change(['v1.0.0'],'1.1.0',**kw)
                 self.assertEqual(code,2);self.assertIn(why,out);self.assertTrue(out.startswith('::error title=Upgrade comparison failed::'))
-    def verdicts(self,plan=('a','b','c'),compared=('a','b','c'),results=None,unchanged=(),runtime_failed=(),components=('a','b','c','d'),held=None):
+    def verdicts(self,plan=('a','b','c'),compared=('a','b','c'),results=None,unchanged=(),runtime_failed=(),components=('a','b','c','d'),held=None,ceiling_held=None,ceiling_failed=None):
         d=pathlib.Path(tempfile.mkdtemp());self.addCleanup(shutil.rmtree,d);(d/'reports').mkdir()
         (d/'provider.json').write_text(json.dumps({'components':[{'id':i} for i in components]}))
         (d/'plan.jsonl').write_text(''.join(json.dumps({'id':i})+'\n' for i in plan))
@@ -1948,14 +1952,14 @@ class ShaCommands(unittest.TestCase):
         with contextlib.redirect_stdout(io.StringIO()) as out:
             code=u.main(['sha-verdicts','--provider',str(d/'provider.json'),'--unchanged',str(d/'unchanged.txt'),'--plan',str(d/'plan.jsonl'),
                 '--compared',str(d/'compared.txt'),'--runtime-reports',str(d/'reports'),'--runtime-failed',str(d/'failed.txt')]
-                +(['--held',str(d/'held.txt')] if held is not None and (d/'held.txt').write_text(''.join(i+'\n' for i in held)) is not None else []))
+                +[a for flag,ids in (('--held',held),('--ceiling-held',ceiling_held),('--ceiling-failed',ceiling_failed)) if ids is not None for a in (flag,_ids(d,flag,ids))])
         return code,json.loads(out.getvalue())
     def test_held_is_neither_passed_nor_failed(self):
         # #217: compare --held-ok exited HELD (the Core requirement alone blocks): held.txt, not compared.txt. Held needs the same
         # evidence as passed otherwise; it gets no Release and does not fail the run.
         code,v=self.verdicts(compared=('b','c'),held=('a',),unchanged=('d',))
         self.assertEqual((code,v['passed'],v['held']),(0,['b','c'],['a']))
-        self.assertEqual(v['verdicts'][0],{'id':'a','verdict':'held'})
+        self.assertEqual(v['verdicts'][0],{'id':'a','verdict':'held','held_by':'core'})
         # Held but its upgrade test failed: failed, as any add-on with failed evidence.
         for kw in ({'results':{'a':False,'b':True,'c':True}},{'runtime_failed':('a',)},{'plan':('b','c')}):
             with self.subTest(kw):
@@ -3352,5 +3356,156 @@ class RegressionCommand(unittest.TestCase):
                 path=self.dir/'bad.json';path.write_text(text,encoding='utf-8')
                 with contextlib.redirect_stdout(io.StringIO()) as out:code=u.main(['regression','--result',str(path)])
                 self.assertEqual(code,2);self.assertIn('::error',out.getvalue())
+
+class VersionCeiling(unittest.TestCase):
+    """#216: a Mirror source's version ceiling (版本上限), <add-on dir>/version-ceiling.yaml: only the new version against it."""
+    def above(self,ceiling,version):return u.version_ceiling({'ceiling':ceiling},version)['above']
+    def test_no_file_is_not_checked(self):
+        self.assertIsNone(u.version_ceiling(None,'99.0.0'))
+    def test_at_or_below_the_ceiling(self):
+        for ceiling,version in (('9.2.x','9.2.0'),('9.2.x','9.2.7'),('9.2.x','9.2.10'),('9.2.x','9.1.9'),('9.2.x','8.40.1'),('9.2.x','9.2'),('9.2.x','9'),
+                ('3.0.x','3.0.5'),('3.0.x','2.0.4'),('9.x','9.99.0'),('9.2.0','9.2.0'),('9.2.0','9.2'),('9.2.0','9.1.12'),
+                ('9.2.x','9.2.1.dev5'),('9.2.0','9.2.0.dev5'),('9.2.0','9.2.0b1')):
+            with self.subTest(ceiling=ceiling,version=version):self.assertFalse(self.above(ceiling,version))
+    def test_above_the_ceiling(self):
+        # A patch above an exact ceiling, a minor or major bump above N.N.x, a major above N.x; a dev build of the next minor too.
+        for ceiling,version in (('9.2.0','9.2.1'),('9.2.x','9.3.0'),('9.2.x','10.0.0'),('9.2.x','9.3'),('9.2.x','9.3.0.dev3713'),
+                ('3.0.x','3.1.0'),('3.0.x','4.0.0'),('9.x','10.0.0'),('9.2.0','9.2.0.1'),('9.1.x','9.2.0')):
+            with self.subTest(ceiling=ceiling,version=version):self.assertTrue(self.above(ceiling,version))
+    def test_the_result_names_both_values_and_the_reason(self):
+        c=u.version_ceiling({'ceiling':'9.2.x','reason':' needs HA 2026.11 (#191) '},'9.3.0')
+        self.assertEqual(c,{'ceiling':'9.2.x','version':'9.3.0','above':True,'reason':'needs HA 2026.11 (#191)'})
+        text=u.ceiling_text(c,'homeassistant-addon/version-ceiling.yaml')
+        self.assertIn('版本 9.3.0 超過版本上限 9.2.x',text);self.assertIn('homeassistant-addon/version-ceiling.yaml: needs HA 2026.11 (#191)',text)
+    def test_a_ceiling_that_cannot_be_read_is_an_error(self):
+        # An unquoted 9.2 is a number (YAML), never silently 9.2.0; any other form, a missing or unknown key, is an error, not a pass.
+        for doc in ({'ceiling':9.2},{'ceiling':9},{'ceiling':''},{'ceiling':'9.x.1'},{'ceiling':'9.2.*'},{'ceiling':'v9.2.x'},{'ceiling':'9.2.x.x'},
+                {'ceiling':'x'},{'ceiling':'09.2.x'},{'ceiling':'9.2.X'},{'ceiling':None},{},{'ceilng':'9.2.x'},{'ceiling':'9.2.x','max':'9'},
+                {'ceiling':'9.2.x','reason':3},'9.2.x',['9.2.x']):
+            with self.subTest(doc=doc),self.assertRaises(ValueError):u.version_ceiling(doc,'9.2.0')
+    def test_a_version_that_cannot_be_read_is_an_error(self):
+        for version in ('latest','','v9.2.0','.9',None,9.2):
+            with self.subTest(version=version),self.assertRaises(ValueError):u.version_ceiling({'ceiling':'9.2.x'},version)
+
+class CeilingCommand(unittest.TestCase):
+    def run_cli(self,text,version,held_ok=False):
+        d=pathlib.Path(tempfile.mkdtemp());self.addCleanup(shutil.rmtree,d);f=d/'version-ceiling.yaml'
+        if text is not None:f.write_text(text)
+        with contextlib.redirect_stdout(io.StringIO()) as out:
+            code=u.main(['ceiling','--file',str(f),'--path','a/version-ceiling.yaml','--version',version,'--name','ha_mcp']+(['--held-ok'] if held_ok else []))
+        return code,out.getvalue()
+    def test_no_file(self):
+        self.assertEqual(self.run_cli(None,'99.0.0',True),(0,''))
+    def test_within(self):
+        code,out=self.run_cli('ceiling: "9.2.x"\n','9.2.0',True)
+        self.assertEqual(code,0);self.assertIn('version 9.2.0 within its version ceiling 9.2.x (a/version-ceiling.yaml)',out);self.assertNotIn('::',out)
+    def test_above_is_held_in_sha_mode(self):
+        code,out=self.run_cli('ceiling: "9.2.x"\nreason: needs a newer HA\n','9.3.0',True)
+        self.assertEqual(code,u.HELD);self.assertNotIn('::error',out)
+        self.assertIn('::warning title=Held (暫緩)::ha_mcp: 版本 9.3.0 超過版本上限 9.2.x (version 9.3.0 is above the version ceiling 9.2.x in a/version-ceiling.yaml: needs a newer HA)',out)
+    def test_above_fails_on_a_pr(self):
+        code,out=self.run_cli('ceiling: "9.2.x"\n','9.3.0')
+        self.assertEqual(code,1);self.assertIn('::error title=Version above the version ceiling::ha_mcp: 版本 9.3.0 超過版本上限 9.2.x',out)
+    def test_unreadable_is_a_tool_error_also_in_sha_mode(self):
+        for text,version in (('ceiling: 9.2\n','9.2.0'),('ceiling: "9.2.x"\n','latest'),('ceiling: [\n','9.2.0'),('','9.2.0')):
+            with self.subTest(text=text,version=version):
+                code,out=self.run_cli(text,version,True)
+                self.assertEqual(code,2);self.assertTrue(out.startswith('::error title=Upgrade comparison failed::ha_mcp: '),out)
+
+class CeilingVerdicts(unittest.TestCase):
+    verdicts=ShaCommands.verdicts  # not a subclass: ShaCommands' own tests run once
+    def test_ceiling_held_needs_no_comparison_or_test(self):
+        # #216: held before the plan, so it has no plan line, comparison or runtime result, and is still held, not failed.
+        code,v=self.verdicts(plan=('b','c'),compared=('b','c'),results={'b':True,'c':True},ceiling_held=('a',),unchanged=('d',))
+        self.assertEqual((code,v['passed']),(0,[]))
+        self.assertEqual(v['verdicts'][0],{'id':'a','verdict':'held','held_by':'ceiling'})
+    def test_ceiling_held_holds_every_add_on_that_would_pass(self):
+        # #216 任一個超過時不發正式 Release: the Store ships every add-on from the latest Release's commit, so a sibling's
+        # Release would ship the held version. A failed or unchanged sibling keeps its verdict.
+        code,v=self.verdicts(plan=('b','c'),compared=('b',),results={'b':True,'c':True},ceiling_held=('a',),unchanged=('d',))
+        self.assertEqual((code,v['passed'],v['held']),(1,[],['a','b']))
+        self.assertEqual(v['verdicts'],[{'id':'a','verdict':'held','held_by':'ceiling'},{'id':'b','verdict':'held','held_by':'ceiling','with':['a']},
+            {'id':'c','verdict':'failed'},{'id':'d','verdict':'unchanged'}])
+    def test_an_unreadable_ceiling_fails_and_holds_the_others(self):
+        code,v=self.verdicts(plan=('b','c'),compared=('b','c'),results={'b':True,'c':True},ceiling_failed=('a',),unchanged=('d',))
+        self.assertEqual((code,v['passed'],v['held']),(1,[],['b','c']))
+        self.assertEqual(v['verdicts'][0],{'id':'a','verdict':'failed'});self.assertEqual(v['verdicts'][1]['with'],['a'])
+    def test_a_core_hold_alone_holds_no_other(self):
+        # #217 is unchanged: only the ceiling holds the whole source.
+        code,v=self.verdicts(compared=('b','c'),held=('a',),unchanged=('d',))
+        self.assertEqual((code,v['passed'],v['held']),(0,['b','c'],['a']))
+    def test_unchanged_wins_over_the_ceiling(self):
+        code,v=self.verdicts(ceiling_held=('d',),unchanged=('d',))
+        self.assertEqual((code,v['held'],v['verdicts'][3]),(0,[],{'id':'d','verdict':'unchanged'}))
+    def test_core_and_ceiling_held_together(self):
+        code,v=self.verdicts(plan=('b','c'),compared=('c',),held=('b',),results={'b':True,'c':True},ceiling_held=('a',),components=('a','b','c'))
+        self.assertEqual((code,v['passed'],v['held']),(0,[],['a','b','c']))
+        self.assertEqual([(x.get('held_by'),x.get('with')) for x in v['verdicts']],[('ceiling',None),('core',None),('ceiling',['a'])])
+
+class CeilingShaMode(StepHarness):
+    """#216 in the workflow: the detect step holds an add-on above its version ceiling before the plan. ShaMode's harness,
+    not a subclass, so ShaMode's own tests run once."""
+    SHA,APPROVED,STEPS,OLD,NEW,STARTED,NO_WORKERS=ShaMode.SHA,ShaMode.APPROVED,ShaMode.STEPS,ShaMode.OLD,ShaMode.NEW,ShaMode.STARTED,ShaMode.NO_WORKERS
+    sha=ShaMode.sha
+    CEIL={'addon/version-ceiling.yaml':'ceiling: "1.0.x"\nreason: test\n'}
+    @needs_shell
+    def test_above_the_ceiling_is_held_not_compared_or_failed(self):
+        # results={}: the runtime job does not test it either (the same detect step), so it hands over no result.
+        code,passed,log,summary=self.sha(files=self.CEIL,results={})
+        self.assertEqual((code,passed),(0,[]),log);self.assertNotIn('::error',log)
+        self.assertIn('::warning title=Held (暫緩)::t: 版本 1.1.0 超過版本上限 1.0.x',log)
+        self.assertIn('held=["t"]',(self.tmp/'out').read_text());self.assertEqual(self.plans,[])
+        self.assertIn('- t: version 1.1.0 **held (暫緩)**: above its version ceiling (addon/version-ceiling.yaml), not compared',summary)
+        self.assertIn('- t: **held (暫緩)**: version above its version ceiling, not compared, no Release',summary)
+        self.assertEqual((self.tmp/'ceiling-held.txt').read_text(),'t\n')
+    @needs_shell
+    def test_above_the_ceiling_is_held_even_with_a_breaking_change(self):
+        # Not compared at all: an undeclared breaking change of a version that cannot ship is not a failure.
+        code,passed,log,_=self.sha(files=self.CEIL,new=self.NO_WORKERS,results={})
+        self.assertEqual((code,passed),(0,[]),log);self.assertNotIn('::error',log)
+    @needs_shell
+    def test_within_the_ceiling_passes_as_before(self):
+        code,passed,log,summary=self.sha(files={'addon/version-ceiling.yaml':'ceiling: "1.1.x"\n'})
+        self.assertEqual((code,passed),(0,['t']),log);self.assertIn('held=[]',(self.tmp/'out').read_text())
+        self.assertIn('- t: version 1.1.0 within its version ceiling 1.1.x (addon/version-ceiling.yaml)',summary)
+    @needs_shell
+    def test_an_unreadable_ceiling_fails(self):
+        code,passed,log,summary=self.sha(files={'addon/version-ceiling.yaml':'ceiling: 1.1\n'})
+        self.assertEqual((code,passed),(1,[]),log);self.assertIn('::error title=Upgrade comparison failed::t: ',log);self.assertIn('- t: **failed**',summary)
+        self.assertEqual((self.tmp/'ceiling-failed.txt').read_text(),'t\n')
+    @needs_shell
+    def test_unchanged_is_not_held(self):
+        code,passed,log,summary=self.sha(('detect','passed'),version='1.0.0',results={},files=self.CEIL|{'addon/version-ceiling.yaml':'ceiling: "0.9.x"\n'})
+        self.assertEqual((code,passed),(0,[]),log);self.assertIn('held=[]',(self.tmp/'out').read_text());self.assertNotIn('Held (暫緩)',log)
+    @needs_shell
+    def test_one_held_by_the_ceiling_holds_the_other(self):
+        # The other passes every check but gets no Release: the Store would ship two's 1.1.0 from one's Release commit.
+        comps=[{'id':i,'source_path':i,'config_file':'config.yaml'} for i in ('one','two')]
+        image={i:f'ghcr.io/woowtech/ha-mirror-{i}-{{arch}}' for i in ('one','two')}
+        files={f'{i}/config.yaml':yaml.safe_dump(dict(BASE,image=image[i],version='1.1.0')) for i in image}
+        files['two/version-ceiling.yaml']='ceiling: "1.0.x"\n'
+        history=[('b',{})]+[(f'{i}-v1.0.0',{f'{i}/config.yaml':{'image':image[i]}}) for i in image]
+        refs=[f'ghcr.io/woowtech/ha-mirror-{i}-amd64:{v}' for i in image for v in ('1.0.0','1.1.0')]
+        code,passed,log,summary=self.sha(extra={'components':comps,**self.APPROVED},releases=('one-v1.0.0','two-v1.0.0'),history=history,
+            files=files,images=refs,started=('one',))
+        self.assertEqual((code,passed),(0,[]),log);self.assertIn('held=["one","two"]',(self.tmp/'out').read_text())
+        self.assertEqual([p['id'] for p in self.plans],['one'])
+        self.assertIn('- one: **held (暫緩)**: passed, but no Release while two is held by or failed on its version ceiling',summary)
+    def test_the_held_step_names_both_reasons(self):
+        held=next(s for s in self.wf['jobs']['compare']['steps'] if s.get('name')=='Held (暫緩)')
+        self.assertIn('version-ceiling.yaml',held['run']);self.assertIn('shipping-core.json',held['run'])
+
+class CeilingOnAPullRequest(StepHarness):
+    @needs_shell
+    def test_above_the_ceiling_fails_the_pr(self):
+        r,_,_=self.run_step('detect',files={'addon/version-ceiling.yaml':'ceiling: "1.0.x"\n'})
+        self.assertEqual(r.returncode,1,r.stdout+r.stderr);self.assertIn('::error title=Version above the version ceiling::t: 版本 1.1.0 超過版本上限 1.0.x',r.stdout)
+        self.assertNotIn('Held',r.stdout)
+    @needs_shell
+    def test_within_or_without_the_ceiling_the_pr_goes_on(self):
+        for files in ({'addon/version-ceiling.yaml':'ceiling: "1.x"\n'},None):
+            with self.subTest(files=files):
+                r,_,out=self.run_step('detect',files=files)
+                self.assertEqual(r.returncode,0,r.stdout+r.stderr);self.assertIn('changed=true',out)
 
 if __name__=='__main__':unittest.main()

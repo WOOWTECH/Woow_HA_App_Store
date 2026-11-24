@@ -14,7 +14,8 @@ or below High: counted in the report only. No network, no Docker: the reusable
 workflow woow-addon-upgrade-check.yml fetches the inputs and calls this.
 
 sha mode (#167): a source with no PR compares one commit before its Releases are cut (release_change(): what changed;
-sha_verdicts(): which add-ons passed, the workflow's output `passed`).
+sha_verdicts(): which add-ons passed, the workflow's output `passed`). A Mirror source's version ceiling (#216,
+version_ceiling()) holds an add-on before any of this.
 
 Category 3 (regression comparison, #139): the checks of the add-on's smoke hook
 on the comparison target and on the new version, compared by name in the
@@ -204,6 +205,47 @@ def core_text(core):
     """The report line of an above Core requirement (both versions)."""
     return f'要求 HA {core["required"]}，出貨 Core 版本 {core["shipping"]} (config.yaml homeassistant: {core["required"]} is above the shipping Core version {core["shipping"]}; Supervisor would not install it on the shipping HA)'
 
+# Version ceiling (版本上限, release-gating #216): a Mirror source's overlay can cap the version of an add-on it ships, for
+# upstream versions that need a newer HA than the shipping one without saying so in homeassistant: (which #217 reads).
+# The file is <add-on dir>/version-ceiling.yaml, next to upgrade-notes.yaml (a mirror's rebuild copies it from its
+# overlay, .mirror/<add-on dir>/). Only the new version is checked, never the comparison target:
+#   ceiling: "9.2.x"   # the highest version that may ship: N.N.x (any 9.2 patch), N.x (any 9 minor), or N.N.N exactly
+#   reason: ...        # optional; quoted in the warning
+# Above it the add-on is held (暫緩) in sha mode: not compared, tested or released, shown apart from a failure; someone
+# raises the ceiling by hand. On a PR (a WOOW source) it fails. Nothing ever raises or removes it automatically.
+CEILING_FILE='version-ceiling.yaml'
+_CEILING=re.compile(r'(0|[1-9][0-9]*)(?:\.(?:0|[1-9][0-9]*))*(?:\.x)?')
+_LEADING=re.compile(r'[0-9]+(?:\.[0-9]+)*')
+
+def version_ceiling(doc, version, path=CEILING_FILE):
+    """#216: `version` (the new config.yaml's, as written) against the version ceiling `doc` (parsed version-ceiling.yaml;
+    None when there is none: not checked). Returns None or {ceiling, version, above, reason}. A ceiling N.N.x compares
+    only the version's first numbers (9.2.x: 9.2.7 is not above it, 9.3.0 and 10.0.0 are); an exact ceiling compares
+    every number, a pre-release or dev suffix of the same numbers is not above it (9.2.0.dev5 against 9.2.0). ValueError
+    when the file is not {ceiling: "<ceiling>"[, reason: <text>]}, the ceiling has another form (an unquoted 9.2 is a
+    number), or the version does not start with a number."""
+    if doc is None:return None
+    if not isinstance(doc,dict) or 'ceiling' not in doc:raise ValueError(f'{path}: expected a mapping with the key ceiling, e.g. ceiling: "9.2.x"')
+    unknown=sorted(set(doc)-{'ceiling','reason'})
+    if unknown:raise ValueError(f'{path}: unknown key {", ".join(map(str,unknown))}; only ceiling and reason')
+    ceiling,reason=doc['ceiling'],doc.get('reason')
+    if not isinstance(ceiling,str) or not _CEILING.fullmatch(ceiling):
+        raise ValueError(f'{path}: ceiling {ceiling!r} is not N.N.x, N.x or an exact N.N.N version written as a quoted string')
+    if reason is not None and not isinstance(reason,str):raise ValueError(f'{path}: reason must be text')
+    match=_LEADING.match(version) if isinstance(version,str) else None
+    if not match:raise ValueError(f'version {version!r} does not start with a number, so it cannot be compared with the version ceiling {ceiling}')
+    parts=ceiling.split('.');wild=parts[-1]=='x';limit=[int(p) for p in (parts[:-1] if wild else parts)]
+    have=[int(p) for p in match.group().split('.')]
+    if wild:have=(have+[0]*len(limit))[:len(limit)]
+    else:
+        width=max(len(have),len(limit));have,limit=have+[0]*(width-len(have)),limit+[0]*(width-len(limit))
+    return {'ceiling':ceiling,'version':version,'above':have>limit,'reason':(reason or '').strip()}
+
+def ceiling_text(c, path=CEILING_FILE):
+    """The report line of a version above its ceiling (both values, the file and its reason)."""
+    return (f'版本 {c["version"]} 超過版本上限 {c["ceiling"]} (version {c["version"]} is above the version ceiling {c["ceiling"]} in {path}'
+        +(f': {c["reason"]}' if c['reason'] else '')+')')
+
 def compare(old, new, old_version, new_version, notes=None, old_scan=None, new_scan=None, name=None, notes_path='upgrade-notes.yaml', scan_note='no scan results', shipping_core=None):
     """Judge one add-on.
 
@@ -331,11 +373,17 @@ def catalog_entry(catalog, repo, component):
     entry=catalog['components'].get(component)
     return entry if isinstance(entry,dict) and entry.get('repository')==repo else None
 
-def sha_verdicts(components, unchanged, planned, compared, results, runtime_failed, held=frozenset()):
+def sha_verdicts(components, unchanged, planned, compared, results, runtime_failed, held=frozenset(), ceiling_held=frozenset(), ceiling_failed=frozenset()):
     """sha mode (#167): each add-on's verdict, in the order of `components` (the ids `components()` gives):
     'unchanged' (in `unchanged`: its version is its latest stable Release's, not compared), 'passed', 'held' or 'failed'.
     Held (暫緩, #217): in `held` instead of `compared` (compare --held-ok exited HELD: the Core requirement alone blocked
     categories 1 and 4) with the same runtime evidence as passed; it gets no Release and does not fail the run.
+    Held by its version ceiling (#216): in `ceiling_held` (the detect step's ceiling --held-ok exited HELD), so it was
+    neither compared nor tested: held without that evidence. A held verdict says why: held_by 'core' or 'ceiling'.
+    While any add-on is held by its ceiling or its ceiling could not be read (`ceiling_failed`: failed), no other add-on
+    passes either: the Store publishes every add-on of a ref_policy release source from its latest Release's commit
+    (addon_sync.publish()), so a sibling's Release would ship the version above the ceiling (#216: 任一個超過時不發正式
+    Release). Such an add-on that would have passed is held too: held_by 'ceiling', `with` the ids that hold it.
     Passed needs positive evidence from both jobs: the add-on is in the compare job's plan (`planned`), its comparison
     (categories 1 and 4) passed (`compared`), and its upgrade test result (categories 2 and 3; `results`, the runtime
     job's runtime-reports, {name: passed}) is there and not failed: passed true, or null when the test did not run (no
@@ -344,11 +392,17 @@ def sha_verdicts(components, unchanged, planned, compared, results, runtime_fail
     reached (a tool error), so nothing passes without being judged."""
     out=[]
     for cid in components:
+        why={}
         if cid in unchanged:verdict='unchanged'
+        elif cid in ceiling_held:verdict,why='held',{'held_by':'ceiling'}
         elif cid in planned and (cid in compared or cid in held) and cid in results and results[cid] is not False and cid not in runtime_failed:
-            verdict='passed' if cid in compared else 'held'
+            verdict,why=('passed',{}) if cid in compared else ('held',{'held_by':'core'})
         else:verdict='failed'
-        out.append({'id':cid,'verdict':verdict})
+        out.append({'id':cid,'verdict':verdict,**why})
+    holding=[cid for cid in components if cid in (set(ceiling_held)|set(ceiling_failed)) and cid not in unchanged]
+    if holding:
+        for v in out:
+            if v['verdict']=='passed':v.update(verdict='held',held_by='ceiling',**{'with':holding})
     return out
 
 def _when(text):
@@ -852,7 +906,7 @@ def _sha_verdicts(a):
             with contextlib.suppress(ValueError,KeyError,TypeError,AttributeError,OSError):
                 r=json.loads(p.read_text(encoding='utf-8'));results[r['name']]=r.get('passed')
         verdicts=sha_verdicts(components,set(_lines(a.unchanged)),planned,set(_lines(a.compared)),results,set(_lines(a.runtime_failed)),
-            set(_lines(a.held)) if a.held else set())
+            *(set(_lines(f)) if f else set() for f in (a.held,a.ceiling_held,a.ceiling_failed)))
     print(json.dumps({'passed':[v['id'] for v in verdicts if v['verdict']=='passed'],'held':[v['id'] for v in verdicts if v['verdict']=='held'],'verdicts':verdicts}))
     return 1 if any(v['verdict']=='failed' for v in verdicts) else 0
 
@@ -868,7 +922,7 @@ def _release_notes(a):
     with _failing((ValueError,TypeError,OSError,yaml.YAMLError),f'{a.notes}: ','Release notes failed'):text=release_notes(_load(a.notes,'yaml',optional=True),a.version,a.released)
     print(text,end='');return 0
 
-HELD=4  # compare --held-ok: blocked by the Core requirement alone, so a Mirror source's add-on is held (暫緩, #217); not 1, 2 or 3
+HELD=4  # --held-ok: a Mirror source's add-on is held (暫緩), not 1, 2 or 3: compare, blocked by the Core requirement alone (#217); ceiling, above its version ceiling (#216)
 
 def _compare(a):
     with _failing((ValueError,KeyError,TypeError,OSError,yaml.YAMLError),f'{a.name or a.new}: '):
@@ -890,6 +944,19 @@ def _compare(a):
         print(workflow_command('warning','Held (暫緩)',f'{a.name or a.new}: {core_text(r["core"])}; no Release until the shipping Core version is raised'));return HELD
     if r['core'] and r['core']['above']:_error('Core requirement above the shipping Core version',f'{a.name or a.new}: {core_text(r["core"])}')
     return 1 if r['blocked'] else 0
+
+def _ceiling(a):
+    # #216: nothing and exit 0 without the file or within the ceiling; above it HELD with --held-ok (sha mode: a warning), else 1 (an ::error).
+    path=a.path or a.file
+    if not pathlib.Path(a.file).exists():return 0
+    with _failing((ValueError,OSError,yaml.YAMLError),f'{a.name}: '):
+        doc=_load(a.file,'yaml')
+        if doc is None:raise ValueError(f'{path} is empty; write ceiling: "<N.N.x>" or delete the file')
+        c=version_ceiling(doc,a.version,path)
+    if not c['above']:print(f'version {a.version} within its version ceiling {c["ceiling"]} ({path})');return 0
+    if a.held_ok:
+        print(workflow_command('warning','Held (暫緩)',f'{a.name}: {ceiling_text(c,path)}; no Release until someone raises the version ceiling'));return HELD
+    _error('Version above the version ceiling',f'{a.name}: {ceiling_text(c,path)}');return 1
 
 def _mounts(a):
     with _failing((ValueError,OSError,yaml.YAMLError),f'{a.config}: '):print(json.dumps(mounts(_load(a.config,'yaml') or {},a.root)))
@@ -920,6 +987,7 @@ def _regression(a):
 COMMANDS['regression']=_regression  # #139
 COMMANDS['release-change']=_release_change  # #167
 COMMANDS['sha-verdicts']=_sha_verdicts  # #167
+COMMANDS['ceiling']=_ceiling  # #216
 
 def _attempt_artifact(a):
     with _failing((ValueError,KeyError,TypeError,AttributeError),f'{a.name}: '):
@@ -988,6 +1056,13 @@ def main(argv=None):
     y.add_argument('--plan',required=True,help="the compare job's plan.jsonl (may be absent)");y.add_argument('--compared',required=True,help='ids whose comparison passed, one per line (may be absent)')
     y.add_argument('--runtime-reports',required=True,help="directory of the runtime job's results, <id>.json");y.add_argument('--runtime-failed',required=True,help="ids 'Upgrade test result' failed, one per line (may be absent)")
     y.add_argument('--held',help="ids compare --held-ok held (暫緩, #217): blocked by the Core requirement alone, one per line (may be absent)")
+    y.add_argument('--ceiling-held',help="ids ceiling --held-ok held (暫緩, #216): above their version ceiling, neither compared nor tested, one per line (may be absent)")
+    y.add_argument('--ceiling-failed',help="ids whose version ceiling could not be read (#216), one per line (may be absent); with --ceiling-held, no other add-on passes")
+    e=sub.add_parser('ceiling',help=f"#216: judge the version against the add-on's version ceiling ({CEILING_FILE}, version_ceiling()): nothing when the file is absent, "
+        f"exit 0 within it; above it exit 1 with an ::error, or with --held-ok a warning and exit {HELD}")
+    e.add_argument('--file',required=True,help=f"the add-on's {CEILING_FILE} in the checkout (may be absent)");e.add_argument('--path',help='its path in the repository, for the messages')
+    e.add_argument('--version',required=True,help="the add-on's new version, as written");e.add_argument('--name',required=True,help='add-on id, for the messages')
+    e.add_argument('--held-ok',action='store_true',help=f'sha mode (a Mirror source): above the ceiling the add-on is held (暫緩): a warning and exit {HELD}, not a failure')
     z=sub.add_parser('attempt-artifact',help="#131: read this run's state ({run, jobs, artifacts}, GitHub API JSON) on stdin and print which attempt's "
         "artifact to read, as JSON {id, attempt, note} (attempt_artifact(); id null when there is none to read yet)")
     z.add_argument('--name',required=True,help="the artifact's name in this attempt, <base>-attempt-<attempt>");z.add_argument('--attempt',required=True,type=int,help='this run attempt')
