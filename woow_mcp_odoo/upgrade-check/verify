@@ -1,0 +1,72 @@
+#!/usr/bin/env python3
+"""Store upgrade comparison hook: verify (multi-profile HM-16; plan 12.3 HM-16, 11.3; FM-102, FM-135; contract 9 #72).
+
+The pair of seed in the same directory (HM-16's draft, moved here from packaging/hooks/ by the Odoo 0.5.0 release
+PR, HM-19a): it runs once the new version has started on the /data the comparison target left, uses seed's
+readers and checks, and only reads, the same for every version (see seed). What it checks:
+
+- seed's checks again: /data/mcp and state.json the runtime user's and private; the default profile's token on both
+  connection methods; a random token refused;
+- state.json is byte for byte what the old version left: an upgrade rewrites nothing of the default profile (invariant
+  I6; tests/test_upgrade_zero_rewrite.py), so the old token and both old URLs keep working;
+- the index and the profiles directory as they were: absent stays absent (only the first profile a panel creates
+  writes the index, never an upgrade), and a present index keeps its bytes (a regular file, read both times without
+  following a link);
+- no restore marker: an upgrade is no restore (packaging/entrypoint.py marks only a root-owned /data/mcp).
+
+Report: $REPORT_DIR/verify.json in the Store's format; exit 0 only when every check passed.
+"""
+import hashlib
+import importlib.machinery
+import importlib.util
+import json
+import os
+from pathlib import Path
+import sys
+import time
+
+
+def load_seed():
+    """seed, the file beside this one (the Store mounts the whole upgrade-check directory)."""
+    loader = importlib.machinery.SourceFileLoader('woow_upgrade_seed', str(Path(__file__).absolute().with_name('seed')))
+    module = importlib.util.module_from_spec(importlib.util.spec_from_loader(loader.name, loader))
+    loader.exec_module(module)
+    return module
+
+
+seed = load_seed()
+
+
+def main(environ=os.environ, *, mcp_port=seed.MCP_PORT, runtime=seed.RUNTIME, wait=seed.CONNECT_SECONDS,
+         sleep=time.sleep):
+    report = seed.Report()
+    data = Path(environ['DATA_DIR_DATA']) / 'mcp'
+    try:
+        seeded = json.loads((Path(environ['HOOK_STATE_DIR']) / seed.HOOK_STATE).read_text())
+    except (OSError, ValueError):
+        seeded = None
+    report.check('seed left its digests', seeded is not None, 'read' if seeded is not None else 'missing')
+    seed.check_ownership(report, data, runtime)
+    raw = seed.read_state(data)
+    same = raw is not None and seeded is not None and hashlib.sha256(raw).hexdigest() == seeded['state_sha256']
+    report.check('state.json unchanged by the upgrade', same, 'same bytes' if same else 'changed or unreadable')
+    token = seed.default_token(raw) if raw is not None else None
+    report.check('default token in state.json', token is not None, 'readable' if raw is not None else 'unreadable')
+    if token is not None:
+        seed.check_connections(report, environ['ADDON_HOST'], mcp_port, token, wait=wait, sleep=sleep)
+    names, index = seed.layout(data)
+    for name in (seed.INDEX, seed.PROFILES):
+        before = seeded['names'][name] if seeded is not None else None
+        # a present index must be a regular file read both times (never followed through a link) with the same bytes
+        kept = before == names[name] and (name != seed.INDEX or seeded['index_sha256'] == index != 'unreadable')
+        report.check(f'{name} as before the upgrade', kept,
+                     ('present' if names[name] else 'absent') + (', same bytes' if kept and names[name]
+                                                                 and name == seed.INDEX else '')
+                     + (', unreadable' if name == seed.INDEX and index == 'unreadable' else ''))
+    report.check('no restore marker', not names[seed.MARKER], 'present' if names[seed.MARKER] else 'absent')
+    report.write(environ['REPORT_DIR'], 'verify')
+    return 0 if report.passed else 1
+
+
+if __name__ == '__main__':
+    sys.exit(main())

@@ -2909,21 +2909,21 @@
     "woow_mcp_odoo": {
       "id": "woow_mcp_odoo",
       "name": "Woow Odoo MCP Server",
-      "version": "0.4.14",
+      "version": "0.5.1",
       "repository": "WOOWTECH/Woow_ha_mcp_addons",
-      "source_sha": "53ffe61d5134b4ba0079fa813ff67e14029594fb",
+      "source_sha": "5f7ee366153791f09e3a8190f709ed8d11d2a07e",
       "source_path": "addons/odoo",
       "config_file": "config.yaml",
-      "config_sha256": "sha256:f147f2f866b6f8031392e0354a1b1a4bdda0e69eee9b3ece09b681c9300c956d",
-      "archive_sha256": "sha256:49dfb6e12eae206891ff4efde619bf3d7f1f20c574c8da849360b57019fb1890",
-      "context_fingerprint": "sha256:67cc1544208eba93475ce96a03c743af42d222c152db2f0ba94af32ddce081a0",
-      "material_fingerprint": "sha256:36e70b488458c6d1eda60490591becf34864329d1deec92b3aa8a9f7b6848621",
+      "config_sha256": "sha256:ae237c1ddaa9ebc7b408797ce103d6da09eec89030415c3b17e9f1688d04d7d9",
+      "archive_sha256": "sha256:584d983e7eaf89d45bc122607d4017afb77475cb7c635ebb7ed25f7e49f987e5",
+      "context_fingerprint": "sha256:b2fed47fe221e4cc332af40ffe80ddb1587f721d2d04c3b931e810c241197f1f",
+      "material_fingerprint": "sha256:d2ba7cc4242ca0a361b728dae606d45f51328552c21a213a0a9aefc7028c0daa",
       "architectures": [
         "amd64"
       ],
       "config": {
         "name": "Woow Odoo MCP Server",
-        "version": "0.4.14",
+        "version": "0.5.1",
         "slug": "woow_mcp_odoo",
         "description": "HA admin-role management; full tool surface; every tool and write on by default (each can be turned off in the panel).",
         "url": "https://github.com/WOOWTECH/Woow_ha_mcp_addons",
@@ -2965,15 +2965,15 @@
       "source_build_supported": false,
       "images": {
         "amd64": {
-          "reference": "ghcr.io/woowtech/amd64-mcp-odoo:0.4.14",
-          "index_digest": "sha256:5a672d7b654d554aeabd70d559a09f740a79d27152fb64cda22207f230c3b588",
-          "digest": "sha256:5a672d7b654d554aeabd70d559a09f740a79d27152fb64cda22207f230c3b588",
-          "source_revision": "24de6ec1cff584c3d9dd32406bc00ca3090f5fea"
+          "reference": "ghcr.io/woowtech/amd64-mcp-odoo:0.5.1",
+          "index_digest": "sha256:9f05fbcb4eb95376f897bcf2734ea66a30634ef5c3c85c80ba9e9d8db2c8ec2b",
+          "digest": "sha256:9f05fbcb4eb95376f897bcf2734ea66a30634ef5c3c85c80ba9e9d8db2c8ec2b",
+          "source_revision": "403e4c8186e5e5cf798a49b3c2589e4659543a7d"
         }
       },
       "delivery": "published-image",
       "validation": "manifest+architecture-images+configured-CI",
-      "publisher_run_id": "44289391560",
+      "publisher_run_id": "45358247693",
       "channel": "stable",
       "store_path": "woow_mcp_odoo"
     },
@@ -3333,5 +3333,5 @@
       "store_path": "woow_mcp_headscale"
     }
   },
-  "catalog_id": "sha256:d97d807aa769c684ed09fb5894639a6875f1830cdbe2659186ac0a3bda790bc2"
+  "catalog_id": "sha256:444a4c5d68f03f0ea699e7315ee5a68aa1b285a39dd3cae8c033c0d513976d92"
 }

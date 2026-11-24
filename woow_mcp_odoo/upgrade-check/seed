@@ -1,0 +1,203 @@
+#!/usr/bin/env python3
+"""Store upgrade comparison hook: seed (multi-profile HM-16; plan 12.3 HM-16, 11.3; FM-102, FM-135; contract 9 #72).
+
+HM-16 drafted it in packaging/hooks/; the Odoo 0.5.0 release PR (HM-19a) moved it and its verify here, to
+addons/odoo/upgrade-check/ (a file under addons/ is the add-on's runtime content for the Store, so only a release PR
+may add it). The Store's upgrade test (Woow_HA_App_Store README, section 升版比對, category 2) runs seed once the
+comparison target, the product's latest released image, has started on the test's empty /data under the Store's mock
+Supervisor, and verify once the new version has started on the same /data. Both run in the Store's python:3.12-alpine
+container: the python3 standard library only, the add-on reached at $ADDON_HOST.
+
+Read-only, and the same for every version: seed and verify never write the add-on's data (the Store lets a seed write
+some; these need not), and nothing they assert depends on a version (no serverInfo, no tool list, no ADDON_VERSION),
+so every later upgrade PR of a product keeps them as they are (review C4-SF-14). What seed checks on the old version:
+
+- /data/mcp is the runtime user's (10001:10001, 0700) and so is state.json (0600), as every version keeps them;
+- the default profile's token, read from state.json and never printed or stored, opens an MCP session on both
+  connection methods (Bearer on /mcp, and its secret URL /private_<token>/mcp), each ended at once; a random token is
+  refused (Bearer 401, secret URL 404);
+- which multi-profile names exist (the index profiles.json, the profiles directory, the restore marker).
+
+It leaves verify, in $HOOK_STATE_DIR, the SHA-256 of state.json and of the index (when there is one) and which of those
+names exist: no token, no state. Report: $REPORT_DIR/seed.json, {"checks": [{"name", "result", "detail"}]} with fixed
+details (HTTP statuses, never a value); exit 0 only when every check passed.
+
+Unconfirmed until the first release PR runs it in the Store's CI (UC-19): that the hook reads the root-only 0600
+state.json and reaches 8081 of the add-on from the Store's container.
+"""
+import hashlib
+import json
+import os
+from pathlib import Path
+import re
+import secrets
+import stat
+import sys
+import time
+import urllib.error
+import urllib.request
+
+RUNTIME = (10001, 10001)  # the add-on's runtime user (packaging/entrypoint.py)
+MCP_PORT = 8081
+STATE_LIMIT = 65536  # as the add-on's own store reads it
+INDEX_LIMIT = 65536  # mcp_admin_core.profiles.MAX_INDEX_BYTES
+TOKEN = re.compile(r'[A-Za-z0-9_-]{43}')
+INDEX, PROFILES, MARKER = 'profiles.json', 'profiles', '.restore-detected'  # mcp_admin_core.profiles' layout names
+HOOK_STATE = 'seed-state.json'
+# Straight to the add-on: no proxy from the hook container's environment.
+OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+CONNECT_SECONDS = 60  # 8081 starts with the ingress listener the Store's startup probe waits for; a little slack
+INITIALIZE = {'jsonrpc': '2.0', 'id': 1, 'method': 'initialize', 'params': {
+    'protocolVersion': '2025-03-26', 'capabilities': {}, 'clientInfo': {'name': 'woow-upgrade-check', 'version': '1'}}}
+
+
+class Report:
+    """The hook's checks, written to $REPORT_DIR/<hook>.json in the Store's format."""
+
+    def __init__(self):
+        self.checks = []
+
+    def check(self, name, passed, detail):
+        self.checks.append({'name': name, 'result': 'pass' if passed else 'fail', 'detail': detail})
+        return passed
+
+    @property
+    def passed(self):
+        return all(item['result'] == 'pass' for item in self.checks)
+
+    def write(self, directory, hook):
+        path = Path(directory) / (hook + '.json')
+        path.write_text(json.dumps({'checks': self.checks}, indent=2, sort_keys=True) + '\n')
+
+
+def read_plain(path, limit):
+    """A regular file's bytes, read without following a link (the hooks run as root) and within limit; None when it
+    is not one, or unreadable, or larger."""
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        with os.fdopen(fd, 'rb') as stream:
+            if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
+                return None
+            raw = stream.read(limit + 1)
+    except OSError:
+        return None
+    return raw if len(raw) <= limit else None
+
+
+def read_state(data):
+    """state.json's bytes, read without following a link and within the store's own limit; None when unreadable."""
+    return read_plain(Path(data) / 'state.json', STATE_LIMIT)
+
+
+def default_token(raw):
+    """The default profile's MCP token in state.json's bytes, or None (revoked, malformed, unreadable)."""
+    try:
+        value = json.loads(raw)
+    except (TypeError, ValueError):
+        return None
+    token = value.get('token') if isinstance(value, dict) else None
+    return token if isinstance(token, str) and TOKEN.fullmatch(token) else None
+
+
+def layout(data):
+    """Which multi-profile names exist in /data/mcp, and the index's SHA-256 (None when there is none; 'unreadable'
+    when it is no regular file, a link included, or cannot be read: never what a link points to, review SF-8)."""
+    names = {}
+    for name in (INDEX, PROFILES, MARKER):
+        try:
+            os.lstat(Path(data) / name)
+            names[name] = True
+        except FileNotFoundError:
+            names[name] = False
+    index = None
+    if names[INDEX]:
+        raw = read_plain(Path(data) / INDEX, INDEX_LIMIT)
+        index = 'unreadable' if raw is None else hashlib.sha256(raw).hexdigest()
+    return names, index
+
+
+def check_ownership(report, data, runtime=RUNTIME):
+    """/data/mcp 0700 and state.json 0600, both the runtime user's."""
+    for path, mode, name in ((Path(data), 0o700, '/data/mcp'), (Path(data) / 'state.json', 0o600, 'state.json')):
+        try:
+            info = os.lstat(path)
+        except OSError:
+            report.check(f'{name} owner and mode', False, 'missing')
+            continue
+        kind = stat.S_ISDIR(info.st_mode) if mode == 0o700 else stat.S_ISREG(info.st_mode)
+        report.check(f'{name} owner and mode', kind and (info.st_uid, info.st_gid) == runtime
+                     and stat.S_IMODE(info.st_mode) == mode,
+                     f'{"directory" if mode == 0o700 else "file"} {stat.S_IMODE(info.st_mode):o} '
+                     f'{"of the runtime user" if (info.st_uid, info.st_gid) == runtime else "of another user"}')
+
+
+def request(url, method, body=None, headers=None, timeout=30):
+    """(status, response headers); status 0 when nothing answered. The body is read and dropped."""
+    data = None if body is None else json.dumps(body).encode()
+    try:
+        response = OPENER.open(urllib.request.Request(url, data=data, headers=headers or {}, method=method),
+                               timeout=timeout)
+    except urllib.error.HTTPError as error:
+        with error:
+            error.read(4096)
+        return error.code, error.headers
+    except (urllib.error.URLError, OSError):
+        return 0, None
+    with response:
+        response.read(1024 * 1024)
+        return response.status, response.headers
+
+
+def connects(host, port, token, secret, wait=CONNECT_SECONDS, sleep=time.sleep):
+    """Whether *token* opens a session on one connection method (and the session is ended): (initialize status, DELETE
+    status). Waits for the listener while nothing answers."""
+    url = f'http://{host}:{port}/private_{token}/mcp' if secret else f'http://{host}:{port}/mcp'
+    auth = {} if secret else {'Authorization': 'Bearer ' + token}
+    headers = {'Content-Type': 'application/json', 'Accept': 'application/json, text/event-stream', **auth}
+    deadline = time.monotonic() + wait
+    while True:
+        status, answer = request(url, 'POST', INITIALIZE, headers)
+        if status or time.monotonic() >= deadline:
+            break
+        sleep(1)
+    session = answer.get('Mcp-Session-Id') if status == 200 and answer is not None else None
+    if session is None:
+        return status, None
+    ended, _ = request(url, 'DELETE', None, {**auth, 'Mcp-Session-Id': session,
+                                              'MCP-Protocol-Version': INITIALIZE['params']['protocolVersion']})
+    return status, ended
+
+
+def check_connections(report, host, port, token, **options):
+    """The token on both connection methods, then a random token on both."""
+    for secret, method in ((False, 'Bearer'), (True, 'secret URL')):
+        status, ended = connects(host, port, token, secret, **options)
+        options['wait'] = 0  # the listener answered (or never will)
+        report.check(f'default token over {method}', status == 200 and ended in (200, 204),
+                     f'initialize {status}, DELETE {ended}')
+    unknown = secrets.token_urlsafe(32)
+    for secret, method, refusal in ((False, 'Bearer', 401), (True, 'secret URL', 404)):
+        status, _ = connects(host, port, unknown, secret, wait=0)
+        report.check(f'random token over {method} refused', status == refusal, f'initialize {status}')
+
+
+def main(environ=os.environ, *, mcp_port=MCP_PORT, runtime=RUNTIME, wait=CONNECT_SECONDS, sleep=time.sleep):
+    report = Report()
+    data = Path(environ['DATA_DIR_DATA']) / 'mcp'
+    check_ownership(report, data, runtime)
+    raw = read_state(data)
+    token = default_token(raw) if raw is not None else None
+    report.check('default token in state.json', token is not None, 'readable' if raw is not None else 'unreadable')
+    if token is not None:
+        check_connections(report, environ['ADDON_HOST'], mcp_port, token, wait=wait, sleep=sleep)
+    names, index = layout(data)
+    report.check('no restore marker', not names[MARKER], 'present' if names[MARKER] else 'absent')
+    if raw is not None:
+        seeded = {'state_sha256': hashlib.sha256(raw).hexdigest(), 'index_sha256': index, 'names': names}
+        (Path(environ['HOOK_STATE_DIR']) / HOOK_STATE).write_text(json.dumps(seeded, sort_keys=True) + '\n')
+    report.write(environ['REPORT_DIR'], 'seed')
+    return 0 if report.passed else 1
+
+
+if __name__ == '__main__':
+    sys.exit(main())

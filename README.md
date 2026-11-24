@@ -56,7 +56,7 @@ ha store add https://github.com/WOOWTECH/Woow_HA_App_Store
 | Slug | 名稱 | Ver | 安裝 | 用途 |
 |---|---|---|---|---|
 | `woow_mcp_n8n` | Woow n8n MCP Server | 0.4.14 | 預建映像（amd64） | n8n 的 MCP server |
-| `woow_mcp_odoo` | Woow Odoo MCP Server | 0.4.14 | 預建映像（amd64） | Odoo 的 MCP server |
+| `woow_mcp_odoo` | Woow Odoo MCP Server | 0.5.1 | 預建映像（amd64） | Odoo 的 MCP server |
 | `woow_mcp_hermes` | Woow Hermes MCP Server | 0.4.14 | 預建映像（amd64） | Hermes Agent 的 MCP server |
 | `woow_mcp_emqx` | Woow EMQX MCP Server | 0.4.14 | 預建映像（amd64） | EMQX 的 MCP server |
 | `woow_mcp_litellm` | Woow LiteLLM MCP Server | 0.4.14 | 預建映像（amd64） | LiteLLM（本 store 沒有 LiteLLM add-on，需自備） 的 MCP server |
