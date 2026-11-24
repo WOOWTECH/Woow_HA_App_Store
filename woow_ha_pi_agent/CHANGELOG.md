@@ -1,3 +1,9 @@
+## 0.15.24
+
+- Stopping or restarting the add-on no longer ends with Supervisor killing it (`exited with non-zero exit code 137`, add-on state `error`). This happened when the stop arrived while the Paseo plugin supervisor was still starting: the Paseo launcher waited up to 30 s for it and never exited, and s6-overlay waits for that service without a limit, so Supervisor sent SIGKILL after its 10 s. Both node launchers in front of Pi Web now forward the signal, wait for their child, give their own cleanup a bounded time and then exit: the Paseo launcher within 5 s, the Pi Web/Omnigent launcher within 4 s (Pi Web is killed if it has not stopped after 3.5 s, and the Omnigent boot worker's process group after 1.5 s). On the N2840 test box a stop during start-up now takes about 7.4 s instead of 10.4 s plus SIGKILL, and an idle stop about 3.5 s.
+- The Paseo and Omnigent settings sockets are still removed and the Omnigent boot worker still stops. A Paseo supervisor that is still activating when the 5 s run out is left to s6-overlay's final SIGTERM/SIGKILL; Paseo picks up again on the next start. Supervisor's `timeout` and the s6-overlay grace times are unchanged.
+- Keep Omnigent plugin 0.3.34, Paseo 0.1.20, shared runtime 0.1.6, Pi Web 0.12.0, add-on options, ports, architectures, user sessions and provider credentials. No migration is needed.
+
 ## 0.15.23
 
 - Preserve native session history, generated config and undelivered posts during automatic Omnigent maintenance. Apply the exact reviewed source patch to the pinned SDK at image build time; unknown source bytes fail the build. Explicit session deletion keeps its existing behavior. This change does not recover previously removed files.

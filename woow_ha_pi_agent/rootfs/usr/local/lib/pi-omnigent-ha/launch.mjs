@@ -4,16 +4,24 @@ import { spawn } from 'node:child_process';
 import { seed, loadPlugin, BUNDLE } from './lifecycle.mjs';
 import { createServer } from './server.mjs';
 import { startBootWorker } from './worker.mjs';
+import { superviseChild } from '../pi-launch/child-shutdown.mjs';
 
 const agentDir = process.env.PI_CODING_AGENT_DIR;
 const socket = path.join(agentDir, 'omnigent-ha.sock');
 // Codes only: an error message can carry paths or server responses.
 const logCode = error => [error?.code, error?.name].find(value => typeof value === 'string' && /^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(value)) || 'unknown';
 let plugin, worker, child, stopWatching, shuttingDown = false, activeRoot = null;
-function stopWorker() {
-  if (!worker) return;
-  try { process.kill(-worker.pid, 'SIGTERM'); } catch {}
-  worker = null;
+// SIGTERM the worker's process group; on shutdown, wait for it (bounded) and
+// SIGKILL the group if it is still there, so no worker outlives the add-on stop.
+function stopWorker({ waitMs = 0 } = {}) {
+  if (!worker) return Promise.resolve();
+  const current = worker; worker = null;
+  try { process.kill(-current.pid, 'SIGTERM'); } catch { return Promise.resolve(); }
+  if (!waitMs || current.exitCode !== null || current.signalCode !== null) return Promise.resolve();
+  return new Promise(resolve => {
+    const timer = setTimeout(() => { try { process.kill(-current.pid, 'SIGKILL'); } catch {} resolve(); }, waitMs);
+    current.once('exit', () => { clearTimeout(timer); resolve(); });
+  });
 }
 async function activate() {
   const next = await loadPlugin();
@@ -48,13 +56,16 @@ try {
 } catch (error) { console.error(`Omnigent settings socket unavailable (${logCode(error)}); Pi Web remains available.`); }
 // Use the pinned image runtime; never install/rebuild the plugin's Pi Web 0.10 overlay.
 child = spawn('/usr/local/bin/pi-web', process.argv.slice(2), { stdio: 'inherit', env: process.env });
-async function close() {
-  shuttingDown = true;
-  stopWorker();
-  await stopWatching?.();
-  server.close();
-  server.closeAllConnections();
-}
-for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) process.on(signal, () => { child.kill(signal); void close(); });
-child.on('error', async () => { console.error('Pi Web failed to start.'); await close(); process.exitCode = 1; });
-child.on('exit', async (code, signal) => { await close(); process.exitCode = code ?? (signal ? 1 : 0); });
+child.once('error', () => console.error('Pi Web failed to start.'));
+// Stop budget (issue 212): inside the Paseo launcher's 5 s, so Pi Web gets
+// 3.5 s to stop Next.js before it is killed, and this process always exits.
+superviseChild(child, {
+  name: 'Pi Web',
+  killAfterMs: 3500, cleanupTimeoutMs: 2000, deadlineMs: 4000,
+  cleanup: async () => {
+    shuttingDown = true;
+    server.close();
+    server.closeAllConnections();
+    await Promise.all([stopWorker({ waitMs: 1500 }), stopWatching?.()]);
+  },
+});
