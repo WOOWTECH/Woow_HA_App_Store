@@ -272,19 +272,42 @@ def archive_current(repo, previous):
     sha=previous.get('source_sha','')
     return previous.get('repository')==repo and bool(SHA.fullmatch(sha)) and previous.get('archive_sha256')==digest(source_archive(repo,sha))
 
+def own_release_commit(gh, repo, provider, comp, releases):
+    """Commit of the add-on's own latest stable Release (#232): its latest version among stable_versions by version order
+    (latest_release, as comparison_target; not by publication date), tag by release_tag, annotated tags dereferenced.
+    Deferred when the add-on has no stable Release of its own: a sibling's Release on the same commit does not count."""
+    latest=latest_release(stable_versions(provider,comp,releases))
+    if latest is None:raise Deferred(f'No stable Release of its own ({release_tag(provider,comp,"<version>")})')
+    tag=release_tag(provider,comp,latest);sha=tagged_commit(gh,repo,tag)
+    if sha is None:raise Blocked('Release '+tag+' has no tag')
+    return sha
+
 def publish(gh, registry, repo, apply=False, only=None):
+    """Write the source's outbox notification for each enabled component, at its shipping commit: under ref_policy
+    release, a stable add-on's own latest stable Release tag (own_release_commit, #232), so add-ons of one source can
+    ship from different commits and one without a Release of its own keeps its previous entry; a prerelease-channel
+    add-on the commit of releases/latest; otherwise the default branch HEAD."""
     provider = registry['providers'][repo]
-    _,sha = gh.head(repo)
-    if provider.get('ref_policy')=='release':
-        release = gh.api(repo,'releases/latest')
-        if release.get('draft') or release.get('prerelease'): raise Blocked('No stable release')
-        sha = gh.api(repo,'commits/'+urllib.parse.quote(release['tag_name'],safe=''))['sha']
+    _,head = gh.head(repo)
+    cache={}
+    def releases():
+        if 'all' not in cache:cache['all']=all_releases(gh,repo)
+        return cache['all']
+    def latest_commit():
+        if 'latest' not in cache:
+            release = gh.api(repo,'releases/latest')
+            if release.get('draft') or release.get('prerelease'): raise Blocked('No stable release')
+            cache['latest'] = gh.api(repo,'commits/'+urllib.parse.quote(release['tag_name'],safe=''))['sha']
+        return cache['latest']
     old = gh.outbox(repo); new = json.loads(json.dumps(old)); report=[]
     for comp in provider['components']:
         cid=comp['id']
         if only and cid not in only: continue
         if not comp.get('enabled',True): report.append({'id':cid,'state':'excluded','reason':comp['reason']});continue
         try:
+            if provider.get('ref_policy')!='release':sha=head
+            elif publishes_releases(comp):sha=own_release_commit(gh,repo,provider,comp,releases())
+            else:sha=latest_commit()
             comp,_=locate(gh,repo,comp,sha)
             fp=gh.fingerprint(repo,sha,comp['source_path'])
             previous=old['components'].get(cid)
@@ -430,14 +453,19 @@ def config_version(raw, as_written=False):
         if written!=text:raise ValueError(f'version {written} is read by YAML, and by Home Assistant Supervisor, as {text}; quote it: version: "{written}"')
     return text
 
+def latest_release(released):
+    """The latest of `released` (an add-on's stable Release versions) by version order, or None. Only a version that reads
+    whole (_read) counts: a stray tag (`nightly`, `9.0-test`) cannot be ordered against the Releases, so it is ignored.
+    Whole versions are always ordered."""
+    return max((v for v in released if _read(v)[0]==Form.WHOLE),key=functools.cmp_to_key(version_cmp),default=None)
+
 def comparison_target(released, version):
-    """The latest of `released` (an add-on's stable Release versions), or None; `version` must be newer (require_newer).
-    Releases are cut only from the default branch and each becomes the latest (release(), make_latest), which publish()
-    ships, so a lower version would be a downgrade. The PR check and the Release notes both read upgrade-notes.yaml in
-    (comparison target, version], so both take the target from here. Only a version that reads whole (_read) can be the
-    target: a stray tag (`nightly`, `9.0-test`) cannot be ordered against the Releases, so it is ignored and must not
-    block a Release. Whole versions are always ordered."""
-    target=max((v for v in released if _read(v)[0]==Form.WHOLE),key=functools.cmp_to_key(version_cmp),default=None)
+    """The latest of `released` (latest_release), or None; `version` must be newer (require_newer).
+    Releases are cut only from the default branch, and publish() ships each add-on's latest stable Release by this same
+    order (#232), so a lower version would be a downgrade. The PR check and the Release notes both read upgrade-notes.yaml
+    in (comparison target, version], so both take the target from here. A stray tag is ignored and must not block a
+    Release."""
+    target=latest_release(released)
     if target is not None:require_newer(version,target)
     return target
 

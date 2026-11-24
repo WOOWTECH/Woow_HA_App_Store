@@ -147,7 +147,7 @@ Hermes Paseo 的最新[安裝與首次 project 建立教學](https://github.com/
   - PR 沒有修改任何 addon 的版本：十幾秒內通過（仍要取出兩個 repo、安裝兩個釘選的小套件 PyYAML 與 packaging（約 5 秒），並讀 PR base 上的 `config.yaml`）。PR 刪除或搬移了 registry 列出的 `config.yaml`（PR base 上有、PR 裡沒有）時檢查失敗：放回原處，或照下面「搬移 `config.yaml`」的步驟做。PR 和 PR base 都沒有 registry 列出的路徑時也失敗（registry 路徑寫錯是工具錯誤，不放行）。只比對會發 Release 的 addon（和 `addon_sync.release` 同一個條件：沒停用、`channel` 是 stable），刪除已停用 addon 的 `config.yaml` 不會讓檢查失敗。
   - **搬移 `config.yaml`**（換目錄或檔名；`config.yaml` 放在 addon 目錄的最上層）：
     1. 先合併 Store PR：把該 addon 的 registry 設定改成新位置（`source_path`、`config_file`），並加上 `previous_config: <舊的 config.yaml 在 repo 裡的路徑>`。
-    2. 之後來源 repo 的 PR 不論先後都能合併：任何一邊（PR、PR base、比對對象的 Release、`addon_sync.release` 發 Release 的 commit、發布用的 `releases/latest`、已送到 Store 的通知）在新路徑找不到 `config.yaml` 時，都改讀 `previous_config` 和它旁邊的 `upgrade-notes.yaml`（`config.yaml` 是空檔也一樣）。Store 裡的 config 一律用 registry 的新檔名，不會留下舊檔名的檔案。只搬移沒升版的 PR 算「版本沒變」。
+    2. 之後來源 repo 的 PR 不論先後都能合併：任何一邊（PR、PR base、比對對象的 Release、`addon_sync.release` 發 Release 的 commit、發布用的各 addon 自己最新正式 Release（prerelease 頻道是 `releases/latest`）、已送到 Store 的通知）在新路徑找不到 `config.yaml` 時，都改讀 `previous_config` 和它旁邊的 `upgrade-notes.yaml`（`config.yaml` 是空檔也一樣）。Store 裡的 config 一律用 registry 的新檔名，不會留下舊檔名的檔案。只搬移沒升版的 PR 算「版本沒變」。
     3. 最新的正式 Release 已經是新路徑、而且已發布到 Store 後（`ref_policy: main` 是搬移 PR 合併、發布之後），再開 Store PR 拿掉 `previous_config`。在那之前開的、還是舊路徑的 PR，要先 rebase 到搬移之後。
     - 搬移 PR 比 Store PR 先開時，它的檢查會失敗並指向這裡；Store PR 合併後重跑即可。
   - **新增 addon**：先在來源 repo 合併加入新 addon `config.yaml` 的 PR（registry 還沒有這個 addon，檢查不會比對它），再開 Store PR 在 registry 加上這個 component。順序反過來時，registry 列出的路徑在 PR 和 PR base 都找不到，該 repo 每個 PR 的檢查都會失敗，`addon_sync.release` 和發布也會擋下這個 addon。
@@ -207,7 +207,7 @@ Hermes Paseo 的最新[安裝與首次 project 建立教學](https://github.com/
 - 每個 App 目錄都從**對應的 WOOWTECH 個別 repo 單向同步**，不在本 repo 直接修改。唯一例外是側欄標題政策 `.github/scripts/sidebar_titles.py`。來源、路徑與政策的對照表在 [`.addon-sync/registry.json`](.addon-sync/registry.json)。
 - 流程：
   0. 來源 repo 的 CI 通過後，由共用的 [`woow-addon-release.yml`](.github/workflows/woow-addon-release.yml) 替新的 addon 版本發正式 Release（單一 addon 的 repo tag 為 `v<版本>`，多個 addon 的 repo 為 `<slug>-v<版本>`）。[`Woow_ha_mcp_addons`](https://github.com/WOOWTECH/Woow_ha_mcp_addons) 的映像在建置 VM 建置，所以它的 CI 另外檢查映像已公開、而且要發的版本有建置 VM 的發佈紀錄。
-  1. 個別 repo 的 `woow-addon-sync.yml` 確認必要 CI 與各架構映像都通過，再把固定 commit、雜湊與映像 digest 寫進該 repo 的 `woow-addon-sync` 分支。
+  1. 個別 repo 的 `woow-addon-sync.yml` 確認必要 CI 與各架構映像都通過，再把固定 commit、雜湊與映像 digest 寫進該 repo 的 `woow-addon-sync` 分支。`ref_policy: release` 的來源，每個 stable addon 從**它自己**最新的正式 Release（照版本排序，tag 是 `v<版本>` 或 `<slug>-v<版本>`）的 commit 發布，同一來源的 addon 可以各自在不同 commit；還沒有自己的 Release 的 addon 不發新通知，Store 保留現有版本（#232）。別的 addon 的 Release 不會帶著它的新版本出貨。prerelease 頻道照舊跟著來源的 `releases/latest`。
   2. 本 repo 的 `sync-upstreams.yml` 依 registry 重新驗證：正式 Release、CI、預設分支、各架構映像、防降版、防亂序。
   3. 全部通過後才更新 App 目錄與 [`.addon-sync/catalog.json`](.addon-sync/catalog.json)。
   

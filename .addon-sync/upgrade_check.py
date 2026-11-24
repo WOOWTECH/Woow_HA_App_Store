@@ -39,12 +39,12 @@ values, required made optional, added optional keys (not maps), added keys with 
 upgrade-notes.yaml format, version order and Release notes (#119): addon_sync, the comment above REBUILD.
 """
 from __future__ import annotations
-import argparse, contextlib, datetime, functools, json, os, pathlib, re, secrets, sys
+import argparse, contextlib, datetime, json, os, pathlib, re, secrets, sys
 import yaml
 # The Store copy of the shipping Core version (#217) and its YYYY.M.P parser; standard library only (#225).
 from shipping_core import SHIPPING_CORE, calver, shipping_core_version
 # addon_sync owns the Release rules (version order, upgrade-notes.yaml parsing, Release notes); it does not import this module.
-from addon_sync import Blocked, Form, _read, comparison_target, config_version, declaration_text, declarations, find_component, find_provider, locations, markdown_cell, publishes_releases, release_notes, release_tag, require_newer, source_file, stable_versions, version_cmp, workflow_command
+from addon_sync import Blocked, comparison_target, latest_release, config_version, declaration_text, declarations, find_component, find_provider, locations, markdown_cell, publishes_releases, release_notes, release_tag, require_newer, source_file, stable_versions, version_cmp, workflow_command
 
 RANGED={'int','float','str'}
 
@@ -361,8 +361,7 @@ def release_change(provider, comp, releases, version, sha):
     if provider.get('ref_policy')!='release':
         raise ValueError(f'{comp["id"]}: sha mode compares with the latest stable Release before Releases are cut, but the Store registry gives ref_policy '
             f'{provider.get("ref_policy")!r}, which ships the default branch; switch the provider to ref_policy release first')
-    whole=[v for v in stable_versions(provider,comp,releases) if _read(v)[0]==Form.WHOLE]
-    latest=max(whole,key=functools.cmp_to_key(version_cmp),default=None)
+    latest=latest_release(stable_versions(provider,comp,releases))
     return 'unchanged' if latest is not None and version==latest else 'changed'
 
 def catalog_entry(catalog, repo, component):

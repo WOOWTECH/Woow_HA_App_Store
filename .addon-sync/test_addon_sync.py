@@ -344,6 +344,9 @@ class Tests(unittest.TestCase):
             def api(self,repo,path):
                 if path=='releases/latest':return {'tag_name':'v1.0.0'}
                 if path=='commits/v1.0.0':return {'sha':'a'*40}
+                # A single-add-on source: its own Release v1.0.0 (#232).
+                if path=='releases?per_page=100':return [{'tag_name':'v1.0.0'}]
+                if path=='git/ref/tags/v1.0.0':return {'object':{'type':'commit','sha':'a'*40}}
                 if '/runs' in path:return {'workflow_runs':[r for r in runs if 'head_sha=' not in path or r['head_sha'] in path]}
                 raise AssertionError(path)
             def outbox(self,repo):return {'schema':1,'repository':repo,'components':{}}
@@ -764,5 +767,82 @@ class Tests(unittest.TestCase):
                 listed=branch_rules.UPGRADE_CHECK in rules['required_checks'];pending=rules.get('upgrade_comparison_pending')
                 if pending is None:self.assertTrue(listed,'lists neither the check nor upgrade_comparison_pending')
                 else:self.assertFalse(listed,'lists the check and upgrade_comparison_pending');self.assertRegex(pending,r'#\d+')
+
+
+REPO='WOOWTECH/multi'
+C1,C2,C3,HEAD='1'*40,'2'*40,'3'*40,'f'*40
+
+def multi_archive(versions):
+    """A source archive with an add-on directory per id in `versions` ({id: version})."""
+    return archive({f'repo/{i}/config.yaml':f'name: {i}\nslug: {i}\nversion: {v}\narch: [amd64]\nimage: ghcr.io/example/{i}\n'.encode() for i,v in versions.items()})
+
+class PerAddonRelease(unittest.TestCase):
+    """#232: under ref_policy release each stable add-on ships from its own latest Release tag, not from the source's
+    releases/latest commit; a prerelease-channel add-on still follows releases/latest."""
+    def setUp(self):
+        self.comps=[{'id':i,'source_path':i,'config_file':'config.yaml'} for i in ('a','b')]
+    def gh(self,tags,latest,outbox=None,published=None,annotated=()):
+        """tags {tag: commit}; `published` the Releases newest first (default: tags in reverse order); latest the tag of releases/latest."""
+        class GH:
+            def head(self,repo):return 'main',HEAD
+            def content(self,repo,path,ref):return b'slug: x\n'
+            def api(self,repo,path):
+                if path=='releases/latest':return {'tag_name':latest} if isinstance(latest,str) else latest
+                if path.startswith('releases?per_page=100'):return [{'tag_name':t} for t in (published or list(reversed(tags)))]
+                if path.startswith('git/ref/tags/'):
+                    tag=s.urllib.parse.unquote(path[len('git/ref/tags/'):])
+                    if tag not in tags:raise s.Blocked('GitHub '+repo+' HTTP 404')
+                    return {'object':{'type':'tag','sha':'t-'+tag} if tag in annotated else {'type':'commit','sha':tags[tag]}}
+                if path.startswith('git/tags/t-'):return {'object':{'type':'commit','sha':tags[path[len('git/tags/t-'):]]}}
+                if path.startswith('commits/'):return {'sha':tags[s.urllib.parse.unquote(path[len('commits/'):])]}
+                if '/runs' in path:return {'workflow_runs':[]}
+                raise AssertionError(path)
+            def outbox(self,repo):return json.loads(json.dumps(outbox or {'schema':1,'repository':repo,'components':{}}))
+            def fingerprint(self,repo,sha,*args,**kwargs):return 'fp-'+sha
+        return GH()
+    def publish(self,gh,archives,comps=None):
+        registry={'providers':{REPO:{'ref_policy':'release','components':comps or self.comps}}}
+        with patch.object(s,'source_archive',side_effect=lambda repo,sha:archives[sha]),patch.object(s,'image_ready',return_value={'digest':'sha256:'+'a'*64}):
+            return s.publish(gh,registry,REPO)
+    def shipped(self,outbox,cid):
+        e=outbox['components'].get(cid);return e and (e['version'],e['source_sha'])
+    def test_an_add_on_without_its_own_tag_keeps_its_previous_entry(self):
+        archives={C1:multi_archive({'a':'1.0.0','b':'1.0.0'}),C2:multi_archive({'a':'1.1.0','b':'1.1.0'})}
+        previous={'id':'a','version':'1.0.0','repository':REPO,'source_sha':C1,'context_fingerprint':'fp-'+C1,'archive_sha256':s.digest(archives[C1])}
+        gh=self.gh({'a-v1.0.0':C1,'b-v1.0.0':C1,'b-v1.1.0':C2},'b-v1.1.0',{'schema':1,'repository':REPO,'components':{'a':previous}})
+        report,outbox=self.publish(gh,archives)
+        self.assertEqual(report,[{'id':'a','state':'unchanged'},{'id':'b','state':'ready','version':'1.1.0'}])
+        self.assertEqual(outbox['components']['a'],previous);self.assertEqual(self.shipped(outbox,'b'),('1.1.0',C2))
+    def test_each_add_on_ships_from_its_own_tag_commit(self):
+        archives={C2:multi_archive({'a':'1.1.0','b':'1.0.0'}),C3:multi_archive({'a':'1.1.0','b':'1.1.0'})}
+        report,outbox=self.publish(self.gh({'a-v1.1.0':C2,'b-v1.1.0':C3},'b-v1.1.0'),archives)
+        self.assertEqual([r['state'] for r in report],['ready','ready'])
+        self.assertEqual((self.shipped(outbox,'a'),self.shipped(outbox,'b')),(('1.1.0',C2),('1.1.0',C3)))
+    def test_an_add_on_never_released_gets_no_entry(self):
+        archives={C2:multi_archive({'a':'1.0.0','b':'1.0.0'})}
+        report,outbox=self.publish(self.gh({'b-v1.0.0':C2},'b-v1.0.0'),archives)
+        self.assertEqual(report[0]['state'],'waiting');self.assertIn('a-v',report[0]['reason']);self.assertIn('own',report[0]['reason'])
+        self.assertNotIn('a',outbox['components']);self.assertEqual(self.shipped(outbox,'b'),('1.0.0',C2))
+    def test_the_latest_version_wins_not_releases_latest_or_publication_order(self):
+        # A's newest tag is not releases/latest (B's is), and an older A version was published after it.
+        archives={C1:multi_archive({'a':'1.2.0','b':'1.0.0'}),C2:multi_archive({'a':'1.1.5','b':'1.0.0'}),C3:multi_archive({'a':'1.1.5','b':'1.1.0'})}
+        tags={'a-v1.2.0':C1,'a-v1.1.5':C2,'b-v1.1.0':C3}
+        report,outbox=self.publish(self.gh(tags,'b-v1.1.0',published=['b-v1.1.0','a-v1.1.5','a-v1.2.0','a-vnightly']),archives)
+        self.assertEqual(self.shipped(outbox,'a'),('1.2.0',C1));self.assertEqual(self.shipped(outbox,'b'),('1.1.0',C3))
+    def test_a_single_add_on_source_ships_its_latest_v_tag(self):
+        comps=[{'id':'a','source_path':'a','config_file':'config.yaml'}]
+        archives={C1:multi_archive({'a':'1.0.0'}),C2:multi_archive({'a':'1.1.0'})}
+        report,outbox=self.publish(self.gh({'v1.0.0':C1,'v1.1.0':C2},'v1.1.0',annotated=('v1.1.0',)),archives,comps)
+        self.assertEqual(report,[{'id':'a','state':'ready','version':'1.1.0'}]);self.assertEqual(self.shipped(outbox,'a'),('1.1.0',C2))
+    def test_a_prerelease_channel_add_on_follows_releases_latest(self):
+        comps=self.comps+[{'id':'c','source_path':'c','config_file':'config.yaml','channel':'prerelease'}]
+        archives={C1:multi_archive({'a':'1.0.0','b':'1.0.0','c':'2.0.0b1'}),C3:multi_archive({'a':'1.0.0','b':'1.1.0','c':'2.0.0b2'})}
+        report,outbox=self.publish(self.gh({'a-v1.0.0':C1,'b-v1.1.0':C3},'b-v1.1.0'),archives,comps)
+        self.assertEqual([self.shipped(outbox,i) for i in 'abc'],[('1.0.0',C1),('1.1.0',C3),('2.0.0b2',C3)])
+    def test_a_prerelease_releases_latest_blocks_only_the_prerelease_channel(self):
+        comps=self.comps+[{'id':'c','source_path':'c','config_file':'config.yaml','channel':'prerelease'}]
+        archives={C1:multi_archive({'a':'1.0.0','b':'1.0.0','c':'2.0.0b1'})}
+        report,outbox=self.publish(self.gh({'a-v1.0.0':C1,'b-v1.0.0':C1},{'tag_name':'c-v2.0.0b1','prerelease':True}),archives,comps)
+        self.assertEqual([r['state'] for r in report],['ready','ready','blocked']);self.assertEqual(report[2]['reason'],'No stable release')
 
 if __name__=='__main__':unittest.main()
