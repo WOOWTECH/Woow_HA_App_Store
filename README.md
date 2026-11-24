@@ -138,6 +138,7 @@ Hermes Paseo 的最新[安裝與首次 project 建立教學](https://github.com/
   - `bypass_actors` 只有具 Administration 讀取權的 token 看得到。它放在 `branch-rules` environment 的 secret `BRANCH_RULES_TOKEN`（fine-grained PAT，resource owner `WOOWTECH`，選所有受管的來源 repo，權限 Administration: read-only），environment 只允許 `main`。沒設時 run 不會失敗，但會警告「沒檢查 bypass」。
   - 管線工作區的 issue monitor 也顯示最近一次的結果。
 - 新增受管來源時：先在來源 repo 開 PR 讓 CI 跑一次、記下 check 名稱，套用 ruleset（照 `Woow_ha_odoo` 的形式），再在 registry 填 `required_checks`。接上升版比對也一樣：呼叫端合併後，先在 ruleset 加上 `Upgrade comparison / compare`，再改 registry（拿掉 `upgrade_comparison_pending`、在 `required_checks` 加上這個名稱）；順序反過來，Store PR 的規則監測會失敗。
+- **每日 apk 釘版檢查**：[`apk-pin-check.yml`](.github/workflows/apk-pin-check.yml)（`.addon-sync/apk_pin_check.py`，管線工作區 #228）每天對 registry 裡出貨的 add-on（enabled、stable、沒有下架），在 Store 目錄的 Dockerfile 與它執行的 build script 收集 `apk add` 的套件，在 base image 裡（amd64、aarch64 各用自己的 runner）跑一次 `apk add --simulate`，連 base 的 `/etc/apk/world` 一起檢查。裝不到時 run 失敗，並在本 repo 為該 add-on 開一張 issue（之後更新同一張，通過後自動關閉）。可以手動觸發，只檢查一個 add-on。`--simulate` 不檢查檔案衝突。
 
 ### 升版比對與 `upgrade-notes.yaml`
 

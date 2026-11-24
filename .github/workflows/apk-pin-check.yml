@@ -1,0 +1,90 @@
+# Daily check that every shipped Alpine add-on can still install its apk packages (pipeline #228;
+# .addon-sync/apk_pin_check.py). Alpine's stable branches keep only the newest revision of a package,
+# so an exact pin (nginx=1.30.6-r0) in a Dockerfile, a build script or a base image's /etc/apk/world
+# stops installing once it is replaced, and an install from source or a rebuild fails.
+#
+# Scope is the Store registry (enabled, stable, shipped add-ons) and their Store directories. Each arch
+# runs on its own hardware: amd64 on ubuntu-24.04, aarch64 on the ubuntu-24.04-arm runner (no qemu).
+# An add-on that cannot install fails the run and gets one Store issue, updated while the problem stays
+# and closed when the check passes. A tool error (an image that cannot be pulled, an unreadable
+# registry) fails the run without an issue. `apk add --simulate` does not detect file conflicts.
+name: apk pin check
+'on':
+  schedule:
+  - cron: '23 2 * * *'
+  workflow_dispatch:
+    inputs:
+      addon:
+        description: Only this add-on id (empty for every shipped add-on)
+        required: false
+        default: ''
+permissions:
+  contents: read
+concurrency:
+  group: apk-pin-check
+  cancel-in-progress: false
+jobs:
+  check:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+        - arch: amd64
+          runner: ubuntu-24.04
+        - arch: aarch64
+          runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    steps:
+    - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      with:
+        persist-credentials: false
+    - name: Install dependencies
+      run: python3 -m pip install -r .addon-sync/requirements.txt
+    - name: Check apk packages (${{ matrix.arch }})
+      env:
+        ARCH: ${{ matrix.arch }}
+        ONLY: ${{ inputs.addon || '' }}
+      run: python3 .addon-sync/apk_pin_check.py check --arch "${ARCH}" --only "${ONLY}" --out "apk-pin-${ARCH}.json"
+    - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      with:
+        name: apk-pin-${{ matrix.arch }}
+        path: apk-pin-${{ matrix.arch }}.json
+        retention-days: 14
+  report:
+    needs: check
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+    steps:
+    - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      with:
+        persist-credentials: false
+    - name: Install dependencies
+      run: python3 -m pip install -r .addon-sync/requirements.txt
+    - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      with:
+        pattern: apk-pin-*
+        merge-multiple: true
+        path: results
+    # Issues are opened, updated or closed only when both arches were checked: a missing arch must not
+    # close an issue whose failure is on that arch.
+    - name: Summary and Store issues
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+        REPO: ${{ github.repository }}
+        CHECKED: ${{ needs.check.result }}
+      run: |
+        shopt -s nullglob
+        results=(results/apk-pin-*.json)
+        if [ "${#results[@]}" -eq 0 ]; then echo "::error title=apk pin check::no check results"; exit 1; fi
+        if [ "${CHECKED}" = success ]; then
+          python3 .addon-sync/apk_pin_check.py report "${results[@]}" --repo "${REPO}"
+        else
+          echo "::warning title=apk pin check::a check job did not finish, so Store issues were left as they are"
+          python3 .addon-sync/apk_pin_check.py report "${results[@]}"
+          exit 1
+        fi
