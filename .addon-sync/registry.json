@@ -184,45 +184,17 @@
       ]
     },
     "WOOWTECH/Woow_ha_ai_mcp": {
+      "upgrade_comparison": {
+        "scan_published_image": "#91, #216: mirror; ha_mcp's config.yaml names the images upstream prebuilds (ghcr.io/homeassistant-ai/ha-mcp-addon-*), which users install as they are (no image-mirror copy); category 4 scans that image at the comparison target's version and at the new one. The webhook proxy is built on the device (#146)."
+      },
       "default_branch": "master",
-      "required_workflows": [
-        ".github/workflows/ci.yml"
-      ],
+      "required_workflows": [],
       "observe_workflow_names": [
-        "Build Binaries and Attach to Release",
-        "Update Add-on Config Version",
-        "Home Assistant Add-on Publish (Dev)",
-        "Home Assistant Add-on Publish",
-        "Build Binary (Test Only)",
-        "CodeQL Code Quality",
-        "Dependabot auto-merge",
-        "Deploy to GitHub Pages",
-        "E2E Tests",
-        "HAOS E2E Tests (embedded)",
-        "HAOS E2E Tests (inaddon)",
-        "HAOS E2E Tests",
-        "Hotfix Release",
-        "🤖 Issue Triage",
-        "Notify Dev Channel on Merge",
-        "Send Codex PR Review",
-        "Admit Codex PR Review",
-        "Validate Hotfix Branch",
-        "PR Validation Pipeline",
-        "Publish Dev Channel",
-        "Release Publish",
-        "Sync Integration Mirror",
-        "Sync Tool Documentation",
-        "Codex Hello World Tests",
-        "Webhook Proxy Dev — Bump Version",
-        "Webhook Proxy Dev — Version Guard",
-        "Webhook Proxy — Promote Dev to Stable",
-        "Webhook Proxy — Reset Dev from Stable",
-        "Webhook Proxy — Stable Guard",
-        "CI"
+        "mirror-sync"
       ],
-      "ref_policy": "main",
+      "ref_policy": "release",
       "branch_rules": {
-        "exempt": "upstream fork: no branch rules; ci.yml must pass on the shipped commit (#103)"
+        "exempt": "mirror: mirror-sync pushes the default branch; upgrade comparison runs before each Release (#91); version ceilings in the overlay hold newer upstream versions (#216)"
       },
       "components": [
         {
