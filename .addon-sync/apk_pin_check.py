@@ -555,11 +555,14 @@ def sync_issues(gh, repo, rows, today=None, dry_run=False):
 def _check(a):
     try:
         registry=json.loads(pathlib.Path(a.registry).read_text(encoding='utf-8'))
-        rows=plan(registry,a.store,(a.arch,),set(a.only.split(',')) if a.only else None)
+        only=set(a.only.split(',')) if a.only else None
+        unknown=sorted((only or set())-{comp['id'] for _,comp in shipped(registry)})
+        rows=plan(registry,a.store,(a.arch,),only)
     except (ValueError,OSError,yaml.YAMLError) as e:
         print(workflow_command('error','apk pin check',f'cannot read the Store: {e}'));return 2
-    if a.only and not rows:
-        print(workflow_command('error','apk pin check',f'{a.only}: no shipped add-on with that id lists {a.arch}'));return 2
+    # An add-on whose config.yaml does not list this arch has no rows here: an empty result, not an error.
+    if unknown:
+        print(workflow_command('error','apk pin check',f'{", ".join(unknown)}: not a shipped add-on'));return 2
     rows=run_rows(rows,a.arch,a.mode)
     pathlib.Path(a.out).write_text(json.dumps(rows,ensure_ascii=False,indent=1),encoding='utf-8')
     for r in rows:print(f'{r["id"]} {r["arch"]}: {r["result"]} {r.get("reason","")}')

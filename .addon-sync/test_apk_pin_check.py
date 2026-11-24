@@ -238,6 +238,16 @@ class Check(Addon):
         self.assertEqual(report([dict(base,result=c.PASS),dict(base,result=c.UNCHECKED,reason='r'),dict(base,result=c.SKIPPED,reason='r')]),0)
         self.assertEqual(report([dict(base,result=c.FAIL,reason='r',stale=[],apk_output='E')]),1)
         self.assertEqual(report([dict(base,result=c.UNCHECKED,reason='cannot pull',error=True)]),1)
+    def test_only_an_add_on_without_this_arch_is_an_empty_result_and_an_unknown_id_an_error(self):
+        # The aarch64 job of a manual run for an amd64-only add-on succeeds with no rows; the report then has amd64's.
+        d=self.store();(d/'registry.json').write_text(json.dumps(REGISTRY))
+        def check(only,arch):
+            with unittest.mock.patch('sys.stdout'):
+                return c.main(['check','--registry',str(d/'registry.json'),'--store',str(d),'--arch',arch,'--only',only,'--out',str(d/f'{arch}.json')])
+        self.assertEqual(check('plain','aarch64'),0);self.assertEqual(json.loads((d/'aarch64.json').read_text()),[])
+        self.assertEqual(check('plain','amd64'),0)
+        with unittest.mock.patch('sys.stdout'):self.assertEqual(c.main(['report',str(d/'amd64.json'),str(d/'aarch64.json')]),0)
+        for arch in c.ARCHES:self.assertEqual(check('nope',arch),2);self.assertEqual(check('beta',arch),2)
     def test_a_bad_registry_is_a_tool_error(self):
         d=self.addon({'registry.json':'{"providers": []}'})
         with unittest.mock.patch('sys.stdout'):self.assertEqual(c.main(['check','--registry',str(d/'registry.json'),'--store',str(d),'--arch','amd64','--out',str(d/'o.json')]),2)
