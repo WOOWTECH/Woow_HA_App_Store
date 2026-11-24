@@ -167,7 +167,7 @@ name: Upgrade comparison
         # Never "" in sha mode: a compare job that ended before its last step gives [], so a caller never reads "" (to the Release workflow: every add-on) after a failure.
         value: ${{ jobs.compare.outputs.passed || (inputs.sha != '' && '[]' || '') }}
       held:
-        description: sha mode (#167) only, "" otherwise. JSON array of the ids of the add-ons held (暫緩, #217) because their Core requirement (config.yaml homeassistant:) is above the shipping Core version and nothing else failed; they are not in passed, get no Release and do not fail the run.
+        description: sha mode (#167) only, "" otherwise. JSON array of the ids of the add-ons held (暫緩) because their Core requirement (config.yaml homeassistant:) is above the shipping Core version and nothing else failed (#217), or because their version is above the source's version ceiling (<add-on dir>/version-ceiling.yaml, #216; not compared); they are not in passed, get no Release and do not fail the run.
         value: ${{ jobs.compare.outputs.held || (inputs.sha != '' && '[]' || '') }}
 permissions:
   contents: read
@@ -247,7 +247,7 @@ jobs:
           fail "${REPO} passes skip_vulnerability_scan, but skipping the vulnerability comparison is not approved for it: the Store registry entry needs upgrade_comparison.skip_vulnerability_scan with the reason. Remove the input or get the skip approved in the registry."
           exit 1
         fi
-        : > changed.jsonl; status=0
+        : > changed.jsonl; : > ceiling-held.txt; status=0
         echo "## Upgrade comparison" >> "$GITHUB_STEP_SUMMARY"
         if [ -n "${SHA}" ]; then
           # sha mode (#167): no PR base; each add-on's version at the commit against its latest stable Release.
@@ -291,6 +291,20 @@ jobs:
               || fail_output "${before}"
           fi
           if [ "${current}" != "${before}" ]; then
+            # #216: the version ceiling (版本上限) a Mirror source's overlay sets, <add-on dir>/version-ceiling.yaml. Above it the
+            # add-on is held (暫緩) in sha mode: neither compared, tested nor released (ceiling-held.txt; not in changed.jsonl);
+            # on a PR the check fails. Within it, or without the file, it goes on as before.
+            ceiling="$(dirname "${found}")/version-ceiling.yaml"
+            if [ -e "source/${ceiling}" ]; then
+              rc=0; out="$(python3 tooling/.addon-sync/upgrade_check.py ceiling --file "source/${ceiling}" --path "${ceiling}" --version "${current}" \
+                --name "${id}" ${SHA:+--held-ok})" || rc=$?
+              case "${rc}" in
+                0) echo "- ${id}: $(esc "${out}")" >> "$GITHUB_STEP_SUMMARY";;
+                4) printf '%s\n' "${out}"; printf '%s\n' "${id}" >> ceiling-held.txt
+                  echo "- ${id}: version $(esc "${current}") **held (暫緩)**: above its version ceiling (${ceiling}), not compared" >> "$GITHUB_STEP_SUMMARY"; continue;;
+                *) printf '%s\n' "${out}"; status=1; continue;;
+              esac
+            fi
             # on_base (#135): the PR base has its config, so it is not a new add-on (always false in sha mode: no PR base;
             # there, and on a PR too, the plan step also counts an add-on in the Store catalog as one users run).
             on_base=false; [ ! -s "${base}" ] || on_base=true
@@ -300,8 +314,9 @@ jobs:
             echo "- ${id}: version ${current} unchanged" >> "$GITHUB_STEP_SUMMARY"
           fi
         done < <(jq -c '.components[]' provider.json)
-        if [ -s changed.jsonl ]; then echo "changed=true" >> "$GITHUB_OUTPUT"; else
-          echo "No add-on version changed; nothing to compare." >> "$GITHUB_STEP_SUMMARY"; echo "changed=false" >> "$GITHUB_OUTPUT"; fi
+        if [ -s changed.jsonl ]; then echo "changed=true" >> "$GITHUB_OUTPUT"
+        elif [ -s ceiling-held.txt ]; then echo "No other add-on version changed; nothing to compare." >> "$GITHUB_STEP_SUMMARY"; echo "changed=false" >> "$GITHUB_OUTPUT"
+        else echo "No add-on version changed; nothing to compare." >> "$GITHUB_STEP_SUMMARY"; echo "changed=false" >> "$GITHUB_OUTPUT"; fi
         exit "${status}"
     - &plan
       name: Find the comparison targets
@@ -693,7 +708,7 @@ jobs:
         set -euo pipefail
         source tooling/.addon-sync/log.sh
         rc=0; verdicts="$(python3 tooling/.addon-sync/upgrade_check.py sha-verdicts --provider provider.json --unchanged unchanged.txt --plan plan.jsonl \
-          --compared compared.txt --runtime-reports runtime-reports --runtime-failed runtime-failed.txt --held held.txt)" || rc=$?
+          --compared compared.txt --runtime-reports runtime-reports --runtime-failed runtime-failed.txt --held held.txt --ceiling-held ceiling-held.txt)" || rc=$?
         if [ "${rc}" -gt 1 ] || ! passed="$(jq -c '.passed' <<<"${verdicts}" 2> /dev/null)" || ! held="$(jq -c '.held' <<<"${verdicts}" 2> /dev/null)"; then
           # Not even the add-ons are known (the job ended before it found them): none passed.
           printf '%s\n' "${verdicts}"; echo "passed=[]" >> "$GITHUB_OUTPUT"; echo "held=[]" >> "$GITHUB_OUTPUT"
@@ -702,7 +717,8 @@ jobs:
         echo "passed=${passed}" >> "$GITHUB_OUTPUT"; echo "held=${held}" >> "$GITHUB_OUTPUT"
         echo "## Verdicts (sha mode)" >> "$GITHUB_STEP_SUMMARY"
         jq -r '.verdicts[] | "- \(.id): \({passed: "passed", failed: "**failed** (the errors above give the reason)", unchanged: "version unchanged, not compared",
-          held: "**held (暫緩)**: Core requirement above the shipping Core version, no Release (the warning above gives both versions)"}[.verdict])"' \
+          held: (if .held_by == "ceiling" then "**held (暫緩)**: version above its version ceiling, not compared, no Release (the warning above gives both)"
+          else "**held (暫緩)**: Core requirement above the shipping Core version, no Release (the warning above gives both versions)" end)}[.verdict])"' \
           <<<"${verdicts}" >> "$GITHUB_STEP_SUMMARY"
         echo "Passed: ${passed}"; echo "Held: ${held}"
         exit "${rc}"
@@ -713,7 +729,7 @@ jobs:
       env:
         HELD: ${{ steps.passed.outputs.held }}
       run: |
-        echo "Held (暫緩), no Release: ${HELD}. Their Core requirement is above the shipping Core version (.addon-sync/shipping-core.json); raise it after the shipping Core is raised (#217)."
+        echo "Held (暫緩), no Release: ${HELD}. The warnings above say why: a Core requirement above the shipping Core version (.addon-sync/shipping-core.json; raise it after the shipping Core is raised, #217), or a version above the source's version ceiling (<add-on dir>/version-ceiling.yaml; raised by hand, #216)."
   # Category 2: the upgrade test of each add-on whose version changed: startup (#137), the seed/verify data hooks (#138),
   # the registry's approved skips and comparison-target failures (#140), add-ons built on the device rebuilt here (#144).
   runtime:
