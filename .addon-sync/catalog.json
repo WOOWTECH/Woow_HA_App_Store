@@ -644,29 +644,29 @@
     "cloudflared": {
       "id": "cloudflared",
       "name": "Woow Cloudflared",
-      "version": "1.1.3",
+      "version": "1.1.4",
       "repository": "WOOWTECH/Woow_ha_cf_tunnel_webgui",
-      "source_sha": "85af71487a8ffc59ba01c5656159467a8b50fdc6",
+      "source_sha": "a39e6e93b18529c586c7994438c172500e28906e",
       "source_path": "cloudflared",
       "config_file": "config.yaml",
-      "config_sha256": "sha256:ddd23b227ff8c2b95d1b156771c4905bcbd96f87af347c760f59b21490f0cc72",
-      "archive_sha256": "sha256:0f32126a32735eafbce5be72ddd4772f21c06d43c44204aec22ca9aad0aef14f",
-      "context_fingerprint": "sha256:e418c3dc3597db655181e26140cb03dd0889601bfc77cd4998bfb6b071feedab",
-      "material_fingerprint": "sha256:683f2f6ffa1cf6719c8d23addd2a43baecdb470aae5243c6e697e05562c3739e",
+      "config_sha256": "sha256:34edf0980cb6be98e7c3e85e2837c191027fe05bcd60f0e5198218ce4f037649",
+      "archive_sha256": "sha256:51899d7acb51e910cd8291c4e80d4e5101082b941d5c255f163c88e74e4e34ac",
+      "context_fingerprint": "sha256:e845e7624063038a5f8bf8bc047a9b9a1b8b03a15ec3ff7c39487a1ae2d7a9ea",
+      "material_fingerprint": "sha256:799cc8f0fdb15c74de276e998291bca646bdb7ecc775f185f865429f4e538400",
       "architectures": [
         "aarch64",
         "amd64"
       ],
       "config": {
         "name": "Woow Cloudflared",
-        "version": "1.1.3",
+        "version": "1.1.4",
         "breaking_versions": [
           "5.3.7",
           "6.0.0"
         ],
         "slug": "cloudflared",
         "description": "Use a Cloudflare Tunnel to remotely connect to Home Assistant without opening any ports — now with a Web GUI",
-        "url": "https://github.com/WOOWTECH/Woow_ha_cloudflare_tunnel_webgui",
+        "url": "https://github.com/WOOWTECH/Woow_ha_cf_tunnel_webgui",
         "image": "ghcr.io/woowtech/{arch}-addon-cloudflared-webgui",
         "startup": "services",
         "init": false,
@@ -715,21 +715,21 @@
       "source_build_supported": true,
       "images": {
         "aarch64": {
-          "reference": "ghcr.io/woowtech/aarch64-addon-cloudflared-webgui:1.1.3",
-          "index_digest": "sha256:bdb51db071f6f81bfbc6b1e63403df05a2afa37d5e8df99e18ad5f8e0c00121e",
-          "digest": "sha256:d5d2f85abcd1e2422f06c93c6dd63f72eca6f5c86b73caca76fee1da01893999",
+          "reference": "ghcr.io/woowtech/aarch64-addon-cloudflared-webgui:1.1.4",
+          "index_digest": "sha256:d894ef2412014cab522a595749518829887509832d82e2d6c5989e56004daa5c",
+          "digest": "sha256:3cefe779d5163d3c12b2c238fc20c7e27202189405a6b9ccc2cbcaa66cfbc485",
           "source_revision": ""
         },
         "amd64": {
-          "reference": "ghcr.io/woowtech/amd64-addon-cloudflared-webgui:1.1.3",
-          "index_digest": "sha256:62b91486025c28ee6567b6b3bcdfadc33dabc8e78f40c86d527d525b69762199",
-          "digest": "sha256:065fb35790865f1b88a16e3b3d1c375d309bedebe7955b5e8ea1009c328eb712",
+          "reference": "ghcr.io/woowtech/amd64-addon-cloudflared-webgui:1.1.4",
+          "index_digest": "sha256:1bb85a31117192e595bb91b366fd289ad9f75e6d45173dcb1bdba49983d4d20e",
+          "digest": "sha256:ac82e548d5bd6618facd5254fda89aec45ad9e9550db44e1714ed1753605bf2a",
           "source_revision": ""
         }
       },
       "delivery": "published-image",
       "validation": "manifest+architecture-images+configured-CI",
-      "publisher_run_id": "44234334342",
+      "publisher_run_id": "45348901072",
       "channel": "stable",
       "store_path": "cloudflared"
     },
@@ -3333,5 +3333,5 @@
       "store_path": "woow_mcp_headscale"
     }
   },
-  "catalog_id": "sha256:721d9548db4cbc7dcf0a0e32f12ac160a95358e55ceba998340c72a895dcfb68"
+  "catalog_id": "sha256:a42255717c189e375860955f5167c9abb402a25e80867d441c1b592e10b58eaa"
 }

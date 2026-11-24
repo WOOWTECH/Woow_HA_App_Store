@@ -7,8 +7,20 @@
 
 set -eux
 
-# yq is to avoid depending on Home Assistant API on startup
-apk add --no-cache yq-go="${YQ_VERSION}"
+# The `sed` on /etc/apk/world is load-bearing. Base images record the exact
+# package builds present when they were made (e.g. libssl3 at 3.5.4-r0) as hard
+# constraints in world. Alpine publishes new revisions continuously, so those
+# pins go stale and then EVERY apk operation in the image fails to resolve,
+# including installs unrelated to the pinned package. Stripping the
+# constraints leaves the package NAMES, so world still describes what the
+# image actually contains and nothing gets purged.
+sed -i 's/[<>=~].*$//' /etc/apk/world
+apk upgrade --no-cache libssl3 libcrypto3
+
+# yq is to avoid depending on Home Assistant API on startup. Not pinned:
+# Alpine keeps only the newest revision of each package, so an exact
+# `-rN` pin stops resolving as soon as the package is rebuilt.
+apk add --no-cache yq-go
 
 # Adapt the architecture to the cloudflared specific names if needed
 # see HA archs: https://developers.home-assistant.io/docs/add-ons/configuration/#:~:text=the%20add%2Don.-,arch,-list

@@ -1,6 +1,6 @@
 # Declarations for the upgrade comparison (pipeline #89). Format and rules:
 # Store README, "升版比對與 upgrade-notes.yaml". Only versions after the latest
-# formal Release count, so the 1.1.0 section is on record only.
+# Stable Release count, so the 1.1.0 section is on record only.
 #
 # 1.1.0 changed no config.yaml key. Both entries are runtime changes that the
 # configuration check does not detect; they are declared so the migration is

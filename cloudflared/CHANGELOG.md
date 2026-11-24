@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.1.4
+
+### Fixed
+- The add-on image no longer fails to build when Alpine publishes a new
+  revision of a system package. `yq-go` is no longer pinned to one exact
+  revision (which Alpine removes as soon as it rebuilds the package, and which
+  broke the build twice before), and the version locks the base image records
+  for its own packages are lifted before anything is installed. Nothing
+  changes for running add-ons.
+
 ## 1.1.3
 
 ### Changed

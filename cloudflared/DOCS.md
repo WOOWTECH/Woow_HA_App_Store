@@ -398,7 +398,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-[addon-installation]: https://github.com/WOOWTECH/Woow_ha_cloudflare_tunnel_webgui#installation
+[addon-installation]: https://github.com/WOOWTECH/Woow_ha_cf_tunnel_webgui#installation
 [addon-remote-tunnel]: https://github.com/homeassistant-apps/app-cloudflared/wiki/How-tos#how-to-configure-remote-tunnels
 [addon-remote-or-local]: https://github.com/homeassistant-apps/app-cloudflared/wiki/How-tos#local-vs-remote-managed-tunnels
 [addon-wiki]: https://github.com/homeassistant-apps/app-cloudflared/wiki

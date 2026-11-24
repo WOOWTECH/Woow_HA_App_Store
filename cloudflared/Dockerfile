@@ -19,8 +19,6 @@ ENV S6_VERBOSITY="1"
 # Setup base
 ARG BUILD_ARCH="amd64"
 
-# renovate: datasource=repology depName=yq packageName=alpine_3_24/yq-go versioning=loose
-ARG YQ_VERSION="4.53.3-r2"
 # renovate: datasource=github-releases depName=cloudflared packageName=cloudflare/cloudflared versioning=loose
 ARG CLOUDFLARED_VERSION="2026.7.3"
 
