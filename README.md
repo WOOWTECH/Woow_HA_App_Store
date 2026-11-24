@@ -127,8 +127,7 @@ Hermes Paseo 的最新[安裝與首次 project 建立教學](https://github.com/
   - 每個 repo 的 `AGENTS.md` 寫了給 agent 與人的三條規則：只能走 PR、升版 PR 必須通過必要檢查（包括 `Upgrade comparison / compare`）、破壞性變更要照下面的格式寫進 `upgrade-notes.yaml`。
 - **發 Release 的方式可以不同，但都保證**：tag 不重複、每個架構的映像都已推送、Release 只發在合併後的 commit 上。`Woow_ha_odoo` 用自己的 `release.yml`，其他 repo 都用共用的 [`woow-addon-release.yml`](.github/workflows/woow-addon-release.yml)。推 tag 不會發 Release（推 tag 不經過 PR）。（OpenDesign 從推 tag 改成合併後發、Hermes 與 Nextcloud 改用共用 workflow 的 PR 在 2026-10-21 等負責人審查，合併前它們仍用舊方式。）
 - **每個來源在 registry 的 `branch_rules`**：受管的 repo 列出 `required_checks`（ruleset 裡必須有的檢查名稱），而且 `required_workflows` 不能是空的。`required_checks` 要包含 `Upgrade comparison / compare`；還沒接上升版比對的 repo 改寫 `upgrade_comparison_pending`，內容是負責接上的 ticket（兩者只能有一個）。不受管的寫 `exempt` 與原因：
-  - mirror（Dnsmasq、Frigate、Jellyfin、Matter Hub、Music Assistant）：原因以 `mirror:` 開頭。由 `mirror-sync` 推送預設分支，不需要放行；`required_workflows` 留空，發 Release 前的檢查見 pipeline #91。
-  - `Woow_ha_ai_mcp`：上游 fork，上游帶來的 workflow 會直接推 `master`，所以不套分支規則。出貨的 commit 一定要有一次成功的 `ci.yml` push run（pipeline #103）：lint 4 個 addon 的 `config.yaml`、在 amd64 和 aarch64 建置兩個 webhook proxy（只建不推）、確認 `ha_mcp`／`ha_mcp_dev` 宣告的上游映像在宣告的版本與每個架構上都有 tag。
+  - mirror（Dnsmasq、Frigate、Jellyfin、Matter Hub、Music Assistant、ai_mcp）：原因以 `mirror:` 開頭。由 `mirror-sync` 推送預設分支，不需要放行；`required_workflows` 留空，發 Release 前的檢查見 pipeline #91。
   
   有任何啟用 component、而且 `exempt` 原因不是 `mirror:` 開頭的來源，`required_workflows` 也不能是空的：沒有分支規則時，它是 Store 同步前唯一的檢查。
 
@@ -213,7 +212,7 @@ Hermes Paseo 的最新[安裝與首次 project 建立教學](https://github.com/
   3. 全部通過後才更新 App 目錄與 [`.addon-sync/catalog.json`](.addon-sync/catalog.json)。
   
   細節見 [`.addon-sync/README.md`](.addon-sync/README.md)。
-- **只同步正式 Release**（ADR-0002）：目前上架的 38 個 App（含 7 個 `woow_mcp_*`）全部只同步正式 Release。原先跟隨來源預設分支的 `ha_mcp`、`ha_mcp_webhook_proxy` 已於 2026-11-15 下架。每個來源的設定以 [`registry.json`](.addon-sync/registry.json) 的 `ref_policy` 為準。
+- **只同步正式 Release**（ADR-0002）：目前上架的 38 個 App（含 7 個 `woow_mcp_*`）全部只同步正式 Release。`ha_mcp`、`ha_mcp_webhook_proxy` 已於 2026-11-15 下架；它們的來源 `Woow_ha_ai_mcp` 自 pipeline #216 起也是 Mirror 來源、只發正式 Release（版本上限見下方升版比對的 `sha` 模式）。每個來源的設定以 [`registry.json`](.addon-sync/registry.json) 的 `ref_policy` 為準。
 - **僅從本 store 下架**：registry 的 component 設 `store_enabled: false` 並記錄 `reason`，同一個 PR 移除套件目錄與 catalog 項目。consumer 不再同步該項，舊通知也無法加回；`enabled` 保留為 true，來源 repo 的通知發布、正式 Release 與升版比對繼續運作。`enabled: false` 則代表整個共用發布流程退役，不能用來取代單純的商店下架。
 - 觸發方式（盡力而為，不是即時）：
   - 排程每 5 分鐘一次，錯開整點。此帳號的 GitHub 排程實測常延遲 2–7 小時。

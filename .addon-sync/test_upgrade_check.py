@@ -1674,6 +1674,7 @@ class PublishedImageScan(StepHarness):
         self.assertIn('WOOWTECH/Woow_ha_frigate_add_on',mirrors)
         self.assertIn('WOOWTECH/Woow_ha_dnsmasq_dhcp_add_on',mirrors)
         self.assertIn('WOOWTECH/Woow_ha_matter_hub_add_on',mirrors)
+        self.assertIn('WOOWTECH/Woow_ha_ai_mcp',mirrors)  # #216: upstream's prebuilt image, no GHCR copy
         self.assertIn('#147',approved['WOOWTECH/Woow_ha_knxd_add_on']);self.assertIn('#148',approved['WOOWTECH/Woow_ha_mcp_addons'])
         for repo in mirrors:self.assertIn('#91',approved[repo],repo)
     @needs_shell
