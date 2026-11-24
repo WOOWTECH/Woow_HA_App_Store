@@ -294,7 +294,7 @@ jobs:
             # #216: the version ceiling (版本上限) a Mirror source's overlay sets, <add-on dir>/version-ceiling.yaml. Above it the
             # add-on is held (暫緩) in sha mode: neither compared, tested nor released (ceiling-held.txt; not in changed.jsonl);
             # on a PR the check fails. Within it, or without the file, it goes on as before. A held or unreadable ceiling
-            # holds every other add-on of the source too (sha-verdicts: the Store ships them all from the latest Release).
+            # holds or fails only this add-on: the Store ships each add-on from its own Release tag (#232).
             ceiling="$(dirname "${found}")/version-ceiling.yaml"
             if [ -e "source/${ceiling}" ]; then
               rc=0; out="$(python3 tooling/.addon-sync/upgrade_check.py ceiling --file "source/${ceiling}" --path "${ceiling}" --version "${current}" \
@@ -718,8 +718,7 @@ jobs:
         echo "passed=${passed}" >> "$GITHUB_OUTPUT"; echo "held=${held}" >> "$GITHUB_OUTPUT"
         echo "## Verdicts (sha mode)" >> "$GITHUB_STEP_SUMMARY"
         jq -r '.verdicts[] | "- \(.id): \({passed: "passed", failed: "**failed** (the errors above give the reason)", unchanged: "version unchanged, not compared",
-          held: (if .with then "**held (暫緩)**: passed, but no Release while \(.with | join(", ")) is held by or failed on its version ceiling (the Store ships every add-on from the latest Release)"
-          elif .held_by == "ceiling" then "**held (暫緩)**: version above its version ceiling, not compared, no Release (the warning above gives both)"
+          held: (if .held_by == "ceiling" then "**held (暫緩)**: version above its version ceiling, not compared, no Release (the warning above gives both)"
           else "**held (暫緩)**: Core requirement above the shipping Core version, no Release (the warning above gives both versions)" end)}[.verdict])"' \
           <<<"${verdicts}" >> "$GITHUB_STEP_SUMMARY"
         echo "Passed: ${passed}"; echo "Held: ${held}"
@@ -731,7 +730,7 @@ jobs:
       env:
         HELD: ${{ steps.passed.outputs.held }}
       run: |
-        echo "Held (暫緩), no Release: ${HELD}. The warnings above say why: a Core requirement above the shipping Core version (.addon-sync/shipping-core.json; raise it after the shipping Core is raised, #217), or a version above the source's version ceiling (<add-on dir>/version-ceiling.yaml; raised by hand, #216), which holds every other add-on of the source with it."
+        echo "Held (暫緩), no Release: ${HELD}. The warnings above say why: a Core requirement above the shipping Core version (.addon-sync/shipping-core.json; raise it after the shipping Core is raised, #217), or a version above the source's version ceiling (<add-on dir>/version-ceiling.yaml; raised by hand, #216). Only the held add-ons wait; the others ship from their own Releases (#232)."
   # Category 2: the upgrade test of each add-on whose version changed: startup (#137), the seed/verify data hooks (#138),
   # the registry's approved skips and comparison-target failures (#140), add-ons built on the device rebuilt here (#144).
   runtime:
