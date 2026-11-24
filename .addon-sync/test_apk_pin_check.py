@@ -275,8 +275,12 @@ class Issues(unittest.TestCase):
     def test_tool_errors_and_add_ons_not_checked_leave_issues_alone(self):
         gh=FakeGitHub([{'number':5,'title':c.issue_title('a'),'body':'','state':'open'},{'number':6,'title':'x','body':c.issue_body('b',[]),'state':'open'}])
         self.assertEqual(c.sync_issues(gh,'o/r',[{'id':'a','arch':'amd64','result':c.UNCHECKED,'error':True}]),[])
-        self.assertEqual(c.sync_issues(gh,'o/r',[{'id':'b','arch':'amd64','result':c.SKIPPED}],dry_run=True),[('close','b',6)])
+        # Closed only when every row of the add-on passes: one not checked or skipped has not shown it installs again.
+        for rows in ([{'id':'b','arch':'amd64','result':c.SKIPPED}],[{'id':'b','arch':'amd64','result':c.UNCHECKED}],
+                [{'id':'b','arch':'amd64','result':c.PASS},{'id':'b','arch':'aarch64','result':c.UNCHECKED}]):
+            self.assertEqual(c.sync_issues(gh,'o/r',rows),[],rows)
         self.assertEqual(gh.writes,[])
+        self.assertEqual(c.sync_issues(gh,'o/r',[{'id':'b','arch':'amd64','result':c.PASS},{'id':'b','arch':'aarch64','result':c.PASS}],dry_run=True),[('close','b',6)])
     def test_issue_text_has_no_runner_paths(self):
         body=c.issue_body('tailscale',[failing()])
         for bad in ('/home/','/tmp/','runner','.addon-sync'):self.assertNotIn(bad,body)

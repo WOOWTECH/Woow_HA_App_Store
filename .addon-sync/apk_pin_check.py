@@ -526,7 +526,7 @@ def open_issues(gh, repo):
 
 def sync_issues(gh, repo, rows, today=None, dry_run=False):
     """Open, update or close one issue per add-on (module docstring). Only add-ons with rows are touched; one whose rows
-    include a tool error keeps its issue as it is. Returns the actions as (action, add-on id, issue number or None)."""
+    include a tool error keeps its issue as it is, and one is closed only when every row passes. Returns the actions as (action, add-on id, issue number or None)."""
     today=today or datetime.date.today().isoformat()
     by_id={}
     for r in rows:by_id.setdefault(r['id'],[]).append(r)
@@ -543,7 +543,7 @@ def sync_issues(gh, repo, rows, today=None, dry_run=False):
                 actions.append(('update',cid,issue['number']))
                 if not dry_run:gh.api(repo,f'issues/{issue["number"]}',{'body':body},'PATCH')
             else:actions.append(('unchanged',cid,issue['number']))
-        elif issue is not None:
+        elif issue is not None and all(r['result']==PASS for r in its):
             actions.append(('close',cid,issue['number']))
             if not dry_run:
                 gh.api(repo,f'issues/{issue["number"]}/comments',{'body':f'The apk pin check passed on {today}: every package of {cid} installs again. Closing.'},'POST')
