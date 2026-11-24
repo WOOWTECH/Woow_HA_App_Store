@@ -14,6 +14,13 @@ import json, os, re, sys, time, urllib.error, urllib.request, http.server
 caps = int(re.search(r'CapEff:\s*(\w+)', open('/proc/self/status').read()).group(1), 16)
 print('NET_ADMIN', 'present' if caps & 1 << 12 else 'absent', flush=True)
 if os.environ['MODE'] == 'needs-net-admin' and not caps & 1 << 12:sys.exit(0)
+if os.environ['MODE'] == 'needs-audio':
+    # Like local_audio (#245): exits 1 unless ALSA's default PCM opens, which it does through PulseAudio when the add-on
+    # gets Supervisor's audio (asound.conf, client.conf and the socket under /run/audio).
+    import ctypes; pcm = ctypes.c_void_p()
+    err = ctypes.CDLL('libasound.so.2').snd_pcm_open(ctypes.byref(pcm), b'default', 0, 0)
+    print('ALSA default', 'opened' if err == 0 else f'cannot open ({err})', flush=True)
+    if err:sys.exit(1)
 req =urllib.request.Request('http://supervisor/addons/self/info', headers={'Authorization': 'Bearer ' + os.environ['SUPERVISOR_TOKEN']})
 info = json.load(urllib.request.urlopen(req, timeout=10))['data']
 assert info['slug'] == 'fake', info
@@ -460,6 +467,42 @@ class Privileged(unittest.TestCase):
         self.assertEqual(code, 1, out.getvalue()); self.assertNotIn('could not run', result['reason'])
         self.assertIn("::error title=Upgrade test::fake: the config.yaml of fake, the new version (1.0.0), has privileged: [\"NET_ADMN\"]", out.getvalue())
 
+class Audio(unittest.TestCase):
+    """#245: audio: true gets the three read-only mounts Supervisor gives (supervisor/docker/app.py): the add-on's pulse
+    client.conf, the audio plugin's socket directory at /run/audio and its asound.conf; no environment variable. No
+    Docker: the docker command is recorded."""
+    def config(self, **extra):
+        return {'slug': 'fake', 'version': '1.0.0', **extra}
+    def args(self, config):
+        env = rt.UpgradeTestEnv(tempfile.mkdtemp()); self.addCleanup(shutil.rmtree, env.work)
+        with mock.patch.object(rt, 'docker', return_value='') as docker:container = env.start('old', 'image:1', config, {})
+        return env, container, list(docker.call_args.args)
+    def mounts(self, args):
+        return [args[i + 1] for i, a in enumerate(args) if a == '--mount']
+    def test_audio_gets_supervisors_three_read_only_mounts(self):
+        env, container, args = self.args(self.config(audio=True))
+        audio = {m.split(',target=')[1].split(',')[0]: m for m in self.mounts(args)[1:]}
+        self.assertEqual(sorted(audio), ['/etc/asound.conf', '/etc/pulse/client.conf', '/run/audio'])
+        for target, mount in audio.items():
+            with self.subTest(target):self.assertTrue(mount.endswith(',readonly'), mount)
+        source = lambda target: pathlib.Path(audio[target].split('source=')[1].split(',')[0])
+        # The audio plugin makes its socket in its own data directory's external/ (plugin-audio system.pa).
+        self.assertEqual(source('/run/audio'), env.audio / 'external')
+        client = source('/etc/pulse/client.conf').read_text(encoding='utf-8')
+        self.assertIn('default-server = unix://run/audio/pulse.sock\n', client); self.assertIn('autospawn = no\n', client)
+        self.assertNotIn('default-sink', client); self.assertNotIn('default-source', client)
+        asound = source('/etc/asound.conf').read_text(encoding='utf-8')
+        self.assertRegex(asound, r'pcm\.!default \{\s+type pulse'); self.assertRegex(asound, r'ctl\.!default \{\s+type pulse\s+\}')
+        # Supervisor sets no PulseAudio variable: the files above are all an add-on gets.
+        self.assertFalse([a for a in args if a.startswith('PULSE')], args)
+    def test_without_audio_the_arguments_are_unchanged(self):
+        for value in ({}, {'audio': False}):
+            with self.subTest(value):
+                env, container, args = self.args(self.config(**value))
+                self.assertEqual(args, ['run', '-d', '--name', container, '--network', env.net, '--ip', '172.30.33.10', '--init',
+                    '--add-host', 'supervisor:172.30.32.2', '--add-host', 'hassio:172.30.32.2', '-e', f'SUPERVISOR_TOKEN={env.token}',
+                    '-e', f'HASSIO_TOKEN={env.token}', '-e', 'TZ=UTC', '--mount', f'type=bind,source={env.data.as_posix()}/data,target=/data', 'image:1'])
+
 class UnappliedSettings(unittest.TestCase):
     """#181: unapplied_settings() lists the Supervisor settings a config.yaml declares that the runtime does not apply."""
     def test_declared_settings_are_listed_in_order_with_their_values(self):
@@ -482,6 +525,10 @@ class UnappliedSettings(unittest.TestCase):
         self.assertEqual(rt.unapplied_settings({'apparmor': False}, profile), [])
         # Without the version's directory (the comparison target), apparmor.txt cannot be seen.
         self.assertEqual(rt.unapplied_settings({}), [])
+    def test_audio_is_applied_so_it_is_not_listed(self):
+        # #245: the runtime gives audio: true Supervisor's audio plugin and mounts.
+        self.assertEqual(rt.unapplied_settings({'audio': True}), [])
+        self.assertEqual(rt.unapplied_settings({'audio': True, 'tmpfs': True}), ['tmpfs: true'])
     def test_a_long_device_list_is_shortened(self):
         devices = [f'/dev/d{i}' for i in range(97)]
         self.assertEqual(rt.unapplied_settings({'devices': devices}),
@@ -602,8 +649,10 @@ class Runtime(unittest.TestCase):
             # reads the shipping Core version next to it (#225).
             mock_files = ('mock_supervisor.py', 'shipping_core.py', 'shipping-core.json')
             for name in (*mock_files, 'fake_ha_core.py'):shutil.copy(rt.TOOLING / name, build / name)
-            for mode in ('good', 'crash', 'answer-then-crash', 'forget', 'regress', 'needs-net-admin', 'ha-core'):
-                (build / 'Dockerfile').write_text(f'FROM {rt.MOCK_IMAGE}\nENV MODE={mode}\nCOPY run.py {" ".join(mock_files)} /\nCMD ["python", "-u", "/run.py"]\n')
+            for mode in ('good', 'crash', 'answer-then-crash', 'forget', 'regress', 'needs-net-admin', 'ha-core', 'needs-audio'):
+                # #245: the audio fake has ALSA with its PulseAudio plugin, as local_audio's image has.
+                alsa = 'RUN apk add --no-cache alsa-lib alsa-plugins-pulse\n' if mode == 'needs-audio' else ''
+                (build / 'Dockerfile').write_text(f'FROM {rt.MOCK_IMAGE}\n{alsa}ENV MODE={mode}\nCOPY run.py {" ".join(mock_files)} /\nCMD ["python", "-u", "/run.py"]\n')
                 tag = f'local/upgrade-test-fake-{mode}:{uuid.uuid4().hex[:8]}'
                 subprocess.run(['docker', 'build', '-q', '-t', tag, str(build)], check=True, capture_output=True)
                 cls.images[mode] = tag
@@ -859,6 +908,22 @@ class Runtime(unittest.TestCase):
         code, result, out = self.run_test('good', 'good', sides={'old': {'privileged': ['NET_ADMIN']}})
         self.assertEqual(code, 0, out + json.dumps(result, indent=1))
         self.assertEqual([('NET_ADMIN present' in p['logs'], 'NET_ADMIN absent' in p['logs']) for p in result['phases']], [(True, False), (False, True)])
+    def test_an_add_on_that_needs_audio_plays_through_supervisors_audio_plugin(self):
+        # #245, local_audio: the fake exits 1 unless ALSA default opens; audio: true starts Supervisor's audio plugin
+        # (no sound card: its null sink) and gives both versions its socket, as Supervisor does.
+        self.settings(stable_seconds=3)
+        code, result, out = self.run_test('needs-audio', 'needs-audio', audio=True, sides={'old': {'host_network': True}})
+        self.assertEqual(code, 0, out + json.dumps(result, indent=1)); self.assertEqual([p['started'] for p in result['phases']], [True, True])
+        for p in result['phases']:self.assertIn('ALSA default opened', p['logs'])
+        self.assertEqual(result['audio']['image'], rt.AUDIO_IMAGE)
+        self.assertEqual(result['unapplied_settings'], {'old': [], 'new': []})
+        self.assertEqual(leftovers(), [])
+    def test_without_audio_there_is_no_audio_plugin_and_such_an_add_on_does_not_start(self):
+        self.settings(stable_seconds=3)
+        code, result, out = self.run_test('needs-audio', 'needs-audio')
+        self.assertEqual(code, 1); self.assertEqual([(p['phase'], p['started']) for p in result['phases']], [('old', False)])
+        self.assertIn('the comparison target (1.0.0) did not start: the container exited with code 1', result['reason'])
+        self.assertIn('ALSA default cannot open', result['phases'][0]['logs']); self.assertNotIn('audio', result)
     def test_settings_that_are_not_a_mapping_fail_with_the_reason(self):
         (self.dir / 'addon/upgrade-check').mkdir()
         (self.dir / 'addon/upgrade-check/settings.yaml').write_text('- 5\n', encoding='utf-8')

@@ -22,8 +22,16 @@ other host services) are not modelled. Each version's own config.yaml
 not accept (CAPABILITIES), or a `privileged` that is not a list of strings, is
 the PR's fault: the test fails before any container starts, and the reason
 names the add-on, the version and the value (Supervisor would refuse to
-install it). No other Supervisor setting is applied (#181): devices, usb,
-uart, udev, video, gpio, tmpfs, audio, a custom AppArmor profile
+install it). A version whose config.yaml says audio: true gets audio as
+Supervisor gives it (#245): Supervisor's own audio plugin (AUDIO_IMAGE, its
+PulseAudio playing to a null sink, as on a host without a sound card) runs
+beside the mock when either version declares it, and the version gets three
+read-only mounts and no environment variable: a pulse client.conf
+(default-server unix://run/audio/pulse.sock) at /etc/pulse/client.conf, the
+plugin's socket directory at /run/audio and an asound.conf routing ALSA's
+default to PulseAudio at /etc/asound.conf. An audio plugin that makes no
+socket is a tool error. No other Supervisor setting is applied (#181): devices, usb,
+uart, udev, video, gpio, tmpfs, a custom AppArmor profile
 (apparmor.txt; apparmor), full_access, kernel_modules, realtime, docker_api,
 host_dbus, host_pid, host_ipc and host_uts (Supervisor's devices and cgroup
 rules, capabilities, ulimits, tmpfs and mounts for them). unapplied_settings()
@@ -200,7 +208,9 @@ and of the runtime are not in it. map_warnings are upgrade_check.map_warnings()
 of each config.yaml: map entries Supervisor ignores (or why `map` could not be
 read). All three are informational. With --ha-core (#174) the result also has
 ha_core: {image, started, seconds (docker run to RUNNING; None when it did not
-start), detail, logs (its last lines when it did not start)}.
+start), detail, logs (its last lines when it did not start)}. When either
+version declares audio (#245) it also has audio: {image}, the audio plugin
+that ran.
 """
 from __future__ import annotations
 import argparse, json, os, pathlib, re, secrets, shutil, string, subprocess, sys, tempfile, time
@@ -233,6 +243,11 @@ UNMOCKED_ROWS = 30
 CORE_IMAGE = f'{mock_supervisor.CORE_IMAGE}:{mock_supervisor.VERSIONS["homeassistant"]}'
 CORE_IP = '172.30.32.20'
 CORE_URL, CORE_WAIT = f'http://{CORE_IP}:8123', 180
+# #245: Supervisor's audio plugin (the stable channel's version on 2026-11-24, version.home-assistant.io), started only when
+# a version's config.yaml says audio: true, at its Supervisor address on the hassio network. With no sound card (a CI
+# runner) its PulseAudio plays to a null sink; its socket is <its /data>/external/pulse.sock (plugin-audio system.pa).
+AUDIO_IMAGE = 'ghcr.io/home-assistant/amd64-hassio-audio:2026.10.0@sha256:d20dd174a18e1c9f5d8056d7b6f160d468c37cf193fd5648a9db3d9c9ed0cf9d'
+AUDIO_IP, AUDIO_WAIT = '172.30.32.4', 60
 CORE_FAILED = 'the test HA Core did not start (測試用 HA Core 沒有啟動)'
 
 class DockerError(RuntimeError):
@@ -511,7 +526,7 @@ def capabilities(config, name='the add-on', label='this version'):
 # #181: the config.yaml settings for which Supervisor gives an add-on devices, mounts, capabilities or namespaces
 # (supervisor/docker/app.py, home-assistant/supervisor e0fa127) and the runtime does not. All default to false or empty;
 # apparmor (default true) is listed only for a custom profile, apparmor.txt beside config.yaml.
-UNAPPLIED_SETTINGS = ('devices', 'usb', 'uart', 'udev', 'video', 'gpio', 'tmpfs', 'audio', 'full_access', 'kernel_modules', 'realtime',
+UNAPPLIED_SETTINGS = ('devices', 'usb', 'uart', 'udev', 'video', 'gpio', 'tmpfs', 'full_access', 'kernel_modules', 'realtime',
     'docker_api', 'host_dbus', 'host_pid', 'host_ipc', 'host_uts')
 UNAPPLIED_LIST_ITEMS = 5
 
@@ -590,6 +605,18 @@ def _map_warnings(config):
     try:return map_warnings(config)
     except (ValueError, TypeError, AttributeError) as e:return [f'map could not be read: {e}']
 
+# #245: audio: true as Supervisor applies it (supervisor/docker/app.py): three read-only mounts and no environment
+# variable. The add-on's pulse client.conf (supervisor/data/pulse-client.tmpl; default-sink and default-source only when
+# the user picked an audio output or input, never in the test), the audio plugin's socket directory and its asound.conf
+# (supervisor/data/asound.tmpl, which routes ALSA's default to PulseAudio).
+PULSE_CLIENT = 'default-server = unix://run/audio/pulse.sock\n\nautospawn = no\n'
+ASOUND = ('pcm.!default {\n    type pulse\n    hint {\n        show on\n'
+    '        description "Default ALSA Output (Home Assistant PulseAudio Sound Server)"\n    }\n}\n\nctl.!default {\n    type pulse\n}\n')
+
+def with_audio(config):
+    """Whether Supervisor gives this version audio (#245): config.yaml audio, default false."""
+    return bool(config.get('audio', False))
+
 class UpgradeTestEnv:
     """One upgrade test's network, mock Supervisor and data directories, removed by close(). `hooks`: the add-on's
     upgrade-check/ directory, mounted read-only in the mock Supervisor's container (None when it has none). `ha_core`:
@@ -608,6 +635,9 @@ class UpgradeTestEnv:
         self.reports, self.hook_state, self.smoke_state = self.work / 'hook-reports', self.work / 'hook-state', self.work / 'smoke-state'
         # #174: the test HA Core's container and its config directory (never one of the add-on's data directories).
         self.core, self.core_config = f'{self.prefix}-core', self.work / 'ha-core'
+        # #245: the audio plugin's data directory (its socket is in external/) and the two files Supervisor writes for it.
+        self.audio, self.pulse_client, self.asound = self.work / 'audio', self.work / 'pulse-client.conf', self.work / 'asound.conf'
+        self.audio_plugin = f'{self.prefix}-audio'
         for d in (self.state, self.data, self.reports, self.hook_state, self.smoke_state, self.core_config):d.mkdir(parents=True)
     def open(self):
         docker('network', 'create', '--subnet', SUBNET, '--gateway', GATEWAY, self.net)
@@ -630,6 +660,22 @@ class UpgradeTestEnv:
             if down or time.monotonic() >= deadline:
                 why = f'({down})' if down else f'within {MOCK_WAIT} s'
                 raise RuntimeError(f'the mock Supervisor did not answer {why}; its last log lines: {_logs(self.supervisor, 20).strip()[-1000:]}')
+            time.sleep(0.5)
+    def start_audio(self):
+        """#245: start Supervisor's audio plugin (AUDIO_IMAGE) with its data directory at self.audio, and return when its
+        PulseAudio socket is there. Its image is pulled first, so AUDIO_WAIT counts from docker run. It is the test's own
+        part, like the mock Supervisor: a failure is a tool error, never the add-on's."""
+        if subprocess.run(['docker', 'image', 'inspect', AUDIO_IMAGE], capture_output=True).returncode:
+            docker('pull', '--quiet', '--platform', 'linux/amd64', AUDIO_IMAGE)
+        self.audio.mkdir(exist_ok=True)
+        docker('run', '-d', '--name', self.audio_plugin, '--network', self.net, '--ip', AUDIO_IP, '-e', 'TZ=UTC',
+            '--mount', f'type=bind,source={self.audio},target=/data', AUDIO_IMAGE)
+        deadline = time.monotonic() + AUDIO_WAIT
+        while not (self.audio / 'external/pulse.sock').exists():
+            down = _down(self.audio_plugin)
+            if down or time.monotonic() >= deadline:
+                why = f'({down})' if down else f'within {AUDIO_WAIT} s'
+                raise RuntimeError(f'the audio plugin made no PulseAudio socket {why}; its last log lines: {_logs(self.audio_plugin, 20).strip()[-1000:]}')
             time.sleep(0.5)
     def start_core(self):
         """#174: start the test HA Core and have the mock onboard it and wait for RUNNING (mock_supervisor.py core-setup):
@@ -686,6 +732,11 @@ class UpgradeTestEnv:
         for m in mounts(config, self.data.as_posix()):
             pathlib.Path(m['source']).mkdir(parents=True, exist_ok=True)
             args += ['--mount', f'type=bind,source={m["source"]},target={m["target"]}' + (',readonly' if m['read_only'] else '')]
+        if with_audio(config):
+            (self.audio / 'external').mkdir(parents=True, exist_ok=True)
+            self.pulse_client.write_text(PULSE_CLIENT, encoding='utf-8'); self.asound.write_text(ASOUND, encoding='utf-8')
+            for source, target in ((self.pulse_client, '/etc/pulse/client.conf'), (self.audio / 'external', '/run/audio'), (self.asound, '/etc/asound.conf')):
+                args += ['--mount', f'type=bind,source={source},target={target},readonly']
         (self.data / 'data/options.json').write_text(json.dumps(options), encoding='utf-8')
         container = f'{self.prefix}-{phase}'
         # Supervisor adds docker's init unless config.yaml says init: false; no restart policy, so a restart shows as an exit.
@@ -750,7 +801,7 @@ class UpgradeTestEnv:
         docker('stop', '-t', str(config.get('timeout', 10)), container, check=False)
         docker('rm', '-f', container, check=False)
     def close(self):
-        docker('rm', '-f', f'{self.prefix}-old', f'{self.prefix}-new', self.supervisor, self.core, check=False)
+        docker('rm', '-f', f'{self.prefix}-old', f'{self.prefix}-new', self.supervisor, self.core, self.audio_plugin, check=False)
         docker('network', 'rm', self.net, check=False)
         # Containers write as root: remove what they left through a container, then the rest.
         docker('run', '--rm', '--mount', f'type=bind,source={self.work},target=/w', '--entrypoint', 'sh', MOCK_IMAGE, '-c', 'rm -rf /w/* /w/.[!.]*', check=False)
@@ -857,6 +908,10 @@ def upgrade_test(name, addon_dir, old_image, old_config, new_image, new_config, 
         return result
     try:
         env.open()
+        # #245: Supervisor's audio plugin, when either version declares audio, before anything else starts (as on a host).
+        if any(with_audio(c) for c in configs):
+            env.start_audio()
+            result['audio'] = {'image': AUDIO_IMAGE}
         if ha_core:
             # #174: one HA Core for both versions, RUNNING before the comparison target starts; if it is not, the test
             # fails with its own reason (no version ran).
