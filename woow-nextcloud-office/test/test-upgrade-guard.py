@@ -24,7 +24,8 @@ class UpgradeGuardTests(unittest.TestCase):
             # The interrupted-install check is the php call that reads $CONFIG["installed"];
             # INSTALLED_CHECK_EXIT is its result (0: config.php parses and is not installed).
             p = bindir / 'php'
-            p.write_text('#!/bin/sh\ncase "$2" in *installed*) exit "$INSTALLED_CHECK_EXIT";; esac\nexit 0\n')
+            p.write_text('#!/bin/sh\ncase "$2" in *installed*) exit "$INSTALLED_CHECK_EXIT";; esac\n'
+                         'case "$1" in *nextcloud-system-config.php) printf "system-config %s\\n" "$2" >> "$CALL_LOG";; esac\nexit 0\n')
             p.chmod(0o700)
             p = bindir / 'gosu'
             p.write_text('#!/bin/sh\nprintf "gosu %s\\n" "$*" >> "$CALL_LOG"\nprintf "1\\n"\n')
@@ -57,6 +58,7 @@ class UpgradeGuardTests(unittest.TestCase):
             result = subprocess.run(['/bin/bash', str(test_script)], env=env, capture_output=True, text=True, timeout=10)
             calls = log.read_text().splitlines() if log.exists() else []
             self.config_left = (config / 'config.php').exists()
+            self.config_path = str(config / 'config.php')
             # gosu calls are logged for the drop check; the occ assertions look at occ only
             self.gosu_calls = [c for c in calls if c.startswith('gosu ')]
             return result, [c for c in calls if not c.startswith('gosu ')]
@@ -74,7 +76,9 @@ class UpgradeGuardTests(unittest.TestCase):
     def test_successful_upgrade_continues_configuration(self):
         result, calls = self.run_init()
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertTrue(any(c.startswith('config:system:set trusted_domains') for c in calls))
+        # System values are one write of config.php (pipeline #229), then the remaining occ calls.
+        self.assertEqual(calls[:2], ['upgrade --no-interaction', 'system-config ' + self.config_path])
+        self.assertIn('config:app:set password_policy minLength --value 7', calls)
 
     def test_initial_install_still_sets_initial_password(self):
         result, calls = self.run_init(existing=False)

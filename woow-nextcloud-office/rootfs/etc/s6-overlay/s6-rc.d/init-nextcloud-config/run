@@ -34,7 +34,9 @@ $CONFIG = [
   ],
 ];
 APPS
-chown -R www-data:www-data /data/nextcloud "$NEXTCLOUD_DATADIR" /var/www/nextcloud
+# Only entries that are not www-data:www-data (e.g. after a restore). The image's tree is already
+# owned correctly; chowning it anyway makes overlayfs copy all of it up on every boot.
+find /data/nextcloud "$NEXTCLOUD_DATADIR" /var/www/nextcloud \( ! -user www-data -o ! -group www-data \) -exec chown -h www-data:www-data {} +
 if [[ ! -s /data/nextcloud/config/config.php ]]; then
   echo "Installing Nextcloud..."
   occ maintenance:install \
@@ -55,25 +57,14 @@ else
     exit "$upgrade_status"
   fi
 fi
-# Core config that keeps public/direct URL stable and HA iframe usable.
-occ config:system:set trusted_domains 0 --value "$PUBLIC_HOST"
-occ config:system:set trusted_domains 1 --value localhost
-occ config:system:set trusted_domains 2 --value 127.0.0.1
-occ config:system:set trusted_domains 3 --value homeassistant
-occ config:system:set overwrite.cli.url --value "$PUBLIC_URL"
-occ config:system:set overwriteprotocol --value https
-occ config:system:set default_phone_region --value "$DEFAULT_PHONE_REGION" || true
-occ config:system:set dbpassword --value "$DB_PASS" || true
-occ config:app:set password_policy minLength --value 7 || true
+# Core config that keeps public/direct URL stable and HA iframe usable, and allows framing by
+# HA/public hosts: one write of config.php, same result as one `occ config:system:set` per value
+# (each occ call boots Nextcloud; s6 cannot stop the add-on cleanly while this oneshot runs).
+PUBLIC_HOST="$PUBLIC_HOST" PUBLIC_URL="$PUBLIC_URL" DEFAULT_PHONE_REGION="$DEFAULT_PHONE_REGION" DB_PASS="$DB_PASS" \
+  php /usr/local/share/woow-office/nextcloud-system-config.php /data/nextcloud/config/config.php
 # ADMIN_PASS is only an initial-install credential. Preserve the existing
 # account password across upgrades/restarts; resets require an explicit action.
-occ config:system:set memcache.local --value '\OC\Memcache\APCu'
-occ config:system:set memcache.locking --value '\OC\Memcache\Redis'
-occ config:system:set redis host --value /run/redis/redis.sock
-occ config:system:set redis port --value 0 --type integer
-occ config:system:set maintenance_window_start --value 1 --type integer || true
-# Allow framing by HA/public hosts.
-php -r '$f="/data/nextcloud/config/config.php"; include $f; $c=$CONFIG ?? []; $tp=$c["trusted_proxies"]??[]; if (!is_array($tp)) { $tp=[$tp]; } $c["trusted_proxies"]=array_values(array_unique(array_merge($tp, ["127.0.0.1","172.30.32.2"]))); $c["overwritehost"]="'"$PUBLIC_HOST"'"; $out="<?php\n\$CONFIG = ".var_export($c,true).";\n"; file_put_contents($f,$out);'
+occ config:app:set password_policy minLength --value 7 || true
 # HA backup/restore does not preserve file modes (seen: config.php 0640 -> 0644 after a
 # Supervisor restore). Re-assert them on every boot: config holds DB and instance secrets.
 chmod 0750 /data/nextcloud/config

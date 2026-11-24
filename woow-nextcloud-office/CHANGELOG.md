@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.6
+
+- 一般開機的 `init-nextcloud-config` 縮短：N2840 實測每次開機約 3–3.5 分鐘 → 約 9 秒。原本每次開機都對 Nextcloud 程式目錄、`/data/nextcloud` 與資料目錄做遞迴 `chown`，image 裡的程式目錄因此每次都被整棵複製進容器（約 850 MB）；現在只改擁有者不是 `www-data:www-data` 的檔案，restore 後擁有者錯的檔案仍會修正。13 個 `occ config:system:set` 改成一次寫入 `config.php`，寫入的值和之前相同。
+- 開機初期停止被強制結束（exit 137）的時間窗從約 3 分鐘縮到約 10 秒，但還沒消失：在這約 9 秒內停止，加上 Collabora 啟動中收到停止要約 5.7 秒才結束，仍會超過 Supervisor 的 10 秒期限。
+- 首次安裝期間停止仍會 137（已知行為）：`maintenance:install` 本身要 1 分鐘以上。下次啟動會丟掉未完成的安裝並重新安裝（0.2.4）。N2840 上首次安裝的這段從約 5 分鐘縮到約 1.2 分鐘。
+- Nextcloud 版本不變（35.0.1）。
+
 ## 0.2.5
 
 - 停止 add-on 時不再被強制結束（exit 137）。Office（richdocuments）的設定原本是 s6 開機步驟，會等 Collabora 並執行十多個 `occ` 指令；在較慢的機器上這段沒跑完前停止，s6 會等到 Supervisor 的 10 秒期限被 SIGKILL，PostgreSQL、Redis 沒有正常關閉。現在這段設定在背景執行，nginx 起來後開機流程就完成，停止通常約 4 秒內正常結束；Collabora 還在啟動時停止會接近 10 秒期限（實測 9.3 秒）。

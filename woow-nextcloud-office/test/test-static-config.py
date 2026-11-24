@@ -42,4 +42,5 @@ assert 'occ app:update richdocuments' in rich and 'app:getpath richdocuments' in
 assert dockerfile.index('ARG NEXTCLOUD_VERSION=') > dockerfile.index('apt-get install -y --no-install-recommends \\\n      nginx')
 # HA backup/restore does not preserve file modes: every boot re-asserts the secret-bearing config modes.
 assert 'chmod 0640' in init_nc and 'chmod 0750 /data/nextcloud/config' in init_nc and 'chmod 0770 "$NEXTCLOUD_DATADIR"' in init_nc
-assert init_nc.rindex('chmod 0640') > init_nc.index('file_put_contents($f,$out)')
+# config.php is written (nextcloud-system-config.php, pipeline #229) before its mode is re-asserted.
+assert init_nc.rindex('chmod 0640') > init_nc.index('nextcloud-system-config.php /data/nextcloud/config/config.php')
