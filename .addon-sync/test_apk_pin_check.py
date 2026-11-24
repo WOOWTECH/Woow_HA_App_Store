@@ -192,6 +192,23 @@ class Check(Addon):
         text=c.summary(list(got.values()))
         self.assertIn('not checked, Dockerfile:3: `apk add $X` ($X has no value)',text)
         for r in got.values():self.assertIn(r['result'],c.RESULTS)
+    def test_apk_that_cannot_read_its_repositories_is_a_tool_error_not_cannot_install(self):
+        # apk's own text (apk-tools 3.0.9, 2.14.13, 2.12.9): an index it could not fetch or trust leaves the package
+        # "no such package", which is not the add-on's fault; nor is a database apk could not open.
+        row=c.plan(REGISTRY,self.store(),('amd64',),{'tailscale'})[0]
+        missing='ERROR: unable to select packages:\n  bind-tools (no such package):\n    required by: world[bind-tools]'
+        for sim,code in (('WARNING: fetching https://dl-cdn.alpinelinux.org/alpine/v3.24/main/x86_64/APKINDEX.tar.gz: DNS: name does not exist\n'+missing,1),
+                ('fetch https://dl-cdn.alpinelinux.org/alpine/v3.21/main/x86_64/APKINDEX.tar.gz\nWARNING: fetching https://dl-cdn.alpinelinux.org/alpine/v3.21/main: UNTRUSTED signature\n'+missing,1),
+                ('WARNING: Ignoring https://dl-cdn.alpinelinux.org/alpine/v3.16/main: DNS lookup error\n'+missing,1),
+                ('ERROR: Unable to read database state: Permission denied\nERROR: Failed to open apk database: Permission denied',99),
+                ('Segmentation fault',139)):
+            got=c.evaluate(row,c.parse_output(output(HASSIO_WORLD,sim,code)))
+            self.assertNotEqual(got['result'],c.FAIL,sim);self.assertTrue(got.get('error'),sim)
+        # A version the repository no longer has is still cannot install, also with apk 2's plain "fetch" progress lines.
+        for sim in (TAILSCALE_FAIL,output(HASSIO_WORLD,'fetch https://dl-cdn.alpinelinux.org/alpine/v3.21/main/x86_64/APKINDEX.tar.gz\n'
+                'ERROR: unable to select packages:\n  nginx-1.30.7-r0:\n    breaks: world[nginx=1.30.6-r0]',1)):
+            got=c.evaluate(row,c.parse_output(sim))
+            self.assertEqual(got['result'],c.FAIL);self.assertFalse(got.get('error'))
     def test_images_that_were_there_before_are_kept(self):
         # By tag, or as a digest-only copy with the ID the pulled tag turns out to have.
         row=c.plan(REGISTRY,self.store(),('amd64',),{'tailscale'})[0]

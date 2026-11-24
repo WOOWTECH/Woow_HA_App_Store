@@ -353,6 +353,14 @@ def world_pins(world):
     """Version-constrained entries of a world file's lines."""
     return [s for s in (parse_spec(w) for w in world) if s and s['op']]
 
+def _unsatisfiable(text):
+    """True when apk's output is only its answer that the packages cannot be installed: `unable to select packages` with
+    every repository index read. An index it could not fetch or trust (apk 3 and 2.14 `WARNING: fetching`, apk 2.12
+    `WARNING: Ignoring`) or any other ERROR (a database it could not open) is a tool error."""
+    lines=text.splitlines()
+    return ('ERROR: unable to select packages:' in lines and not any(re.match(r'WARNING: (fetching|Ignoring) ',l) for l in lines)
+        and all(l=='ERROR: unable to select packages:' for l in lines if l.startswith('ERROR:')))
+
 def evaluate(row, output):
     """The row with the result of container_script()'s parsed `output` (module docstring)."""
     row=dict(row)
@@ -369,7 +377,9 @@ def evaluate(row, output):
         if not any(satisfies(v,p['op'],p['version']) for v in policy['available']):stale.append({'spec':p['spec'],'source':where,'available':policy['available'],'installed':policy['installed']})
     row['stale']=stale;row['apk_output']=output['simulate'];row['exit']=output['exit']
     if output['edit_failed']:row['unchecked']=row['unchecked']+[{'file':row['dockerfile'],'line':0,'text':row['world_edits'][i],'reason':f'replaying this edit of {WORLD} failed'} for i in output['edit_failed']]
-    if output['exit']!=0:row.update(result=FAIL,reason='apk add --simulate failed')
+    if output['exit']!=0 and not _unsatisfiable(output['simulate']):
+        row.update(result=UNCHECKED,reason='apk add --simulate failed without a package answer',error=True)
+    elif output['exit']!=0:row.update(result=FAIL,reason='apk add --simulate failed')
     elif row['unchecked']:row.update(result=UNCHECKED,reason='some apk add lines were not checked')
     else:row.update(result=PASS,reason='')
     return row
