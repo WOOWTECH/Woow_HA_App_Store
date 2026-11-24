@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """How an add-on in a Store directory is built from source, shared by upgrade_check (#144) and apk_pin_check (#228).
 
-build_args(): the upgrade test rebuilds both images the way Supervisor builds them (supervisor/addons/build.py):
-build.yaml, .yml or .json next to config.yaml; base image build_from (a string, or one per arch), else Home
-Assistant's base image; Dockerfile.<arch> when there is one, else Dockerfile.
+build_args(): the upgrade test rebuilds both images the way current Supervisor builds them (supervisor/apps/build.py,
+_read_build_config, base_image and get_docker_args): the build file is build.yaml, .yml or .json next to config.yaml.
+Without one, BUILD_FROM is not passed and the Dockerfile's own ARG BUILD_FROM default (or a FROM written out) is the
+base. With one, BUILD_FROM is its build_from (a string, or one per arch), or ghcr.io/home-assistant/base:latest when
+build_from is missing or empty. Dockerfile.<arch> when there is one, else Dockerfile.
 
-base_image(): the image the Dockerfile's last stage starts from, with those build arguments. Current Supervisor
-(supervisor/apps/build.py) passes BUILD_FROM only when the add-on has a build file; without one the Dockerfile's own
-ARG BUILD_FROM default (or a FROM written out) is the base, so base_image() drops BUILD_FROM then. Order: build_from,
-else the BUILD_FROM build argument's default, else the FROM as written.
+base_image(): the image the Dockerfile's last stage starts from, with those build arguments. Order: BUILD_FROM when
+passed, else the BUILD_FROM build argument's default, else the FROM as written.
 """
 from __future__ import annotations
 import json, pathlib, re
@@ -27,17 +27,19 @@ def read_build_file(addon_dir):
 
 def build_args(addon_dir, version, arch='amd64'):
     """How Supervisor builds the add-on in `addon_dir` at `version` for `arch`: {'dockerfile': its path,
-    'args': {build argument: value}}, BUILD_FROM, BUILD_VERSION, BUILD_ARCH and then build.yaml's args."""
+    'args': {build argument: value}}: BUILD_FROM (only with a build file), BUILD_VERSION, BUILD_ARCH and then the build
+    file's args (module docstring)."""
     root=pathlib.Path(addon_dir)
     found,build=read_build_file(root)
     base=build.get('build_from')
-    if isinstance(base,dict):
+    if found is None:base=None
+    elif not base:base='ghcr.io/home-assistant/base:latest'
+    elif isinstance(base,dict):
         if arch not in base:raise ValueError(f'{found.name} build_from has no base image for {arch}')
         base=base[arch]
-    elif not base:base=f'ghcr.io/home-assistant/{arch}-base:latest'
     extra=build.get('args') or {}
     if not isinstance(extra,dict):raise ValueError(f'{found.name} args is not a mapping')
-    args={'BUILD_FROM':base,'BUILD_VERSION':version,'BUILD_ARCH':arch,**{str(k):v for k,v in extra.items()}}
+    args={**({'BUILD_FROM':base} if base is not None else {}),'BUILD_VERSION':version,'BUILD_ARCH':arch,**{str(k):v for k,v in extra.items()}}
     for k in args:
         # docker build --build-arg KEY=VALUE: a key that is empty or holds = or whitespace would become another argument.
         if not k or re.search(r'[=\s]',k):raise ValueError(f'build argument name {k!r} must be non-empty, without = or whitespace')
@@ -145,10 +147,8 @@ def base_image(addon_dir, arch, version='0'):
     """(Dockerfile path, the image its last stage starts from for `arch`, the stage chain from that image to the last
     stage as indexes into stages(), the stages, the build arguments), resolved the way Supervisor builds the add-on
     (module docstring). ValueError (Unresolved included) when that cannot be worked out."""
-    found,_=read_build_file(addon_dir)
     spec=build_args(addon_dir,version,arch)
     args=dict(spec['args'])
-    if found is None:args.pop('BUILD_FROM')
     text=pathlib.Path(spec['dockerfile']).read_text(encoding='utf-8')
     all_stages=stages(text,args)
     if not all_stages:raise ValueError(f'{pathlib.Path(spec["dockerfile"]).name} has no FROM')

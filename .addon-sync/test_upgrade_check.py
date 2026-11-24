@@ -1381,16 +1381,23 @@ class DeviceBuiltVulnerabilityComparison(StepHarness):
         self.assertNotIn('holds no t.syft.json',r.stdout)
 
 class BuildArgs(unittest.TestCase):
-    """upgrade_check.build_args (#144): how Supervisor builds an add-on built on the device (supervisor/addons/build.py)."""
+    """upgrade_check.build_args (#144): how Supervisor builds an add-on built on the device (supervisor/apps/build.py)."""
     def addon(self,files):
         d=pathlib.Path(tempfile.mkdtemp());self.addCleanup(shutil.rmtree,d)
         for name,text in {'Dockerfile':'FROM x',**files}.items():
             if text is not None:(d/name).write_text(text)
         return d
-    def test_without_a_build_file_the_base_is_home_assistants(self):
+    def test_without_a_build_file_there_is_no_build_from(self):
+        # Supervisor passes BUILD_FROM only with a build file; the Dockerfile's own ARG BUILD_FROM default or FROM is the base (#248).
         d=self.addon({})
         self.assertEqual(u.build_args(d,'1.2.3'),{'dockerfile':(d/'Dockerfile').as_posix(),
-            'args':{'BUILD_FROM':'ghcr.io/home-assistant/amd64-base:latest','BUILD_VERSION':'1.2.3','BUILD_ARCH':'amd64'}})
+            'args':{'BUILD_VERSION':'1.2.3','BUILD_ARCH':'amd64'}})
+    def test_a_build_file_without_build_from_gets_home_assistants_base(self):
+        # Supervisor's default for a build file with no (or an empty) build_from has no arch prefix (#248).
+        for name,text in (('no build_from','args:\n  X: 1\n'),('empty build file',''),('null','build_from:\n'),('empty string','build_from: ""\n'),
+                ('empty map','build_from: {}\n')):
+            with self.subTest(name):self.assertEqual(u.build_args(self.addon({'build.yaml':text}),'2')['args'],
+                {'BUILD_FROM':'ghcr.io/home-assistant/base:latest','BUILD_VERSION':'2','BUILD_ARCH':'amd64',**({'X':'1'} if 'X' in text else {})})
     def test_build_from_per_arch_or_one_for_all_and_args(self):
         for name,text in (('build.yaml','build_from:\n  amd64: a/b:1\n  aarch64: c/d:1\nargs:\n  X: 1\n'),('build.yml','build_from: a/b:1\nargs:\n  X: "1"\n'),
                 ('build.json','{"build_from": {"amd64": "a/b:1"}, "args": {"X": 1}}')):
