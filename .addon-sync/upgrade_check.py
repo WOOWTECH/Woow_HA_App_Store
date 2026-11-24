@@ -373,13 +373,17 @@ def catalog_entry(catalog, repo, component):
     entry=catalog['components'].get(component)
     return entry if isinstance(entry,dict) and entry.get('repository')==repo else None
 
-def sha_verdicts(components, unchanged, planned, compared, results, runtime_failed, held=frozenset(), ceiling_held=frozenset()):
+def sha_verdicts(components, unchanged, planned, compared, results, runtime_failed, held=frozenset(), ceiling_held=frozenset(), ceiling_failed=frozenset()):
     """sha mode (#167): each add-on's verdict, in the order of `components` (the ids `components()` gives):
     'unchanged' (in `unchanged`: its version is its latest stable Release's, not compared), 'passed', 'held' or 'failed'.
     Held (暫緩, #217): in `held` instead of `compared` (compare --held-ok exited HELD: the Core requirement alone blocked
     categories 1 and 4) with the same runtime evidence as passed; it gets no Release and does not fail the run.
     Held by its version ceiling (#216): in `ceiling_held` (the detect step's ceiling --held-ok exited HELD), so it was
     neither compared nor tested: held without that evidence. A held verdict says why: held_by 'core' or 'ceiling'.
+    While any add-on is held by its ceiling or its ceiling could not be read (`ceiling_failed`: failed), no other add-on
+    passes either: the Store publishes every add-on of a ref_policy release source from its latest Release's commit
+    (addon_sync.publish()), so a sibling's Release would ship the version above the ceiling (#216: 任一個超過時不發正式
+    Release). Such an add-on that would have passed is held too: held_by 'ceiling', `with` the ids that hold it.
     Passed needs positive evidence from both jobs: the add-on is in the compare job's plan (`planned`), its comparison
     (categories 1 and 4) passed (`compared`), and its upgrade test result (categories 2 and 3; `results`, the runtime
     job's runtime-reports, {name: passed}) is there and not failed: passed true, or null when the test did not run (no
@@ -395,6 +399,10 @@ def sha_verdicts(components, unchanged, planned, compared, results, runtime_fail
             verdict,why=('passed',{}) if cid in compared else ('held',{'held_by':'core'})
         else:verdict='failed'
         out.append({'id':cid,'verdict':verdict,**why})
+    holding=[cid for cid in components if cid in (set(ceiling_held)|set(ceiling_failed)) and cid not in unchanged]
+    if holding:
+        for v in out:
+            if v['verdict']=='passed':v.update(verdict='held',held_by='ceiling',**{'with':holding})
     return out
 
 def _when(text):
@@ -898,7 +906,7 @@ def _sha_verdicts(a):
             with contextlib.suppress(ValueError,KeyError,TypeError,AttributeError,OSError):
                 r=json.loads(p.read_text(encoding='utf-8'));results[r['name']]=r.get('passed')
         verdicts=sha_verdicts(components,set(_lines(a.unchanged)),planned,set(_lines(a.compared)),results,set(_lines(a.runtime_failed)),
-            set(_lines(a.held)) if a.held else set(),set(_lines(a.ceiling_held)) if a.ceiling_held else set())
+            *(set(_lines(f)) if f else set() for f in (a.held,a.ceiling_held,a.ceiling_failed)))
     print(json.dumps({'passed':[v['id'] for v in verdicts if v['verdict']=='passed'],'held':[v['id'] for v in verdicts if v['verdict']=='held'],'verdicts':verdicts}))
     return 1 if any(v['verdict']=='failed' for v in verdicts) else 0
 
@@ -914,7 +922,7 @@ def _release_notes(a):
     with _failing((ValueError,TypeError,OSError,yaml.YAMLError),f'{a.notes}: ','Release notes failed'):text=release_notes(_load(a.notes,'yaml',optional=True),a.version,a.released)
     print(text,end='');return 0
 
-HELD=4  # compare --held-ok: blocked by the Core requirement alone, so a Mirror source's add-on is held (暫緩, #217); not 1, 2 or 3
+HELD=4  # --held-ok: a Mirror source's add-on is held (暫緩), not 1, 2 or 3: compare, blocked by the Core requirement alone (#217); ceiling, above its version ceiling (#216)
 
 def _compare(a):
     with _failing((ValueError,KeyError,TypeError,OSError,yaml.YAMLError),f'{a.name or a.new}: '):
@@ -1049,6 +1057,7 @@ def main(argv=None):
     y.add_argument('--runtime-reports',required=True,help="directory of the runtime job's results, <id>.json");y.add_argument('--runtime-failed',required=True,help="ids 'Upgrade test result' failed, one per line (may be absent)")
     y.add_argument('--held',help="ids compare --held-ok held (暫緩, #217): blocked by the Core requirement alone, one per line (may be absent)")
     y.add_argument('--ceiling-held',help="ids ceiling --held-ok held (暫緩, #216): above their version ceiling, neither compared nor tested, one per line (may be absent)")
+    y.add_argument('--ceiling-failed',help="ids whose version ceiling could not be read (#216), one per line (may be absent); with --ceiling-held, no other add-on passes")
     e=sub.add_parser('ceiling',help=f"#216: judge the version against the add-on's version ceiling ({CEILING_FILE}, version_ceiling()): nothing when the file is absent, "
         f"exit 0 within it; above it exit 1 with an ::error, or with --held-ok a warning and exit {HELD}")
     e.add_argument('--file',required=True,help=f"the add-on's {CEILING_FILE} in the checkout (may be absent)");e.add_argument('--path',help='its path in the repository, for the messages')

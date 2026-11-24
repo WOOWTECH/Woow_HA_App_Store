@@ -1917,6 +1917,10 @@ class ShaMode(StepHarness):
         r,_,_=self.run_step(('plan',"SBOMs of the comparison targets' images"),extra=self.APPROVED,images=())
         self.assertEqual(r.returncode,1);self.assertFalse((self.tmp/'unscanned.txt').exists())
 
+def _ids(d, flag, ids):
+    """Writes `ids` one per line to a file in `d` named after `flag`, and returns its path."""
+    f=d/(flag.strip('-')+'.txt');f.write_text(''.join(i+'\n' for i in ids));return str(f)
+
 class ShaCommands(unittest.TestCase):
     """The two rules sha mode adds (#167): what changed at a commit (release-change) and what passed (sha-verdicts)."""
     SHA='0123456789abcdef0123456789abcdef01234567'
@@ -1939,7 +1943,7 @@ class ShaCommands(unittest.TestCase):
             with self.subTest(kw):
                 code,out=self.change(['v1.0.0'],'1.1.0',**kw)
                 self.assertEqual(code,2);self.assertIn(why,out);self.assertTrue(out.startswith('::error title=Upgrade comparison failed::'))
-    def verdicts(self,plan=('a','b','c'),compared=('a','b','c'),results=None,unchanged=(),runtime_failed=(),components=('a','b','c','d'),held=None,ceiling_held=None):
+    def verdicts(self,plan=('a','b','c'),compared=('a','b','c'),results=None,unchanged=(),runtime_failed=(),components=('a','b','c','d'),held=None,ceiling_held=None,ceiling_failed=None):
         d=pathlib.Path(tempfile.mkdtemp());self.addCleanup(shutil.rmtree,d);(d/'reports').mkdir()
         (d/'provider.json').write_text(json.dumps({'components':[{'id':i} for i in components]}))
         (d/'plan.jsonl').write_text(''.join(json.dumps({'id':i})+'\n' for i in plan))
@@ -1948,8 +1952,7 @@ class ShaCommands(unittest.TestCase):
         with contextlib.redirect_stdout(io.StringIO()) as out:
             code=u.main(['sha-verdicts','--provider',str(d/'provider.json'),'--unchanged',str(d/'unchanged.txt'),'--plan',str(d/'plan.jsonl'),
                 '--compared',str(d/'compared.txt'),'--runtime-reports',str(d/'reports'),'--runtime-failed',str(d/'failed.txt')]
-                +(['--held',str(d/'held.txt')] if held is not None and (d/'held.txt').write_text(''.join(i+'\n' for i in held)) is not None else [])
-                +(['--ceiling-held',str(d/'ceiling.txt')] if ceiling_held is not None and (d/'ceiling.txt').write_text(''.join(i+'\n' for i in ceiling_held)) is not None else []))
+                +[a for flag,ids in (('--held',held),('--ceiling-held',ceiling_held),('--ceiling-failed',ceiling_failed)) if ids is not None for a in (flag,_ids(d,flag,ids))])
         return code,json.loads(out.getvalue())
     def test_held_is_neither_passed_nor_failed(self):
         # #217: compare --held-ok exited HELD (the Core requirement alone blocks): held.txt, not compared.txt. Held needs the same
@@ -3414,15 +3417,30 @@ class CeilingVerdicts(unittest.TestCase):
     def test_ceiling_held_needs_no_comparison_or_test(self):
         # #216: held before the plan, so it has no plan line, comparison or runtime result, and is still held, not failed.
         code,v=self.verdicts(plan=('b','c'),compared=('b','c'),results={'b':True,'c':True},ceiling_held=('a',),unchanged=('d',))
-        self.assertEqual((code,v['passed'],v['held']),(0,['b','c'],['a']))
+        self.assertEqual((code,v['passed']),(0,[]))
         self.assertEqual(v['verdicts'][0],{'id':'a','verdict':'held','held_by':'ceiling'})
+    def test_ceiling_held_holds_every_add_on_that_would_pass(self):
+        # #216 任一個超過時不發正式 Release: the Store ships every add-on from the latest Release's commit, so a sibling's
+        # Release would ship the held version. A failed or unchanged sibling keeps its verdict.
+        code,v=self.verdicts(plan=('b','c'),compared=('b',),results={'b':True,'c':True},ceiling_held=('a',),unchanged=('d',))
+        self.assertEqual((code,v['passed'],v['held']),(1,[],['a','b']))
+        self.assertEqual(v['verdicts'],[{'id':'a','verdict':'held','held_by':'ceiling'},{'id':'b','verdict':'held','held_by':'ceiling','with':['a']},
+            {'id':'c','verdict':'failed'},{'id':'d','verdict':'unchanged'}])
+    def test_an_unreadable_ceiling_fails_and_holds_the_others(self):
+        code,v=self.verdicts(plan=('b','c'),compared=('b','c'),results={'b':True,'c':True},ceiling_failed=('a',),unchanged=('d',))
+        self.assertEqual((code,v['passed'],v['held']),(1,[],['b','c']))
+        self.assertEqual(v['verdicts'][0],{'id':'a','verdict':'failed'});self.assertEqual(v['verdicts'][1]['with'],['a'])
+    def test_a_core_hold_alone_holds_no_other(self):
+        # #217 is unchanged: only the ceiling holds the whole source.
+        code,v=self.verdicts(compared=('b','c'),held=('a',),unchanged=('d',))
+        self.assertEqual((code,v['passed'],v['held']),(0,['b','c'],['a']))
     def test_unchanged_wins_over_the_ceiling(self):
         code,v=self.verdicts(ceiling_held=('d',),unchanged=('d',))
         self.assertEqual((code,v['held'],v['verdicts'][3]),(0,[],{'id':'d','verdict':'unchanged'}))
     def test_core_and_ceiling_held_together(self):
         code,v=self.verdicts(plan=('b','c'),compared=('c',),held=('b',),results={'b':True,'c':True},ceiling_held=('a',),components=('a','b','c'))
-        self.assertEqual((code,v['passed'],v['held']),(0,['c'],['a','b']))
-        self.assertEqual([x.get('held_by') for x in v['verdicts']],['ceiling','core',None])
+        self.assertEqual((code,v['passed'],v['held']),(0,[],['a','b','c']))
+        self.assertEqual([(x.get('held_by'),x.get('with')) for x in v['verdicts']],[('ceiling',None),('core',None),('ceiling',['a'])])
 
 class CeilingShaMode(StepHarness):
     """#216 in the workflow: the detect step holds an add-on above its version ceiling before the plan. ShaMode's harness,
@@ -3454,12 +3472,14 @@ class CeilingShaMode(StepHarness):
     def test_an_unreadable_ceiling_fails(self):
         code,passed,log,summary=self.sha(files={'addon/version-ceiling.yaml':'ceiling: 1.1\n'})
         self.assertEqual((code,passed),(1,[]),log);self.assertIn('::error title=Upgrade comparison failed::t: ',log);self.assertIn('- t: **failed**',summary)
+        self.assertEqual((self.tmp/'ceiling-failed.txt').read_text(),'t\n')
     @needs_shell
     def test_unchanged_is_not_held(self):
         code,passed,log,summary=self.sha(('detect','passed'),version='1.0.0',results={},files=self.CEIL|{'addon/version-ceiling.yaml':'ceiling: "0.9.x"\n'})
         self.assertEqual((code,passed),(0,[]),log);self.assertIn('held=[]',(self.tmp/'out').read_text());self.assertNotIn('Held (暫緩)',log)
     @needs_shell
-    def test_one_held_by_the_ceiling_the_other_passes(self):
+    def test_one_held_by_the_ceiling_holds_the_other(self):
+        # The other passes every check but gets no Release: the Store would ship two's 1.1.0 from one's Release commit.
         comps=[{'id':i,'source_path':i,'config_file':'config.yaml'} for i in ('one','two')]
         image={i:f'ghcr.io/woowtech/ha-mirror-{i}-{{arch}}' for i in ('one','two')}
         files={f'{i}/config.yaml':yaml.safe_dump(dict(BASE,image=image[i],version='1.1.0')) for i in image}
@@ -3468,8 +3488,9 @@ class CeilingShaMode(StepHarness):
         refs=[f'ghcr.io/woowtech/ha-mirror-{i}-amd64:{v}' for i in image for v in ('1.0.0','1.1.0')]
         code,passed,log,summary=self.sha(extra={'components':comps,**self.APPROVED},releases=('one-v1.0.0','two-v1.0.0'),history=history,
             files=files,images=refs,started=('one',))
-        self.assertEqual((code,passed),(0,['one']),log);self.assertIn('held=["two"]',(self.tmp/'out').read_text())
+        self.assertEqual((code,passed),(0,[]),log);self.assertIn('held=["one","two"]',(self.tmp/'out').read_text())
         self.assertEqual([p['id'] for p in self.plans],['one'])
+        self.assertIn('- one: **held (暫緩)**: passed, but no Release while two is held by or failed on its version ceiling',summary)
     def test_the_held_step_names_both_reasons(self):
         held=next(s for s in self.wf['jobs']['compare']['steps'] if s.get('name')=='Held (暫緩)')
         self.assertIn('version-ceiling.yaml',held['run']);self.assertIn('shipping-core.json',held['run'])
