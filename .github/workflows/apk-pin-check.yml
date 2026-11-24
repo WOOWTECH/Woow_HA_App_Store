@@ -7,7 +7,8 @@
 # runs on its own hardware: amd64 on ubuntu-24.04, aarch64 on the ubuntu-24.04-arm runner (no qemu).
 # An add-on that cannot install fails the run and gets one Store issue, updated while the problem stays
 # and closed when the check passes. A tool error (an image that cannot be pulled, an unreadable
-# registry) fails the run without an issue. `apk add --simulate` does not detect file conflicts.
+# registry) fails the run without an issue. After `apk add --simulate` passes, the packages are installed
+# once for real in the same container, so a file conflict (pipeline #241) is also an add-on that cannot install.
 name: apk pin check
 'on':
   schedule:
