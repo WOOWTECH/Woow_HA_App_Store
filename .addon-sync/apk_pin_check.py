@@ -16,7 +16,7 @@ Scope: the Store registry only, each enabled stable add-on the Store ships (stor
 A `sed` the Dockerfile runs on /etc/apk/world before installing is replayed first (woow-nginxproxymanager strips the
 world pins that way).
 
-Results per add-on and arch: pass, cannot-install, not-checked (an `apk add` the check cannot read: a variable
+Results per add-on and arch: pass, cannot install, not checked (an `apk add` the check cannot read: a variable
 without a value, inside a conditional or loop, in another build stage with a pinned package; or a base image with no
 apk), skipped (no Dockerfile, no `apk add`, not Alpine). Not-checked never fails the run.
 
