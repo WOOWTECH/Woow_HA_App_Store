@@ -30,6 +30,9 @@ class BaseImage(Addon):
         # Current Supervisor passes BUILD_FROM only with a build file (supervisor/apps/build.py).
         d=self.addon({'Dockerfile':'ARG BUILD_FROM=ghcr.io/hassio-addons/base:21.0.2\nFROM ${BUILD_FROM}\n'})
         self.assertEqual(b.base_image(d,'aarch64')[1],'ghcr.io/hassio-addons/base:21.0.2')
+    def test_a_build_file_without_build_from_passes_home_assistants_base(self):
+        d=self.addon({'build.yaml':'args:\n  X: "1"\n','Dockerfile':'ARG BUILD_FROM=x/y:9\nFROM ${BUILD_FROM}\n'})
+        self.assertEqual(b.base_image(d,'amd64')[1],'ghcr.io/home-assistant/base:latest')
     def test_a_written_from_and_build_arch(self):
         d=self.addon({'Dockerfile':'ARG BUILD_ARCH\nARG TAG="bookworm-1"\nFROM ghcr.io/home-assistant/${BUILD_ARCH}-base-debian:${TAG}\n'})
         self.assertEqual(b.base_image(d,'aarch64')[1],'ghcr.io/home-assistant/aarch64-base-debian:bookworm-1')
