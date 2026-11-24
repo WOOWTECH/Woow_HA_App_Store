@@ -3418,21 +3418,20 @@ class CeilingVerdicts(unittest.TestCase):
     def test_ceiling_held_needs_no_comparison_or_test(self):
         # #216: held before the plan, so it has no plan line, comparison or runtime result, and is still held, not failed.
         code,v=self.verdicts(plan=('b','c'),compared=('b','c'),results={'b':True,'c':True},ceiling_held=('a',),unchanged=('d',))
-        self.assertEqual((code,v['passed']),(0,[]))
+        self.assertEqual((code,v['passed'],v['held']),(0,['b','c'],['a']))
         self.assertEqual(v['verdicts'][0],{'id':'a','verdict':'held','held_by':'ceiling'})
-    def test_ceiling_held_holds_every_add_on_that_would_pass(self):
-        # #216 任一個超過時不發正式 Release: the Store ships every add-on from the latest Release's commit, so a sibling's
-        # Release would ship the held version. A failed or unchanged sibling keeps its verdict.
+    def test_ceiling_held_holds_only_itself(self):
+        # #232: the Store ships each stable add-on from its own Release tag, so a sibling's Release no longer ships the held
+        # version; every other add-on keeps the verdict its own evidence gives.
         code,v=self.verdicts(plan=('b','c'),compared=('b',),results={'b':True,'c':True},ceiling_held=('a',),unchanged=('d',))
-        self.assertEqual((code,v['passed'],v['held']),(1,[],['a','b']))
-        self.assertEqual(v['verdicts'],[{'id':'a','verdict':'held','held_by':'ceiling'},{'id':'b','verdict':'held','held_by':'ceiling','with':['a']},
+        self.assertEqual((code,v['passed'],v['held']),(1,['b'],['a']))
+        self.assertEqual(v['verdicts'],[{'id':'a','verdict':'held','held_by':'ceiling'},{'id':'b','verdict':'passed'},
             {'id':'c','verdict':'failed'},{'id':'d','verdict':'unchanged'}])
-    def test_an_unreadable_ceiling_fails_and_holds_the_others(self):
+    def test_an_unreadable_ceiling_fails_only_itself(self):
         code,v=self.verdicts(plan=('b','c'),compared=('b','c'),results={'b':True,'c':True},ceiling_failed=('a',),unchanged=('d',))
-        self.assertEqual((code,v['passed'],v['held']),(1,[],['b','c']))
-        self.assertEqual(v['verdicts'][0],{'id':'a','verdict':'failed'});self.assertEqual(v['verdicts'][1]['with'],['a'])
+        self.assertEqual((code,v['passed'],v['held']),(1,['b','c'],[]))
+        self.assertEqual(v['verdicts'][:3],[{'id':'a','verdict':'failed'},{'id':'b','verdict':'passed'},{'id':'c','verdict':'passed'}])
     def test_a_core_hold_alone_holds_no_other(self):
-        # #217 is unchanged: only the ceiling holds the whole source.
         code,v=self.verdicts(compared=('b','c'),held=('a',),unchanged=('d',))
         self.assertEqual((code,v['passed'],v['held']),(0,['b','c'],['a']))
     def test_unchanged_wins_over_the_ceiling(self):
@@ -3440,8 +3439,9 @@ class CeilingVerdicts(unittest.TestCase):
         self.assertEqual((code,v['held'],v['verdicts'][3]),(0,[],{'id':'d','verdict':'unchanged'}))
     def test_core_and_ceiling_held_together(self):
         code,v=self.verdicts(plan=('b','c'),compared=('c',),held=('b',),results={'b':True,'c':True},ceiling_held=('a',),components=('a','b','c'))
-        self.assertEqual((code,v['passed'],v['held']),(0,[],['a','b','c']))
-        self.assertEqual([(x.get('held_by'),x.get('with')) for x in v['verdicts']],[('ceiling',None),('core',None),('ceiling',['a'])])
+        self.assertEqual((code,v['passed'],v['held']),(0,['c'],['a','b']))
+        self.assertEqual([(x['verdict'],x.get('held_by')) for x in v['verdicts']],[('held','ceiling'),('held','core'),('passed',None)])
+        self.assertFalse(any('with' in x for x in v['verdicts']))
 
 class CeilingShaMode(StepHarness):
     """#216 in the workflow: the detect step holds an add-on above its version ceiling before the plan. ShaMode's harness,
@@ -3479,8 +3479,8 @@ class CeilingShaMode(StepHarness):
         code,passed,log,summary=self.sha(('detect','passed'),version='1.0.0',results={},files=self.CEIL|{'addon/version-ceiling.yaml':'ceiling: "0.9.x"\n'})
         self.assertEqual((code,passed),(0,[]),log);self.assertIn('held=[]',(self.tmp/'out').read_text());self.assertNotIn('Held (暫緩)',log)
     @needs_shell
-    def test_one_held_by_the_ceiling_holds_the_other(self):
-        # The other passes every check but gets no Release: the Store would ship two's 1.1.0 from one's Release commit.
+    def test_one_held_by_the_ceiling_does_not_hold_the_other(self):
+        # #232: the Store ships each add-on from its own Release tag, so one's Release does not ship two's 1.1.0.
         comps=[{'id':i,'source_path':i,'config_file':'config.yaml'} for i in ('one','two')]
         image={i:f'ghcr.io/woowtech/ha-mirror-{i}-{{arch}}' for i in ('one','two')}
         files={f'{i}/config.yaml':yaml.safe_dump(dict(BASE,image=image[i],version='1.1.0')) for i in image}
@@ -3489,12 +3489,16 @@ class CeilingShaMode(StepHarness):
         refs=[f'ghcr.io/woowtech/ha-mirror-{i}-amd64:{v}' for i in image for v in ('1.0.0','1.1.0')]
         code,passed,log,summary=self.sha(extra={'components':comps,**self.APPROVED},releases=('one-v1.0.0','two-v1.0.0'),history=history,
             files=files,images=refs,started=('one',))
-        self.assertEqual((code,passed),(0,[]),log);self.assertIn('held=["one","two"]',(self.tmp/'out').read_text())
+        self.assertEqual((code,passed),(0,['one']),log);self.assertIn('held=["two"]',(self.tmp/'out').read_text())
         self.assertEqual([p['id'] for p in self.plans],['one'])
-        self.assertIn('- one: **held (暫緩)**: passed, but no Release while two is held by or failed on its version ceiling',summary)
+        self.assertIn('- one: passed\n',summary)
+        self.assertIn('- two: **held (暫緩)**: version above its version ceiling, not compared, no Release',summary)
+        self.assertNotIn('no Release while',summary)
     def test_the_held_step_names_both_reasons(self):
         held=next(s for s in self.wf['jobs']['compare']['steps'] if s.get('name')=='Held (暫緩)')
         self.assertIn('version-ceiling.yaml',held['run']);self.assertIn('shipping-core.json',held['run'])
+        # #232: a held add-on holds only itself.
+        self.assertNotIn('every other add-on',held['run'])
 
 class CeilingOnAPullRequest(StepHarness):
     @needs_shell
