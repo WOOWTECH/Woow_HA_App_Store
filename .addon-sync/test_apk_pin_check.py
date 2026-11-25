@@ -101,10 +101,14 @@ REGISTRY={'providers':{'WOOWTECH/a':{'components':[
     {'id':'plain','store_path':'plain','config_file':'config.yaml','channel':'stable','enabled':True}]}}}
 TAILSCALE_DOCKERFILE='ARG BUILD_FROM=ghcr.io/hassio-addons/base/amd64:21.0.2\nFROM ${BUILD_FROM}\nRUN apk add --no-cache bind-tools nginx=1.30.6-r0 dnsmasq=2.92_p2-r0\n'
 
-def output(world=(),sim='OK: 0 MiB in 30 packages',exit=0,policy='',alpine='3.24.1',apk=True):
+def output(world=(),sim='OK: 0 MiB in 30 packages',exit=0,policy='',alpine='3.24.1',apk=True,install=('OK: 0 MiB in 30 packages',0),end=True):
+    """container_script()'s output. `install` is the real apk add's (output, exit code); it runs only after a simulate
+    that passed."""
     if alpine is None:return '@@ALPINE\n@@NOTALPINE\n'
     if not apk:return f'@@ALPINE\n{alpine}\n@@NOAPK\n'
-    return f'@@ALPINE\n{alpine}\n@@WORLD\n'+''.join(w+'\n' for w in world)+f'@@EDITS\n@@SIMULATE\n{sim}\n@@EXIT {exit}\n@@POLICY\n{policy}@@END\n'
+    text=f'@@ALPINE\n{alpine}\n@@WORLD\n'+''.join(w+'\n' for w in world)+f'@@EDITS\n@@SIMULATE\n{sim}\n@@EXIT {exit}\n@@POLICY\n{policy}@@INSTALL\n'
+    if exit==0 and install is not None:text+=f'{install[0]}\n@@INSTALLEXIT {install[1]}\n'
+    return text+('@@END\n' if end else '')
 
 HASSIO_WORLD=['bash=5.3.3-r1','curl=8.21.0-r0','musl=1.2.6-r2']
 TAILSCALE_FAIL=output(HASSIO_WORLD,'ERROR: unable to select packages:\n  nginx-1.30.7-r0:\n    breaks: world[nginx=1.30.6-r0]',1,
@@ -113,6 +117,17 @@ TAILSCALE_FAIL=output(HASSIO_WORLD,'ERROR: unable to select packages:\n  nginx-1
     'dnsmasq policy:\n  2.92_p2-r0:\n    https://dl-cdn.alpinelinux.org/alpine/v3.24/main\n'
     'musl policy:\n  1.2.6-r2:\n    lib/apk/db/installed\n  1.2.6-r3:\n    https://dl-cdn.alpinelinux.org/alpine/v3.24/main\n'
     'nginx policy:\n  1.30.7-r0:\n    https://dl-cdn.alpinelinux.org/alpine/v3.24/main\n')
+
+# #241: python3-ndbm from the repository overwrites a file of the base's older python3. apk resolves it (simulate passes)
+# and fails only when it unpacks the package. The ERROR line is apk's own (apk-tools 3.0.9, 2.14.13 and 2.12.9 print the
+# same: one line per file, then one "N error(s);" line per package).
+OPENDESIGN_DOCKERFILE='ARG BUILD_FROM=ghcr.io/woowtech/open-design-core:20261101.2319\nFROM ${BUILD_FROM}\nRUN apk add --no-cache nginx su-exec ttyd=1.7.7-r0\n'
+NDBM_SO='usr/lib/python3.14/lib-dynload/_dbm.cpython-314-x86_64-linux-musl.so'
+CONFLICT_241=('(1/6) Installing nginx (1.30.7-r0)\n  Executing nginx-1.30.7-r0.pre-install\n  Executing nginx-1.30.7-r0.post-install\n'
+    f'(2/6) Installing python3-ndbm (3.14.10-r2)\nERROR: python3-ndbm-3.14.10-r2: trying to overwrite {NDBM_SO} owned by python3-3.14.10-r1.\n'
+    '(3/6) Installing su-exec (0.3-r0)\n(4/6) Installing libwebsockets (4.3.5-r2)\n(5/6) Installing libwebsockets-evlib_uv (4.3.5-r2)\n'
+    '(6/6) Installing ttyd (1.7.7-r0)\nExecuting busybox-1.37.0-r31.trigger\n1 error; 1037.7 MiB in 324 packages')
+TTYD_POLICY='ttyd policy:\n  1.7.7-r0:\n    https://dl-cdn.alpinelinux.org/alpine/v3.24/community\n'
 
 class FakeDocker:
     """Answers docker images / image inspect / pull / run / create / rm / rmi. `outputs` maps an image (or ('rootfs', image)
@@ -164,7 +179,7 @@ class Check(Addon):
         self.assertIn('| tailscale | aarch64 | `ghcr.io/hassio-addons/base/aarch64:21.0.2` (Alpine 3.24.1) | 2 + 3 in world | cannot install |',text)
         self.assertIn('nginx=1.30.6-r0 (apk add): repository has 1.30.7-r0',text)
         self.assertIn('world pins checked: 3 (2 older than the repository)',text)
-        self.assertIn('breaks: world[nginx=1.30.6-r0]',text);self.assertIn('does not detect file conflicts',text)
+        self.assertIn('breaks: world[nginx=1.30.6-r0]',text);self.assertIn(c.FILE_CONFLICT_NOTE,text)
     def test_script_has_every_package_in_one_simulate_and_policy_for_pins_and_world(self):
         row=c.plan(REGISTRY,self.store(),('amd64',),{'tailscale'})[0]
         script=c.container_script(row)
@@ -259,6 +274,114 @@ class Check(Addon):
     def test_a_bad_registry_is_a_tool_error(self):
         d=self.addon({'registry.json':'{"providers": []}'})
         with unittest.mock.patch('sys.stdout'):self.assertEqual(c.main(['check','--registry',str(d/'registry.json'),'--store',str(d),'--arch','amd64','--out',str(d/'o.json')]),2)
+
+OPENDESIGN_REGISTRY={'providers':{'o/od':{'components':[{'id':'opendesign','store_path':'od','config_file':'config.yaml','channel':'stable','enabled':True}]}}}
+
+class Install(Addon):
+    """After a simulate that passes, the same packages are installed once for real: a file conflict is cannot install (#246)."""
+    def row(self,dockerfile=OPENDESIGN_DOCKERFILE,arch='amd64'):
+        d=self.addon({'od/config.yaml':json.dumps({'version':'1.0.0','arch':['amd64','aarch64']}),'od/Dockerfile':dockerfile})
+        return c.plan(OPENDESIGN_REGISTRY,d,(arch,))[0]
+    def test_regression_241_a_file_conflict_cannot_install(self):
+        row=self.row()
+        docker=FakeDocker({row['base']:output(sim='OK: 1037.7 MiB in 324 packages',policy=TTYD_POLICY,install=(CONFLICT_241,1))})
+        got=c.run_rows([row],'amd64',docker=docker)[0]
+        self.assertEqual(got['result'],c.FAIL);self.assertFalse(got.get('error'));self.assertEqual(got['exit'],0)
+        self.assertEqual(got['conflicts'],[{'package':'python3-ndbm-3.14.10-r2','path':NDBM_SO,'owner':'python3-3.14.10-r1'}])
+        self.assertIn('file conflict',got['reason']);self.assertIn('python3-ndbm-3.14.10-r2',got['reason']);self.assertIn(NDBM_SO,got['reason'])
+        self.assertEqual((got['install_exit'],got['install_output']),(1,CONFLICT_241));self.assertNotIn('approximate',got)
+        text=c.summary([got])
+        self.assertIn('| opendesign | amd64 |',text);self.assertIn('| cannot install |',text)
+        self.assertIn(f'ERROR: python3-ndbm-3.14.10-r2: trying to overwrite {NDBM_SO} owned by python3-3.14.10-r1.',text)
+        body=c.issue_body('opendesign',[got])
+        for want in ('file conflict','`apk add --simulate` passed','`python3-ndbm-3.14.10-r2`',f'`{NDBM_SO}`','`python3-3.14.10-r1`',
+                f'ERROR: python3-ndbm-3.14.10-r2: trying to overwrite {NDBM_SO}','`apk add` output:'):self.assertIn(want,body)
+        for bad in ('/home/','/tmp/','runner','.addon-sync'):self.assertNotIn(bad,body)
+        gh=FakeGitHub();self.assertEqual(c.sync_issues(gh,'o/r',[got]),[('open','opendesign',None)])
+    def test_every_file_of_a_conflict_is_listed(self):
+        # apk 2.14.13 and 3.0.9: one ERROR line per file, one "1 error;" line for the package.
+        two=('(1/1) Installing multi-b (1.0-r0)\nERROR: multi-b-1.0-r0: trying to overwrite usr/share/multi/one.txt owned by multi-a-1.0-r0.\n'
+            'ERROR: multi-b-1.0-r0: trying to overwrite usr/share/multi/two.txt owned by multi-a-1.0-r0.\n1 error; 7 MiB in 17 packages')
+        got=c.evaluate(self.row(),c.parse_output(output(install=(two,1))))
+        self.assertEqual(got['result'],c.FAIL)
+        self.assertEqual([x['path'] for x in got['conflicts']],['usr/share/multi/one.txt','usr/share/multi/two.txt'])
+    def test_an_install_that_fails_otherwise_is_a_tool_error(self):
+        # apk's own text for a failing install script (apk 3.0.9; 2.14.13 and 2.12.9) and a package gone between the
+        # simulate and the install; then, shaped like apk's, a download that failed, a conflict next to another error, no
+        # ERROR at all.
+        row=self.row()
+        conflict=f'ERROR: python3-ndbm-3.14.10-r2: trying to overwrite {NDBM_SO} owned by python3-3.14.10-r1.'
+        for text,code in (('(1/1) Installing badscript (1.0-r0)\n  Executing badscript-1.0-r0.post-install\n  * failing on purpose\n'
+                    'ERROR: lib/apk/exec/badscript-1.0-r0.post-install: exited with error 1\n1 error; 8212 KiB in 17 packages',1),
+                ('Executing badscript-1.0-r0.post-install\nfailing on purpose\nERROR: badscript-1.0-r0.post-install: script exited with error 1\n1 error; 7 MiB in 16 packages',1),
+                ('ERROR: unable to select packages:\n  ttyd (no such package):\n    required by: world[ttyd=1.7.7-r0]',1),
+                ('ERROR: nginx-1.30.7-r0: network error (check Internet connection and firewall)\n1 error; 7 MiB in 16 packages',1),
+                (conflict+'\nERROR: Failed to commit changes: No space left on device\n1 error; 7 MiB in 16 packages',1),
+                ('Segmentation fault',139)):
+            got=c.evaluate(row,c.parse_output(output(install=(text,code))))
+            self.assertEqual(got['result'],c.UNCHECKED,text);self.assertTrue(got.get('error'),text)
+            self.assertIn('the install failed without a file conflict',got['reason'])
+            self.assertEqual(c.sync_issues(FakeGitHub(),'o/r',[got]),[])
+    def test_an_install_that_passes_keeps_the_simulate_result(self):
+        row=self.row()
+        self.assertEqual(c.evaluate(row,c.parse_output(output()))['result'],c.PASS)
+        unread=dict(row,unchecked=[{'file':'Dockerfile','line':3,'text':'apk add $X','reason':'$X has no value'}])
+        self.assertEqual(c.evaluate(unread,c.parse_output(output()))['result'],c.UNCHECKED)
+        self.assertEqual(c.evaluate(unread,c.parse_output(output(install=(CONFLICT_241,1))))['result'],c.FAIL)
+    def test_a_simulate_that_fails_installs_nothing(self):
+        # The script itself, in sh, with a stand-in apk: the simulate fails, so no apk add without --simulate runs.
+        d=self.addon({'r/etc/alpine-release':'3.24.1\n','r/lib/apk/db/installed':'','r/etc/apk/world':'musl\n',
+            'bin/apk':'#!/bin/sh\necho "$*" >> "$(dirname "$0")/calls"\n'
+                'case " $* " in *" policy "*) ;; *" --simulate "*) echo "ERROR: unable to select packages:"; echo "  ttyd-1.7.8-r0:"; '
+                'echo "    breaks: world[ttyd=1.7.7-r0]"; exit 1;; *) echo INSTALLED;; esac\n'})
+        (d/'bin/apk').chmod(0o755)
+        row=self.row()
+        text=subprocess.run(['sh','-c',c.container_script(row,str(d/'r'))],capture_output=True,text=True,env=dict(os.environ,PATH=f'{d/"bin"}:{os.environ["PATH"]}')).stdout
+        calls=(d/'bin/calls').read_text().splitlines()
+        self.assertEqual([l for l in calls if ' add ' in f' {l} ' and '--simulate' not in l],[]);self.assertNotIn('INSTALLED',text)
+        parsed=c.parse_output(text);self.assertTrue(parsed['complete']);self.assertIsNone(parsed['install_exit'])
+        got=c.evaluate(row,parsed)
+        self.assertEqual((got['result'],got['reason']),(c.FAIL,'apk add --simulate failed'));self.assertNotIn('conflicts',got)
+        self.assertNotIn('approximate',c.evaluate(row,parsed,rootfs=True))
+    def test_the_install_runs_after_the_simulate_in_the_same_script(self):
+        d=self.addon({'r/etc/alpine-release':'3.24.1\n','r/lib/apk/db/installed':'','r/etc/apk/world':'musl\n',
+            'bin/apk':'#!/bin/sh\ncase " $* " in *" policy "*) ;; *" --simulate "*) echo OK;; *) '
+                f'echo "ERROR: python3-ndbm-3.14.10-r2: trying to overwrite {NDBM_SO} owned by python3-3.14.10-r1."; echo "1 error; 1 MiB in 2 packages"; exit 1;; esac\n'})
+        (d/'bin/apk').chmod(0o755)
+        row=self.row()
+        text=subprocess.run(['sh','-c',c.container_script(row,str(d/'r'))],capture_output=True,text=True,env=dict(os.environ,PATH=f'{d/"bin"}:{os.environ["PATH"]}')).stdout
+        parsed=c.parse_output(text)
+        self.assertEqual((parsed['exit'],parsed['install_exit']),(0,1));self.assertEqual(parsed['simulate'],'OK')
+        self.assertEqual(c.evaluate(row,parsed)['result'],c.FAIL)
+    def test_install_flags_native_and_rootfs(self):
+        row=self.row('FROM a/b:1\nRUN apk add --no-cache --upgrade -X https://example.invalid/edge/testing nginx ttyd=1.7.7-r0\n')
+        native=c.container_script(row)
+        self.assertIn("apk add --simulate --no-cache --upgrade -X https://example.invalid/edge/testing nginx ttyd=1.7.7-r0 2>&1",native)
+        self.assertIn("apk add --no-cache --upgrade -X https://example.invalid/edge/testing nginx ttyd=1.7.7-r0 2>&1",native)
+        self.assertNotIn('--no-scripts',native)
+        # Policy reads the repository and the base before the install changes the base.
+        self.assertLess(native.index('@@POLICY'),native.index('@@INSTALL'))
+        rootfs=c.container_script(row,'/r')
+        self.assertIn('apk --root /r --arch x86_64 add --no-cache --upgrade -X https://example.invalid/edge/testing --no-scripts nginx ttyd=1.7.7-r0 2>&1',rootfs)
+        self.assertEqual(rootfs.count('--no-scripts'),1)
+    def test_rootfs_mode_is_flagged_approximate(self):
+        row=self.row(arch='aarch64')
+        for mode,outputs in (('rootfs',{('rootfs',row['base']):output()}),('native',{row['base']:output(apk=False),('rootfs',row['base']):output()})):
+            got=c.run_rows([row],'aarch64',mode,docker=FakeDocker(outputs))[0]
+            self.assertEqual(got['result'],c.PASS,mode);self.assertIn('--no-scripts',got['approximate'])
+            self.assertIn('approximate',c.summary([got]))
+        native=c.run_rows([row],'aarch64',docker=FakeDocker({row['base']:output()}))[0]
+        self.assertNotIn('approximate',native);self.assertNotIn('--no-scripts',c.summary([native]).split('|---|')[-1])
+        conflict=c.run_rows([row],'aarch64','rootfs',docker=FakeDocker({('rootfs',row['base']):output(install=(CONFLICT_241,1))}))[0]
+        self.assertEqual(conflict['result'],c.FAIL);self.assertIn('approximate',c.issue_body('opendesign',[conflict]))
+    def test_output_cut_off_during_the_install_did_not_finish(self):
+        text=output(install=('(1/6) Installing nginx (1.30.7-r0)',0),end=False).replace('@@INSTALLEXIT 0\n','')
+        parsed=c.parse_output(text);self.assertFalse(parsed['complete'])
+        got=c.evaluate(self.row(),parsed)
+        self.assertEqual((got['result'],got['reason'],got['error']),(c.UNCHECKED,'the check did not finish in the base image',True))
+        # Complete, but no exit code of the install after a simulate that passed: not a pass either.
+        got=c.evaluate(self.row(),c.parse_output(output(install=None)))
+        self.assertEqual(got['result'],c.UNCHECKED);self.assertTrue(got['error'])
 
 class FakeGitHub:
     """Issues of one repository, in memory, behind addon_sync.GitHub's api()."""
