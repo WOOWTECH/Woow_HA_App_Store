@@ -1836,21 +1836,21 @@
     "hamh": {
       "id": "hamh",
       "name": "Home-Assistant-Matter-Hub",
-      "version": "2.0.60",
+      "version": "2.1.0",
       "repository": "WOOWTECH/Woow_ha_matter_hub_add_on",
-      "source_sha": "ecae793294ac645be2b2782683487e0473da20ce",
+      "source_sha": "e099e677dbcf49a310705e7393a43427dc54c8ca",
       "source_path": "hamh",
       "config_file": "config.yaml",
-      "config_sha256": "sha256:7a04c7123d068599624b72f23bbd45348a440cdc752ebdf6038a67640a0b28c0",
-      "archive_sha256": "sha256:879a567181d67232a88153ab1f891666563e30461506437b0ccebb51c92f936b",
-      "context_fingerprint": "sha256:d636c2d1e5f1eaccca3b0f9a0c04243187fcdf7072fd1a0884ddefd3ab165395",
-      "material_fingerprint": "sha256:ed27fe54814d2a9bc292774a0e605f524ae0d19121fa2172b0aeec47778dbd01",
+      "config_sha256": "sha256:901b7c9f94ec5bbe6ea9e428a842fb6bd5c76462a0812e816cd77f21d859c97e",
+      "archive_sha256": "sha256:d2667d06caa11a52a51421600e03dacfd2b833c4eea13f3b4d0607d1ef706912",
+      "context_fingerprint": "sha256:9d14787fd08462d0f373a4b03fb3ddf8ab91aa5a5c5731873e8803c248532de2",
+      "material_fingerprint": "sha256:ed60da10a25304edef9eea8eff8f3820b26aa6301a304b47ae5ac7b1f1b93646",
       "architectures": [
         "aarch64",
         "amd64"
       ],
       "config": {
-        "version": "2.0.60",
+        "version": "2.1.0",
         "image": "ghcr.io/woowtech/ha-mirror-ghcr-io-riddix-home-assistant-matter-hub-addon",
         "slug": "hamh",
         "name": "Home-Assistant-Matter-Hub",
@@ -1869,7 +1869,7 @@
         "ingress": true,
         "ingress_port": 0,
         "map": [
-          "addon_config:rw"
+          "app_config:rw"
         ],
         "options": {
           "app_log_level": "info",
@@ -1879,7 +1879,9 @@
           "mdns_strip_global_ipv6": false,
           "heap_size_mb": 0,
           "access_token": "",
-          "home_assistant_url": "http://127.0.0.1:8123"
+          "home_assistant_url": "http://127.0.0.1:8123",
+          "allow_local_access": false,
+          "local_api_password": ""
         },
         "schema": {
           "app_log_level": "list(silly|debug|info|notice|warn|error|fatal)",
@@ -1889,27 +1891,29 @@
           "mdns_strip_global_ipv6": "bool",
           "heap_size_mb": "int(0,8192)",
           "access_token": "password?",
-          "home_assistant_url": "url?"
+          "home_assistant_url": "url?",
+          "allow_local_access": "bool",
+          "local_api_password": "password?"
         }
       },
       "source_build_supported": false,
       "images": {
         "aarch64": {
-          "reference": "ghcr.io/woowtech/ha-mirror-ghcr-io-riddix-home-assistant-matter-hub-addon:2.0.60",
-          "index_digest": "sha256:b27052016550dd2bf99c0bc25f14b55d93cded3ca51c091d3c4072ecdf4d4e0d",
-          "digest": "sha256:bde284465c287f08a6a3d58ae03b91c863eaf703adead09015a6e4b37604d380",
+          "reference": "ghcr.io/woowtech/ha-mirror-ghcr-io-riddix-home-assistant-matter-hub-addon:2.1.0",
+          "index_digest": "sha256:b274b3258cc9ba84def87751fce405830b94c1025e7c3b1672d011785a81ffca",
+          "digest": "sha256:f0930e6490b85c8fb3b96a535275a9399046f4335de2a70e8e76a21d2781b992",
           "source_revision": "bddd6646b846dc44b2ceb744d5a0229191d7ecef"
         },
         "amd64": {
-          "reference": "ghcr.io/woowtech/ha-mirror-ghcr-io-riddix-home-assistant-matter-hub-addon:2.0.60",
-          "index_digest": "sha256:b27052016550dd2bf99c0bc25f14b55d93cded3ca51c091d3c4072ecdf4d4e0d",
-          "digest": "sha256:331d374820ab412f500d296ed4795685d129d9c0a43f76d2c838c4e9c40c787b",
+          "reference": "ghcr.io/woowtech/ha-mirror-ghcr-io-riddix-home-assistant-matter-hub-addon:2.1.0",
+          "index_digest": "sha256:b274b3258cc9ba84def87751fce405830b94c1025e7c3b1672d011785a81ffca",
+          "digest": "sha256:944f9ce09f13b83dd2ba50345893805742134ff4a0c7581bc3798dc3cc69efed",
           "source_revision": "bddd6646b846dc44b2ceb744d5a0229191d7ecef"
         }
       },
       "delivery": "published-image",
       "validation": "manifest+architecture-images+configured-CI",
-      "publisher_run_id": "43551809387",
+      "publisher_run_id": "45540603596",
       "channel": "stable",
       "store_path": "hamh"
     },
@@ -3333,5 +3337,5 @@
       "store_path": "woow_mcp_headscale"
     }
   },
-  "catalog_id": "sha256:a7e1d90d79044bca21305877cc117d0d781b31d7d30a14efa9a76fb0e7da84b0"
+  "catalog_id": "sha256:fcd4f1f112dc409379067d041112eef3228546346b73a93adfe747cc4edc8ae4"
 }

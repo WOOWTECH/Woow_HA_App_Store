@@ -1,4 +1,4 @@
-version: "2.0.60"
+version: "2.1.0"
 image: ghcr.io/woowtech/ha-mirror-ghcr-io-riddix-home-assistant-matter-hub-addon
 slug: hamh
 name: Home-Assistant-Matter-Hub
@@ -16,7 +16,7 @@ arch:
 ingress: true
 ingress_port: 0
 map:
-  - addon_config:rw
+  - app_config:rw
 options:
   app_log_level: info
   protocol_log_level: info
@@ -26,6 +26,8 @@ options:
   heap_size_mb: 0
   access_token: ""
   home_assistant_url: "http://127.0.0.1:8123"
+  allow_local_access: false
+  local_api_password: ""
 schema:
   app_log_level: list(silly|debug|info|notice|warn|error|fatal)
   protocol_log_level: list(silly|debug|info|notice|warn|error|fatal)
@@ -35,3 +37,5 @@ schema:
   heap_size_mb: int(0,8192)
   access_token: "password?"
   home_assistant_url: "url?"
+  allow_local_access: bool
+  local_api_password: "password?"
