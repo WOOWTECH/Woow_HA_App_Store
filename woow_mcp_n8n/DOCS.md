@@ -11,9 +11,9 @@
 真 HA 上管理員 Ingress 與 token 操作已通過（見上）；整合獨立規格及新安全審查仍待完成。
 不得注入 test verifier 或直接編輯 state 解鎖；`panel_admin` 不是角色授權。
 
-**支援的 Core 版本**：管理面板只在本版審查過的 HA Core 版本運作（0.1.6–0.1.8：2026.7.2–2026.9.4 與 2026.10.0；0.1.9 起再加 2026.10.1；0.4.2 起再加 2026.10.2–2026.10.4；0.4.14 起再加 2026.11.0–2026.11.2）。
-其他版本（含之後的 patch 與 beta）整個管理面板都回 403；0.4.1 以前看起來和「不是管理員」完全一樣（add-on 紀錄也沒有訊息），0.4.2 起管理面板改顯示「這個 HA Core 版本尚未審核：<版本>」，add-on 紀錄也記一行同樣的說明（不含權杖）；
-MCP 端點（Bearer token）不經這項檢查，不受影響。新的 Core 版本要等 add-on 發新版才支援，升級 Core 前請先對照這份清單。0.4.3 起，舊版升級後自動全開的設定在未審核的 Core 上也無法用管理面板還原或調整：請先把 add-on 更新到審過這個 Core 的版本，再到管理面板「還原升級前的限制」；需要立刻限制 MCP 時先停止 add-on（進階的離線還原步驟見 [legacy migration](https://github.com/WOOWTECH/Woow_ha_mcp_addons/blob/claude-delivery/docs/operations/legacy-migration.md#when-the-panel-refuses-an-unreviewed-core)）。
+**支援的 Core 版本**：管理面板只在本版審查過的 HA Core 版本運作（0.1.6–0.1.8：2026.7.2–2026.9.4 與 2026.10.0；0.1.9 起再加 2026.10.1；0.4.2 起再加 2026.10.2–2026.10.4；0.4.14 起再加 2026.11.0–2026.11.2；0.4.15 起再加 2026.11.3）。
+0.4.15 起，已審查月份的後續修補版自動放行：版本字串要剛好是 `年.月.修補`（月份與修補號不補零，不接受前後空白、`v` 開頭、beta／rc／dev 或第四段），該年該月已有審過的版本，而且修補號大於該月審過的最大修補號（審過 2026.11.3 之後，2026.11.4 起放行；2026.7.0、2026.7.1 比審過的最早版本 2026.7.2 更早，不放行）；放行的版本沒有逐版審查，add-on 紀錄每個版本記一行，之後的 add-on 版本再補審。其他版本（新的月份、預覽版與其他格式）整個管理面板都回 403；0.4.1 以前看起來和「不是管理員」完全一樣（add-on 紀錄也沒有訊息），0.4.2 起管理面板改顯示「這個 HA Core 版本尚未審核：<版本>」，add-on 紀錄也記一行同樣的說明（不含權杖）；
+MCP 端點（Bearer token）不經這項檢查，不受影響。新月份的 Core 版本要等 add-on 發新版才支援（同月份的後續修補版不用等），升級 Core 前請先對照這份清單。0.4.3 起，舊版升級後自動全開的設定在未審核的 Core 上也無法用管理面板還原或調整：請先把 add-on 更新到審過這個 Core 的版本，再到管理面板「還原升級前的限制」；需要立刻限制 MCP 時先停止 add-on（進階的離線還原步驟見 [legacy migration](https://github.com/WOOWTECH/Woow_ha_mcp_addons/blob/claude-delivery/docs/operations/legacy-migration.md#when-the-panel-refuses-an-unreviewed-core)）。
 
 此 token 授予**廣泛 Core 管理能力**（使用者管理、可能透過服務間接影響
 Supervisor／host），不是可強制的唯讀角色權限。批准不授權所有 HA 變更，亦不
@@ -28,7 +28,7 @@ protection mode 保持 on，無新增 host mounts、Docker socket 或 capabiliti
 快取，停權／降權／缺失／timeout／錯誤一律 fail closed。role query 不保證即時
 撤銷 browser Ingress session 或已在執行的跨系統操作。詳見共用驗收文件。
 
-本產品 runtime：**n8n-mcp 2.96.2 / Node 26.12.1**（0.4.0 起 Node 26；0.3.4 是 Node 22.23.4，之前 n8n-mcp 2.91.0 / Node 22.23.2，28 個工具相同）。**0.2.1 起完整版**（負責人 2026-10-15 決定）：上游 28 個工具全部開放，與原始 MCP server 及 PaaS 版功能一致；tools/list 用子程序自己的 inputSchema（經 provider-safe 正規化），tools/call 參數原樣轉給子程序驗證，輸出不再截斷或投影。管理類工具（workflow、executions、credentials、data table、資料夾、版本、agents 等）需先設定 n8n 網址與 API key。原生版本歷史、資料表欄位操作、`n8n_test_workflow` prepare／pinned／direct、`n8n_explore_node_resources`、`n8n_manage_agents` 另需選填的 **MCP Access Token**（0.2.1 起，管理面板「後端連線設定」；n8n 設定 → Instance-level MCP）。子程序以 `WEBHOOK_SECURITY_MODE=permissive` 執行（0.2.1 起，使用者決定關閉 webhook／URL SSRF 防護）：可連 HA 內網的 n8n，**MCP 也能經 n8n-mcp 連到 add-on 能到的任何內網位址**（上游只保留擋雲端 metadata 主機名）。逐名清單與分類見[工具表](https://github.com/WOOWTECH/Woow_ha_mcp_addons/blob/claude-delivery/docs/tool-surface.md)，轉送規則與保留的安全層見[工具範圍](https://github.com/WOOWTECH/Woow_ha_mcp_addons/blob/claude-delivery/docs/tool-expansion.md)。子程序新增但尚未分類的工具一律拒絕。
+本產品 runtime：**n8n-mcp 2.96.2 / Node 26.13.1**（0.4.15 起 Node 26.13.1，修掉 Node 26.12.1 執行檔的 7 個 High 漏洞；0.4.0 到 0.4.14 是 Node 26.12.1；0.3.4 是 Node 22.23.4，之前 n8n-mcp 2.91.0 / Node 22.23.2，28 個工具相同）。**0.2.1 起完整版**（負責人 2026-10-15 決定）：上游 28 個工具全部開放，與原始 MCP server 及 PaaS 版功能一致；tools/list 用子程序自己的 inputSchema（經 provider-safe 正規化），tools/call 參數原樣轉給子程序驗證，輸出不再截斷或投影。管理類工具（workflow、executions、credentials、data table、資料夾、版本、agents 等）需先設定 n8n 網址與 API key。原生版本歷史、資料表欄位操作、`n8n_test_workflow` prepare／pinned／direct、`n8n_explore_node_resources`、`n8n_manage_agents` 另需選填的 **MCP Access Token**（0.2.1 起，管理面板「後端連線設定」；n8n 設定 → Instance-level MCP）。子程序以 `WEBHOOK_SECURITY_MODE=permissive` 執行（0.2.1 起，使用者決定關閉 webhook／URL SSRF 防護）：可連 HA 內網的 n8n，**MCP 也能經 n8n-mcp 連到 add-on 能到的任何內網位址**（上游只保留擋雲端 metadata 主機名）。逐名清單與分類見[工具表](https://github.com/WOOWTECH/Woow_ha_mcp_addons/blob/claude-delivery/docs/tool-surface.md)，轉送規則與保留的安全層見[工具範圍](https://github.com/WOOWTECH/Woow_ha_mcp_addons/blob/claude-delivery/docs/tool-expansion.md)。子程序新增但尚未分類的工具一律拒絕。
 
 **MCP 提供的內容**：這個 add-on 透過 MCP 只提供工具（tools）：`initialize` 宣告的能力只有 `tools`，`prompts/list`、`resources/list` 等請求回 -32601（Method not found）。子程序自己的 server instructions 不轉送。WOOW PaaS 的 n8n MCP 另外提供 resources；負責人 2026-11-07 決定維持只提供工具。
 

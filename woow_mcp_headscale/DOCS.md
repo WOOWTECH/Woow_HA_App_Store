@@ -2,11 +2,11 @@
 
 ## 目前狀態
 
-**0.4.18 已發布並上架；0.4.19 是維修版候選，映像尚未建置。** 0.4.18 包含 Core 2026.11.0／2026.11.1 相容性、密鑰網址 Origin 防護、多 DNS 位址連線退避，以及 11 支 Headscale 工具已審查的物件輸出 schema。0.4.19 的主因是管理面板接受 Core 2026.11.2（0.4.18 在 Core 2026.11.2 上拒絕每個管理面板請求，MCP 端點不受影響），並帶出 0.4.18 之後合併的共用變更（逐項見本 add-on 的 CHANGELOG）。正式可用狀態以 [Release](https://github.com/WOOWTECH/Woow_ha_mcp_addons/releases) 和商店版號為準。
+**0.4.19 已發布並上架；0.4.20 是 2026-11-25 的維修版。** 0.4.19 起管理面板接受 Core 2026.11.2；0.4.20 的主因是管理面板接受 Core 2026.11.3（0.4.19 在 Core 2026.11.3 上拒絕每個管理面板請求，MCP 端點不受影響），並從 0.4.20 起自動放行已審查月份的後續修補版；另外帶出 0.4.19 之後合併的共用變更（還原之後的開機守門與面板的還原提示，逐項見本 add-on 的 CHANGELOG）。映像由 GitHub 託管的發版流程建置並驗收，已發佈的 digest 與驗收結果見[發佈紀錄](https://github.com/WOOWTECH/Woow_ha_mcp_addons/blob/claude-delivery/docs/operations/release-decision-headscale-0.4.20.md)。正式可用狀態以 [Release](https://github.com/WOOWTECH/Woow_ha_mcp_addons/releases) 和商店版號為準。
 
 ## 從商店安裝
 
-在 Home Assistant「設定 → Add-ons → Add-on 商店」加入自訂來源 `https://github.com/WOOWTECH/Woow_HA_App_Store`，重新整理商店，搜尋 **Woow Headscale MCP Server**。0.4.19 完成正式 Release 與商店同步後，確認商店版本為 0.4.19，再按「安裝」與「啟動」，開啟 Web UI。同步前商店顯示已發布的 0.4.18；安裝與更新狀態以 Home Assistant 顯示為準。
+在 Home Assistant「設定 → Add-ons → Add-on 商店」加入自訂來源 `https://github.com/WOOWTECH/Woow_HA_App_Store`，重新整理商店，搜尋 **Woow Headscale MCP Server**。0.4.20 完成正式 Release 與商店同步後，確認商店版本為 0.4.20，再按「安裝」與「啟動」，開啟 Web UI。同步前商店顯示上一版 0.4.19；安裝與更新狀態以 Home Assistant 顯示為準。
 
 ## 連線與權限
 
@@ -14,7 +14,7 @@
 
 管理面板只允許 HA owner 或系統管理員進入。Add-on 為驗證身分使用 `homeassistant_api: true`，其 Supervisor token 具有廣泛的 HA Core 權限，只交給管理程序，不交給 Headscale 子程序。`hassio_api`、host 網路及 Docker API 均未啟用。
 
-**支援的 Core 版本**：管理面板只在本版審查過的 HA Core 版本運作（0.4.13：2026.7.2–2026.10.4；0.4.14 起再加 2026.11.0–2026.11.1；0.4.19 起再加 2026.11.2；和其他七支共用同一個驗證器）。其他版本（含之後的 patch 與 beta）整個管理面板都回 403，管理面板顯示「這個 HA Core 版本尚未審核：<版本>」，add-on 紀錄也記一行同樣的說明（不含權杖）；MCP 端點（Bearer token）不經這項檢查，不受影響。新的 Core 版本要等 add-on 發新版才支援，升級 Core 前請先對照這份清單。
+**支援的 Core 版本**：管理面板只在本版審查過的 HA Core 版本運作（0.4.13：2026.7.2–2026.10.4；0.4.14 起再加 2026.11.0–2026.11.1；0.4.19 起再加 2026.11.2；0.4.20 起再加 2026.11.3；和其他七支共用同一個驗證器）。0.4.20 起，已審查月份的後續修補版自動放行：版本字串要剛好是 `年.月.修補`（月份與修補號不補零，不接受前後空白、`v` 開頭、beta／rc／dev 或第四段），該年該月已有審過的版本，而且修補號大於該月審過的最大修補號（審過 2026.11.3 之後，2026.11.4 起放行；2026.7.0、2026.7.1 比審過的最早版本 2026.7.2 更早，不放行）；放行的版本沒有逐版審查，add-on 紀錄每個版本記一行，之後的 add-on 版本再補審。其他版本（新的月份、預覽版與其他格式）整個管理面板都回 403，管理面板顯示「這個 HA Core 版本尚未審核：<版本>」，add-on 紀錄也記一行同樣的說明（不含權杖）；MCP 端點（Bearer token）不經這項檢查，不受影響。新月份的 Core 版本要等 add-on 發新版才支援（同月份的後續修補版不用等），升級 Core 前請先對照這份清單。
 
 新安裝時，11 個工具與 21 個寫入 grant 預設開啟；管理員可在面板逐一停用工具或撤銷寫入。這些工具涵蓋使用者、節點、註冊、預先授權金鑰、API 金鑰、ACL 政策、核准路由及健康檢查等 Headscale v0.29.4 操作。`headscale_routes_replace` **整組取代**節點已核准的路由，傳入空清單會撤銷全部；政策寫入也可能影響整個網路的存取。MCP 權杖代表所設定 API key 可執行的權限，請先在面板限制不需要的工具與寫入，再把權杖交給用戶端。本版不假設 Headscale API key 本身能設定細分權限。完整工具與參數以 [工具對照](https://github.com/WOOWTECH/Woow_ha_mcp_addons/blob/claude-delivery/docs/tool-surface.md) 為準。
 
