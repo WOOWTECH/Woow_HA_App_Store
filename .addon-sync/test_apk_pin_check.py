@@ -1,5 +1,5 @@
 """Tests for the daily apk pin check (#228) and the shared base-image resolution (addon_build)."""
-import json,os,pathlib,shutil,subprocess,sys,tempfile,unittest
+import io,json,os,pathlib,shutil,subprocess,sys,tempfile,unittest
 sys.path.insert(0,str(pathlib.Path(__file__).resolve().parent))
 import addon_build as b
 import apk_pin_check as c
@@ -397,7 +397,7 @@ class FakeGitHub:
         issue.update(data);return issue
 
 def failing(cid='tailscale',arch='amd64',out='breaks: world[nginx=1.30.6-r0]'):
-    return {'id':cid,'arch':arch,'base':'ghcr.io/hassio-addons/base/amd64:21.0.2','alpine':'3.24.1','result':c.FAIL,'apk_output':out,
+    return {'adds':[],'id':cid,'arch':arch,'base':'ghcr.io/hassio-addons/base/amd64:21.0.2','alpine':'3.24.1','result':c.FAIL,'apk_output':out,
             'stale':[{'spec':'nginx=1.30.6-r0','source':'apk add','available':['1.30.7-r0'],'installed':[]}]}
 
 class Issues(unittest.TestCase):
@@ -413,18 +413,92 @@ class Issues(unittest.TestCase):
         self.assertEqual(c.sync_issues(gh,'o/r',[dict(failing(),result=c.PASS)],today='2026-11-25'),[('close','tailscale',3)])
         self.assertEqual(gh.issues[-1]['state'],'closed');self.assertIn(('POST','issues/3/comments',{'body':'The apk pin check passed on 2026-11-25: every package of tailscale installs again. Closing.'}),gh.writes)
         self.assertEqual(c.sync_issues(gh,'o/r',[dict(failing(),result=c.PASS)]),[])
-    def test_tool_errors_and_add_ons_not_checked_leave_issues_alone(self):
+    def test_tool_errors_leave_issues_alone_and_not_checked_keeps_them_open(self):
         gh=FakeGitHub([{'number':5,'title':c.issue_title('a'),'body':'','state':'open'},{'number':6,'title':'x','body':c.issue_body('b',[]),'state':'open'}])
-        self.assertEqual(c.sync_issues(gh,'o/r',[{'id':'a','arch':'amd64','result':c.UNCHECKED,'error':True}]),[])
-        # Closed only when every row of the add-on passes: one not checked or skipped has not shown it installs again.
-        for rows in ([{'id':'b','arch':'amd64','result':c.SKIPPED}],[{'id':'b','arch':'amd64','result':c.UNCHECKED}],
-                [{'id':'b','arch':'amd64','result':c.PASS},{'id':'b','arch':'aarch64','result':c.UNCHECKED}]):
-            self.assertEqual(c.sync_issues(gh,'o/r',rows),[],rows)
+        self.assertEqual(c.sync_issues(gh,'o/r',[{'id':'a','arch':'amd64','result':c.UNCHECKED,'error':True},{'id':'a','arch':'aarch64','result':c.PASS}]),[])
+        self.assertEqual(c.sync_issues(gh,'o/r',[{'id':'a','arch':'amd64','result':c.UNCHECKED,'error':True}],shipped_ids={'b'}),[])
         self.assertEqual(gh.writes,[])
+        # Skipped no longer keeps an issue open (#249); one row not checked does: it has not shown the add-on installs again.
+        for rows in ([{'id':'b','arch':'amd64','result':c.UNCHECKED,'reason':'r'}],
+                [{'id':'b','arch':'amd64','result':c.PASS},{'id':'b','arch':'aarch64','result':c.UNCHECKED,'reason':'r'}]):
+            gh=FakeGitHub([{'number':6,'title':'x','body':c.issue_body('b',[]),'state':'open'}])
+            self.assertEqual(c.sync_issues(gh,'o/r',rows),[('update-not-checked','b',6)],rows)
+            self.assertEqual(gh.issues[0]['state'],'open')
         self.assertEqual(c.sync_issues(gh,'o/r',[{'id':'b','arch':'amd64','result':c.PASS},{'id':'b','arch':'aarch64','result':c.PASS}],dry_run=True),[('close','b',6)])
     def test_issue_text_has_no_runner_paths(self):
-        body=c.issue_body('tailscale',[failing()])
-        for bad in ('/home/','/tmp/','runner','.addon-sync'):self.assertNotIn(bad,body)
+        for body in (c.issue_body('tailscale',[failing()]),c.not_checked_body('b',NOT_CHECKED)):
+          for bad in ('/home/','/tmp/','runner','.addon-sync'):self.assertNotIn(bad,body)
+
+    # --- #249: add-ons the Store no longer ships, and add-ons with nothing left that fails ---
+    def test_an_add_on_the_store_no_longer_ships_is_closed_not_planned_on_a_complete_run(self):
+        for cid in ('delisted','beta'):  # store_enabled: false; not on the stable channel
+            self.assertNotIn(cid,SHIPPED)
+            gh=FakeGitHub([open_issue(5,cid)])
+            self.assertEqual(c.sync_issues(gh,'o/r',[dict(failing(),result=c.PASS)],today='2026-11-25',shipped_ids=SHIPPED),[('close-unshipped',cid,5)])
+            comment=gh.writes[0]
+            self.assertEqual(comment[:2],('POST','issues/5/comments'));self.assertIn('2026-11-25',comment[2]['body']);self.assertIn(cid,comment[2]['body'])
+            self.assertEqual(gh.writes[1],('PATCH','issues/5',{'state':'closed','state_reason':'not_planned'}))
+            self.assertEqual(len(gh.writes),2)
+    def test_a_run_with_only_one_add_on_does_not_close_the_others(self):
+        gh=FakeGitHub([open_issue(5,'delisted')])
+        self.assertEqual(c.sync_issues(gh,'o/r',[dict(failing(),result=c.PASS)],shipped_ids=None),[])
+        self.assertEqual(gh.writes,[])
+    def test_a_shipped_add_on_without_rows_keeps_its_issue(self):
+        # plain still ships, but this run has no rows for it (an arch its config.yaml does not list): not unshipped.
+        gh=FakeGitHub([open_issue(5,'plain')])
+        self.assertEqual(c.sync_issues(gh,'o/r',[dict(failing(),result=c.PASS)],shipped_ids=SHIPPED),[])
+        self.assertEqual(gh.writes,[])
+    def test_only_skipped_or_pass_and_skipped_closes_with_the_reason(self):
+        for rows in ([skipped('amd64','no apk add in the build')],
+                [{'id':'b','arch':'amd64','result':c.PASS},skipped('aarch64','no Dockerfile (installs the published image)')]):
+            gh=FakeGitHub([open_issue(6,'b')])
+            self.assertEqual(c.sync_issues(gh,'o/r',rows,today='2026-11-25',shipped_ids={'b'}),[('close','b',6)])
+            comment=gh.writes[0][2]['body']
+            self.assertIn('2026-11-25',comment)
+            for r in rows:self.assertIn(r.get('reason') or 'every package installs',comment)
+            self.assertEqual(gh.writes[1],('PATCH','issues/6',{'state':'closed','state_reason':'completed'}))
+    def test_not_checked_keeps_the_issue_open_with_the_lines_it_cannot_read(self):
+        gh=FakeGitHub([open_issue(6,'b')])
+        self.assertEqual(c.sync_issues(gh,'o/r',NOT_CHECKED,shipped_ids={'b'}),[('update-not-checked','b',6)])
+        body=gh.issues[0]['body'];self.assertEqual(gh.issues[0]['state'],'open')
+        for text in ('<!-- apk-pin-check:b -->','Dockerfile:4','`apk add $PKGS`','a variable without a value','outdated pin','### aarch64'):self.assertIn(text,body)
+        self.assertEqual(list(c.open_issues(gh,'o/r')),['b'])
+        writes=len(gh.writes)
+        self.assertEqual(c.sync_issues(gh,'o/r',NOT_CHECKED,shipped_ids={'b'}),[('unchanged','b',6)])
+        self.assertEqual(len(gh.writes),writes)
+        # Never opened for not checked alone.
+        gh=FakeGitHub();self.assertEqual(c.sync_issues(gh,'o/r',NOT_CHECKED),[]);self.assertEqual(gh.writes,[])
+    def test_report_dry_run_prints_every_new_action_and_writes_nothing(self):
+        d=pathlib.Path(tempfile.mkdtemp());self.addCleanup(shutil.rmtree,d)
+        (d/'registry.json').write_text(json.dumps(REGISTRY))
+        (d/'r.json').write_text(json.dumps([dict(failing(),result=c.PASS),skipped('amd64','no apk add in the build',cid='mirror'),
+            *[dict(r,id='plain') for r in NOT_CHECKED]]))
+        gh=FakeGitHub([open_issue(5,'delisted'),open_issue(6,'mirror'),open_issue(7,'plain')])
+        def report(*extra):
+            out=io.StringIO()
+            with unittest.mock.patch.object(c,'GitHub',lambda:gh),unittest.mock.patch('sys.stdout',out):
+                status=c.main(['report',str(d/'r.json'),'--repo','o/r','--dry-run','--registry',str(d/'registry.json'),*extra])
+            return status,out.getvalue()
+        status,out=report('--complete')
+        self.assertEqual(status,0)
+        for line in ('would close-unshipped issue for delisted (#5)','would close issue for mirror (#6)','would update-not-checked issue for plain (#7)'):self.assertIn(line,out)
+        self.assertEqual(gh.writes,[])
+        status,out=report()
+        self.assertNotIn('delisted',out);self.assertIn('would close issue for mirror (#6)',out);self.assertEqual(gh.writes,[])
+    def test_report_with_an_unreadable_registry_fails_and_closes_nothing_unshipped(self):
+        d=pathlib.Path(tempfile.mkdtemp());self.addCleanup(shutil.rmtree,d)
+        (d/'registry.json').write_text('{"providers": []}');(d/'r.json').write_text(json.dumps([dict(failing(),result=c.PASS)]))
+        gh=FakeGitHub([open_issue(5,'delisted')]);out=io.StringIO()
+        with unittest.mock.patch.object(c,'GitHub',lambda:gh),unittest.mock.patch('sys.stdout',out):
+            status=c.main(['report',str(d/'r.json'),'--repo','o/r','--registry',str(d/'registry.json'),'--complete'])
+        self.assertEqual(status,1);self.assertNotIn('close-unshipped',out.getvalue());self.assertEqual(gh.writes,[])
+
+SHIPPED={comp['id'] for _,comp in c.shipped(REGISTRY)}
+def open_issue(number,cid):return {'number':number,'title':c.issue_title(cid),'body':c.issue_body(cid,[failing(cid)]),'state':'open'}
+def skipped(arch,reason,cid='b'):return {'adds':[],'id':cid,'arch':arch,'base':'','result':c.SKIPPED,'reason':reason}
+NOT_CHECKED=[{'adds':[],'id':'b','arch':'amd64','base':'ghcr.io/hassio-addons/base/amd64:21.0.2','alpine':'3.24.1','result':c.PASS,'reason':''},
+    {'adds':[],'id':'b','arch':'aarch64','base':'ghcr.io/hassio-addons/base/aarch64:21.0.2','alpine':'3.24.1','result':c.UNCHECKED,
+     'reason':'some apk add lines were not checked','unchecked':[{'file':'Dockerfile','line':4,'text':'apk add $PKGS','reason':'a variable without a value'}]}]
 
 @needs_store
 class RealStore(unittest.TestCase):

@@ -40,8 +40,12 @@ removes or replaces a file is not replayed). On an exported image (rootfs mode, 
 helper's apk cannot run install scripts of another arch, so it installs with --no-scripts: such a row is marked
 approximate.
 
-Commands: check (one arch; runs docker) writes the results as JSON; report merges them into the job summary and opens,
-updates or closes one Store issue per add-on that cannot install (--dry-run prints the actions instead).
+Commands: check (one arch; runs docker) writes the results as JSON; report merges them into the job summary and, with
+--repo, keeps one Store issue per add-on (--dry-run prints the actions instead). An add-on with a tool error keeps its
+issue as it is. One that cannot install gets an issue, opened or updated. An open issue whose add-on no longer fails
+stays open while a row is not checked, with its body listing what the check cannot read, and is closed when every row
+passes or is skipped (#249). With --complete (a run of every shipped add-on, no --only), an open issue of an add-on the
+registry no longer ships is closed as not planned; an add-on still shipped is never judged by having no rows.
 """
 from __future__ import annotations
 import argparse, datetime, json, os, pathlib, re, shlex, subprocess, sys
@@ -528,8 +532,12 @@ def _details(row):
         behind=sum(1 for s in row.get('stale') or [] if s['source']=='base world')
         parts.append(f'world pins checked: {len(row["world_pins"])}'+(f' ({behind} older than the repository)' if behind else ''))
     if row.get('world_edits'):parts.append('replayed world edit: '+'; '.join(f'`{e}`' for e in row['world_edits']))
-    for u in row.get('unchecked') or []:parts.append(f'not checked, {u["file"]}:{u["line"]}: `{u["text"]}` ({u["reason"]})')
+    for u in row.get('unchecked') or []:parts.append(_unchecked_line(u))
     return '<br>'.join(markdown_cell(p) for p in parts)
+
+def _unchecked_line(u):
+    """One `apk add` line the check could not read, as the summary and the issue name it."""
+    return f'not checked, {u["file"]}:{u["line"]}: `{u["text"]}` ({u["reason"]})'
 
 def summary(rows):
     """The job summary: one table row per add-on and arch, then the apk output of each that cannot install."""
@@ -572,9 +580,31 @@ def issue_body(cid, rows):
             lines+=[f'| `{s["spec"]}` | {s["source"]} | {", ".join(s["available"]) or "none"} |' for s in stale]
             lines.append('')
         lines+=['`apk add --simulate` output:','','```',(r.get('apk_output') or '')[-4000:],'```','']
-    lines+=['This issue is updated by each run while the problem stays, and closed when the check passes.',
-        f'Note: {FILE_CONFLICT_NOTE}']
-    return '\n'.join(lines)+'\n'
+    return '\n'.join(lines+ISSUE_FOOTER)+'\n'
+
+ISSUE_FOOTER=['This issue is updated by each run while a package cannot install or cannot be checked. It is closed when every '
+    'arch passes or has nothing to check, or when the Store no longer ships the add-on.',f'Note: {FILE_CONFLICT_NOTE}']
+
+def not_checked_body(cid, rows):
+    """Issue text for add-on `cid` whose issue is open, with no row that cannot install and at least one not checked:
+    each arch's result and the lines the check cannot read (no date, so an unchanged state is not rewritten)."""
+    lines=[_marker(cid),f'The daily apk pin check found earlier that **{cid}** could not install its packages. Nothing fails '
+        "now, but the check can no longer read some of the add-on's `apk add` lines or its base image, so an outdated pin "
+        'may still be there.','']
+    for r in sorted(rows,key=lambda r:ARCHES.index(r['arch'])):
+        lines+=[f'### {r["arch"]}','']
+        if r.get('base'):lines+=[f'Base image: `{r["base"]}`'+(f' (Alpine {r["alpine"]})' if r.get('alpine') else ''),'']
+        lines+=[f'Result: {r["result"]}'+(f' ({r["reason"]})' if r.get('reason') else ''),'']
+        items=[_unchecked_line(u) for u in r.get('unchecked') or []]
+        if items:lines+=['- '+re.sub(r'\s*[\r\n]+\s*',' ',i) for i in items]+['']
+    return '\n'.join(lines+ISSUE_FOOTER)+'\n'
+
+def _closing_comment(cid, rows, today):
+    """Why an issue closes when nothing of `cid` fails or is not checked: each arch passes or has nothing to check."""
+    parts=[f'{r["arch"]}: '+('every package installs' if r['result']==PASS else f'nothing to check, {r.get("reason") or "skipped"}')
+        for r in sorted(rows,key=lambda r:ARCHES.index(r['arch']))]
+    if all(r['result']==PASS for r in rows):return f'The apk pin check passed on {today}: every package of {cid} installs again. Closing.'
+    return f'The apk pin check on {today} finds nothing of {cid} that cannot install or is not checked: {"; ".join(parts)}. Closing.'
 
 def open_issues(gh, repo):
     """{add-on id: issue} of this check's open issues in `repo`, found by the marker in the body or the title."""
@@ -589,31 +619,48 @@ def open_issues(gh, repo):
         if len(batch)<100:return found
         page+=1
 
-def sync_issues(gh, repo, rows, today=None, dry_run=False):
-    """Open, update or close one issue per add-on (module docstring). Only add-ons with rows are touched; one whose rows
-    include a tool error keeps its issue as it is, and one is closed only when every row passes. Returns the actions as
-    (action, add-on id, issue number or None)."""
+def sync_issues(gh, repo, rows, today=None, dry_run=False, shipped_ids=None):
+    """Open, update or close one issue per add-on. An add-on with a tool error in any row keeps its issue as it is.
+    Otherwise, by its rows:
+      - a row that cannot install: open the issue, or update its body (`unchanged` when the body is the same);
+      - no such row, at least one not checked: an open issue stays open with its body updated to the lines the check
+        cannot read (`update-not-checked` or `unchanged`); none is opened;
+      - every row passes or is skipped: an open issue is closed as completed, with a comment saying why (`close`).
+    `shipped_ids` is the set of add-on ids the registry ships, given only when the rows cover every one of them (a run
+    without --only). Then an open issue of an add-on with no rows that is not in the set is closed as not planned
+    (`close-unshipped`). An add-on still shipped but without rows (no arch it lists is checked) is left alone, and
+    without `shipped_ids` no issue of an add-on without rows is touched.
+    Returns the actions as (action, add-on id, issue number or None); `dry_run` returns them without writing."""
     today=today or datetime.date.today().isoformat()
     by_id={}
     for r in rows:by_id.setdefault(r['id'],[]).append(r)
     existing=open_issues(gh,repo);actions=[]
-    for cid,its in sorted(by_id.items()):
-        issue=existing.get(cid)
+    def write(path,data,method):
+        if not dry_run:gh.api(repo,path,data,method)
+    def close(issue,comment,reason):
+        write(f'issues/{issue["number"]}/comments',{'body':comment},'POST')
+        write(f'issues/{issue["number"]}',{'state':'closed','state_reason':reason},'PATCH')
+    def set_body(cid,issue,body,action):
+        if (issue.get('body') or '')==body:actions.append(('unchanged',cid,issue['number']));return
+        actions.append((action,cid,issue['number']));write(f'issues/{issue["number"]}',{'body':body},'PATCH')
+    for cid in sorted(set(by_id)|set(existing)):
+        issue=existing.get(cid);its=by_id.get(cid)
+        if not its:
+            if issue is not None and shipped_ids is not None and cid not in shipped_ids:
+                actions.append(('close-unshipped',cid,issue['number']))
+                close(issue,f'As of {today} the Store no longer ships {cid} (the registry has it delisted, disabled or off the '
+                    'stable channel), so the apk pin check no longer checks it. Closing as not planned.','not_planned')
+            continue
         if any(r.get('error') for r in its):continue
         if any(r['result']==FAIL for r in its):
             body=issue_body(cid,its)
             if issue is None:
-                actions.append(('open',cid,None))
-                if not dry_run:gh.api(repo,'issues',{'title':issue_title(cid),'body':body},'POST')
-            elif (issue.get('body') or '')!=body:
-                actions.append(('update',cid,issue['number']))
-                if not dry_run:gh.api(repo,f'issues/{issue["number"]}',{'body':body},'PATCH')
-            else:actions.append(('unchanged',cid,issue['number']))
-        elif issue is not None and all(r['result']==PASS for r in its):
-            actions.append(('close',cid,issue['number']))
-            if not dry_run:
-                gh.api(repo,f'issues/{issue["number"]}/comments',{'body':f'The apk pin check passed on {today}: every package of {cid} installs again. Closing.'},'POST')
-                gh.api(repo,f'issues/{issue["number"]}',{'state':'closed','state_reason':'completed'},'PATCH')
+                actions.append(('open',cid,None));write('issues',{'title':issue_title(cid),'body':body},'POST')
+            else:set_body(cid,issue,body,'update')
+        elif issue is None:continue
+        elif any(r['result']==UNCHECKED for r in its):set_body(cid,issue,not_checked_body(cid,its),'update-not-checked')
+        elif all(r['result'] in (PASS,SKIPPED) for r in its):
+            actions.append(('close',cid,issue['number']));close(issue,_closing_comment(cid,its,today),'completed')
     return actions
 
 # --- command line ----------------------------------------------------------------------------------------------------
@@ -646,8 +693,13 @@ def _report(a):
     for r in rows:
         if r['result'] not in RESULTS:print(workflow_command('error',r['id'],f'unknown result {r["result"]}'));status=1
     if a.repo:
+        shipped_ids=None
+        if a.complete:
+            try:shipped_ids={comp['id'] for _,comp in shipped(json.loads(pathlib.Path(a.registry).read_text(encoding='utf-8')))}
+            except (ValueError,OSError) as e:
+                print(workflow_command('error','apk pin check issues',f'cannot read the registry, so no issue of an add-on the Store no longer ships is closed: {e}'));status=1
         try:
-            for action,cid,number in sync_issues(GitHub(),a.repo,rows,dry_run=a.dry_run):
+            for action,cid,number in sync_issues(GitHub(),a.repo,rows,dry_run=a.dry_run,shipped_ids=shipped_ids):
                 print(('would ' if a.dry_run else '')+f'{action} issue for {cid}'+(f' (#{number})' if number else ''))
         except Blocked as e:
             print(workflow_command('error','apk pin check issues',str(e)));status=1
@@ -661,6 +713,9 @@ def main(argv=None):
     c.add_argument('--only',help='comma-separated add-on ids');c.add_argument('--out',required=True)
     r=sub.add_parser('report',help='job summary from check results; with --repo, open, update or close the Store issues')
     r.add_argument('results',nargs='+');r.add_argument('--repo');r.add_argument('--dry-run',action='store_true')
+    r.add_argument('--registry',default='.addon-sync/registry.json')
+    r.add_argument('--complete',action='store_true',help='the results cover every shipped add-on (a run without --only): '
+        'close the issues of add-ons the registry no longer ships')
     a=p.parse_args(argv)
     return {'check':_check,'report':_report}[a.cmd](a)
 
