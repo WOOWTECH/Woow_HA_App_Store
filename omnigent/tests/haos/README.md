@@ -50,7 +50,7 @@ Supervisor/Core downloads must be reachable.
 
 ## Candidate and baseline identity
 
-The baseline is the latest stable Release, version 0.1.25. Its version, config
+The baseline is the latest stable Release, version 0.1.26. Its version, config
 source/checksum, published amd64 image digest and database migration head are
 fixed in `host.py`, next to `CANDIDATE_VERSION`. Update them together when the
 next Release becomes the baseline. The candidate is the current PR's existing
@@ -110,9 +110,9 @@ or the catalog differs; it does not create an alternate legacy directory.
 
 ## Checks and receipt
 
-The sequence installs 0.1.25 through Supervisor, seeds the existing upgrade
+The sequence installs 0.1.26 through Supervisor, seeds the existing upgrade
 fixtures (including an active and a revoked MCP profile, because the baseline
-already has MCP), creates a Supervisor cold backup, updates to 0.1.26, and checks
+already has MCP), creates a Supervisor cold backup, updates to 0.1.27, and checks
 the task/agent fields, member login, session ACLs, artifact bytes and the
 original MCP profile URLs and revocation state.
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.27
+
+- The add-on image no longer installs compiler tools while it is built, so
+  updates and new releases build faster (most noticeably on aarch64). Nothing
+  changes for you: the bundled Omnigent server (0.23.0), its database and your
+  settings stay the same, and no migration runs.
+
 ## 0.1.26
 
 - Fix: the add-on image could stop building when Alpine published a newer

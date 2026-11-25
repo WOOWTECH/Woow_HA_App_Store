@@ -1,0 +1,9 @@
+---
+# Base image per architecture, one entry for every arch in config.yaml.
+# Supervisor passes it as BUILD_FROM when it builds this add-on from source
+# (without this file aarch64 would get the Dockerfile's amd64 default), and
+# publish-omnigent-addon-images.yml reads it for the published images, so
+# this is the only place the base is set.
+build_from:
+  aarch64: ghcr.io/hassio-addons/base/aarch64:20.2.0
+  amd64: ghcr.io/hassio-addons/base/amd64:20.2.0

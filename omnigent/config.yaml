@@ -1,5 +1,5 @@
 name: Woow Omnigent
-version: 0.1.26
+version: 0.1.27
 slug: woow-omnigent
 image: ghcr.io/woowtech/woow-ha-omnigent-{arch}
 description: >-
