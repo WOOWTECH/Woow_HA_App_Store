@@ -199,3 +199,15 @@ Logs from each retry show up in the addon Logs tab under the `video-tools-init` 
 既有自訂插件來源、連線資料與原生 Plugins 停用狀態都保留；移除插件後重啟不會自動裝回。需要恢復時在 Plugins 新增本機來源 `/opt/woow/pi-omnigent-plugin`，或安裝公開 GitHub source。來源與首次註冊記錄位於 `/data/pi-agent/omnigent-plugin/image-seed.json`。底層套件、host 身分及設定沿用原插件路徑並包含於 HA 備份。
 
 本頁經由原有 Supervisor ingress 驗證與 nginx 來源限制，後端只監聽 `/data/pi-agent/omnigent-ha.sock`。不新增 LAN 連接埠。映像不包含 server 憑證或模型登入，不自動安裝或更新缺少的引擎。
+
+## Agent Connect（Paseo）
+
+映像已包含 Agent Connect 0.1.24 與預先安裝的 Paseo 0.17.4（runtime `0.17.4-r1-a651f42711da`）。**Settings → Agent Connect**（緊接 Omnigent）可在 Woowtech Smart、Apporo Smart 與 Paseo 之間擇一，沿用本機 Claude Code、Codex 與 Pi 的登入，透過加密 relay 連線；不建立設定對話，只有按下配對按鈕才開始配對。
+
+1. **Paseo 選項現在開啟官方網站 https://app.paseo.sh/**（新分頁），與兩個 Smart 選項各自開啟自己的官方網站相同。Add-on 不再內建或提供 Paseo 網頁（`/paseo-web`）。
+2. 按 **產生連線連結** 後，只接受 `https://app.paseo.sh/#offer=<base64url>` 這個固定格式（Smart 選項則是各自官方網站的同格式連結）；其他網址、連接埠、路徑或查詢字串一律拒絕。
+3. 更新後請重新啟動 Add-on（Supervisor 套用更新時會自行重啟）。先前透過舊的 `/paseo-web` 配對過的瀏覽器，需要在 app.paseo.sh 重新配對一次：開啟設定頁、產生連結並開啟。主機身分、供應商登入與對話保留；舊的 `/paseo-web` 分頁與書籤不再可用。
+4. 「允許代理彼此協作」開關（Agent Connect 0.1.22 起，預設關閉）不在此設定頁；本頁只儲存連線標的，不會變更它。
+5. 已知差異：先前內建的 Paseo 網頁帶有兩項顯示修補，上游尚未合併（getpaseo/paseo#7908）：回覆途中重新整理時回覆重複顯示，以及長回覆在重新連線後被截斷。官方網站可能再次出現這兩個情況。我們在 2026-11-25 的自測中，app.paseo.sh 0.17.4 搭配 0.11.2 的 daemon 兩者都沒有重現，但無法保證。主機上的對話本身不受影響。
+
+HOME 裡只含舊版本的 runtime 不再觸發多餘的約 0.7 GB 安裝：啟動器會改選已就緒的映像 runtime。能供已註冊插件使用的持久 runtime 仍優先；明確指定的 `PI_PASEO_RUNTIME_DIR` 不被取代。選擇時不搬移或刪除使用者檔案。0.17.4 會轉換部分語音設定與 agent 記錄；新預設值、Smart 配對限制與退回舊版的步驟見 [HA Ingress、升級與驗證說明](docs/PASEO_HA.md)。

@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import assert from 'node:assert/strict';
+import http from 'node:http';
 import { spawn, spawnSync } from 'node:child_process';
 import { seed, loadPlugin, BUNDLE } from '/usr/local/lib/pi-omnigent-ha/lifecycle.mjs';
 
@@ -62,21 +63,25 @@ try {
   assert.equal(fs.existsSync(path.join(process.env.HOME, '.local/share/pi-omnigent-web')), false);
   const cliStatus = spawnSync('/usr/local/bin/pi-omnigent', ['status'], { env: process.env, encoding: 'utf8', timeout: 60000 });
   assert.equal(cliStatus.status, 0, cliStatus.stderr); assert.equal(JSON.parse(cliStatus.stdout).loginConfirmed, false);
-  // The actual launcher must start Pi Web and leave the session list untouched.
-  console.log('SMOKE: starting real Pi Web without a setup conversation');
-  child = spawn(process.execPath, ['/usr/local/lib/pi-omnigent-ha/launch.mjs'], {
+  // The actual entry point of the s6 pi-web service (pi-web/run: exec node .../pi-paseo-ha/launch.mjs) must start the
+  // Omnigent launcher and with it Pi Web, and leave the session list untouched. PI_PASEO_AUTO_SETUP=false: Paseo does
+  // not register itself, so no daemon, runtime install or relay connection starts in this offline gate.
+  console.log('SMOKE: starting real Pi Web through the add-on launchers without a setup conversation');
+  child = spawn(process.execPath, ['/usr/local/lib/pi-paseo-ha/launch.mjs'], {
     detached: true, stdio: ['ignore', 'pipe', 'pipe'], cwd: process.env.HOME,
-    env: { ...process.env, PI_WEB_HOSTNAME: '127.0.0.1', PI_WEB_NO_OPEN: '1', PORT: '30141' },
+    env: { ...process.env, PI_WEB_HOSTNAME: '127.0.0.1', PI_WEB_NO_OPEN: '1', PORT: '30141', PI_PASEO_AUTO_SETUP: 'false' },
   });
-  // What the add-on log would show: keep the worker's lines, drain the rest so Pi Web never blocks.
-  const workerLog = [];
+  // What the add-on log would show: keep every line (bounded), the worker's apart, and drain the rest so Pi Web never blocks.
+  const workerLog = [], launcherLog = [];
   for (const stream of [child.stdout, child.stderr]) {
     let pending = '';
     stream.setEncoding('utf8').on('data', chunk => {
       const lines = (pending + chunk).split('\n'); pending = lines.pop().slice(-4096);
+      launcherLog.push(...lines); if (launcherLog.length > 2000) launcherLog.splice(0, launcherLog.length - 2000);
       workerLog.push(...lines.filter(line => line.includes('Omnigent host worker')));
     });
   }
+  const logTail = () => launcherLog.slice(-25).join('\n');
   let webReady = false;
   for (let attempt = 0; attempt < 90; attempt++) {
     try {
@@ -86,7 +91,29 @@ try {
     if (child.exitCode !== null) break;
     await new Promise(resolve => setTimeout(resolve, 1000));
   }
-  assert.equal(webReady, true, 'real Pi Web starts');
+  assert.equal(webReady, true, `real Pi Web starts\n${logTail()}`);
+  // The Paseo launcher is the process that was started: its settings page must answer on its private socket
+  // (a link-time failure such as a renamed export kills it before Pi Web ever starts).
+  const paseoSocket = path.join(temporary, 'paseo-ha.sock');
+  const paseoGet = (route, headers = {}) => new Promise((resolve, reject) => {
+    const request = http.request({ socketPath: paseoSocket, path: route, headers, timeout: 5000 }, response => {
+      const chunks = [];
+      response.on('data', chunk => chunks.push(chunk));
+      response.on('end', () => resolve({ status: response.statusCode, headers: response.headers, body: Buffer.concat(chunks).toString() }));
+    });
+    request.on('error', reject).on('timeout', () => request.destroy(new Error('timeout'))).end();
+  });
+  const paseoPage = await paseoGet('/paseo/setup', { 'X-Ingress-Path': '/api/hassio_ingress/imagesmoke0123456789' });
+  assert.equal(paseoPage.status, 200, `the Paseo settings page answers\n${logTail()}`);
+  assert.match(paseoPage.headers['content-type'], /^text\/html/);
+  assert.match(paseoPage.body, /<a id="open" href="https:\/\/app\.paseo\.sh\/" target="_blank" rel="noopener noreferrer">/);
+  assert.ok(paseoPage.body.includes('src="/api/hassio_ingress/imagesmoke0123456789/paseo/app.js"'));
+  const paseoToken = paseoPage.body.match(/name="paseo-token" content="([a-f0-9]{64})"/)?.[1];
+  assert.ok(paseoToken, 'the page carries its in-memory token');
+  const paseoStatus = await paseoGet('/api/paseo', { 'X-Paseo-Token': paseoToken });
+  assert.equal(paseoStatus.status, 200); assert.deepEqual(JSON.parse(paseoStatus.body), { installed: false, enabled: false, phase: 'unavailable', providers: [] }, 'Paseo is not registered here');
+  assert.equal((await paseoGet('/paseo-web/')).status, 404, 'the retired client is not served');
+  assert.equal(fs.existsSync(path.join(temporary, 'pi-paseo')), false, 'no Paseo state, so no daemon was started');
   assert.equal(fs.existsSync(path.join(process.env.PI_OMNIGENT_STATE_DIR, 'onboarding.json')), false);
   assert.equal(fs.existsSync(path.join(temporary, 'sessions')), false);
   console.log('SMOKE: web ready; waiting for offline activation receipt');
@@ -100,11 +127,13 @@ try {
   assert.match(workerLog.join('\n'), /Omnigent host worker finished \(exit 0\): startup=settings-required initialization=needs-login/, 'the boot result reaches the add-on log');
   console.log(`SMOKE: add-on log: ${workerLog.join(' | ')}`);
   assert.equal(fs.existsSync(installAttempts), false, 'no package manager or engine download during fresh activation');
+  // Neither launcher may have failed to link or start: these lines would also be in the add-on log.
+  assert.doesNotMatch(launcherLog.join('\n'), /SyntaxError|ERR_MODULE_NOT_FOUND|does not provide an export|Paseo initialization needs attention|Paseo settings socket unavailable|Omnigent settings socket unavailable|Pi Web failed to start/, 'the launchers logged no failure');
   fs.writeFileSync(path.join(temporary, 'settings.json'), JSON.stringify({ packages: [{ source: BUNDLE, extensions: [] }] }));
   assert.equal((await plugin.lifecycle()).active, false);
   fs.writeFileSync(path.join(temporary, 'settings.json'), JSON.stringify({ packages: [] }));
   assert.equal(seed().seeded, false); assert.equal(await loadPlugin(), null);
-  console.log('Omnigent image smoke passed: Pi Web 0.12 starts, no setup conversation, no runtime install/login, worker result in the add-on log, pi-omnigent refuses install-ui, opt-out retained.');
+  console.log('Omnigent image smoke passed: the Paseo launcher starts the Omnigent launcher and Pi Web 0.12, its settings page answers, no setup conversation, no runtime install/login, worker result in the add-on log, pi-omnigent refuses install-ui, opt-out retained.');
 } finally {
   if (child?.pid) {
     try { process.kill(-child.pid, 'SIGTERM'); } catch {}

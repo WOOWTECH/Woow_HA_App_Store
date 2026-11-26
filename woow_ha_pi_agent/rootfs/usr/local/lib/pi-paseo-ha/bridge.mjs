@@ -17,7 +17,7 @@ export function createPaseoBridge(load = loadPlugin) {
       targetSelectionAvailable: typeof plugin.api.saveConfig === 'function' && connectionTargets.every(target =>
         state.connectionTargets?.some(item => item.id === target.id)),
       connectionTargets, settings: { target: selectedTarget },
-      running: state.daemon?.running === true, webReady: state.webClient?.ready === true, webVersion: clean(state.webClient?.version),
+      running: state.daemon?.running === true,
       providers: (state.providers || []).filter(row => providers.includes(row.provider)).map(row => ({
         provider: row.provider, status: clean(row.status), chatVerified: row.chatVerified === true,
         modes: (row.modes || []).map(mode => ({ id: clean(mode.id), label: clean(mode.label) })),
@@ -25,10 +25,13 @@ export function createPaseoBridge(load = loadPlugin) {
   }
   return {
     async read() { return snapshot(await load()); },
-    async act(body, prefix) {
+    async act(body) {
       const plugin = await load();
       if (!plugin?.enabled) throw failure('PLUGIN_UNAVAILABLE');
       if (body.action === 'save') {
+        // Only the target is accepted and forwarded. The plugin keeps every saved
+        // setting that a save leaves out, so this page cannot change the display
+        // name or agentCollaboration (0.1.22+, off by default; no switch here yet).
         if (Object.keys(body).some(key => !['action', 'target'].includes(key)) || !Object.hasOwn(body, 'target')) throw failure('INVALID_SETTINGS');
         const target = targetId(body.target);
         if (!(await snapshot(plugin)).targetSelectionAvailable) throw failure('TARGET_SELECTION_UNSUPPORTED');
@@ -40,7 +43,7 @@ export function createPaseoBridge(load = loadPlugin) {
         const paired = await plugin.api.pair();
         const after = await snapshot(plugin);
         if (after.configurationPending || after.selectedTarget !== target || (paired.target ?? 'paseo') !== target) throw failure('CONFIGURATION_PENDING');
-        return { url: pairUrl(paired.url, prefix, target), target };
+        return { url: pairUrl(paired.url, target), target };
       } else if (body.action === 'start') await plugin.api.lifecycle({ action: 'enable', cwd: process.env.HOME });
       else if (body.action === 'stop') await plugin.api.lifecycle({ action: 'stop' });
       else if (body.action === 'models' && providers.includes(body.provider)) {
@@ -48,11 +51,6 @@ export function createPaseoBridge(load = loadPlugin) {
         return { models: (Array.isArray(rows) ? rows : rows.models || []).map(row => ({ id: clean(row.id), label: clean(row.label || row.name || row.id) })) };
       } else throw failure('INVALID_ACTION');
       return snapshot(plugin);
-    },
-    async web(request) {
-      const plugin = await load();
-      if (!plugin?.enabled) return new Response('Agent Connect plugin is disabled', { status: 409 });
-      return plugin.api.web(request);
     },
   };
 }

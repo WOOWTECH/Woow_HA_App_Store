@@ -60,16 +60,13 @@ const plugin = { locations: () => ({ stateDir }), version: '0.3.34', lifecycle: 
     initialize: async input => { calls.push({ action: 'connect', ...input }); Object.assign(current, { loginConfirmed: true, server: input.server, host: { connected: true } }); return { ok: true }; },
     verify: async input => { calls.push({ action: 'verify', ...input }); return { ok: true }; },
     disconnect: async () => { calls.push({ action: 'disconnect' }); current.host.connected = false; current.loginConfirmed = false; return { ok: true }; } } };
-const paseoRoot = process.env.PASEO_PLUGIN_ROOT;
-assert.ok(paseoRoot, 'PASEO_PLUGIN_ROOT must be the checksum-verified public plugin');
-const webClient = await import(pathToFileURL(path.join(paseoRoot, 'src/web-client.mjs')).href);
-const clientState = { stateDir: path.join(evidence, 'paseo-state') };
-await webClient.ensureWebClient(clientState);
+// Agent Connect as the bridge sees it since 0.1.23: no web client and no web() in the
+// plugin API; every target opens its official site. This one cannot switch targets.
+const paseoOffer = 'eyJ2IjoyLCJzZXJ2ZXJJZCI6ImZpeHR1cmUifQ';
 const paseoCalls = [];
-const paseoPlugin = { enabled: true, version: '0.1.15', api: {
-  status: async () => ({ phase: 'ready', daemon: { running: true }, webClient: { ready: true, version: '0.13.0-woow.1' }, providers: [{ provider: 'claude', status: 'ready' }, { provider: 'codex', status: 'ready' }, { provider: 'pi', status: 'ready' }] }),
-  pair: async () => { paseoCalls.push('pair'); return { url: '/paseo-web/#fixture-pairing' }; },
-  web: request => webClient.serveWebClient(request, clientState),
+const paseoPlugin = { enabled: true, version: 'fixture', api: {
+  status: async () => ({ phase: 'ready', daemon: { running: true }, providers: [{ provider: 'claude', status: 'ready' }, { provider: 'codex', status: 'ready' }, { provider: 'pi', status: 'ready' }] }),
+  pair: async () => { paseoCalls.push('pair'); return { target: 'paseo', url: `https://app.paseo.sh/#offer=${paseoOffer}` }; },
 } };
 const paseo = createPaseoServer({ bridge: createPaseoBridge(async () => paseoPlugin), directory: path.join(root, 'rootfs/usr/local/share/pi-paseo-ha') });
 const paseoSocket = path.join(os.tmpdir(), `ha-paseo-browser-${process.pid}.sock`);
@@ -87,7 +84,7 @@ const child = spawn(process.execPath, [path.join(web, 'node_modules/next/dist/bi
 });
 fs.closeSync(log);
 let browser;
-const escaped = [], errors = [], results = [], failedClientAssets = [], transfers = [], promptRequests = [];
+const escaped = [], errors = [], results = [], promptRequests = [];
 // Run the actual nginx config; only bind addresses, private socket paths and
 // temporary logs differ. The front proxy simulates Supervisor path stripping;
 // it never rewrites application response bodies or injects browser code.
@@ -149,6 +146,7 @@ try {
     const callsBefore = calls.length;
     const context = await browser.newContext({ viewport, locale: 'en-US' });
     observe(context);
+    await context.route(/^https:\/\/app\.paseo\.sh\//, route => route.fulfill({ status: 200, contentType: 'text/html', body: '<!doctype html><title>official site fixture</title>' }));
     const page = await context.newPage(); page.on('pageerror', error => errors.push(error.message));
     await page.goto(base + '/');
     // Upstream hydrates as desktop, then closes the phone drawer. Waiting on
@@ -191,51 +189,34 @@ try {
     assert.equal(await page.locator('iframe[title="Agent Connect"]').getAttribute('src'), prefix + '/paseo/setup?embedded=1');
     await paseoFrame.locator('#pair').click();
     await paseoFrame.locator('#pair-link:not([hidden])').waitFor();
-    assert.equal(await paseoFrame.locator('#pair-link').getAttribute('href'), prefix + '/paseo-web/#fixture-pairing');
+    const pairLink = paseoFrame.locator('#pair-link');
+    assert.equal(await pairLink.getAttribute('href'), `https://app.paseo.sh/#offer=${paseoOffer}`);
+    assert.equal(await pairLink.getAttribute('target'), '_blank'); assert.match(await pairLink.getAttribute('rel'), /noopener/);
     await paseoFrame.locator('#stop').scrollIntoViewIfNeeded();
     assert.equal(await paseoFrame.locator('html').evaluate(node => node.scrollWidth > innerWidth), false);
-    const [clientPage] = await Promise.all([context.waitForEvent('page'), paseoFrame.locator('#open').click()]);
-    clientPage.on('pageerror', error => errors.push(error.message));
-    clientPage.on('response', response => { if (response.status() >= 400 && response.url().includes('/paseo-web/')) failedClientAssets.push({ path: new URL(response.url()).pathname, status: response.status() }); });
-    await clientPage.waitForLoadState('networkidle');
-    assert.ok(clientPage.url().includes(prefix + '/paseo-web/'));
-    // Dynamic attachment chunks can be inserted before the entry script.
-    // Use the main script declared by the served HTML for router assertions.
-    const entryResponse = await context.request.get(base + '/paseo-web/');
-    assert.equal(entryResponse.status(), 200);
-    const script = (await entryResponse.text()).match(/<script[^>]+src="([^"]+\/_expo\/static\/js\/web\/index-[^"]+\.js)"/)?.[1];
-    assert.ok(script, 'served client HTML declares its main entry script');
-    const scriptUrl = new URL(script, clientPage.url());
-    assert.ok(scriptUrl.pathname.startsWith(prefix + '/paseo-web/'), `script escaped HA Ingress: ${scriptUrl.pathname}`);
-    const scriptResponse = await context.request.get(scriptUrl.href, { headers: { 'Accept-Encoding': 'gzip' } });
-    assert.equal(scriptResponse.status(), 200);
-    assert.equal(scriptResponse.headers()['cache-control'], 'private, max-age=31536000, immutable');
-    assert.equal(scriptResponse.headers()['content-encoding'], 'gzip');
-    const decompressedBytes = (await scriptResponse.body()).length;
-    const wireBytes = Number(scriptResponse.headers()['content-length']);
-    assert.ok(wireBytes > 0 && wireBytes < decompressedBytes * 0.55, 'gzip must reduce actual wire bytes');
-    assert.equal(scriptResponse.headers().vary, 'Accept-Encoding, X-Ingress-Path');
-    const validator = scriptResponse.headers().etag;
-    assert.ok(validator);
-    const head = await context.request.head(scriptUrl.href, { headers: { 'Accept-Encoding': 'gzip' } });
-    assert.equal(head.headers().etag, validator); assert.equal(Number(head.headers()['content-length']), wireBytes);
-    assert.equal(head.headers()['content-encoding'], 'gzip'); assert.equal((await head.body()).length, 0);
-    const conditional = await context.request.get(scriptUrl.href, { headers: { 'Accept-Encoding': 'gzip', 'If-None-Match': validator } });
-    assert.equal(conditional.status(), 304); assert.equal((await conditional.body()).length, 0);
-    const identity = await context.request.get(scriptUrl.href, { headers: { 'Accept-Encoding': 'identity' } });
-    assert.ok(!identity.headers()['content-encoding']); assert.notEqual(identity.headers().etag, validator);
-    assert.equal(Number(identity.headers()['content-length']), decompressedBytes);
-    transfers.push({ viewport: viewport.width, identityBytes: decompressedBytes, gzipWireBytes: wireBytes, ratio: wireBytes / decompressedBytes, head: true, conditional304: true });
-    assert.ok((await scriptResponse.text()).includes(prefix + '/paseo-web'), 'actual bundle router and assets receive the prefix');
+    // The Paseo option opens the official site in a new tab (answered locally: no real network).
+    assert.equal(await paseoFrame.locator('#open').getAttribute('href'), 'https://app.paseo.sh/');
+    assert.equal(await paseoFrame.locator('#open').getAttribute('target'), '_blank');
+    const [officialPage] = await Promise.all([context.waitForEvent('page'), paseoFrame.locator('#open').click()]);
+    await officialPage.waitForLoadState('domcontentloaded');
+    assert.equal(officialPage.url(), 'https://app.paseo.sh/');
+    await officialPage.close();
     const setupResponse = await context.request.get(base + '/paseo/setup');
     assert.ok(setupResponse.headers()['content-security-policy'].includes("frame-ancestors 'self'"));
-    assert.doesNotMatch(await clientPage.locator('body').innerText(), /Unmatched Route|page could not be found/);
-    await clientPage.goto(base + '/paseo-web/settings');
-    await clientPage.waitForLoadState('networkidle'); await clientPage.reload();
-    await clientPage.waitForLoadState('networkidle');
-    assert.doesNotMatch(await clientPage.locator('body').innerText(), /Unmatched Route|page could not be found/);
-    await clientPage.screenshot({ path: path.join(evidence, `paseo-${viewport.width}.png`), fullPage: true });
-    await clientPage.close();
+    assert.ok(!(await setupResponse.text()).includes('paseo-web'), 'the settings page links no local client');
+    // The bundled client is gone. The real nginx config answers these paths itself with its fixed 404 page: not Pi Web
+    // (which was seen to redirect the old open link `/paseo-web/` to a URL without the Ingress prefix) and not the
+    // bridge (JSON). The status alone cannot tell the three apart, so the page itself is checked.
+    for (const retired of ['/paseo-web', '/paseo-web/', '/paseo-web/welcome', '/paseo-web/settings', '/paseo-web/_expo/static/js/web/index-0123456789abcdef.js']) {
+      const response = await context.request.get(base + retired, { maxRedirects: 0 });
+      assert.equal(response.status(), 404, `${retired} is no longer served`);
+      assert.match(response.headers()['content-type'] || '', /^text\/html/, `${retired}: nginx's page is HTML, the bridge answers JSON`);
+      assert.equal(response.headers().location, undefined, `${retired}: no redirect`);
+      const body = await response.text();
+      assert.match(body, /<center><h1>404 Not Found<\/h1><\/center>[\s\S]*<center>nginx<\/center>/, `${retired}: nginx's own error page`);
+      assert.doesNotMatch(body, /NOT_FOUND|could not be found/, `${retired}: neither the bridge's code nor Pi Web's page`);
+    }
+    await page.screenshot({ path: path.join(evidence, `paseo-${viewport.width}.png`), fullPage: true });
     await select('omnigent');
     const frame = page.frameLocator('iframe[title="Omnigent"]');
     await frame.locator('#notice').filter({ hasNotText: '正在讀取狀態' }).waitFor();
@@ -284,14 +265,14 @@ try {
     await page.locator('#setup button:enabled').waitFor();
     assert.equal(await page.locator('#back').getAttribute('href'), prefix + '/');
     assert.equal(await page.locator('#back').getAttribute('target'), null, 'standalone fallback stays standalone');
-    results.push({ viewport, nativeNavigation: true, fallback: true, modelSelections: 2, paseo: { pinnedStaticClient: true, ingress: true, deepLinkReload: true, mobileScroll: true } });
+    results.push({ viewport, nativeNavigation: true, fallback: true, modelSelections: 2, paseo: { officialSiteLinks: true, openInNewTab: true, retiredClient404: true, mobileScroll: true } });
     await context.close();
   }
   assert.deepEqual(escaped.filter(url => url !== '/favicon.ico'), []);
-  assert.deepEqual(errors, []); assert.deepEqual(failedClientAssets, []);
-  assert.ok(!fs.readFileSync(path.join(evidence, 'nginx-access.log'), 'utf8').includes('fixture-pairing'), 'pair fragments never reach nginx access log');
+  assert.deepEqual(errors, []);
+  assert.ok(!fs.readFileSync(path.join(evidence, 'nginx-access.log'), 'utf8').includes(paseoOffer), 'pairing offers never reach nginx access log');
   assert.deepEqual(promptRequests, [], 'no prompts or provider calls');
-  fs.writeFileSync(path.join(evidence, 'browser-receipt.json'), JSON.stringify({ piWeb: '0.12.0', upstream: 'npm compiled artifact', proxy: 'actual nginx + simulated HA Supervisor path stripping', modelRuntime: 'fixture only', results, errors, escaped, failedClientAssets, transfers }, null, 2));
+  fs.writeFileSync(path.join(evidence, 'browser-receipt.json'), JSON.stringify({ piWeb: '0.12.0', upstream: 'npm compiled artifact', proxy: 'actual nginx + simulated HA Supervisor path stripping', modelRuntime: 'fixture only', results, errors, escaped }, null, 2));
   console.log('PASS settings-only Omnigent: no startup conversation or floating link; native settings binding, model selection, disconnect, Paseo and ingress work on desktop/tablet/mobile.');
 } finally {
   await browser?.close(); ingress.closeAllConnections(); ingress.close(); backend.closeAllConnections(); backend.close(); paseo.closeAllConnections(); paseo.close();

@@ -5,8 +5,9 @@ ARG BUILD_FROM=ghcr.io/hassio-addons/debian-base:9.1.0
 # =============================================================================
 #
 # cli-runtime/versions.json is the single source of the bundled Omnigent plugin
-# (vendored archive and sha256), Omnigent CLI, Claude Code and Codex versions. CI and
-# the tests read the same file. Each stage below copies only the pins it uses:
+# and Agent Connect (vendored archive and sha256), Omnigent CLI, Claude Code and
+# Codex versions. CI and the tests read the same file. Each stage below copies
+# only the pins it uses:
 # BuildKit keys COPY --from on file content, so a bump re-runs only the stage
 # that consumes the changed pin. The other components keep their cached layers,
 # and HA hosts do not download those layers again.
@@ -21,7 +22,10 @@ RUN set -euo pipefail; \
     pin omnigent/version .omnigent.version "${semver}"; \
     pin omnigent-plugin/version .omnigentPlugin.version "${semver}"; \
     pin omnigent-plugin/archive .omnigentPlugin.archive '^candidate-packages/woowtech-pi-omnigent-plugin-[0-9]+[.][0-9]+[.][0-9]+[.]tgz$'; \
-    pin omnigent-plugin/sha256 .omnigentPlugin.sha256 '^[0-9a-f]{64}$'
+    pin omnigent-plugin/sha256 .omnigentPlugin.sha256 '^[0-9a-f]{64}$'; \
+    pin agent-connect/version .agentConnect.version "${semver}"; \
+    pin agent-connect/sha256 .agentConnect.sha256 '^[0-9a-f]{64}$'; \
+    pin agent-connect/runtime-revision .agentConnect.runtimeRevision '^[0-9]+[.][0-9]+[.][0-9]+-r[0-9]+-[0-9a-f]{12}$'
 
 # =============================================================================
 # Stage 1 — build pi-web (and compile node-pty) in a throwaway toolchain image.
@@ -266,16 +270,24 @@ RUN cp "/tmp/$(< /tmp/pins/omnigent-plugin/archive)" /tmp/plugin.tgz \
     && chmod -R a+rX,go-w /opt/woow/pi-omnigent-plugin
 
 # The HA bridge consumes the plugin API; never apply its Pi Web 0.10 overlay.
-# Build the daemon + fixed Expo client once for each native image architecture.
+# Build the Paseo daemon runtime once for each native image architecture. The
+# plugin no longer carries a web client: every connection target opens its
+# official site. The same RUN then splits the runtime into two trees of hard
+# links (patches/split-paseo-runtime.mjs) for the two layers below.
 FROM piweb-builder AS paseo-builder
-ARG PI_PASEO_VERSION=0.1.20
-ARG PI_PASEO_SHA256=1574c1bd1d0023c7b536c9feb773e1cdded929104d79cfb05b1deda5846203f8
+COPY --from=pins /pins/agent-connect/ /tmp/pins/agent-connect/
 # Unpublished reviewable candidate: use the exact checked archive in this branch.
-COPY candidate-packages/woowtech-pi-paseo-0.1.20.tgz /tmp/paseo.tgz
-RUN echo "${PI_PASEO_SHA256}  /tmp/paseo.tgz" | sha256sum --check --strict \
+# candidate-packages/ holds exactly one woowtech-pi-paseo-*.tgz (tests/versions.test.mjs
+# checks that). What this COPY does with a second match is not relied on: the sha256
+# check below, against the pin in cli-runtime/versions.json, decides which bytes are built.
+COPY candidate-packages/woowtech-pi-paseo-*.tgz /tmp/paseo.tgz
+RUN echo "$(< /tmp/pins/agent-connect/sha256)  /tmp/paseo.tgz" | sha256sum --check --strict \
     && mkdir -p /opt/woow/pi-paseo-plugin \
     && tar -xzf /tmp/paseo.tgz --strip-components=1 -C /opt/woow/pi-paseo-plugin \
-    && node /opt/patches/build-paseo.mjs \
+    && PI_PASEO_EXPECTED_VERSION="$(< /tmp/pins/agent-connect/version)" \
+       PI_PASEO_EXPECTED_RUNTIME_REVISION="$(< /tmp/pins/agent-connect/runtime-revision)" \
+       node /opt/patches/build-paseo.mjs \
+    && node /opt/patches/split-paseo-runtime.mjs /opt/woow/pi-paseo-plugin /opt/woow/paseo-runtime /opt/woow/paseo-runtime-layers \
     && rm -rf /tmp/paseo.tgz /tmp/npm-cache
 
 # Shared runtime is the same verified candidate used by native and k3s.
@@ -374,8 +386,14 @@ COPY --from=omnigent-builder /opt/omnigent/python /opt/omnigent/python
 COPY --from=omnigent-builder /opt/omnigent/venv /opt/omnigent/venv
 COPY --from=omnigent-builder /opt/woow/pi-omnigent-plugin /opt/woow/pi-omnigent-plugin
 COPY --from=paseo-builder /opt/woow/pi-paseo-plugin /opt/woow/pi-paseo-plugin
-COPY --from=paseo-builder /opt/woow/paseo-runtime /opt/woow/paseo-runtime
-COPY --from=paseo-builder /opt/woow/paseo-web /opt/woow/paseo-web
+# The Paseo runtime, /opt/woow/paseo-runtime, in two layers: the Claude Agent SDK's
+# platform binary (node_modules/@anthropic-ai, most of its weight) apart from the
+# rest, so neither comes near the 256 MiB layer limit that
+# tests/assert-image-layer-sizes.mjs enforces on main. COPY cannot exclude a
+# subdirectory, so the builder stage made two trees that keep the full path;
+# together they are the runtime, file for file.
+COPY --from=paseo-builder /opt/woow/paseo-runtime-layers/a/ /
+COPY --from=paseo-builder /opt/woow/paseo-runtime-layers/b/ /
 COPY --from=shared-runtime-builder /opt/woow/pi-agent-shared-runtime /opt/woow/pi-agent-shared-runtime
 RUN ln -s /usr/local/lib/node_modules/@agegr/pi-web/node_modules /opt/woow/pi-paseo-plugin/node_modules \
     && ln -s /opt/woow/pi-paseo-plugin/bin/cli.mjs /usr/local/bin/pi-paseo \

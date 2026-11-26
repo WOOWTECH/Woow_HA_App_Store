@@ -2,10 +2,11 @@
   const prefix = document.querySelector('meta[name=ingress-prefix]').content;
   const token = document.querySelector('meta[name=paseo-token]').content;
   const $ = id => document.getElementById(id);
+  // Every target is an official site opened in a new tab; this page serves no copy of one.
   const targets = {
-    paseo: { label: 'Paseo', url: prefix + '/paseo-web/' },
-    woowtech: { label: 'Woowtech Smart', url: 'https://smart.woowtech.io' },
-    apporo: { label: 'Apporo Smart', url: 'https://smart.apporo.ai' },
+    paseo: { label: 'Paseo', origin: 'https://app.paseo.sh' },
+    woowtech: { label: 'Woowtech Smart', origin: 'https://smart.woowtech.io' },
+    apporo: { label: 'Apporo Smart', origin: 'https://smart.apporo.ai' },
   };
   const knownTarget = value => Object.hasOwn(targets, value);
   const embedded = new URLSearchParams(location.search).get('embedded') === '1';
@@ -22,22 +23,21 @@
     $('refresh').disabled = busy;
     $('start').disabled = busy || unavailable;
     $('stop').disabled = busy || unavailable;
-    $('pair').disabled = busy || unavailable || dirty || pending || !state?.running || (savedTarget === 'paseo' && !state?.webReady);
+    $('pair').disabled = busy || unavailable || dirty || pending || !state?.running;
     $('open').hidden = unavailable || dirty || pending;
-    $('open').href = targets[savedTarget].url;
+    $('open').href = targets[savedTarget].origin + '/';
     $('open').textContent = `開啟 ${targets[savedTarget].label} 對話介面`;
     $('target-notice').textContent = dirty ? '尚未儲存標的，請先儲存再配對。'
       : pending ? '標的已儲存。請在方便時停止並重新啟動服務，再產生配對連結。'
       : state && !state.targetSelectionAvailable ? '目前套件支援 Paseo；更新 Agent Connect 套件後可切換標的。' : '';
   }
+  // Same rule as the bridge: exactly `<target origin>/#offer=<base64url>`, nothing else.
   function pairingUrl(value, target) {
     if (typeof value !== 'string' || /[\\\x00-\x20\x7f]/.test(value)) throw Error('PAIRING_ORIGIN_INVALID');
-    if (target === 'paseo') {
-      if (![prefix + '/paseo-web/#', prefix + '/paseo-web/welcome#'].some(base => value.startsWith(base) && value.length > base.length)) throw Error('PAIRING_ORIGIN_INVALID');
-    } else {
-      const url = new URL(value);
-      if (url.origin !== targets[target].url || url.username || url.password || url.pathname !== '/' || url.search || !/^#offer=[A-Za-z0-9_-]+$/.test(url.hash) || !value.startsWith(targets[target].url + '/#')) throw Error('PAIRING_ORIGIN_INVALID');
-    }
+    let url;
+    try { url = new URL(value); } catch { throw Error('PAIRING_ORIGIN_INVALID'); }
+    const origin = targets[target].origin;
+    if (url.origin !== origin || url.username || url.password || url.pathname !== '/' || url.search || !/^#offer=[A-Za-z0-9_-]+$/.test(url.hash) || !value.startsWith(origin + '/#')) throw Error('PAIRING_ORIGIN_INVALID');
     return value;
   }
   async function request(action, payload = {}) {

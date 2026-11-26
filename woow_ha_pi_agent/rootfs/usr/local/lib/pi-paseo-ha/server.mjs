@@ -1,18 +1,19 @@
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
-import { Readable } from 'node:stream';
-import { ingressPrefix, ingressResponse } from './ingress.mjs';
+import { ingressPrefix } from './ingress.mjs';
 import { randomBytes } from 'node:crypto';
 import { createPaseoBridge } from './bridge.mjs';
 
-const staticRoot = '/usr/local/share/pi-paseo-ha';
+// <prefix>/lib/pi-paseo-ha/server.mjs serves <prefix>/share/pi-paseo-ha: /usr/local in the
+// image, or the copy of rootfs a test runs from.
+const staticRoot = path.resolve(import.meta.dirname, '../../share/pi-paseo-ha');
 const files = new Map([['/paseo', ['index.html', 'text/html']], ['/paseo/', ['index.html', 'text/html']], ['/paseo/setup', ['index.html', 'text/html']],
   ['/paseo/app.js', ['app.js', 'application/javascript']], ['/paseo/style.css', ['style.css', 'text/css']]]);
 // Only the bridge's own codes and the plugin errors these actions can raise reach
 // the page. A Node or system code (ENOENT, EACCES, ERR_*, ...) is logged, code only.
 const publicCodes = new Set(['PLUGIN_UNAVAILABLE', 'INVALID_ACTION', 'PAIRING_ORIGIN_INVALID', 'PAIRING_UNAVAILABLE',
-  'WEB_CLIENT_NOT_READY', 'DAEMON_UNREACHABLE', 'DAEMON_REQUEST_TIMEOUT', 'PROVIDER_MODELS_UNAVAILABLE',
+  'DAEMON_UNREACHABLE', 'DAEMON_REQUEST_TIMEOUT', 'PROVIDER_MODELS_UNAVAILABLE',
   'INVALID_TARGET', 'INVALID_SETTINGS', 'TARGET_SELECTION_UNSUPPORTED', 'CONFIGURATION_PENDING',
   'LOCK_BUSY', 'RUNTIME_BUSY', 'STATE_BUSY', 'RESTART_REQUIRED', 'COMMAND_FAILED', 'COMMAND_UNAVAILABLE']);
 const logCode = error => [error?.code, error?.name].find(value => typeof value === 'string' && /^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(value)) || 'unknown';
@@ -34,17 +35,6 @@ export function createServer({ bridge = createPaseoBridge(), directory = staticR
     try {
       const url = new URL(req.url, 'http://localhost');
       const prefix = ingressPrefix(req.headers['x-ingress-path']);
-      if (url.pathname === '/paseo-web' || url.pathname.startsWith('/paseo-web/')) {
-        if (!['GET', 'HEAD'].includes(req.method)) return reply(405, { error: { code: 'METHOD_NOT_ALLOWED' } });
-        // Ask for plain bytes: the per-request Ingress base must also reach
-        // Expo router and dynamic chunk URLs inside the compiled JavaScript.
-        const response = await ingressResponse(await bridge.web(new Request(url, { method: 'GET', headers: { 'accept-encoding': 'identity' } })), prefix, req.method, {
-          pathname: url.pathname, acceptEncoding: req.headers['accept-encoding'] || '', ifNoneMatch: req.headers['if-none-match'] || '',
-        });
-        res.writeHead(response.status, Object.fromEntries(response.headers));
-        if (response.body) Readable.fromWeb(response.body).pipe(res); else res.end();
-        return;
-      }
       if (url.pathname === '/api/paseo') {
         const site = req.headers['sec-fetch-site'];
         let originAllowed = true;
@@ -71,7 +61,7 @@ export function createServer({ bridge = createPaseoBridge(), directory = staticR
         let body;
         try { body = JSON.parse(Buffer.concat(chunks).toString()); } catch { return reply(400, { error: { code: 'INVALID_JSON' } }); }
         if (!body || typeof body !== 'object' || Array.isArray(body)) return reply(400, { error: { code: 'INVALID_REQUEST' } });
-        return reply(200, await bridge.act(body, prefix));
+        return reply(200, await bridge.act(body));
       }
       const entry = files.get(url.pathname);
       if (!entry || req.method !== 'GET') return reply(404, { error: { code: 'NOT_FOUND' } });

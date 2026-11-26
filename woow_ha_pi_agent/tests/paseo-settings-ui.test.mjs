@@ -3,10 +3,12 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
 
-const source = fs.readFileSync(new URL('../rootfs/usr/local/share/pi-paseo-ha/app.js', import.meta.url), 'utf8');
+const read = name => fs.readFileSync(new URL(`../rootfs/usr/local/share/pi-paseo-ha/${name}`, import.meta.url), 'utf8');
+const source = read('app.js');
 const tick = () => new Promise(resolve => setImmediate(resolve));
+// The status the bridge sends: no webReady/webVersion any more (Agent Connect 0.1.23 removed the bundled client).
 const ready = target => ({ installed: true, enabled: true, version: 'candidate', phase: 'ready', selectedTarget: target,
-  settings: { target }, configurationPending: false, targetSelectionAvailable: true, running: true, webReady: true, providers: [] });
+  settings: { target }, configurationPending: false, targetSelectionAvailable: true, running: true, providers: [] });
 async function page(handler) {
   const nodes = new Map();
   const node = id => {
@@ -23,6 +25,8 @@ async function page(handler) {
   await tick();
   return { node, requests };
 }
+const origins = { paseo: 'https://app.paseo.sh', woowtech: 'https://smart.woowtech.io', apporo: 'https://smart.apporo.ai' };
+const labels = { paseo: 'Paseo', woowtech: 'Woowtech Smart', apporo: 'Apporo Smart' };
 test('unsaved target survives refresh, disables pairing, clears old links, and save preserves the selected target', async () => {
   let state = ready('paseo');
   const p = await page(body => {
@@ -42,30 +46,56 @@ test('unsaved target survives refresh, disables pairing, clears old links, and s
   await p.node('pair').onclick(); assert.equal(p.requests.at(-1).action, 'save');
   state.configurationPending = false;
   await p.node('refresh').onclick(); assert.equal(p.node('pair').disabled, false);
-  assert.equal(p.node('open').href, 'https://smart.apporo.ai');
+  assert.equal(p.node('open').href, 'https://smart.apporo.ai/');
 });
-test('pair links display the selected brand and reject another target, another origin and executable input', async () => {
-  let paired = { target: 'woowtech', url: 'https://smart.woowtech.io/#offer=private' };
-  const p = await page(body => body?.action === 'pair' ? paired : ready('woowtech'));
-  await p.node('pair').onclick();
-  assert.deepEqual(p.requests.at(-1), { action: 'pair', target: 'woowtech' });
-  assert.equal(p.node('pair-link').hidden, false); assert.equal(p.node('pair-link').href, paired.url);
-  assert.match(p.node('pair-link').textContent, /Woowtech Smart/);
-  for (const value of [{ target: 'apporo', url: 'https://smart.apporo.ai/#offer=private' },
-    { target: 'woowtech', url: 'https://smart.apporo.ai/#offer=private' }, { target: 'woowtech', url: 'javascript:alert(1)' },
-    { target: 'woowtech', url: 'https://smart.woowtech.io.evil.test/#offer=private' },
-    { target: 'woowtech', url: 'https://smart.woowtech.io/#unknown=private' }, { target: 'woowtech', url: 'https://smart.woowtech.io/#offer=bad!' }]) {
-    paired = value; await p.node('refresh').onclick(); await p.node('pair').onclick();
-    assert.equal(p.node('pair-link').hidden, true); assert.equal(p.node('pair-link').href, undefined);
-    assert.match(p.node('notice').textContent, /操作未完成/);
+test('every target opens its own official site and pairs only through the exact https://<origin>/#offer=<base64url> link', async () => {
+  for (const target of Object.keys(origins)) {
+    const origin = origins[target], host = new URL(origin).host;
+    const link = `${origin}/#offer=abc_DEF-123`;
+    let paired = { target, url: link };
+    const p = await page(body => body?.action === 'pair' ? paired : ready(target));
+    assert.equal(p.node('open').href, origin + '/'); assert.equal(p.node('open').textContent, `開啟 ${labels[target]} 對話介面`); assert.equal(p.node('open').hidden, false);
+    assert.equal(p.node('pair').disabled, false, `${target}: a status without any web state allows pairing`);
+    await p.node('pair').onclick();
+    assert.deepEqual(p.requests.at(-1), { action: 'pair', target });
+    assert.equal(p.node('pair-link').hidden, false); assert.equal(p.node('pair-link').href, link);
+    assert.equal(p.node('pair-link').textContent, `開啟並配對 ${labels[target]}`);
+    const others = Object.keys(origins).filter(id => id !== target);
+    for (const value of [{ target: others[0], url: `${origins[others[0]]}/#offer=private` }, { target, url: `${origins[others[0]]}/#offer=private` },
+      { target, url: `${origin}.evil.test/#offer=private` }, { target, url: `https://evil.${host}/#offer=private` }, { target, url: `${origin}:444/#offer=private` },
+      { target, url: `${origin}:443/#offer=private` }, { target, url: `https://ａ${host.slice(1)}/#offer=private` }, { target, url: origin.replace('https://', 'HTTPS://') + '/#offer=private' },
+      { target, url: `https://${host}./#offer=private` }, { target, url: `https://${host.toUpperCase()}/#offer=private` }, { target, url: `https://${host[0].toUpperCase()}${host.slice(1)}/#offer=private` },
+      { target, url: origin.replace('https://', 'http://') + '/#offer=private' }, { target, url: origin.replace('https://', 'https://user:secret@') + '/#offer=private' },
+      { target, url: `${origin}/welcome#offer=private` }, { target, url: `${origin}/?next=evil#offer=private` }, { target, url: `${origin}/#unknown=private` },
+      { target, url: `${origin}/#offer=` }, { target, url: `${origin}/#offer=bad!` }, { target, url: `${origin}/#offer=a b` }, { target, url: `${origin}/#offer=a\nb` },
+      { target, url: `${origin}/#offer=a\\b` }, { target, url: 'javascript:alert(1)' }, { target, url: '//' + host + '/#offer=private' }, { target, url: '' }, { target, url: null },
+      // what Agent Connect <= 0.1.22 returned for Paseo (its bundled client), with and without the Ingress prefix
+      { target, url: '/paseo-web/welcome#offer=private' }, { target, url: '/api/hassio_ingress/fixture01234567890123/paseo-web/welcome#offer=private' }, { target, url: '/paseo-web/#offer=private' }]) {
+      paired = value; await p.node('refresh').onclick(); await p.node('pair').onclick();
+      assert.equal(p.node('pair-link').hidden, true, JSON.stringify(value)); assert.equal(p.node('pair-link').href, undefined, JSON.stringify(value));
+      assert.match(p.node('notice').textContent, /操作未完成/, JSON.stringify(value));
+    }
   }
 });
-test('Paseo pairing uses the current ingress prefix and legacy backend disables only the new target selector', async () => {
-  const p = await page(body => body?.action === 'pair' ? { target: 'paseo', url: '/api/hassio_ingress/fixture01234567890123/paseo-web/welcome#offer=private' }
+test('a package that cannot switch targets still pairs Paseo on the official site and only its selector stays disabled', async () => {
+  const p = await page(body => body?.action === 'pair' ? { target: 'paseo', url: 'https://app.paseo.sh/#offer=private' }
     : { ...ready('paseo'), targetSelectionAvailable: false });
   assert.equal(p.node('target').disabled, true); assert.equal(p.node('pair').disabled, false);
+  assert.match(p.node('target-notice').textContent, /更新 Agent Connect 套件/);
   await p.node('pair').onclick(); assert.equal(p.node('pair-link').hidden, false);
-  assert.match(p.node('pair-link').href, /\/paseo-web\/welcome#offer=private$/);
+  assert.equal(p.node('pair-link').href, 'https://app.paseo.sh/#offer=private');
+  assert.equal(p.node('open').href, 'https://app.paseo.sh/');
+});
+test('the page links only official sites: the static page and script name no local web client and open in a new tab', () => {
+  const html = read('index.html');
+  assert.match(html, /<a id="open" href="https:\/\/app\.paseo\.sh\/" target="_blank" rel="noopener noreferrer">/);
+  assert.match(html, /<a id="pair-link" hidden target="_blank" rel="noopener noreferrer">/);
+  assert.match(html, /<option value="paseo">Paseo<\/option>/);
+  for (const [name, text] of [['index.html', html], ['app.js', source]]) {
+    assert.doesNotMatch(text, /paseo-web|web-client|webClient|webReady|webVersion/, name);
+    assert.doesNotMatch(text, /href="(?!https:\/\/app\.paseo\.sh\/|__INGRESS_PREFIX__)[^"]*"/, `${name}: the only fixed links are the official site and this add-on's own paths`);
+  }
+  assert.doesNotMatch(source, /agentCollaboration/, 'no collaboration switch in this page yet');
 });
 
 test('failed status refresh invalidates old pairing readiness and a successful refresh restores it', async () => {

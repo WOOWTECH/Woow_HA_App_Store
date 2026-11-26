@@ -50,8 +50,9 @@ export function seed({ agentDir = process.env.PI_CODING_AGENT_DIR, home = proces
   return { seeded };
 }
 
-/** Use the host SDK 1.1 from Pi Web 0.12, never the plugin's 0.10 overlay. */
-export async function loadPlugin({ env = process.env, bundle = BUNDLE } = {}) {
+/** The configured Agent Connect package, found without loading any of its code: where it is installed, whether
+ * its binding is enabled and its version. Uses the host SDK 1.1 from Pi Web 0.12, never the plugin's 0.10 overlay. */
+export async function findPlugin({ env = process.env, bundle = BUNDLE } = {}) {
   const sdk = await import(pathToFileURL(path.join(bundle, 'node_modules/@earendil-works/pi-coding-agent/dist/index.js')).href);
   const settings = sdk.SettingsManager.create(env.HOME, env.PI_CODING_AGENT_DIR, { projectTrusted: false });
   const manager = new sdk.DefaultPackageManager({ cwd: env.HOME, agentDir: env.PI_CODING_AGENT_DIR, settingsManager: settings });
@@ -65,32 +66,17 @@ export async function loadPlugin({ env = process.env, bundle = BUNDLE } = {}) {
     const scopes = { user: settings.getGlobalSettings(), project: settings.getProjectSettings() };
     const binding = (scopes[entry.scope]?.packages || []).find(item => (typeof item === 'string' ? item : item.source) === entry.source);
     const enabled = typeof binding === 'string' || !!binding && (!Array.isArray(binding.extensions) || binding.extensions.length > 0);
-    const api = await import(pathToFileURL(path.join(root, 'src/host-api.mjs')).href);
-    return { root, api, enabled, version: pkg.version };
+    return { root, enabled, version: pkg.version };
   }
   return null;
 }
 
-/** Seed the verified static release into persistent plugin state without
- * replacing credentials, sessions, configuration, or user-installed runtimes. */
-export async function prepareImage({ bundle = BUNDLE, image = '/opt/woow/paseo-web' } = {}) {
-  const { locations, assertSafePath } = await import(pathToFileURL(path.join(bundle, 'src/state.mjs')).href);
-  const { webClientManifest, webClientStatus } = await import(pathToFileURL(path.join(bundle, 'src/web-client.mjs')).href);
-  const loc = locations(), manifest = webClientManifest();
-  if (webClientStatus(loc).ready) return;
-  const destination = path.join(loc.stateDir, 'web-client', manifest.sha256);
-  assertSafePath(destination);
-  // The plugin owns repair of an incomplete cache under its runtime lock.
-  // Do not prevent registration or its normal retry supervisor from starting.
-  if (fs.existsSync(destination)) return;
-  fs.mkdirSync(path.dirname(destination), { recursive: true, mode: 0o700 });
-  const temporary = destination + '.image-' + process.pid;
-  assertSafePath(temporary);
-  try {
-    fs.cpSync(path.join(image, 'web-client', manifest.sha256), temporary, { recursive: true, errorOnExist: true, force: false });
-    fs.renameSync(temporary, destination);
-  } finally { fs.rmSync(temporary, { recursive: true, force: true }); }
-  if (!webClientStatus(loc).ready) throw new Error('Invalid prebuilt client');
+/** The configured package with its host API, for the bridge and the lifecycle. */
+export async function loadPlugin(options) {
+  const found = await findPlugin(options);
+  if (!found) return null;
+  const api = await import(pathToFileURL(path.join(found.root, 'src/host-api.mjs')).href);
+  return { root: found.root, api, enabled: found.enabled, version: found.version };
 }
 
 /** Watch registration independently of a running model turn. Disabled/removal
