@@ -8,11 +8,12 @@
       "sourceCommit": "e51849dfa340a2f91bcc7041092749d1b4859c70"
     },
     {
-      "file": "woowtech-pi-paseo-0.1.24.tgz",
-      "sha256": "a8ffeda600318f3c42e5e0f86d87b860f69c15b5f915286df64f7ba05a51f831",
-      "status": "unpublished candidate; not a registry/release asset",
-      "sourceCommit": "ee8f9b437dc8e7e4041dc0c9ef73755951cd5bbb",
-      "runtimeRevision": "0.17.4-r1-a651f42711da"
+      "file": "woowtech-pi-paseo-0.1.25.tgz",
+      "sha256": "9717988c00a4c830a3fa458ab1ae778515c90257faaac0e68e695fefbf7cd8d1",
+      "status": "verified GitHub release asset",
+      "releaseUrl": "https://github.com/pi-paseo-plugin/releases/tag/v0.1.25",
+      "sourceCommit": "43cc7b0623c47afdbad6e35e0df7bd03dd5c72d3",
+      "runtimeRevision": "0.17.4-r2-a651f42711da"
     },
     {
       "file": "woowtech-pi-omnigent-plugin-0.3.34.tgz",

@@ -27,11 +27,11 @@ assert record["scope"] == dict(syntheticFilesOnly=True, maintenanceExecuted=Fals
 assert len(record["checks"]) == 1
 check = record["checks"][0]
 assert set(check) == {"name", "result", "detail"}
-assert check["name"] == "bounded-synthetic-native-file-survival"
+assert check["name"] == "bounded-synthetic-native-and-paseo-file-survival"
 assert check["result"] == sys.argv[2]
 assert check["detail"].startswith("native-fixture-v1:")
-assert record["files"] == (9 if sys.argv[2] == "pass" else 0)
-assert record["homes"] == (3 if sys.argv[2] == "pass" else 0)
+assert record["files"] == (11 if sys.argv[2] == "pass" else 0)
+assert record["homes"] == (4 if sys.argv[2] == "pass" else 0)
 for filename in sys.argv[3:]:
     try:
         Path(filename).read_bytes()

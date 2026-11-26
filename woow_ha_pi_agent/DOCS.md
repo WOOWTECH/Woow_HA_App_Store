@@ -200,9 +200,13 @@ Logs from each retry show up in the addon Logs tab under the `video-tools-init` 
 
 本頁經由原有 Supervisor ingress 驗證與 nginx 來源限制，後端只監聽 `/data/pi-agent/omnigent-ha.sock`。不新增 LAN 連接埠。映像不包含 server 憑證或模型登入，不自動安裝或更新缺少的引擎。
 
+## Smart Tasks (Agent Connect 0.1.25)
+
+The built-in Better Paseo 1.7.0 adds Tasks to the official Paseo 0.17.4 daemon. Tasks are on by default; chat enhancements and automatic update checks are off, and plugin self-update is managed by the add-on bundle. Restarting activates runtime `0.17.4-r2-a651f42711da`. Existing pairing and Paseo data, including server identity, conversations, settings and Tasks records, remain in place. No re-pairing or data reset is required. See [HA integration, Ingress and upgrade notes](docs/PASEO_HA.md#smart-tasks-01526).
+
 ## Agent Connect（Paseo）
 
-映像已包含 Agent Connect 0.1.24 與預先安裝的 Paseo 0.17.4（runtime `0.17.4-r1-a651f42711da`）。**Settings → Agent Connect**（緊接 Omnigent）可在 Woowtech Smart、Apporo Smart 與 Paseo 之間擇一，沿用本機 Claude Code、Codex 與 Pi 的登入，透過加密 relay 連線；不建立設定對話，只有按下配對按鈕才開始配對。
+映像已包含 Agent Connect 0.1.25、Better Paseo 1.7.0 與預先安裝的 Paseo 0.17.4（runtime `0.17.4-r2-a651f42711da`）。**Settings → Agent Connect**（緊接 Omnigent）可在 Woowtech Smart、Apporo Smart 與 Paseo 之間擇一，沿用本機 Claude Code、Codex 與 Pi 的登入，透過加密 relay 連線；不建立設定對話，只有按下配對按鈕才開始配對。
 
 1. **Paseo 選項現在開啟官方網站 https://app.paseo.sh/**（新分頁），與兩個 Smart 選項各自開啟自己的官方網站相同。Add-on 不再內建或提供 Paseo 網頁（`/paseo-web`）。
 2. 按 **產生連線連結** 後，只接受 `https://app.paseo.sh/#offer=<base64url>` 這個固定格式（Smart 選項則是各自官方網站的同格式連結）；其他網址、連接埠、路徑或查詢字串一律拒絕。

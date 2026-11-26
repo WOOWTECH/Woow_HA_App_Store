@@ -41,6 +41,7 @@ try {
   assert.equal(await choice(), BUNDLED_RUNTIME, 'a saved runtime with earlier releases only does not hide the image\'s: no download at the first start');
   fs.rmSync(savedRuntime, { recursive: true });
   const native = await verifyNativeRuntime({ bundle: '/opt/woow/pi-paseo-plugin', runtimeDir: process.env.PI_PASEO_RUNTIME_DIR });
+  execFileSync(process.execPath, [path.join(plugin.root, 'scripts/verify-smart-tasks.mjs'), layout.runtimeDirectory(locations())], { stdio: 'inherit', timeout: 30000 });
   const cli = path.join(layout.runtimeDirectory(locations()), 'node_modules/@getpaseo/cli/bin/paseo');
   assert.equal(execFileSync(process.execPath, [cli, '--version'], { encoding: 'utf8' }).trim(), pins.paseoVersion);
   // No bundled web client: nothing in the image, nothing in the plugin, nothing in its status.

@@ -1,3 +1,10 @@
+## 0.15.26
+
+- Bundle Agent Connect 0.1.25 with the official Paseo 0.17.4 daemon and runtime `0.17.4-r2-a651f42711da`. Better Paseo 1.7.0 is built into Paseo's verified builtin catalog, adding the Smart Tasks board, sidebar entry and settings panel while keeping the official daemon and Smart websites.
+- Tasks are enabled by default. Chat enhancements and automatic update checks are disabled by default; plugin self-update commands are unavailable because the add-on controls the built-in plugin version.
+- Updating and restarting keeps the existing pairing, server ID, keys, conversations and configuration in the same Paseo data directory. Tasks settings and records are stored there as well; no re-pairing or data reset is required. Rollback retains that directory and restores the matching earlier add-on package.
+- Keep Omnigent plugin 0.3.34, shared runtime 0.1.6, Pi Web 0.12.0, and all existing HA pins and options unchanged.
+
 ## 0.15.25
 
 - Bundle the exact reviewed Agent Connect 0.1.24 (was 0.1.20; same package `@woowtech/pi-paseo`, Paseo daemon 0.17.4 and runtime revision `0.17.4-r1-a651f42711da`). **The Paseo option now opens the official Paseo app at https://app.paseo.sh/ in a new tab**, the way Woowtech Smart and Apporo Smart already opened their own sites. The add-on no longer downloads, bundles or serves the patched Paseo web build it put at `/paseo-web` (Agent Connect 0.1.9-0.1.22): the image drops it, the settings page links nothing local, and nginx answers `/paseo-web` itself with a plain 404 (left to Pi Web, the old open link `/paseo-web/` was seen to be redirected to a URL without the Ingress prefix, which leaves Home Assistant Ingress).

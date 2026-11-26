@@ -10,13 +10,15 @@ The current Store contract supplies `DATA_DIR_DATA`, `HOOK_STATE_DIR`,
 this directory because only `upgrade-check/` is mounted into the mock. The
 existing default hook timeout applies; no skip or privilege change is needed.
 
-`seed` creates three new generated bridge roots below
-`$DATA_DIR_DATA/pi-agent/home/.omnigent/codex-native`. It writes exactly nine
-synthetic files: three dead owner markers and six payload files covering an
-old session, generated config/fake auth, rotated dead letter, and zero-byte
-session/dead letter. File mtimes model the reviewed eight-day-old fixture.
-Only these owned fixture roots are scanned. Existing unrelated native homes
-are neither listed nor read. Repeated seed attempts refuse existing state.
+`seed` creates three generated bridge roots below
+`$DATA_DIR_DATA/pi-agent/home/.omnigent/codex-native` and writes two isolated
+fixtures under `$DATA_DIR_DATA/pi-agent/pi-paseo/daemon`: a synthetic pairing
+sentinel and a valid Better Paseo `plugin-data/better-paseo/tasks-stops.json`
+record. The latter checks that Tasks plugin data survives the r1-to-r2 image
+transition. Together these are eleven synthetic files; existing unrelated
+native homes and daemon data are neither listed nor read. File mtimes model
+the reviewed eight-day-old fixture. Repeated seed attempts refuse existing
+state, including an existing Tasks state file.
 
 The complete fixed-scope manifest and SHA256 seal are written with exclusive
 creation into `HOOK_STATE_DIR`. Verification derives the required cases and
@@ -28,7 +30,7 @@ trusted CI inputs, not independent image provenance or authentication.
 
 Descriptor traversal refuses symlink ancestors, directory/leaf links,
 hard-linked/nonregular files, unexpected entries, incomplete manifests and
-scope overlap. Bounds: three homes, nine files, 64 entries, depth8, 4096 bytes
+scope overlap. Bounds: four fixture roots, eleven files, 64 entries, depth8, 4096 bytes
 per fixture file, 16384 bytes per state file. Reads check stable metadata.
 The controlled CI directory is assumed quiescent during verification; this
 is not a live transactional admission check against arbitrary concurrent

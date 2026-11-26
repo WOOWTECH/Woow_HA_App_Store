@@ -20,6 +20,7 @@ SCHEMA = "ha-native-history-synthetic-seed/v1"
 MANIFEST = "native-history-seed.json"
 SEAL = "native-history-seed.sha256"
 NATIVE = ("pi-agent", "home", ".omnigent", "codex-native")
+PASEO = ("pi-agent", "pi-paseo", "daemon")
 MAX_FILE = 4096
 MAX_STATE = 16384
 MAX_ENTRIES = 64
@@ -159,6 +160,17 @@ def fixtures(nonce):
     return homes, {homes[case] + "/" + name: spec for case, files in cases.items() for name, spec in files.items()}
 
 
+def paseo_fixtures(nonce, aged_ns):
+    pairing = ".ha-upgrade-pairing-" + nonce + ".json"
+    task_id = "ha-upgrade-" + nonce[:16]
+    return {
+        pairing: (json.dumps({"syntheticPairingState": nonce}, sort_keys=True, separators=(",", ":")).encode() + b"\n", 0o600),
+        "plugin-data/better-paseo/tasks-stops.json": (
+            json.dumps({"stops": [{"agentId": task_id, "stoppedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(aged_ns / 1_000_000_000))}]},
+                       sort_keys=True, separators=(",", ":")).encode() + b"\n", 0o600),
+    }
+
+
 def expected_records(specs, aged_ns):
     return {path: {"sha256": digest(data), "bytes": len(data), "mode": mode,
                    "uid": os.geteuid(), "gid": os.getegid(), "mtimeNs": aged_ns}
@@ -203,6 +215,17 @@ def snapshot(native, homes, specs):
     return files
 
 
+def paseo_snapshot(data, specs):
+    files = {}
+    with relative_directory(data, PASEO) as daemon:
+        for path in specs:
+            parts = path.split("/")
+            with relative_directory(daemon, parts[:-1]) as parent:
+                _, files[path] = read_regular(parent, parts[-1], MAX_FILE)
+    require(set(files) == set(specs), "paseo_incomplete_scope")
+    return files
+
+
 def no_duplicates(pairs):
     result = {}
     for key, value in pairs:
@@ -215,6 +238,7 @@ def seed(ctx):
     nonce = secrets.token_hex(16)
     homes, specs = fixtures(nonce)
     aged_ns = time.time_ns() - 8 * DAY_NS
+    paseo_specs = paseo_fixtures(nonce, aged_ns)
     with directory(ctx["HOOK_STATE_DIR"]) as state:
         for name in (MANIFEST, SEAL):
             try:
@@ -234,7 +258,15 @@ def seed(ctx):
                     with relative_directory(native, parts[:-1], create=True) as parent:
                         write_new(parent, parts[-1], payload, mode, aged_ns)
                 captured = snapshot(native, homes, specs)
-        require(captured == expected_records(specs, aged_ns), "seed_readback")
+            with relative_directory(data, PASEO, create=True) as daemon:
+                for path, (payload, mode) in paseo_specs.items():
+                    parts = path.split("/")
+                    with relative_directory(daemon, parts[:-1], create=True) as parent:
+                        write_new(parent, parts[-1], payload, mode, aged_ns)
+                paseo_captured = paseo_snapshot(data, paseo_specs)
+        captured.update({"paseo/" + path: record for path, record in paseo_captured.items()})
+        all_specs = {**specs, **{"paseo/" + path: value for path, value in paseo_specs.items()}}
+        require(captured == expected_records(all_specs, aged_ns), "seed_readback")
         value = {"schema": SCHEMA, "nonce": nonce, "beforeVersion": ctx["version"],
                  "beforeImageHash": ctx["imageHash"], "dataIdentity": data_identity,
                  "agedNs": aged_ns, "files": captured}
@@ -262,7 +294,9 @@ def verify(ctx):
     aged = value["agedNs"]
     require(type(aged) is int and 0 < aged < time.time_ns() - 7 * DAY_NS, "age_state")
     homes, specs = fixtures(value["nonce"])
-    expected = expected_records(specs, aged)
+    paseo_specs = paseo_fixtures(value["nonce"], aged)
+    all_specs = {**specs, **{"paseo/" + path: spec for path, spec in paseo_specs.items()}}
+    expected = expected_records(all_specs, aged)
     require(type(value["files"]) is dict and set(value["files"]) == set(expected), "state_scope")
     for path, record in value["files"].items():
         require(type(record) is dict and set(record) == set(expected[path]), "state_record")
@@ -275,7 +309,10 @@ def verify(ctx):
         info = os.fstat(data)
         require(identity == {"dev": info.st_dev, "ino": info.st_ino}, "data_identity")
         with relative_directory(data, NATIVE) as native:
-            require(snapshot(native, homes, specs) == value["files"], "data_drift")
+            captured = snapshot(native, homes, specs)
+        paseo_captured = paseo_snapshot(data, paseo_specs)
+        captured.update({"paseo/" + path: record for path, record in paseo_captured.items()})
+        require(captured == value["files"], "data_drift")
     return digest(raw)
 
 
@@ -289,11 +326,11 @@ def main(hook):
     except (OSError, ValueError, KeyError, TypeError, RecursionError):
         code = "fixture_io_or_manifest_invalid"
     passed = code == "pass"
-    record = {"checks": [{"name": "bounded-synthetic-native-file-survival", "result": "pass" if passed else "fail",
+    record = {"checks": [{"name": "bounded-synthetic-native-and-paseo-file-survival", "result": "pass" if passed else "fail",
                            "detail": "native-fixture-v1:" + code}],
               "scope": {"syntheticFilesOnly": True, "maintenanceExecuted": False,
                         "fileSurvivalOnly": True, "productionAdmission": False},
-              "files": 9 if passed else 0, "homes": 3 if passed else 0,
+              "files": 11 if passed else 0, "homes": 4 if passed else 0,
               "seedManifestSha256": manifest_hash}
     try:
         # An invalid/overlapping scope must not redirect even a failure report

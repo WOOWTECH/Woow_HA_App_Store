@@ -1,5 +1,6 @@
 """Owned subprocess fixtures model hook phases, without images or SDK imports."""
 import ast
+from datetime import datetime
 import hashlib
 import json
 import os
@@ -78,11 +79,31 @@ class SyntheticUpgradeTests(unittest.TestCase):
 
     def test_old_to_new_shared_data_survival(self):
         self.seed()
-        self.assertEqual(len(self.manifest["files"]), 9)
+        self.assertEqual(len(self.manifest["files"]), 11)
+        paseo = self.data / "pi-agent/pi-paseo/daemon"
+        task_record = json.loads((paseo / "plugin-data/better-paseo/tasks-stops.json").read_text())
+        self.assertEqual(task_record["stops"][0]["agentId"], "ha-upgrade-" + self.manifest["nonce"][:16])
+        self.assertLessEqual(abs(datetime.fromisoformat(
+            task_record["stops"][0]["stoppedAt"].replace("Z", "+00:00")).timestamp()
+            - self.manifest["agedNs"] / 1_000_000_000), 1)
+        self.assertTrue((paseo / (".ha-upgrade-pairing-" + self.manifest["nonce"] + ".json")).is_file())
         before = self.snapshot()
         self.call("verify")
         self.assertEqual(self.snapshot(), before)
         self.assertEqual(len(list(self.native.iterdir())), 3)
+
+    def test_missing_paseo_task_state_fails_and_is_not_recreated(self):
+        self.seed()
+        task_state = self.data / "pi-agent/pi-paseo/daemon/plugin-data/better-paseo/tasks-stops.json"
+        task_state.unlink()
+        self.call("verify", success=False)
+        self.assertFalse(task_state.exists())
+
+    def test_changed_paseo_task_state_fails(self):
+        self.seed()
+        task_state = self.data / "pi-agent/pi-paseo/daemon/plugin-data/better-paseo/tasks-stops.json"
+        task_state.write_text('{"stops":[]}\n')
+        self.call("verify", success=False)
 
     def test_missing_history_fails_and_is_not_reseeded(self):
         self.seed()

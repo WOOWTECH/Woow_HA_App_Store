@@ -1,19 +1,17 @@
 # Agent Connect release candidate — 2026-11-21
 
-This is coordinated source preparation, not a published release or deployment.
-Updated 2026-11-26 for HA Pi Agent 0.15.25: Agent Connect 0.1.20 → 0.1.24 (below);
-the shared runtime and Omnigent rows are unchanged. The pins themselves are
-written once, in `cli-runtime/versions.json`; this table is the readable record.
-The candidate archives are unpublished `npm pack` results, vendored in
-`candidate-packages/` for reviewable builds without inventing release URLs.
-Native pins use local `file://` inputs; HA uses verified `COPY` inputs. Their
-SHA-256 values identify the actual bytes. Publishing or repacking later requires
-coordinated consumer updates and the normal release gates.
+This document records coordinated source preparation and HA packaging; HA
+deployment remains pending. Updated 2026-11-26 for HA Pi Agent 0.15.26:
+Agent Connect 0.1.25 has been published as a verified GitHub release asset;
+the shared-runtime and Omnigent rows remain unpublished candidates. The pins
+are written once in `cli-runtime/versions.json`; this table is the readable
+record. SHA-256 values identify the actual vendored bytes. Native pins use
+local `file://` inputs; HA uses verified `COPY` inputs.
 
 | Input | Candidate version | SHA-256 |
 | --- | --- | --- |
 | `@woowtech/pi-agent-shared-runtime` | 0.1.6 | `0914069fb0cf83f258cf81034bb16573f6e4242e8779cea47b4a5e841f98a937` |
-| `@woowtech/pi-paseo` (Agent Connect) | 0.1.24 | `a8ffeda600318f3c42e5e0f86d87b860f69c15b5f915286df64f7ba05a51f831` |
+| `@woowtech/pi-paseo` (Agent Connect) | 0.1.25 | `9717988c00a4c830a3fa458ab1ae778515c90257faaac0e68e695fefbf7cd8d1` |
 | `@woowtech/pi-omnigent-plugin` | 0.3.34 | `e9e80783881f8a036cbf922d2f50fad860dac3bd23e170dda768ab3c56107945` |
 
 HA retains official Pi Web 0.12.0 with its independent Ingress bridge. Its
@@ -77,7 +75,7 @@ full Mac and HA image CI must pass on this draft head; previous Shared015 green
 runs are preserved as historical evidence only.
 
 Actual macOS, Ubuntu, Windows/WSL2 and HA Supervisor/provider acceptance remain
-pending. The current HA add-on candidate is 0.15.25 and requires the version-changing
+pending. The HA add-on candidate is 0.15.26 and requires the version-changing
 Supervisor upgrade gate. Earlier no-version-change comparisons did not exercise it. The current HA connector's
 `/addons` call returned `Unknown command`, so installed-addon access is unconfirmed.
 
@@ -119,8 +117,8 @@ Joint freeze of 2026-11-21 (native combined adapter): Omnigent 0.3.34 source
 `d8652e971bdf66133d699052ab9003d39ff69159` and Paseo 0.1.20 source
 `aea2da4a83dbd220d8e9aa532ff91f9ac4e2c206`; its combined Pi Web metadata pins
 both versions exactly and its VM fixtures include the lifecycle-timeouts
-dependency. HA does not use that adapter: HA Pi Agent 0.15.25 bundles Agent
-Connect 0.1.24 with the same Omnigent 0.3.34 archive. Full consumer results must
+dependency. HA does not use that adapter: HA Pi Agent 0.15.26 bundles Agent
+Connect 0.1.25 with the same Omnigent 0.3.34 archive. Full consumer results must
 be checked on this candidate.
 
 ## HA 0.15.25 freeze and runtime upgrade — 2026-11-26
@@ -149,3 +147,25 @@ frozen plugin's README. Local fixtures and checks against an isolated copied
 runtime are not final-image or live Supervisor acceptance. Both native images,
 compressed layer limits, persisted-data upgrades, stop/restart identity and
 actual provider/Smart/Paseo pairing remain release gates.
+
+
+## HA 0.15.26 Smart Tasks candidate — 2026-11-26
+
+Agent Connect 0.1.25 source is `43cc7b0623c47afdbad6e35e0df7bd03dd5c72d3`
+(tree identical to the pre-merge candidate `cbd4bd7c7901e89d76a773d30baf4c562ba83b84`).
+The vendored archive remains byte-pinned at SHA-256
+`9717988c00a4c830a3fa458ab1ae778515c90257faaac0e68e695fefbf7cd8d1`.
+The same bytes are the anonymously downloadable [Agent Connect v0.1.25 GitHub
+release asset](https://github.com/pi-paseo-plugin/releases/tag/v0.1.25).
+It adds Better Paseo 1.7.0 to the verified built-in catalog of the official
+Paseo 0.17.4 daemon and advances the prebuilt runtime to
+`0.17.4-r2-a651f42711da`. Tasks default on; chat enhancements and automatic
+update checks default off; plugin self-update commands are unavailable.
+Pairing, server identity, keys, conversations and Tasks data remain in the
+existing Paseo data directory.
+
+The upstream Agent Connect PR #26 passed all checks and merged to main. Its
+merged tree matches the supplied candidate source tree; the archive checksum
+did not change. The isolated two-brand Smart Tasks UI/reload acceptance passed
+with no page errors and the test daemons stopped. HA final native images,
+Supervisor upgrade comparison and Store checks remain separate release gates.

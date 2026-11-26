@@ -157,6 +157,23 @@ byte-identical copy of the PaaS image's (paas-odoo-ci
 and runs `patches/tests/omnigent-reminder-patch.test.py` against the patched
 package; a different Omnigent version or a moved anchor fails the build.
 
+## Smart Tasks source and image checks
+
+The frozen Agent Connect archive carries `scripts/verify-smart-tasks.mjs`.
+It checks the pinned Better Paseo payload against a prepared Paseo runtime,
+including Tasks-on/chat-off defaults, retained user preference, zh-TW labels,
+chunk exports, saved state after a server reload, and disabled self-update.
+The HA image smoke runs the verifier against the actual baked runtime.
+For an installed local runtime:
+
+```sh
+node path/to/agent-connect/scripts/verify-smart-tasks.mjs \
+  /path/to/paseo-runtime/releases/0.17.4-r2-a651f42711da
+```
+
+This is a source/runtime contract check. Two-brand browser acceptance and the
+native amd64/aarch64 image and Supervisor upgrade checks remain separate.
+
 ## The Paseo runtime is two image layers
 
 CI's "Enforce transport-safe image layers" step (`tests/assert-image-layer-sizes.mjs`)
