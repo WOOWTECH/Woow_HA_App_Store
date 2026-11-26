@@ -6,8 +6,9 @@
 # Scope is the Store registry (enabled, stable, shipped add-ons) and their Store directories. Each arch
 # runs on its own hardware: amd64 on ubuntu-24.04, aarch64 on the ubuntu-24.04-arm runner (no qemu).
 # An add-on that cannot install fails the run and gets one Store issue, updated while the problem stays
-# and closed when the check passes. A tool error (an image that cannot be pulled, an unreadable
-# registry) fails the run without an issue. After `apk add --simulate` passes, the packages are installed
+# or the check cannot read its apk add lines, and closed once every arch passes or has nothing to check
+# (or, on a run of every add-on, once the Store no longer ships it). A tool error (an image that cannot
+# be pulled, an unreadable registry) fails the run without an issue. After `apk add --simulate` passes, the packages are installed
 # once for real in the same container, so a file conflict (pipeline #241) is also an add-on that cannot install.
 name: apk pin check
 'on':
@@ -72,18 +73,22 @@ jobs:
         merge-multiple: true
         path: results
     # Issues are opened, updated or closed only when both arches were checked: a missing arch must not
-    # close an issue whose failure is on that arch.
+    # close an issue whose failure is on that arch. --complete only without the addon input: a run of one
+    # add-on must not close the issues of add-ons it did not check as no longer shipped.
     - name: Summary and Store issues
       env:
         GITHUB_TOKEN: ${{ github.token }}
         REPO: ${{ github.repository }}
         CHECKED: ${{ needs.check.result }}
+        ONLY: ${{ inputs.addon || '' }}
       run: |
         shopt -s nullglob
         results=(results/apk-pin-*.json)
         if [ "${#results[@]}" -eq 0 ]; then echo "::error title=apk pin check::no check results"; exit 1; fi
         if [ "${CHECKED}" = success ]; then
-          python3 .addon-sync/apk_pin_check.py report "${results[@]}" --repo "${REPO}"
+          complete=()
+          if [ -z "${ONLY}" ]; then complete=(--complete); fi
+          python3 .addon-sync/apk_pin_check.py report "${results[@]}" --repo "${REPO}" "${complete[@]}"
         else
           echo "::warning title=apk pin check::a check job did not finish, so Store issues were left as they are"
           python3 .addon-sync/apk_pin_check.py report "${results[@]}"
