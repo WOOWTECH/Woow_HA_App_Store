@@ -1,3 +1,13 @@
+## 0.15.27
+
+- 設定頁 JavaScript 尚未載入時停用控制項，避免 Ingress 載入延遲期間可按卻沒有事件處理。
+
+- Agent Connect immediately shows start/stop progress and follows asynchronous startup until the daemon responds. Paseo, Woowtech Smart and Apporo Smart no longer require a manual refresh to reveal a completed start.
+- Show the running brand separately from a saved target awaiting application. Starting with an unapplied target gives explicit stop/start instructions; it never silently restarts existing conversations. Unsaved selections cannot start the previously saved brand.
+- Bound settings requests and startup observation, explain expired pages and unknown timeout outcomes, and let Stop interrupt a slow background status read. No lifecycle command is automatically retried.
+- Keep observing the transient pending-target state during startup, refuse overlapping settings writes from another HA page, and recover controls when returning from the browser's page cache.
+- Validate the frozen Agent Connect 0.1.25 contract and all three brands' delayed startup in desktop and mobile browser fixtures. Runtime, authentication, pairing identity and conversation storage are unchanged; installing this add-on update still restarts its container through Supervisor.
+
 ## 0.15.26
 
 - Bundle Agent Connect 0.1.25 with the official Paseo 0.17.4 daemon and runtime `0.17.4-r2-a651f42711da`. Better Paseo 1.7.0 is built into Paseo's verified builtin catalog, adding the Smart Tasks board, sidebar entry and settings panel while keeping the official daemon and Smart websites.

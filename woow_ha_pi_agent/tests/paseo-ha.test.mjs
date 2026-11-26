@@ -138,7 +138,7 @@ function fakePlugin({ status = modernStatus, pair, saveConfig = true } = {}) {
   const plugin = { enabled: true, version: 'fixture', api };
   return { calls, plugin, api, bridge: createPaseoBridge(async () => plugin) };
 }
-const SNAPSHOT_KEYS = ['activeTarget', 'configurationPending', 'connectionTargets', 'enabled', 'installed', 'phase', 'providers', 'running', 'selectedTarget', 'settings', 'targetSelectionAvailable', 'version'];
+const SNAPSHOT_KEYS = ['activeTarget', 'configurationPending', 'connectionTargets', 'enabled', 'installed', 'phase', 'providers', 'reachable', 'running', 'selectedTarget', 'settings', 'targetSelectionAvailable', 'version'];
 test('status without webClient projects exactly the known fields: no web state, no agentCollaboration, no secrets', async () => {
   const f = fakePlugin();
   const status = await f.bridge.read();
@@ -165,6 +165,42 @@ test('bridge forwards lifecycle, refuses disabled packages and has no web client
   f.plugin.enabled = false;
   assert.equal((await f.bridge.read()).phase, 'disabled');
   await assert.rejects(f.bridge.act({ action: 'pair' }), { code: 'PLUGIN_UNAVAILABLE' });
+});
+
+test('start preserves a scheduled receipt and refuses pending or stale target requests without lifecycle writes', async () => {
+  const f = fakePlugin();
+  f.api.lifecycle = async () => ({ phase: 'starting', scheduled: true });
+  assert.equal((await f.bridge.act({ action: 'start', target: 'paseo' })).startScheduled, true);
+  for (const target of ['apporo', 'paseo']) {
+    const p = fakePlugin({ status: () => modernStatus({ settings: { target }, activeTarget: 'woowtech', configurationPending: true }) });
+    await assert.rejects(p.bridge.act({ action: 'start', target }), { code: 'CONFIGURATION_PENDING' });
+    assert.deepEqual(p.calls, []);
+  }
+  await assert.rejects(f.bridge.act({ action: 'start', target: 'apporo' }), { code: 'CONFIGURATION_PENDING' });
+  await assert.rejects(f.bridge.act({ action: 'start', target: 'custom' }), { code: 'INVALID_TARGET' });
+});
+
+test('a second HA page cannot save or stop across an in-flight start; writes are not queued', async () => {
+  const f = fakePlugin();
+  let release, entered;
+  const reached = new Promise(resolve => { entered = resolve; });
+  f.api.lifecycle = async () => { entered(); await new Promise(resolve => { release = resolve; }); return { scheduled: true }; };
+  const starting = f.bridge.act({ action: 'start', target: 'paseo' }); await reached;
+  await assert.rejects(f.bridge.act({ action: 'save', target: 'apporo' }), { code: 'STATE_BUSY' });
+  await assert.rejects(f.bridge.act({ action: 'stop' }), { code: 'STATE_BUSY' });
+  assert.equal((await f.bridge.read()).selectedTarget, 'paseo');
+  release(); assert.equal((await starting).startScheduled, true);
+  assert.deepEqual(f.calls, []);
+  await f.bridge.act({ action: 'save', target: 'apporo' }); assert.deepEqual(f.calls, [{ target: 'apporo' }]);
+});
+
+test('a target changed by another entry point while enabling is not acknowledged as the requested start', async () => {
+  let target = 'paseo';
+  const f = fakePlugin({ status: () => modernStatus({ settings: { target } }) });
+  f.api.lifecycle = async () => { target = 'apporo'; return { scheduled: true }; };
+  await assert.rejects(f.bridge.act({ action: 'start', target: 'paseo' }), { code: 'CONFIGURATION_PENDING' });
+  // The failed action releases the bridge's write guard.
+  await f.bridge.act({ action: 'save', target: 'paseo' }); assert.deepEqual(f.calls, [{ target: 'paseo' }]);
 });
 test('pairing returns the official link of the saved target and refuses any other origin or the retired client path', async () => {
   for (const target of Object.keys(origins)) {
@@ -258,7 +294,7 @@ test('private bridge protects the API, hands out the official pairing link and l
   const page = await fetch(base + '/paseo/setup', { headers: { 'X-Ingress-Path': prefix } });
   const html = await page.text();
   assert.ok(html.includes(prefix + '/paseo/app.js'));
-  assert.match(html, /<a id="open" href="https:\/\/app\.paseo\.sh\/" target="_blank" rel="noopener noreferrer">/);
+  assert.match(html, /<a id="open" hidden href="https:\/\/app\.paseo\.sh\/" target="_blank" rel="noopener noreferrer">/);
   assert.match(html, /<a id="pair-link" hidden target="_blank" rel="noopener noreferrer">/);
   assert.ok(!html.includes('paseo-web'), 'the page links no local web client');
   assert.match(page.headers.get('content-security-policy'), /default-src 'none'.*frame-ancestors 'self'/);

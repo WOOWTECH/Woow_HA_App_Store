@@ -65,7 +65,7 @@ const plugin = { locations: () => ({ stateDir }), version: '0.3.34', lifecycle: 
 const paseoOffer = 'eyJ2IjoyLCJzZXJ2ZXJJZCI6ImZpeHR1cmUifQ';
 const paseoCalls = [];
 const paseoPlugin = { enabled: true, version: 'fixture', api: {
-  status: async () => ({ phase: 'ready', daemon: { running: true }, providers: [{ provider: 'claude', status: 'ready' }, { provider: 'codex', status: 'ready' }, { provider: 'pi', status: 'ready' }] }),
+  status: async () => ({ phase: 'ready', activeTarget: 'paseo', daemon: { running: true, reachable: true }, providers: [{ provider: 'claude', status: 'ready' }, { provider: 'codex', status: 'ready' }, { provider: 'pi', status: 'ready' }] }),
   pair: async () => { paseoCalls.push('pair'); return { target: 'paseo', url: `https://app.paseo.sh/#offer=${paseoOffer}` }; },
 } };
 const paseo = createPaseoServer({ bridge: createPaseoBridge(async () => paseoPlugin), directory: path.join(root, 'rootfs/usr/local/share/pi-paseo-ha') });
@@ -179,8 +179,8 @@ try {
     };
     await select('paseo');
     const paseoFrame = page.frameLocator('iframe[title="Agent Connect"]');
-    // The embedded pages show enabled controls until app.js starts its first status read; on a real
-    // HAOS (Ingress latency) `:enabled` matched while the page still said 讀取中…. Wait for the read.
+    // Controls remain disabled while the script loads and reads initial state.
+    // Wait for confirmed readiness before attempting pairing.
     await paseoFrame.locator('#notice').filter({ hasNotText: '讀取中' }).waitFor();
     await paseoFrame.locator('#pair:enabled').waitFor();
     assert.deepEqual(await paseoFrame.locator('#target option').evaluateAll(nodes => nodes.map(node => node.value)), ['paseo', 'woowtech', 'apporo']);

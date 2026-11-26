@@ -25,7 +25,7 @@ const tarball = process.env.PASEO_PLUGIN_TGZ;
 const piWeb = process.env.PI_WEB_ROOT;
 assert.ok(tarball && piWeb, 'PASEO_PLUGIN_TGZ (the frozen plugin) and PI_WEB_ROOT (Pi Web with production dependencies) are required');
 assert.equal(createHash('sha256').update(fs.readFileSync(tarball)).digest('hex'), pins.sha256, 'PASEO_PLUGIN_TGZ is the archive pinned in cli-runtime/versions.json');
-const SNAPSHOT_KEYS = ['activeTarget', 'configurationPending', 'connectionTargets', 'enabled', 'installed', 'phase', 'providers', 'running', 'selectedTarget', 'settings', 'targetSelectionAvailable', 'version'];
+const SNAPSHOT_KEYS = ['activeTarget', 'configurationPending', 'connectionTargets', 'enabled', 'installed', 'phase', 'providers', 'reachable', 'running', 'selectedTarget', 'settings', 'targetSelectionAvailable', 'version'];
 
 const ENV_KEYS = ['HOME', 'PI_CODING_AGENT_DIR', 'PI_PASEO_RUNTIME_DIR'];
 const originalEnv = Object.fromEntries(ENV_KEYS.map(key => [key, process.env[key]]));

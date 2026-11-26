@@ -106,7 +106,8 @@ try {
   const paseoPage = await paseoGet('/paseo/setup', { 'X-Ingress-Path': '/api/hassio_ingress/imagesmoke0123456789' });
   assert.equal(paseoPage.status, 200, `the Paseo settings page answers\n${logTail()}`);
   assert.match(paseoPage.headers['content-type'], /^text\/html/);
-  assert.match(paseoPage.body, /<a id="open" href="https:\/\/app\.paseo\.sh\/" target="_blank" rel="noopener noreferrer">/);
+  assert.match(paseoPage.body, /<a id="open" hidden href="https:\/\/app\.paseo\.sh\/" target="_blank" rel="noopener noreferrer">/);
+  assert.match(paseoPage.body, /<button id="start" disabled>/, 'the start control waits for the script and initial status');
   assert.ok(paseoPage.body.includes('src="/api/hassio_ingress/imagesmoke0123456789/paseo/app.js"'));
   const paseoToken = paseoPage.body.match(/name="paseo-token" content="([a-f0-9]{64})"/)?.[1];
   assert.ok(paseoToken, 'the page carries its in-memory token');

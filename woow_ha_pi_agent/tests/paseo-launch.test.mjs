@@ -85,7 +85,7 @@ test('the s6 entry point starts, serves its page on the private socket, starts i
   });
   assert.match(page.headers['content-type'], /^text\/html/);
   assert.ok(page.body.includes(`src="${ingress}/paseo/app.js"`));
-  assert.match(page.body, /<a id="open" href="https:\/\/app\.paseo\.sh\/" target="_blank" rel="noopener noreferrer">/);
+  assert.match(page.body, /<a id="open" hidden href="https:\/\/app\.paseo\.sh\/" target="_blank" rel="noopener noreferrer">/);
   assert.match(page.body, /name="paseo-token" content="[a-f0-9]{64}"/);
   assert.equal((await get(f.socket, '/paseo-web/')).status, 404);
   await until(run, 'the launcher never started its child', () => fs.existsSync(f.marker));

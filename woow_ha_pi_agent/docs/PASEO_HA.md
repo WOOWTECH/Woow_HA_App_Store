@@ -4,6 +4,19 @@ This change retains the official Pi Web 0.12.0 npm build and its SDK 1.1
 compatibility pins. It does **not** install the plugins' Pi Web 0.10 overlay.
 The native desktop tabs and mobile picker are MCP → Omnigent → Agent Connect.
 
+## Startup feedback (0.15.27)
+
+The settings page shows progress immediately and checks readiness after the
+supervisor accepts a start. A running process alone does not enable pairing.
+If the saved brand differs from the running brand, stop the service explicitly,
+then start it to apply the saved target; pressing Start never interrupts live
+conversations to switch brands. Save an edited selection before starting.
+
+Requests and startup observation have deadlines. A timeout means the result is
+unknown: refresh status instead of repeatedly starting the service. An expired
+page must be reopened through Home Assistant. Other operators' target changes
+are displayed without restoring old settings or restarting automatically.
+
 ## Smart Tasks (0.15.26)
 
 Agent Connect 0.1.25 adds Better Paseo 1.7.0 to the official Paseo 0.17.4 daemon as a verified built-in plugin. This supplies the Tasks board, sidebar entry and settings panel for both Smart brands. The daemon remains the official package; no Smart web client is replaced or served by HA.

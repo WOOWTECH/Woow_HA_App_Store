@@ -17,17 +17,21 @@ const prefix = '/api/hassio_ingress/paseobrowserfixture0123';
 const offer = 'eyJ2IjoyLCJzZXJ2ZXJJZCI6ImZpeHR1cmUifQ';
 const origins = { paseo: 'https://app.paseo.sh', woowtech: 'https://smart.woowtech.io', apporo: 'https://smart.apporo.ai' };
 const labels = { paseo: 'Paseo', woowtech: 'Woowtech Smart', apporo: 'Apporo Smart' };
-const state = { phase: 'ready', daemon: { running: true }, settings: { target: 'paseo', agentCollaboration: false }, agentCollaboration: false,
+const state = { phase: 'ready', daemon: { running: true, reachable: true }, settings: { target: 'paseo', agentCollaboration: false }, agentCollaboration: false,
   activeTarget: 'paseo', configurationPending: false, connectionTargets: Object.keys(origins).map(id => ({ id })),
   providers: [{ provider: 'claude', status: 'ready' }, { provider: 'codex', status: 'ready' }, { provider: 'pi', status: 'ready' }] };
 const calls = [];
+let startupDelayMs = 0;
 const plugin = { enabled: true, version: 'fixture', api: {
   status: async () => state,
   saveConfig: async input => { calls.push({ saveConfig: input }); state.settings.target = input.target; state.configurationPending = state.daemon.running; },
   pair: async () => { calls.push('pair'); return { target: state.settings.target, url: `${origins[state.settings.target]}/#offer=${offer}` }; },
   lifecycle: async input => {
-    calls.push(input.action); state.daemon.running = input.action === 'enable';
-    if (state.daemon.running) { state.activeTarget = state.settings.target; state.configurationPending = false; }
+    calls.push(input.action);
+    const started = () => { state.daemon = { running: true, reachable: true }; state.phase = 'running'; state.activeTarget = state.settings.target; state.configurationPending = false; };
+    if (input.action !== 'enable') { state.daemon = { running: false, reachable: false }; state.activeTarget = null; state.phase = 'disabled'; }
+    else if (startupDelayMs) { state.phase = 'starting'; setTimeout(started, startupDelayMs); return { phase: 'starting', scheduled: true }; }
+    else started();
   },
 } };
 const backend = createServer({ bridge: createPaseoBridge(async () => plugin), directory: path.resolve(import.meta.dirname, '../rootfs/usr/local/share/pi-paseo-ha') });
@@ -44,7 +48,7 @@ const base = `http://127.0.0.1:${ingress.address().port}${prefix}`;
 const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_EXECUTABLE, headless: true, args: ['--no-sandbox'] });
 try {
   for (const viewport of [{ width: 1365, height: 900 }, { width: 390, height: 844 }]) {
-    Object.assign(state, { daemon: { running: true }, activeTarget: 'paseo', configurationPending: false }); state.settings.target = 'paseo'; calls.length = 0;
+    Object.assign(state, { phase: 'running', daemon: { running: true, reachable: true }, activeTarget: 'paseo', configurationPending: false }); state.settings.target = 'paseo'; calls.length = 0;
     const context = await browser.newContext({ viewport });
     const official = [];
     // The official sites are answered here: the test never reaches the network.
@@ -53,7 +57,17 @@ try {
     });
     const page = await context.newPage();
     const errors = []; page.on('pageerror', error => errors.push(error.message));
-    await page.goto(`${base}/paseo/setup`);
+    // A slow Ingress asset must not expose buttons before their handlers exist.
+    let releaseScript;
+    const scriptGate = new Promise(resolve => { releaseScript = resolve; });
+    await page.route('**/paseo/app.js', async route => { await scriptGate; await route.continue(); });
+    await page.goto(`${base}/paseo/setup`, { waitUntil: 'commit' });
+    try {
+      await page.locator('#start').waitFor();
+      for (const id of ['start', 'stop', 'refresh', 'target']) assert.equal(await page.locator('#' + id).isDisabled(), true, `${id}: no action before the script loads`);
+      assert.equal(await page.locator('#open').isHidden(), true);
+    } finally { releaseScript(); }
+    await page.waitForLoadState('domcontentloaded');
     await page.locator('#notice').filter({ hasNotText: '讀取中' }).waitFor();
     await page.locator('#pair:enabled').waitFor();
     assert.deepEqual(await page.locator('#target option').evaluateAll(nodes => nodes.map(node => node.value)), ['paseo', 'woowtech', 'apporo']);
@@ -77,8 +91,12 @@ try {
     await page.locator('#target').selectOption('apporo');
     assert.equal(await page.locator('#pair-link').isHidden(), true); assert.equal(await page.locator('#pair').isDisabled(), true);
     await page.locator('#save').click();
-    await page.locator('#target-notice').filter({ hasText: '停止並重新啟動' }).waitFor();
+    await page.locator('#target-notice').filter({ hasText: '停止服務' }).waitFor();
     assert.equal(await page.locator('#pair').isDisabled(), true);
+    const beforePendingStart = calls.length;
+    await page.locator('#start').click();
+    assert.match(await page.locator('#notice').textContent(), /尚未套用.*Paseo.*Apporo Smart.*停止服務/);
+    assert.equal(calls.length, beforePendingStart, 'pending Start explains the step without restarting a live daemon');
     page.once('dialog', dialog => dialog.accept());
     await page.locator('#stop').click(); await page.locator('#start:enabled').waitFor(); await page.locator('#start').click();
     await page.locator('#pair:enabled').waitFor();
@@ -91,9 +109,24 @@ try {
     assert.deepEqual(official.map(url => url.split('#')[0]).filter(url => !url.endsWith('/favicon.ico')), ['https://app.paseo.sh/', 'https://app.paseo.sh/'], 'only the two opened tabs reached an official site');
     // The retired bundled client is not served by this page's server.
     for (const retired of ['/paseo-web/', '/paseo-web/welcome', '/paseo-web/settings']) assert.equal((await context.request.get(base + retired)).status(), 404, retired);
+    // Real HTTP + browser events: start returns before the daemon is ready.
+    // The page must follow status itself, for every brand and both viewports.
+    startupDelayMs = 150;
+    for (const target of Object.keys(origins)) {
+      Object.assign(state, { phase: 'disabled', daemon: { running: false, reachable: false }, activeTarget: null, configurationPending: false });
+      state.settings.target = target; calls.length = 0;
+      await page.reload(); await page.locator('#start:enabled').waitFor();
+      await page.locator('#start').click();
+      await page.locator('#start').filter({ hasText: '啟動中' }).waitFor();
+      await page.locator('#pair:enabled').waitFor({ timeout: 10000 });
+      assert.match(await page.locator('#notice').textContent(), /服務已啟動/);
+      assert.equal(await page.locator('#open').getAttribute('href'), origins[target] + '/');
+      assert.deepEqual(calls, ['enable'], `${target}: exactly one start, no implicit stop or retry`);
+    }
+    startupDelayMs = 0;
     assert.deepEqual(errors, []);
     await context.close();
   }
   assert.deepEqual(escaped, []);
-  console.log('PASS Agent Connect page: official-site links in new tabs, exact pairing links per target, target switch after restart, retired /paseo-web 404, desktop and mobile.');
+  console.log('PASS Agent Connect page: official-site links, exact pairing links, pending-target refusal, three-brand asynchronous startup, retired /paseo-web 404, desktop and mobile.');
 } finally { await browser.close(); ingress.closeAllConnections(); ingress.close(); backend.closeAllConnections(); backend.close(); }
