@@ -7,6 +7,7 @@
   （[逐名工具對照](https://github.com/WOOWTECH/Woow_ha_mcp_addons/blob/claude-delivery/docs/tool-surface.md)）。
 - **風險：網址＝完整後端權限**。拿到權杖或 Claude.ai 密鑰網址的 MCP client（包括 AI 助理誤判時）不需再授權就能建立、修改、刪除與執行 workflow，管理 credentials、data table、資料夾與版本。後端錯誤原文回傳（可能含後端內部資訊，add-on 持有的憑證換成 `[REDACTED]`）；後端帳號權限要設對（只給需要的權限），只保留需要的工具與寫入，外洩時立刻在管理面板重新產生權杖（[說明](https://github.com/WOOWTECH/Woow_ha_mcp_addons/blob/claude-delivery/docs/operations/guide.md#寫入預設開啟)）。
 - 連線：n8n 的網址與 Public API key；選填 **MCP Access Token**（n8n 設定 → Instance-level MCP，與 API key 不同），版本歷史、資料表欄位、`n8n_test_workflow` prepare／pinned／direct、`n8n_explore_node_resources`、`n8n_manage_agents` 需要它。
+- **多帳號（0.5.0 起）**：同一個 add-on 可以開預設帳號＋最多 2 個額外帳號，每個帳號一組 n8n 連線（網址、API key，MCP Access Token 可選）、一把權杖與它的兩條網址、一份工具政策、一個 n8n-mcp 子程序。只看權杖決定是哪個帳號；兩個帳號接同一台 n8n 時，webhook 與 form 是整台共用的；不宣稱多租戶，所有帳號的子程式是同一個系統帳號，一個被攻破等於全部帳號被控制。既有安裝升級後原本的網址、權杖、設定都不變；說明見 [本產品操作](DOCS.md) 的「多帳號」。
 - **webhook／URL SSRF 防護已關閉**（`WEBHOOK_SECURITY_MODE=permissive`，使用者 2026-10-15 決定）：可連 HA 內網的 n8n，但 MCP 也能經 n8n-mcp 連到 add-on 能到的任何內網位址。
 - 管理面板在 HA 側邊欄（Ingress），只有 HA 的 owner 或系統管理員能設定後端與管理權杖；為了驗證這個身分，
   Add-on 需要 `homeassistant_api: true`，這個 token 具廣泛的 Core 存取能力。`hassio_api: false`、保護模式開啟、無 host 網路。

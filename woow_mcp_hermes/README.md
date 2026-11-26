@@ -7,6 +7,7 @@
   （[逐名工具對照](https://github.com/WOOWTECH/Woow_ha_mcp_addons/blob/claude-delivery/docs/tool-surface.md)）。
 - **風險：網址＝完整後端權限**。拿到權杖或 Claude.ai 密鑰網址的 MCP client（包括 AI 助理誤判時）不需再授權就能與 agent 對話、修改設定、新增／移除 MCP server、建立 cron 與 webhook。後端錯誤原文回傳（可能含後端內部資訊，add-on 持有的憑證換成 `[REDACTED]`）；後端帳號權限要設對（只給需要的權限），只保留需要的工具與寫入，外洩時立刻在管理面板重新產生權杖（[說明](https://github.com/WOOWTECH/Woow_ha_mcp_addons/blob/claude-delivery/docs/operations/guide.md#寫入預設開啟)）。
 - 連線：Hermes gateway 網址與 API key；dashboard 的網址／帳號／密碼可選、須整組提供。
+- **多帳號（0.5.0 起）**：同一個 add-on 可以開預設帳號＋最多 3 個額外帳號，每個帳號一組 Hermes 連線（Gateway 網址與 API key，Dashboard 可選）、一把權杖與它的兩條網址、一份工具政策；換連線不會換權杖。只看權杖決定是哪個帳號；不宣稱多租戶，所有帳號的子程式是同一個系統帳號，一個被攻破等於全部帳號被控制。既有安裝升級後原本的網址、權杖、設定都不變；說明見 [本產品操作](DOCS.md) 的「多帳號」。
 - 管理面板在 HA 側邊欄（Ingress），只有 HA 的 owner 或系統管理員能設定後端與管理權杖；為了驗證這個身分，
   Add-on 需要 `homeassistant_api: true`，這個 token 具廣泛的 Core 存取能力。`hassio_api: false`、保護模式開啟、無 host 網路。
 - MCP client 連 `8081/mcp` 並帶 Bearer 權杖；預設不對 LAN 開埠（`8081/tcp: null`）。Claude.ai 網頁版自訂連接器不能帶 header，改用管理面板產生的密鑰網址 `…/private_<token>/mcp`（0.1.14 起；網址等同密碼）。
