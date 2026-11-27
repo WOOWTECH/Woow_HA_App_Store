@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.16
+
+- Update the bundled Paseo runtime from the 0.2.3 release (Paseo 0.11.2) to the public Agent Connect 0.3.0 release (official Paseo 0.17.5). The plugin card, setup page and guide are now called Agent Connect; the plugin id, the `/paseo/setup/` path, the provider homes and the workspaces are unchanged.
+- The setup page offers three fixed client targets: official Paseo, Woowtech Smart and Apporo Smart. Switching the target only stores the choice; stop and start the service to apply it.
+- The managed runtime is now built into the image (`/opt/opendesign-paseo/managed-runtime`, with `node-pty` rebuilt for musl and proven by a real PTY spawn before the runtime is marked ready), so enabling Agent Connect downloads nothing and installs no packages under `/data`. An older `paseo/packages/runtime` directory in `/data` is no longer used.
+- To go back to 0.2.15, restore the backup Home Assistant offers to create before the update: it returns 0.2.15 together with its own `/data`, and the Paseo 0.11.2 service starts again. Without that backup, 0.2.15 cannot start Paseo on data that 0.2.16 has used, because Paseo 0.11.2 refuses the relay setting `requireProtectedSecurity` that 0.17.5 writes to `/data/opendesign/paseo/daemon/config.json`; the rest of OpenDesign keeps working. If extra listeners were added on the Devices page of Paseo 0.17.5, also follow the Agent Connect guide of the plugin repository (`docs/agent-connect.md`, section 升級與回復).
+- No option, port, architecture, image name, core digest (still `20261101.2319` = `sha256:a3d1e6ce…`) or data-layout change. OpenDesign 0.24.1 and the agent CLI versions are unchanged. Upgrading from 0.2.15 needs no migration.
+
 ## 0.2.15
 
 - Update the bundled OpenDesign core from the w2.10 core `20261029.0033` to the w2.11 core `20261101.2319` (`sha256:a3d1e6ce…`, WoowTech fork revision `05b23f5a`). The only behaviour change is Omnigent's Pi model menu: when a provider key reaches Pi through an environment variable, or `models.json` only overrides a built-in provider, the menu now lists the models Pi itself reports instead of showing none. Custom gateways written in `models.json` are still read directly, and with nothing configured the menu stays empty without a placeholder entry.

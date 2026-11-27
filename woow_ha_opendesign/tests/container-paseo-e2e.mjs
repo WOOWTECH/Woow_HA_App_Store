@@ -7,8 +7,10 @@ import http from 'node:http';
 import {execFileSync} from 'node:child_process';
 import {assertListeners,parseListeners,readProcessTcpListeners,withoutDockerResolver} from './listener-contract.mjs';
 import {setTimeout as delay} from 'node:timers/promises';
+import {runtimeReady,runtimeDirectory,PASEO_VERSION} from '/opt/opendesign-paseo/vendor/pi-paseo/src/runtime-layout.mjs';
 const mode=process.argv[2];assert.ok(['prepare','restored','restored-enabled'].includes(mode));
-const runtimeDir='/data/opendesign/paseo/packages/runtime';
+const runtimeDir='/opt/opendesign-paseo/managed-runtime';
+const tenantRuntimeDir='/data/opendesign/paseo/packages/runtime';
 const prefix='/api/hassio_ingress/'+'a'.repeat(32);
 const socketPath='/run/ha-opendesign-paseo/bridge.sock';
 const checkpoint='/data/opendesign/paseo-smoke.json';
@@ -39,15 +41,16 @@ function checkPreserved(expected,dto){
  assert.equal(dto.onboarding.conversationId,expected.conversationId);
  assert.equal(json('/data/opendesign/paseo/state.json').installationId,expected.installationId);
  assert.equal(hash('/data/opendesign/paseo/daemon/.pi-paseo-owner.json'),expected.ownerHash);
+ assert.equal(hash(path.join(runtimeDirectory({runtimeDir}),'.pi-paseo-runtime.json')),expected.runtimeReceiptHash);
  for(const [file,digest] of Object.entries(expected.files))assert.equal(hash(file),digest,file);
 }
-async function checkRebuilt(){
- const {runtimeReady,runtimeDirectory}=await import('/opt/opendesign-paseo/vendor/pi-paseo/src/runtime-layout.mjs');
+async function checkBakedRuntime(){
  assert.equal(runtimeReady({runtimeDir}),true);
+ assert.equal(fs.existsSync(tenantRuntimeDir),false,'baked runtime must not install packages into restored tenant data');
  const root=runtimeDirectory({runtimeDir});
  assert.equal(hash(path.join(root,'package-lock.json')),hash('/opt/opendesign-paseo/vendor/pi-paseo/runtime/package-lock.json'));
- assert.equal(json(path.join(root,'node_modules/@getpaseo/cli/package.json')).version,'0.11.2');
- assert.ok(fs.existsSync(path.join(root,'node_modules/@getpaseo/server/dist/server/web-ui/index.html')));
+ assert.equal(json(path.join(root,'node_modules/@getpaseo/cli/package.json')).version,PASEO_VERSION);
+ assert.equal(json(path.join(root,'node_modules/@getpaseo/server/package.json')).version,PASEO_VERSION);
  await checkListeners(true);
 }
 const native=async(method,route,body)=>{
@@ -89,7 +92,7 @@ async function checkListeners(running) {
 }
 if(mode==='prepare'){
  const dto=await until(s=>s.desiredEnabled&&s.daemon?.reachable&&s.onboarding?.initialized);
- assert.equal(dto.daemon.owned,true);await checkListeners(true);
+ assert.equal(dto.daemon.owned,true);await checkBakedRuntime();
  const socket=fs.statSync(socketPath);assert.equal(socket.uid,1001);assert.equal(socket.gid,1002);assert.equal(socket.mode&0o777,0o660);
  const listed=await native('GET','/api/mcp/servers');assert.equal(listed.status,200);
  const entry=listed.body.servers.find(row=>row.id==='woow-paseo');assert.ok(entry);assert.deepEqual(entry.args,['/opt/opendesign-paseo/bin/mcp.mjs']);
@@ -100,6 +103,7 @@ if(mode==='prepare'){
  fs.writeFileSync(checkpoint,JSON.stringify({projectId:dto.onboarding.projectId,conversationId:dto.onboarding.conversationId,
   installationId:json('/data/opendesign/paseo/state.json').installationId,
   ownerHash:hash('/data/opendesign/paseo/daemon/.pi-paseo-owner.json'),
+  runtimeReceiptHash:hash(path.join(runtimeDirectory({runtimeDir}),'.pi-paseo-runtime.json')),
   files:Object.fromEntries(protectedFiles.map(file=>[file,hash(file)])),
  }),{mode:0o600});
  assert.equal((await request({action:'disable'})).status,202);
@@ -111,22 +115,23 @@ if(mode==='prepare'){
  const dto=await until(s=>s.pluginInstalled&&s.desiredEnabled===false);
  assert.equal(dto.daemon?.running,false);checkPreserved(expected,dto);
  // A saved installedVersion must not substitute for the excluded files.
- assert.equal(json('/data/opendesign/paseo/state.json').installedVersion,'0.11.2');
- assert.equal(fs.existsSync(runtimeDir),false);
+ assert.equal(json('/data/opendesign/paseo/state.json').installedVersion,PASEO_VERSION);
+ assert.equal(fs.existsSync(tenantRuntimeDir),false);
+ assert.equal(runtimeReady({runtimeDir}),true,'image runtime remains available while intent is disabled');
  const projects=await native('GET','/api/projects');assert.equal(projects.status,200);
  assert.equal(projects.body.projects.filter(p=>p.metadata?.woowPaseoInstallation).length,1);
  await checkListeners(false);
  assert.equal((await request({action:'enable'})).status,202);
  const enabled=await until(s=>s.desiredEnabled&&s.daemon?.reachable&&s.operation?.status!=='running');
- checkPreserved(expected,enabled);await checkRebuilt();
- console.log('Paseo smoke: excluded runtime stays absent while disabled; GUI enable rebuilds exact lock and preserves state');
+ checkPreserved(expected,enabled);await checkBakedRuntime();
+ console.log('Paseo smoke: excluded tenant cache stays absent; GUI enable uses exact baked runtime and preserves state');
 }else{
  // No enable request: restored enabled intent must trigger package recovery.
  const dto=await until(s=>s.desiredEnabled&&s.daemon?.reachable&&s.onboarding?.initialized);
- checkPreserved(json(checkpoint),dto);await checkRebuilt();
+ checkPreserved(json(checkpoint),dto);await checkBakedRuntime();
  assert.equal((await native('GET','/api/projects')).body.projects.filter(p=>p.metadata?.woowPaseoInstallation).length,1);
  assert.equal((await request({action:'disable'})).status,202);
  await until(s=>!s.desiredEnabled&&!s.daemon?.running&&s.operation?.status!=='running');
  await checkListeners(false);
- console.log('Paseo smoke: enabled restore automatically rebuilds exact runtime; identities and protected files retained');
+ console.log('Paseo smoke: enabled restore automatically uses baked runtime; identities and protected files retained');
 }

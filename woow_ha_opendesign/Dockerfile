@@ -109,7 +109,10 @@ RUN python3 /tmp/ha-patches/sign-in-hint.py /app/apps/web/out \
 # Require the native launcher and atomic MCP CAS in the pinned w2.10 core;
 # older cores fail this gate instead of silently omitting Paseo.
 COPY paseo-runtime/ /tmp/paseo-runtime/
-RUN sh /tmp/paseo-runtime/install.sh && rm -rf /tmp/paseo-runtime
+RUN apk add --no-cache --virtual .agent-connect-build build-base python3 \
+    && sh /tmp/paseo-runtime/install.sh \
+    && apk del .agent-connect-build \
+    && rm -rf /tmp/paseo-runtime /root/.npm
 
 COPY rootfs/ /
 RUN set -eu; \
