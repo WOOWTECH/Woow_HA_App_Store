@@ -1,6 +1,8 @@
-# Paseo 與 Omnigent extensions
+# Agent Connect 與 Omnigent extensions
 
-這個版本提供兩個可安裝的 VS Code 工作區插件：`woowtech.paseo`、
+本次 Agent Connect 升級與實測進度見 [驗收紀錄](docs/research/code-server-agent-connect-acceptance-20261126.md)。
+
+這個版本提供兩個可安裝的 VS Code 工作區插件：Agent Connect（沿用 ID `woowtech.paseo`）、
 `woowtech.omnigent`。映像內包含對應 runtime；第一次啟動會安裝 VSIX，
 因此在 code-server 的 **Extensions → Installed** 可以看到、停用及移除。
 移除後不會在下次啟動強制裝回。手動安裝較新的版本也不會被映像降版。
@@ -11,8 +13,8 @@
 **Install from VSIX…**，或在該 code-server 的終端執行：
 
 ```sh
-code-server --install-extension woowtech.paseo-0.1.4.vsix
-code-server --install-extension woowtech.omnigent-0.1.4.vsix
+code-server --install-extension woowtech.paseo-0.2.0.vsix
+code-server --install-extension woowtech.omnigent-0.2.0.vsix
 ```
 
 CLI 必須指向目前 IDE 使用的 extension store。HA add-on 請在兩個指令加上
@@ -24,19 +26,29 @@ runtime。缺少 runtime 時介面會明確顯示，不會宣稱已連線。
 需要從原始碼打包時使用 `npm ci --ignore-scripts --prefix extensions`，
 接著執行 `npm run package --prefix extensions`；輸出在 `extensions/dist/`。
 
-從左側 **WOOW Paseo** 或 **WOOW Omnigent** 開啟面板，也可在 Command Palette
-搜尋 `WOOW Paseo` 或 `WOOW Omnigent`。設定使用目前部署的工作區絕對路徑。
+從左側 **Agent Connect** 或 **WOOW Omnigent** 開啟面板，也可在 Command Palette
+搜尋 `Agent Connect` 或 `WOOW Omnigent`。設定使用目前部署的工作區絕對路徑。
 
-## 連接 Paseo Web
+## 透過 Agent Connect 連接三個網頁版
 
-1. 在 Paseo 插件設定工作區及容易識別的主機名稱。
+1. 在 Agent Connect 選擇網頁版，設定工作區及容易識別的主機名稱，儲存設定。
 2. 啟動服務，查看本機 daemon 狀態。
-3. 選擇配對，使用產生的連結開啟官方 Paseo Web，確認信任此主機。
+3. 選擇配對，開啟所選網頁版並確認信任此主機。
 4. 在 Web 開啟工作區，選擇 Claude Code、Codex 或 Pi，再從即時目錄選擇模型。
 
 配對連結含連線授權資料；插件只在明確點選配對時取得它，不把它放進面板記錄。
 本機 daemon 可用與 Web 已配對是不同的狀態。`Verify` 會產生模型請求，
 只有助理實際回覆後才會記錄驗證結果。
+
+| 目標 | 網頁版 | Relay |
+| --- | --- | --- |
+| Paseo 官方 | https://app.paseo.sh | `relay.paseo.sh:443` |
+| Woowtech Smart | https://smart.woowtech.io | `relay.woowtech.io:443` |
+| Apporo Smart | https://smart.apporo.ai | `relay.apporo.ai:443` |
+
+目標設定包含網頁入口、relay 與主機品牌識別，不是只替換網址。面板會分開顯示已選目標與目前啟用目標；若顯示設定待套用，等對話閒置後依序停止、啟動，再於所選網頁版配對。儲存設定不會自行重啟 daemon。
+
+升級保留 `woowtech.paseo` ID、`woow.paseo.*` 命令與設定。舊自訂 Web URL 仍保留並可一般開啟，但私密配對只支援上表三個完整目標；另一個目標的 offer 會被拒絕，不會改寫網址後轉送。更換網頁目標不等於撤銷過去已信任的裝置。
 
 ## 連接 Omnigent
 

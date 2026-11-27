@@ -1,30 +1,40 @@
-# WOOW Paseo
+# Agent Connect
 
-Connect this code-server deployment’s **Claude Code, Codex and Pi Agent** to Paseo. The extension provides a connection panel, native commands, agent/model inventory, and explicit real-conversation verification.
+Connect this code-server deployment’s **Claude Code, Codex and Pi Agent** to Paseo official, Woowtech Smart or Apporo Smart. The extension provides a connection panel, native commands, agent/model inventory, and explicit real-conversation verification. Its existing extension ID `woowtech.paseo`, command IDs and saved settings are retained for upgrades.
 
 ## Install
 
-Install `woowtech.paseo-0.1.3.vsix` through **Extensions → … → Install from VSIX**, or run inside the container:
+Install `woowtech.paseo-0.2.0.vsix` through **Extensions → … → Install from VSIX**, or run inside the container:
 
 ```sh
-code-server --install-extension /opt/woow-connector-vsix/woowtech.paseo-0.1.3.vsix
+code-server --install-extension /opt/woow-connector-vsix/woowtech.paseo-0.2.0.vsix
 ```
 
 This is a normal installed extension, not a built-in. It appears in **Extensions → Installed** with ID `woowtech.paseo`. It does not require a marketplace account or another gallery extension. The default marketplace has not been used to publish this package.
 
 ## Connect
 
-1. Open **WOOW Paseo: Open Connection Panel** from the command palette, or select the Paseo icon in the activity bar.
-2. Enter the container workspace and host name, then **Save configuration**.
-3. Select **Start**, then **Pair with Paseo Web**. The pairing URL opens explicitly in your browser; complete pairing there.
-4. In Paseo Web, select this host, choose Claude Code, Codex or Pi, then select an available model and start a conversation.
+1. Open **Agent Connect: Open Connection Panel** from the command palette, or select **Agent Connect** in the activity bar.
+2. Select a Web app, enter the container workspace and host name, then **Save configuration**. **Choose Web App** in the command palette also applies the selected connection profile.
+3. Select **Start**, then **Pair with selected Web app**. The private pairing URL opens explicitly in your browser; confirm the host there.
+4. In the selected Web app, choose this host, Claude Code, Codex or Pi, then an available model and start a conversation.
 5. Use **Refresh models** to inspect the available inventory. **Verify a conversation** asks for an agent and model, then requests a real runtime verification. It may consume model quota. Each provider needs its own existing login in this deployment.
 
 Change models within the selected agent’s Web conversation. A different agent may need a new conversation; this extension does not claim cross-agent context transfer. Switching the UI’s selected agent or seeing “online” does not prove that an assistant replied.
 
+| Web app | Origin | Relay |
+| --- | --- | --- |
+| Paseo official | https://app.paseo.sh | `relay.paseo.sh:443` |
+| Woowtech Smart | https://smart.woowtech.io | `relay.woowtech.io:443` |
+| Apporo Smart | https://smart.apporo.ai | `relay.apporo.ai:443` |
+
+Each profile includes its app origin, relay and host identity. The panel distinguishes the selected profile from the active profile. When configuration is pending, wait until conversations are idle, select **Stop**, then **Start**, and pair with the selected app. Saving configuration does not restart an active daemon. A failed status refresh does not clear a confirmed pending warning.
+
+Existing saved Web URLs remain in machine settings and can still be opened. Private pairing requires one of the three complete supported profiles; arbitrary custom URLs cannot receive an offer. Pairing validates the selected origin, V2 offer, relay, TLS and compatible security mode. An offer for another profile is rejected rather than rewritten.
+
 ## Download workspace files
 
-In the paired Paseo browser, open **Explorer → Files**, right-click a file,
+In the paired Web app, open **Explorer → Files**, right-click a file,
 and choose **Download**. ZIP files download through the same action even when
 the file pane says **Binary preview unavailable**. Text files retain their
 original bytes, including UTF-8 content.

@@ -3,6 +3,12 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { createExtension } = require('../shared/extension.cjs');
 const { html } = require('../shared/ui.cjs');
+const { WEB_CLIENTS } = require('../shared/web-clients.cjs');
+function fixturePairUrl(id = 'paseo', changes = {}) {
+  const target = WEB_CLIENTS.find(x => x.id === id);
+  const offer = {v:2,serverId:'fixture-private-server',daemonPublicKeyB64:'fixture-public-key',relay:{endpoint:target.relayEndpoint,useTls:true},...changes};
+  return `${target.url}#offer=${Buffer.from(JSON.stringify(offer)).toString('base64url')}`;
+}
 function harness(connector, responses={}) {
   const commands=new Map(), calls=[], logs=[], updates=[], notices=[], opened=[], posted=[], inputOptions=[], editorCommands=[];
   const values={runtimePath:'/usr/local/bin/woow-connectors',workspace:'/workspace',hostName:'test',server:'https://omnigent.example.org',webUrl:connector==='paseo'?'https://app.paseo.sh':''};
@@ -22,6 +28,63 @@ function harness(connector, responses={}) {
   const api=ext.activate({subscriptions:[]});
   return {ext,api,vscode,commands,calls,logs,updates,notices,opened,posted,inputs,picks,pickOptions,inputOptions,panel,values,editorCommands,receive:message=>receive(message)};
 }
+test('Agent Connect pairs only a matching selected app, relay and private V2 offer', async () => {
+  for(const client of WEB_CLIENTS) {
+    const offer=fixturePairUrl(client.id);const h=harness('paseo',{pair:{ok:true,url:offer}});h.values.webUrl=client.url;
+    const result=await h.commands.get('woow.paseo.pair')();
+    assert.equal(result.ok,true);assert.deepEqual(h.opened,[offer]);
+    const publicState=JSON.stringify([h.logs,h.posted,h.updates,h.notices,h.api.getPublicState()]);
+    assert.equal(publicState.includes(new URL(offer).hash.slice(1)),false);assert.equal(publicState.includes('fixture-private-server'),false);
+  }
+});
+test('Agent Connect rejects an untrusted offer origin and invalid selected Web URL before opening a browser', async () => {
+  for(const [offer,target] of [
+    ['https://app.paseo.sh.evil.example/#fixture-private','https://smart.apporo.ai'],
+    ['https://operator:fixture-private@app.paseo.sh/#offer','https://smart.woowtech.io'],
+    ['https://app.paseo.sh/#fixture-private','https://smart.apporo.ai/?fixture-private'],
+    ['https://app.paseo.sh/#fixture-private','javascript:alert(1)'],
+    ['https://app.paseo.sh/','https://smart.woowtech.io'],
+    [fixturePairUrl('paseo'),'https://smart.woowtech.io'],
+    [fixturePairUrl('woowtech',{relay:{endpoint:'relay.paseo.sh:443',useTls:true}}),'https://smart.woowtech.io'],
+    [fixturePairUrl('woowtech',{minimumSecurityMode:'protected'}),'https://smart.woowtech.io'],
+  ]) {
+    const h=harness('paseo',{pair:{ok:true,url:offer}});h.values.webUrl=target;
+    const result=await h.commands.get('woow.paseo.pair')();assert.equal(result.ok,false);assert.equal(h.opened.length,0);
+    assert.equal(JSON.stringify([h.logs,h.posted,h.updates,h.notices,h.api.getPublicState()]).includes('fixture-private'),false);
+  }
+});
+test('Agent Connect branding preserves extension identity, commands and saved setting keys', () => {
+  const pkg=require('../paseo/package.json');assert.equal(pkg.name,'paseo');assert.equal(pkg.publisher,'woowtech');
+  assert.equal(pkg.displayName,'Agent Connect');assert.equal(pkg.contributes.configuration.title,'Agent Connect');
+  assert.ok(pkg.contributes.commands.every(x=>x.category==='Agent Connect'&&x.command.startsWith('woow.paseo.')));
+  assert.ok(pkg.contributes.configuration.properties['woow.paseo.webUrl']);
+  const h=harness('paseo');h.commands.get('woow.paseo.open')();
+  assert.ok(h.panel.webview.html.includes('<h1>Agent Connect</h1>'));
+  assert.ok(h.panel.webview.html.includes('Woowtech Smart'));assert.ok(h.panel.webview.html.includes('Apporo Smart'));
+});
+test('choosing a Web app configures its complete target without restarting or pairing; cancellation has no effect', async () => {
+  const h=harness('paseo');h.picks.push({label:'Apporo Smart',target:'apporo',url:'https://smart.apporo.ai/'});
+  await h.commands.get('woow.paseo.selectWeb')();
+  assert.deepEqual(h.calls,[{connector:'paseo',action:'configure',workspace:'/workspace',hostName:'test',target:'apporo'},{connector:'paseo',action:'status'}]);
+  assert.ok(h.updates.some(([k,v])=>k==='target'&&v==='apporo'));assert.ok(h.updates.some(([k,v])=>k==='webUrl'&&v==='https://smart.apporo.ai/'));assert.equal(h.opened.length,0);
+  assert.deepEqual(h.pickOptions[0].items.slice(0,3).map(x=>x.url),['https://app.paseo.sh/','https://smart.woowtech.io/','https://smart.apporo.ai/']);
+  const cancelled=harness('paseo');await cancelled.commands.get('woow.paseo.selectWeb')();
+  assert.equal(cancelled.updates.length,0);assert.equal(cancelled.calls.length,0);
+  const omni=harness('omnigent');assert.equal(omni.commands.has('woow.omnigent.selectWeb'),false);
+});
+test('confirmed pending configuration survives failed or incomplete refreshes until explicitly cleared', async () => {
+  const responses={configure:{ok:true,configurationPending:true},status:{ok:false,error:{code:'TIMEOUT'}}};
+  const h=harness('paseo',responses);
+  await h.api.perform('configure',{workspace:'/workspace',hostName:'test',target:'apporo',webUrl:'https://smart.apporo.ai/'});
+  assert.equal(h.api.getPublicState().configurationPending,true);assert.equal(h.api.getPublicState().error,'TIMEOUT');
+  responses.status={ok:true,phase:'running'};await h.commands.get('woow.paseo.status')();
+  assert.equal(h.api.getPublicState().configurationPending,true);
+  responses.status={ok:true,phase:'running',configurationPending:false};await h.commands.get('woow.paseo.status')();
+  assert.equal(h.api.getPublicState().configurationPending,false);
+  responses.status={ok:true,phase:'running',configurationPending:true};await h.commands.get('woow.paseo.status')();
+  responses.status={ok:false,error:{code:'RUNTIME_UNAVAILABLE'}};await h.commands.get('woow.paseo.status')();
+  assert.equal(h.api.getPublicState().configurationPending,true);
+});
 test('native settings opens container machine settings in remote and browser hosts without changing configuration', async () => {
   for (const connector of ['paseo','omnigent']) {
     for (const [environment, expected] of [
@@ -44,7 +107,7 @@ test('native commands dispatch explicit connector actions; configure fields rema
   await h.commands.get('woow.paseo.start')();
   assert.deepEqual(h.calls[0],{connector:'paseo',action:'start'});
   await h.api.perform('configure',{workspace:'/workspace/team',hostName:'my host',webUrl:'https://app.paseo.sh'});
-  assert.deepEqual(h.calls.find(c=>c.action==='configure'),{connector:'paseo',action:'configure',workspace:'/workspace/team',hostName:'my host'});
+  assert.deepEqual(h.calls.find(c=>c.action==='configure'),{connector:'paseo',action:'configure',workspace:'/workspace/team',hostName:'my host',target:'paseo'});
   assert.equal(h.updates.some(([key])=>key==='workspace'),true);
 });
 test('Omnigent sign-in prompts masked password and never persists or renders it', async () => {
@@ -60,11 +123,11 @@ test('cancelled sign-in performs no connect and untrusted workspace cannot start
   h.vscode.workspace.isTrusted=false;await h.commands.get('woow.omnigent.start')();assert.equal(h.calls.some(c=>c.action==='start'),false);
 });
 test('pair opens private URL only on explicit action without rendering or logging', async () => {
-  const privateUrl='https://app.paseo.sh/#private-pairing-credential';
+  const privateUrl=fixturePairUrl('paseo');
   const h=harness('paseo',{pair:{ok:true,pairingUrl:privateUrl}});
   h.commands.get('woow.paseo.open')();assert.equal(h.opened.length,0);
   await h.commands.get('woow.paseo.pair')();assert.deepEqual(h.opened,[privateUrl]);
-  assert.equal(JSON.stringify([h.logs,h.posted,h.updates,h.api.getPublicState()]).includes('private-pairing'),false);
+  assert.equal(JSON.stringify([h.logs,h.posted,h.updates,h.api.getPublicState()]).includes(new URL(privateUrl).hash.slice(1)),false);
   const bad=harness('paseo',{pair:{ok:true,url:'https://unrelated.example/#private'}});
   await bad.commands.get('woow.paseo.pair')();assert.equal(bad.opened.length,0);
 });

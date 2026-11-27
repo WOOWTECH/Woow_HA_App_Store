@@ -4,6 +4,7 @@ import os from 'node:os';
 import { randomUUID } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
 import { spawnSync } from 'child_process';
+import { createRequire } from 'node:module';
 
 export class RuntimeError extends Error {
   constructor(code, message = code) { super(message); this.name = 'RuntimeError'; this.code = code; }
@@ -12,6 +13,8 @@ export function locations() {
   const home = path.resolve(process.env.HOME || os.homedir());
   const dataDir = path.resolve(process.env.PI_AGENT_DATA_DIR || '/data/pi-agent');
   const agentDir = path.resolve(process.env.PI_CODING_AGENT_DIR || dataDir);
+  // This is the long-standing code-server storage contract. Never fall back to
+  // pi-paseo's plugin home: upgrades must reopen the same identity and history.
   const stateDir = path.join(path.resolve(process.env.WOOW_CONNECTOR_DATA_DIR || path.join(dataDir, 'connectors')), 'paseo');
   const runtimeDir = path.resolve(process.env.WOOW_PASEO_RUNTIME_DIR || '/opt/woow-connectors/paseo/runtime');
   let savedPort;
@@ -99,8 +102,55 @@ export async function pauseForLock(ms, signal) {
   try { await delay(ms, undefined, { signal }); }
   catch (error) { if (error.name === 'AbortError') throw new RuntimeError('LOCK_ABORTED'); throw error; }
 }
+/** Darwin transition guard: SQLite owns the persistent inode's OS lock. No
+ * external open/close of an existing inode is allowed: POSIX close() can release
+ * another SQLite connection's locks in the same process. Never unlink the file.
+ * This guards synchronous metadata transitions only, not asynchronous operations.
+ * Logical owner recovery remains conservative when Darwin cannot prove PID birth.
+ */
+export function withSqliteLockTransition(file, fn, { deadline, signal } = {}) {
+  checkLockSignal(signal);
+  const guard = file + '.guard.sqlite';
+  let database, acquired = false, entered = false;
+  try {
+    const parent = assertSafePath(path.dirname(guard));
+    if (!parent?.isDirectory() || parent.uid !== process.getuid() || (parent.mode & 0o077)) throw new RuntimeError('UNSAFE_LOCK');
+    assertSafePath(guard);
+    let fd;
+    try { fd = fs.openSync(guard, fs.constants.O_RDWR | fs.constants.O_CREAT | fs.constants.O_EXCL | fs.constants.O_NOFOLLOW, 0o600); }
+    catch (error) { if (error.code !== 'EEXIST') throw error; }
+    finally { if (fd !== undefined) fs.closeSync(fd); }
+    const before = assertSafePath(guard);
+    if (!before?.isFile() || before.nlink !== 1 || before.uid !== process.getuid() || (before.mode & 0o077)) throw new RuntimeError('UNSAFE_LOCK');
+    for (const suffix of ['-journal', '-wal', '-shm']) {
+      const sidecar = assertSafePath(guard + suffix);
+      if (sidecar && (!sidecar.isFile() || sidecar.nlink !== 1 || sidecar.uid !== process.getuid() || (sidecar.mode & 0o077))) throw new RuntimeError('UNSAFE_LOCK');
+    }
+    const { DatabaseSync } = createRequire(import.meta.url)('node:sqlite');
+    database = new DatabaseSync(guard, { timeout: 0 });
+    const unchanged = () => {
+      const now = assertSafePath(guard);
+      if (!now?.isFile() || now.ino !== before.ino || now.dev !== before.dev || now.nlink !== 1 || now.uid !== process.getuid() || (now.mode & 0o077)) throw new RuntimeError('UNSAFE_LOCK');
+    };
+    unchanged();
+    if (deadline !== undefined && Date.now() >= deadline) return null;
+    try { database.exec('BEGIN EXCLUSIVE'); acquired = true; }
+    catch (error) { if (error.errcode === 5 || error.errcode === 6) return null; throw error; }
+    unchanged(); checkLockSignal(signal);
+    if (deadline !== undefined && Date.now() >= deadline) return null;
+    entered = true;
+    return fn();
+  } catch (error) {
+    if (entered || error instanceof RuntimeError) throw error;
+    if (error.code === 'ELOOP') throw new RuntimeError('UNSAFE_SYMLINK');
+    throw new RuntimeError('LOCK_GUARD_FAILED');
+  } finally {
+    if (database) { try { if (acquired) database.exec('ROLLBACK'); } finally { database.close(); } }
+  }
+}
+
 /**
- * Linux requires util-linux flock; other platforms fail closed. The persistent
+ * Linux uses util-linux flock; Darwin uses SQLite; unsupported platforms fail closed. The persistent
  * guard must never be unlinked: every participant must lock the same inode.
  * flock inherits fd 3, so its lock remains on our open file description after
  * the utility exits. Closing our fd releases it even on process death. Only
@@ -108,6 +158,7 @@ export async function pauseForLock(ms, signal) {
  */
 export function withLockTransition(file, fn, { timeoutMs = 1000, deadline, signal } = {}) {
   checkLockSignal(signal);
+  if (process.platform === 'darwin') return withSqliteLockTransition(file, fn, { deadline, signal });
   if (process.platform !== 'linux') throw new RuntimeError('LOCK_GUARD_UNSUPPORTED');
   const guard = file + '.guard';
   assertSafePath(guard);

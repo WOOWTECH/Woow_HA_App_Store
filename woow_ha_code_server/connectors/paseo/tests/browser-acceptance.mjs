@@ -9,7 +9,7 @@ const providers = ['claude', 'codex', 'pi'];
 
 export function validatePlan(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) fail('INVALID_BROWSER_PLAN');
-  validatePairUrl(value.pairUrl);
+  validatePairUrl(value.pairUrl, value.target);
   if (typeof value.workspace !== 'string' || !path.isAbsolute(value.workspace) || /[\x00-\x1f]/.test(value.workspace)) fail('INVALID_WORKSPACE');
   if (value.mode === 'pair') return value;
   if (value.allowModelCalls !== true) fail('MODEL_CALLS_NOT_AUTHORIZED');
@@ -95,7 +95,7 @@ async function closeTestAgent(page, agentId) {
 }
 
 export async function runAcceptance(page, plan, inspect, onProgress = () => {}) {
-  await pairBrowser(page, plan.pairUrl);
+  await pairBrowser(page, plan.pairUrl, plan.target);
   const newAgentUrl = await openProjectInBrowser(page, plan.workspace);
   if (plan.mode === 'pair') return { ok: true, pairingConfirmedInBrowser: true, remoteDirectoryOpenedThroughBrowser: true, realModelsTested: false };
   if (typeof inspect !== 'function') fail('RUNTIME_INSPECTOR_REQUIRED');

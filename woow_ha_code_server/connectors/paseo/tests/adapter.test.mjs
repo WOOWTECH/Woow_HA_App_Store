@@ -72,6 +72,34 @@ test('configuration does not enable connection, and explicit stop survives resto
   assert.equal(fs.statSync(path.join(locations().stateDir, 'state.json')).mode & 0o777, 0o600);
 });
 
+test('flat target configuration publishes selected, active, pending and preserves explicit privacy choices', async t => {
+  const root = fixture(t);
+  const configured = await handle({ action: 'configure', workspace: root, hostName: 'QA code-server', target: 'woowtech', usageLookup: false, idleRuntimeCleanup: true });
+  assert.equal(configured.ok, true);
+  assert.deepEqual(configured.targets.map(target => target.id), ['paseo', 'woowtech', 'apporo']);
+  assert.equal(configured.selectedTarget, 'woowtech');
+  assert.equal(configured.activeTarget, null);
+  assert.equal(configured.configurationPending, true);
+  assert.equal(configured.usageLookup, false);
+  assert.equal(configured.idleRuntimeCleanup, true);
+  assert.equal(configured.pairingAvailable, false);
+  const repeated = await handle({ action: 'status' });
+  assert.equal(repeated.selectedTarget, 'woowtech');
+  assert.equal(repeated.configurationPending, true);
+  assert.equal(repeated.usageLookup, false);
+  assert.equal(repeated.idleRuntimeCleanup, true);
+  const invalid = await handle({ action: 'configure', workspace: root, target: 'https://custom.invalid' });
+  assert.equal(invalid.ok, false);
+  assert.equal(invalid.error.code, 'INVALID_TARGET');
+});
+
+test('privacy preferences are optional and omitted choices remain unset', async t => {
+  const root = fixture(t);
+  const status = await handle({ action: 'configure', workspace: root, target: 'paseo' });
+  assert.equal(status.usageLookup, null);
+  assert.equal(status.idleRuntimeCleanup, null);
+});
+
 test('missing runtime, invalid fields, and unknown actions produce stable private errors', async t => {
   fixture(t);
   for (const [request, code] of [

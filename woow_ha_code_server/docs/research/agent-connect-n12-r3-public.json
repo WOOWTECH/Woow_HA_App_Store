@@ -1,0 +1,60 @@
+{
+  "schema": "agent-connect-n12-public-v1",
+  "evidenceClass": "R3_BASELINE_NOT_R4",
+  "caseId": "N-12",
+  "executedScope": "Existing owned workspace: primary-modifier selection, visible count and exit; no archive, cross-row range or new agent.",
+  "uiRunId": "fresh-web-ui-r3-baseline-20261127-r03",
+  "uiReceiptSha256": "f1db2c17019abce1d66b6d84841a27dffea5c8cfc07f74415eab0af0e6c057cb",
+  "diagnosis": "FEATURE_ABSENT_FROM_SMART_PRODUCTION_0_17_4",
+  "clients": [
+    {
+      "target": "paseo",
+      "visibleAppVersion": "0.17.5",
+      "scriptPath": "/_expo/static/js/web/index-4e549308c95a80bb80f968447a2ec3e6.js",
+      "scriptSha256": "0634912279594c04a655c08efae5c45606a445490317b962ebd99ac494283e5d",
+      "scriptBytes": 25428848,
+      "uiResult": "PASS",
+      "selectionHandlerPresent": true,
+      "resultPreserved": true,
+      "publicScriptUrl": "https://app.paseo.sh/_expo/static/js/web/index-4e549308c95a80bb80f968447a2ec3e6.js"
+    },
+    {
+      "target": "woowtech",
+      "visibleAppVersion": "0.17.4",
+      "scriptPath": "/_expo/static/js/web/index-5edec1e62b572d3ca6d23c1a2ea447ba.js",
+      "scriptSha256": "958babfa01f487162cd7393b57099b3165ed224eb2e85720a92efd20e795775a",
+      "scriptBytes": 22595052,
+      "uiResult": "FAIL",
+      "selectionHandlerPresent": false,
+      "resultPreserved": true,
+      "publicScriptUrl": "https://smart.woowtech.io/_expo/static/js/web/index-5edec1e62b572d3ca6d23c1a2ea447ba.js"
+    },
+    {
+      "target": "apporo",
+      "visibleAppVersion": "0.17.4",
+      "scriptPath": "/_expo/static/js/web/index-020bc9cd937992d7944fe165d379aa14.js",
+      "scriptSha256": "165bb6032c9420841d90985c08290e805dd8fbb7c0d82d51612a201a708bd70a",
+      "scriptBytes": 22595152,
+      "uiResult": "FAIL",
+      "selectionHandlerPresent": false,
+      "resultPreserved": true,
+      "publicScriptUrl": "https://smart.apporo.ai/_expo/static/js/web/index-020bc9cd937992d7944fe165d379aa14.js"
+    }
+  ],
+  "modelOperationsRequested": 0,
+  "newAgentCreationRequested": 0,
+  "newUiRetestPerformed": false,
+  "compiledHandlerDiagnostic": {
+    "branchAssertions": 14,
+    "browserAcceptanceCases": 0
+  },
+  "portableHarnessNote": "Use ControlOrMeta. Borrowed helper hardcodes Meta; R03 Linux Control was correct and Smart Shift also failed.",
+  "suggestedFrontendFeatureCommits": [
+    "e52bb6e3c4eb5519ea20a7f02220f65a1d34933c",
+    "ba45634eeeda0bb60512466fed2294be87ecaa97"
+  ],
+  "sourceCommitAttributionLimit": "Smart production df7ae619 is declared handoff provenance, not a source-map/build attestation. Candidate 0.17.5 source is not the production build.",
+  "nativeHaActualAcceptance": "NOT_TESTED",
+  "arm64ActualAcceptance": "NOT_TESTED",
+  "r4AcceptanceFromThisEvidence": "NOT_TESTED"
+}

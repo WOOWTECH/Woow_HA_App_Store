@@ -1,98 +1,266 @@
 {
   "source": "https://github.com/WOOWTECH/pi-paseo-plugin",
-  "commit": "2d5531fd65f80a58a15ed19c709a4f29e52d3723",
+  "sourceRelease": "0.1.27-rc.1",
+  "commit": "e4c568ce3214592574f11243acf5ed7db743d47e",
   "license": "MIT",
-  "runtimeVersion": "0.11.2",
+  "runtimeVersion": "0.17.5",
+  "runtimeRevision": "0.17.5-r4-2b20ef5fac0a",
+  "runtimeLockSha256": "2b20ef5fac0a45dfd756d8470222a0d3c8ee9012c7cb318d65c8bba90c469f42",
   "files": [
     {
-      "path": "src/state.mjs",
-      "sourceSha256": "e0232bbef2fbec24821377ba0dbce59489f9fff3cb14c1e0fb66c64aed1142d0",
-      "modified": true
-    },
-    {
-      "path": "src/process.mjs",
-      "sourceSha256": "fb7f387d0b82be18d7e98ef7d23b733338c21c6eb80530350091de59527bd983",
-      "modified": false
-    },
-    {
-      "path": "src/daemon-identity.mjs",
-      "sourceSha256": "7994f181a1864fa5892ab3b5d510a156c55b8d9864596462d34c96fdae151615",
-      "modified": false
-    },
-    {
-      "path": "src/pid-transition.mjs",
-      "sourceSha256": "37bdef75ee090452ce946bbf051d411352d51fda95d8121ff0c83a34680e3987",
-      "modified": false
-    },
-    {
-      "path": "src/pid-lock-patch.mjs",
-      "sourceSha256": "92117af8f3a2b8fb2ccdb959a938eb6b3fa4f9989933c1a6e7df028512fb346f",
-      "modified": false
-    },
-    {
-      "path": "src/chat-result.mjs",
-      "sourceSha256": "371d9a50951f18c1aeabca6a6359b5ca7c15a450e277f7191350cdc2e9c687dc",
-      "modified": false
-    },
-    {
-      "path": "src/provider-reply.mjs",
-      "sourceSha256": "35e953d415a963180ed1402cc57a83c9dd82d1931ae547aae971decbb5fca69b",
-      "modified": false
-    },
-    {
       "path": "src/acceptance-agent.mjs",
-      "sourceSha256": "bc73607738a1784c2e5cf3951cf867d139b7dd99afbadbaa357a042f329c0726",
+      "upstreamPath": "src/acceptance-agent.mjs",
+      "upstreamSha256": "bc73607738a1784c2e5cf3951cf867d139b7dd99afbadbaa357a042f329c0726",
+      "sha256": "bc73607738a1784c2e5cf3951cf867d139b7dd99afbadbaa357a042f329c0726",
       "modified": false
     },
     {
       "path": "src/acceptance-workspace.mjs",
-      "sourceSha256": "95acadaac8a14957ceaf59f64afdf2bcd5588605e26e1b0c0fe4eaae95a99779",
+      "upstreamPath": "src/acceptance-workspace.mjs",
+      "upstreamSha256": "95acadaac8a14957ceaf59f64afdf2bcd5588605e26e1b0c0fe4eaae95a99779",
+      "sha256": "95acadaac8a14957ceaf59f64afdf2bcd5588605e26e1b0c0fe4eaae95a99779",
       "modified": false
     },
     {
-      "path": "src/single-flight.mjs",
-      "sourceSha256": "a2008cad4fe2b1d77d051070adc5b2fe2104eea89d0ca31dea9b41b5bf0b82c4",
+      "path": "src/brand-identity-patch.mjs",
+      "upstreamPath": "src/brand-identity-patch.mjs",
+      "upstreamSha256": "f16a0b430872d296ab6c3603e2b5fca39e83cfed73eb49196198ceaae0c0795c",
+      "sha256": "f16a0b430872d296ab6c3603e2b5fca39e83cfed73eb49196198ceaae0c0795c",
       "modified": false
     },
     {
-      "path": "src/runtime.mjs",
-      "sourceSha256": "a9c696ddb4a620bfed29fc7221568a42b9ecc8ec18d92a23fd36921e64f6f1b3",
+      "path": "src/brand-identity.mjs",
+      "upstreamPath": "src/brand-identity.mjs",
+      "upstreamSha256": "036471982ccbbb5a7c3418631518025b245ac50e1c0b1a29c3824d16ba069733",
+      "sha256": "036471982ccbbb5a7c3418631518025b245ac50e1c0b1a29c3824d16ba069733",
+      "modified": false
+    },
+    {
+      "path": "src/chat-result.mjs",
+      "upstreamPath": "src/chat-result.mjs",
+      "upstreamSha256": "371d9a50951f18c1aeabca6a6359b5ca7c15a450e277f7191350cdc2e9c687dc",
+      "sha256": "371d9a50951f18c1aeabca6a6359b5ca7c15a450e277f7191350cdc2e9c687dc",
+      "modified": false
+    },
+    {
+      "path": "src/connection-targets.mjs",
+      "upstreamPath": "src/connection-targets.mjs",
+      "upstreamSha256": "cb79b610bfd4808a0dafdff6abe690709c815a1e98972d78f99286520a373722",
+      "sha256": "b4ac3f46202f09e87e8922672c030fc750b6aac095095c02994e651aa7672771",
       "modified": true
     },
     {
-      "path": "runtime/package.json",
-      "sourceSha256": "1b02d3a98d86f83c4162b3cfb2c000c6f041f9ab730cbefb23952644f20a5c95",
+      "path": "src/daemon-identity.mjs",
+      "upstreamPath": "src/daemon-identity.mjs",
+      "upstreamSha256": "1a072e776a1ba885f1a8b3d93ecd49018e1ceb976b11dc1e85a8f873578c6d01",
+      "sha256": "1a072e776a1ba885f1a8b3d93ecd49018e1ceb976b11dc1e85a8f873578c6d01",
       "modified": false
     },
     {
-      "path": "runtime/package-lock.json",
-      "sourceSha256": "6d8dbe5154790bbbb0b1281e991871b6f354919022fb55a1235162e969779526",
+      "path": "src/host-checks.mjs",
+      "upstreamPath": "src/host-checks.mjs",
+      "upstreamSha256": "491050406c9cd22e17e89b55df32a583ebacbac786ecbf7c37246128d9fc5724",
+      "sha256": "491050406c9cd22e17e89b55df32a583ebacbac786ecbf7c37246128d9fc5724",
       "modified": false
     },
     {
-      "path": "LICENSE",
-      "sourceSha256": "1b05bfafc14067beabe8885c164528c122ebf545eabe97984b222fe377143a69",
+      "path": "src/lifecycle-timeouts.mjs",
+      "upstreamPath": "src/lifecycle-timeouts.mjs",
+      "upstreamSha256": "be211a7090f03681242ea9788dd572301b228d1d24da553045f33351aece3b79",
+      "sha256": "be211a7090f03681242ea9788dd572301b228d1d24da553045f33351aece3b79",
       "modified": false
+    },
+    {
+      "path": "src/onboarding.mjs",
+      "upstreamPath": "src/onboarding.mjs",
+      "upstreamSha256": "abd47180513f70c56a3dd6967b939988658ad4b10f723575047053976746c84a",
+      "sha256": "abd47180513f70c56a3dd6967b939988658ad4b10f723575047053976746c84a",
+      "modified": false
+    },
+    {
+      "path": "src/pid-lock-patch.mjs",
+      "upstreamPath": "src/pid-lock-patch.mjs",
+      "upstreamSha256": "fe108ed83d8dd47aa0a63110f036421e30d699c91efcabd0356ef1fbd1ae7dd5",
+      "sha256": "fe108ed83d8dd47aa0a63110f036421e30d699c91efcabd0356ef1fbd1ae7dd5",
+      "modified": false
+    },
+    {
+      "path": "src/pid-transition.mjs",
+      "upstreamPath": "src/pid-transition.mjs",
+      "upstreamSha256": "37bdef75ee090452ce946bbf051d411352d51fda95d8121ff0c83a34680e3987",
+      "sha256": "37bdef75ee090452ce946bbf051d411352d51fda95d8121ff0c83a34680e3987",
+      "modified": false
+    },
+    {
+      "path": "src/process.mjs",
+      "upstreamPath": "src/process.mjs",
+      "upstreamSha256": "fb7f387d0b82be18d7e98ef7d23b733338c21c6eb80530350091de59527bd983",
+      "sha256": "fb7f387d0b82be18d7e98ef7d23b733338c21c6eb80530350091de59527bd983",
+      "modified": false
+    },
+    {
+      "path": "src/provider-launchers.mjs",
+      "upstreamPath": "src/provider-launchers.mjs",
+      "upstreamSha256": "9307187453ee6a2c1001aaf2050ecd4ea1c1a129a46edc11276122351c3ef275",
+      "sha256": "2e5728b64178a5453520e49341c1be4556ca8146832c4cd4763330cf9496264d",
+      "modified": true
+    },
+    {
+      "path": "src/provider-reply.mjs",
+      "upstreamPath": "src/provider-reply.mjs",
+      "upstreamSha256": "35e953d415a963180ed1402cc57a83c9dd82d1931ae547aae971decbb5fca69b",
+      "sha256": "35e953d415a963180ed1402cc57a83c9dd82d1931ae547aae971decbb5fca69b",
+      "modified": false
+    },
+    {
+      "path": "src/runtime-layout.mjs",
+      "upstreamPath": "src/runtime-layout.mjs",
+      "upstreamSha256": "6321e8528c96c4fab21ddbd460178d3d6bfbf5f0fde668d7e213e9132097f9c8",
+      "sha256": "06f9ed2bdc1a087d815c7b20668bca78f77629eccced791e94f39fb29b7bddac",
+      "modified": true
+    },
+    {
+      "path": "src/runtime.mjs",
+      "upstreamPath": "src/runtime.mjs",
+      "upstreamSha256": "24868655e091b78981b8291180553cf744db0ababb6bac067b0b93b988bec29b",
+      "sha256": "9a0f0a3535f62c6686ea2a48caa30377f812491a055aed049adbe891b4a0a870",
+      "modified": true
+    },
+    {
+      "path": "src/single-flight.mjs",
+      "upstreamPath": "src/single-flight.mjs",
+      "upstreamSha256": "a2008cad4fe2b1d77d051070adc5b2fe2104eea89d0ca31dea9b41b5bf0b82c4",
+      "sha256": "a2008cad4fe2b1d77d051070adc5b2fe2104eea89d0ca31dea9b41b5bf0b82c4",
+      "modified": false
+    },
+    {
+      "path": "src/smart-tasks-patch.mjs",
+      "upstreamPath": "src/smart-tasks-patch.mjs",
+      "upstreamSha256": "ab4a2ac572870703d78e953bb4b564e9e5d490a8abc88b36c874d0c339cf42c2",
+      "sha256": "336390940b024ef36119e6c7ef60763c97776f3d55b8d687ca9334a6c49eceb6",
+      "modified": true
+    },
+    {
+      "path": "src/state.mjs",
+      "upstreamPath": "src/state.mjs",
+      "upstreamSha256": "bf3484d6aa11340c179dd0edbbfa33f201a5ff422c6083cd41591473672e351e",
+      "sha256": "337e219eadd8a4caf107cbc2619b7f11649f41bfabdcca6dc9bd0972e1649169",
+      "modified": true
+    },
+    {
+      "path": "runtime-manifest/package.json",
+      "upstreamPath": "runtime/package.json",
+      "upstreamSha256": "8f151d594f37979d58032a88cb284a01be34b7fd7b64957ba604a3d532c71d86",
+      "sha256": "0f95378a28925efba371d3ee265e9aee458d13ed7589b6d04c35fb1f1b64675a",
+      "modified": true
+    },
+    {
+      "path": "runtime-manifest/package-lock.json",
+      "upstreamPath": "runtime/package-lock.json",
+      "upstreamSha256": "8664f2c3f8f58c15b8ec264fec9b69c3bc443192efd60365212e532c811f4ce2",
+      "sha256": "2b20ef5fac0a45dfd756d8470222a0d3c8ee9012c7cb318d65c8bba90c469f42",
+      "modified": true
     }
-  ],
-  "changes": [
-    "code-server paths and credential-home preservation",
-    "remove Pi SDK, package manager, automatic installs and onboarding",
-    "explicit official-web pairing only; no pairing persistence",
-    "idempotent restore and persistent manual stop",
-    "add JSON adapter, provider catalog and owned-session model switching",
-    "retain guarded PID patch and process birth verification",
-    "child-only private umask for daemon PID and auth files",
-    "semantic provider-config comparison after Paseo schema serialization"
   ],
   "runtimePatches": [
     {
+      "id": "pid-lock",
+      "recipe": "src/pid-lock-patch.mjs",
+      "recipeSha256": "fe108ed83d8dd47aa0a63110f036421e30d699c91efcabd0356ef1fbd1ae7dd5"
+    },
+    {
+      "id": "brand-identity",
+      "recipe": "src/brand-identity-patch.mjs",
+      "recipeSha256": "f16a0b430872d296ab6c3603e2b5fca39e83cfed73eb49196198ceaae0c0795c"
+    },
+    {
+      "id": "better-paseo",
+      "recipe": "src/smart-tasks-patch.mjs",
+      "recipeSha256": "336390940b024ef36119e6c7ef60763c97776f3d55b8d687ca9334a6c49eceb6"
+    },
+    {
+      "id": "managed-mcp-refresh",
+      "recipe": "src/mcp-refresh-patch.mjs",
+      "recipeSha256": "ad0b185ee6324b14008cac415cd1e21e52a5c3dc46e4ba205a233ed02b837485"
+    },
+    {
+      "id": "claude-root",
       "recipe": "src/claude-root-patch.mjs",
-      "package": "@getpaseo/server@0.11.2",
-      "file": "dist/server/server/agent/providers/claude/agent.js",
-      "originalSha256": "519318ffe2c3427e9478ebd3e29e2d28835558c9fb40ff3136f3557c1a077060",
-      "patchedSha256": "197cab82770baa1f6dfdef0f7765688e3983a45afec82e003750376a2dafc1da",
-      "behavior": "Root does not request bypass-permission launch capability; normal permissions remain active. No upstream source vendored."
+      "recipeSha256": "867eeb88da293c517e6ce58bf57e4335888a988dd6570514750e3b2135243563"
+    }
+  ],
+  "compatibility": {
+    "stateDir": "${WOOW_CONNECTOR_DATA_DIR:-${PI_AGENT_DATA_DIR:-/data/pi-agent}/connectors}/paseo",
+    "paseoHome": "<stateDir>/daemon",
+    "runtimeBase": "${WOOW_PASEO_RUNTIME_DIR:-/opt/woow-connectors/paseo/runtime}",
+    "releaseDir": "<runtimeBase>/releases/0.17.5-r4-2b20ef5fac0a",
+    "oldRuntimeControl": [
+      "0.17.5-r3-8664f2c3f8f5",
+      "0.17.5-r2-8664f2c3f8f5",
+      "0.17.5-r1-8664f2c3f8f5",
+      "0.11.2-r2-6d8dbe515479",
+      "0.11.2-r3-6d8dbe515479",
+      "0.11.2-r3-4cf9d40940bf",
+      "0.11.2-r4-4cf9d40940bf",
+      "0.17.4-r1-a651f42711da",
+      "0.17.4-r2-a651f42711da",
+      "code-server-root:0.11.2:478caab5da835fd55471ada8fcfe25b469e19e34dd0ee51b444671021d6251c2"
+    ]
+  },
+  "policies": [
+    "runtime installation is build/setup-time only",
+    "provider CLIs are discovered but never installed by connector commands",
+    "manual stop persists across restore",
+    "private pairing offers are returned only for explicit pair requests, never persisted or included in state/status"
+  ],
+  "upstreamRuntimeRevision": "0.17.5-r1-8664f2c3f8f5",
+  "manifestDirectory": "runtime-manifest",
+  "codeServerChanges": {
+    "base": "a70b33d9b96c9d0d23832c4928d62eeed00fd0f7",
+    "repository": "https://github.com/WOOWTECH/Woow_podman_code_server_package",
+    "files": {
+      "src/runtime-installer.mjs": "73fc5c957dd37148bbce095e8759dc51b56cad9890803e5ea166b2543369acbd",
+      "src/runtime.mjs": "9a0f0a3535f62c6686ea2a48caa30377f812491a055aed049adbe891b4a0a870",
+      "src/state.mjs": "337e219eadd8a4caf107cbc2619b7f11649f41bfabdcca6dc9bd0972e1649169",
+      "src/runtime-layout.mjs": "06f9ed2bdc1a087d815c7b20668bca78f77629eccced791e94f39fb29b7bddac",
+      "src/daemon-identity.mjs": "1a072e776a1ba885f1a8b3d93ecd49018e1ceb976b11dc1e85a8f873578c6d01",
+      "src/mcp-refresh.mjs": "5de3d0bbafcc089ebc2be5fee249c820e5dc9d526b095dfeb6e5c6e69de0e292",
+      "src/mcp-refresh-patch.mjs": "ad0b185ee6324b14008cac415cd1e21e52a5c3dc46e4ba205a233ed02b837485",
+      "src/managed-mcp-config.mjs": "6d8e117a106874132fc5d41f9c5703d5d9adedb5e0ac5833183ed5c24dda02aa",
+      "src/claude-root-patch.mjs": "867eeb88da293c517e6ce58bf57e4335888a988dd6570514750e3b2135243563",
+      "src/runtime-control-0175-r3.json": "c8698a43eb6aad9c5389ad1ec798714c455457612a1612345574d877e614aa87",
+      "src/esbuild-runtime.mjs": "c495f6ac9e345cc1a5f969ddbe525c2fe33975fbad19a5123aa472d0452f44c6"
+    }
+  },
+  "runtimeDependencies": {
+    "esbuild": {
+      "version": "0.28.2",
+      "goVersion": "1.26.5",
+      "reason": "Replace the Go 1.23.12 binaries from esbuild 0.25.12 reported as 19 new fixable Critical/High stdlib findings by HA PR31 upgrade comparison run 45913001509. Override both the JS API and its matching platform binaries; no vulnerability acceptance or scanner exclusions.",
+      "readiness": {
+        "recipe": "src/esbuild-runtime.mjs",
+        "recipeSha256": "c495f6ac9e345cc1a5f969ddbe525c2fe33975fbad19a5123aa472d0452f44c6",
+        "checks": [
+          "locked JS/platform package version and archive integrity",
+          "esbuild/package.json",
+          "esbuild/lib/main.js",
+          "esbuild/bin/esbuild",
+          "@esbuild/<linux-x64|linux-arm64>/bin/esbuild"
+        ],
+        "nativeHardlinksAllowed": true
+      }
+    }
+  },
+  "frozenRuntimeControls": [
+    {
+      "revision": "0.17.5-r3-8664f2c3f8f5",
+      "record": "src/runtime-control-0175-r3.json",
+      "sha256": "c8698a43eb6aad9c5389ad1ec798714c455457612a1612345574d877e614aa87",
+      "sourceCommit": "e5622bb6b0ce7d25f1aad3f508dc4f3ad83c6a70",
+      "controlOnly": true,
+      "essentialFiles": 23,
+      "pinnedFiles": 46,
+      "sdkPatchReceipts": 5
     }
   ]
 }

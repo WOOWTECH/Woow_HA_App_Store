@@ -1,4 +1,4 @@
-# code-server Paseo runtime adapter
+# code-server Agent Connect runtime adapter
 
 This adapter is independent of Pi SDK/plugin lifecycle. It only uses installed
 `claude`, `codex`, and `pi` executables and the deployment's existing private
@@ -14,14 +14,20 @@ bash /opt/woow-connectors/paseo/install-runtime.sh /opt/woow-connectors/paseo
 ```
 
 Requires Node 22.19+, util-linux `flock`, and Linux `procps` (`ps --ppid`). The installer uses the vendored npm
-lock for `@getpaseo/cli`/server **0.11.2**, validates both pinned PID-lock modules
-before applying the upstream WOOWTECH transition patch, and never starts a daemon.
-Revision r2 also applies a hash-checked Claude SDK launch fix: root keeps normal
-permission handling and does not request the optional bypass-permission capability.
+lock for `@getpaseo/cli`/server **0.17.5**. Build inputs live in
+`runtime-manifest/`, separately from the legacy installed `runtime/package*.json`.
+The installer checks all vendored Tasks assets and prerequisites before creating
+runtime paths, installs into a private staging directory, validates the pinned
+patches and receipt, then publishes one immutable generation by atomic rename.
+A healthy existing generation is reused without npm or file changes. A conflicting
+generation fails rather than being overwritten. The installer never starts or
+stops a daemon and never reads provider credentials or the daemon's private home.
 An older running revision requires an owned-daemon stop/start after upgrading.
-There is no package-level install/postinstall hook. Dependencies remain in
-`runtime/node_modules`; the runtime is architecture-specific and must be built
-in each target image. Do not put `runtime/node_modules` in Git or a VSIX.
+There is no package-level install/postinstall hook. Dependencies live under
+`runtime/releases/<revision>/node_modules`; each architecture builds its own SDK.
+Never put installed dependencies in Git or a VSIX. The old code-server 0.11.2
+runtime remains available solely to control a verified existing daemon during
+migration; it is never selected for a new start.
 
 The parent JSON CLI imports `handle(request)` from `index.mjs`. Exported
 `allowedActions` lists the supported actions. No adapter logging goes to stdout.
@@ -52,7 +58,7 @@ PID-file identity, and official supervisor environment before recovery/signaling
 All examples are JSON sent on stdin to `/usr/local/bin/woow-connectors`:
 
 ```json
-{"connector":"paseo","action":"configure","workspace":"/workspace","hostName":"code-server QA"}
+{"connector":"paseo","action":"configure","workspace":"/workspace","hostName":"code-server QA","target":"paseo"}
 {"connector":"paseo","action":"start"}
 {"connector":"paseo","action":"status"}
 {"connector":"paseo","action":"pair"}
@@ -62,9 +68,11 @@ All examples are JSON sent on stdin to `/usr/local/bin/woow-connectors`:
 ```
 
 - `configure`: accepts `workspace`/`workspaceRoot`/`cwd`, `hostName`/`displayName`,
-  and optional loopback `port` (1024–65535), either directly or under `settings`.
-  Changes do not implicitly start a daemon. Stop before changing a live port.
-  Display name is a connector label; Paseo itself rejects `daemon.name`.
+  `target` (`paseo`, `woowtech`, `apporo`), and optional loopback `port`
+  (1024–65535), either directly or under `settings`. A profile selects the app,
+  relay, host brand and CORS together. Changes do not implicitly start a daemon.
+  `configurationPending` distinguishes selected settings from the active process;
+  stop and start an idle connection to apply them. Stop before changing a live port.
 - `start`: enables persistent desired state, starts or safely reuses one daemon.
   Linux images require `procps` (`ps --ppid`) and util-linux `flock`; the installer
   and activation check these dependencies before provider probes can crash.
@@ -80,9 +88,12 @@ All examples are JSON sent on stdin to `/usr/local/bin/woow-connectors`:
   workspace settings but no started daemon reports `not_started`.
   `online` means the local control connection is reachable, not proof that a Web
   client has paired or a model answered. It contains no pairing URL or raw state.
-- `pair`: returns official `https://app.paseo.sh/...` URL and `sensitive:true` only
-  on this explicit action. Never log, persist, or include the URL in diagnostics.
-  The daemon binds loopback and uses the official encrypted relay for the Web app.
+- `pair`: returns a sensitive V2 offer only on this explicit action. Its origin
+  and relay must exactly match the active selected profile: `app.paseo.sh` /
+  `relay.paseo.sh`, `smart.woowtech.io` / `relay.woowtech.io`, or
+  `smart.apporo.ai` / `relay.apporo.ai`. The URL is never retargeted to another
+  site, logged, persisted, or included in diagnostics. Pairing refuses pending
+  configuration. The daemon binds loopback and uses the profile's encrypted relay.
 - `models`: live catalog for one provider, or independent per-provider results for
   all three. Empty/unavailable catalogs never become a hardcoded model list.
 - `verify`: two actual turns with a fresh marker, checking only newly generated
@@ -208,7 +219,8 @@ secret pairing URL. Set `WOOW_PASEO_WEB_PLAN` to that absolute path. Example sha
 
 ```json
 {
-  "pairUrl": "https://app.paseo.sh/#AUTHORIZED-PAIRING-FRAGMENT",
+  "target": "paseo",
+  "pairUrl": "https://app.paseo.sh/#offer=PRIVATE_V2_OFFER",
   "workspace": "/workspace/connector-qa",
   "allowModelCalls": true,
   "turnTimeoutMs": 180000,
@@ -223,6 +235,11 @@ secret pairing URL. Set `WOOW_PASEO_WEB_PLAN` to that absolute path. Example sha
 Use `"mode":"pair"` with just `pairUrl` and `workspace` for a no-model pairing and
 directory test. Full mode requires all three providers, two distinct models each,
 and `allowModelCalls:true`; it does not silently choose cheaper/other models.
+`target` defaults to `paseo`; set it explicitly to `woowtech` or `apporo` for
+that client's separately generated offer. The URL, V2 relay and TLS policy must
+match the selected target. Configure the daemon for that target first; never
+edit or transfer an offer to another origin. Download plans use the same
+`target` field and require a workspace URL at its matching origin.
 For a focused retry after fixing one provider, `runProviders:["claude"]` limits
 execution while retaining the full catalog plan. Its result names the requested
 providers and must not be presented as a new complete three-provider run.
@@ -271,10 +288,11 @@ PaaS or different provider credentials.
 ## Source and license
 
 Derived from MIT-licensed `WOOWTECH/pi-paseo-plugin` commit
-`2d5531fd65f80a58a15ed19c709a4f29e52d3723` (0.1.15). See `LICENSE` and
+`e4c568ce3214592574f11243acf5ed7db743d47e` (0.1.27-rc.1 candidate, runtime 0.17.5).
+This code-server port has its own lifecycle and MCP patch changes. See `LICENSE` and
 `provenance.json`. Reused process, locking, PID transition, birth-identity, reply
 classification, timeline cursor and acceptance cleanup primitives retain the
-original MIT notice. This adapter replaces Pi-specific paths/lifecycle,
-auto-installation, web-client rewriting and provider setup. Optional voice
+original MIT notice. This adapter preserves code-server paths and replaces
+Pi-specific lifecycle, auto-installation and provider setup. Optional voice
 downloads are disabled, following `WOOWTECH/hermes-paseo-plugin`
 `1101a5da63178e08bd0fdf849db8e2a5de4d6ef1`. No private runtime state is vendored.

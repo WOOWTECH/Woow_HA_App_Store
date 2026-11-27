@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.17
+
+- Upgrade the bundled Paseo connector to Agent Connect 0.2.0, retaining the `woowtech.paseo` extension ID, commands and saved settings.
+- Add complete Paseo, Woowtech Smart and Apporo Smart profiles with target-bound private pairing and persistent pending-configuration guidance.
+- Pin Paseo 0.17.5 with atomic staged SDK installation, verified older-runtime control, guarded same-conversation MCP refresh and root-compatible Claude launch options.
+- Use the R4 generation with esbuild 0.28.2 and verified Go 1.26.5 binaries; retain immutable R3 control and require the rebuilt image's security comparison.
+- Support explicitly selected Paseo, Woowtech and Apporo targets in the live browser acceptance tools, including both production workspace picker layouts.
+- Preserve provider homes, stable host identity and manual-stop state. Candidate image and authenticated provider acceptance are tracked in the connector acceptance report.
+
 ## 0.1.16
 
 - Fix: terminal `pi`, the ACP sidebar's pi and Omnigent's pi no longer fold Unicode spaces in file paths. Reading `Q1<U+3000>報告.txt` returned the contents of the neighbouring `Q1 報告.txt`, and writing or editing a path with U+3000 (ideographic space) or U+202F landed on the ASCII-space name instead. Since pi 0.84.3 the `pi` command runs a bundled copy of the path code that our Unicode-space patch did not reach, so add-on versions shipped with pi 0.84.3–0.99.1 still had this bug; the patch now covers the bundle too, and the build checks the bundle's own read/write/edit tools (pipeline #222). Details: `KNOWN_UPSTREAM_ISSUES.md`, F1.

@@ -59,7 +59,21 @@ Full checklist: [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
 
 ## The ACP chat webview
 
-Verified end-to-end against a live Home Assistant instance: HA's ingress origin is a browser-trusted secure context, the ingress path prefix does not interfere with a webview's ServiceWorker registration (code-server emits every asset URL as relative), and a built-in webview (Markdown preview) renders and its ServiceWorker activates correctly through the real ingress URL. See [`tests/smoke-acp-webview.md`](tests/smoke-acp-webview.md) for the 2-minute manual check, and [`DOCS.md`](DOCS.md) for the F1 (terminal task, always on)/F2 (opt-in direct port) fallback ladder if your setup ever behaves differently.
+**Open Home Assistant from its HTTPS address.** If you open it from an `http://` address instead (for example `http://<HA-IP>:8123` on your LAN), the editor still loads and the ACP sidebar can even show the agent as connected, but the chat panel stays blank and no error or hint appears. This is a browser security rule, not a fault in the add-on.
+
+**How to check:** on the blank chat panel, open the browser's developer tools (F12), go to the Console, and type `window.isSecureContext`. If it prints `false`, this is the cause.
+
+**What to do,** in this order:
+
+1. Open Home Assistant from its HTTPS address (or from `localhost`), then open the add-on from the sidebar again.
+2. Use `pi` in a terminal instead. The terminal is not affected (fallback F1).
+3. Use the opt-in direct port: set `direct_password` and put a tunnel with a trusted certificate in front of it (fallback F2).
+
+Steps for F1 and F2 are on the add-on's **Documentation** tab, section "The ACP chat webview — status and fallback ladder" ([`DOCS.md`](DOCS.md#the-acp-chat-webview--status-and-fallback-ladder)).
+
+Why: the chat panel is a VS Code webview, and the browser only lets a webview load (register its ServiceWorker) on a secure connection, meaning HTTPS with a certificate the browser trusts, or `localhost`. An `http://` address never counts, and neither does a self-signed certificate you clicked through.
+
+When Home Assistant is opened from an HTTPS address, this has been verified end to end against a live Home Assistant instance: the ingress path prefix does not interfere with the webview's ServiceWorker registration (code-server emits every asset URL as relative), and a built-in webview (Markdown preview) renders and its ServiceWorker activates through the real ingress URL. See [`tests/smoke-acp-webview.md`](tests/smoke-acp-webview.md) for the 2-minute manual check.
 
 ## Layout
 

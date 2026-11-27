@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
-import { BrowserCheckError, launchBrowser, freshPage, pairBrowser, safeFailure } from './browser-support.mjs';
+import { BrowserCheckError, browserTarget, launchBrowser, freshPage, pairBrowser, safeFailure } from './browser-support.mjs';
 
 const fail = code => { throw new BrowserCheckError(code); };
 
@@ -30,9 +30,15 @@ async function clickDownload(context, control) {
   }
 }
 
-function validatePlan(plan) {
-  const url = new URL(plan.workspaceUrl);
-  if (url.origin !== 'https://app.paseo.sh' || url.username || url.password || url.search || url.hash || !/^\/h\/[^/]+\/workspace\/[^/]+$/.test(url.pathname)) fail('INVALID_WORKSPACE_URL');
+function validateWorkspaceUrl(value, target) {
+  const profile = browserTarget(target);
+  let url;
+  try { url = new URL(value); } catch { fail('INVALID_WORKSPACE_URL'); }
+  if (url.origin !== profile.appUrl || url.username || url.password || url.search || url.hash || !/^\/h\/[^/]+\/workspace\/[^/]+$/.test(url.pathname)) fail('INVALID_WORKSPACE_URL');
+}
+
+export function validateDownloadPlan(plan) {
+  validateWorkspaceUrl(plan.workspaceUrl, plan.target);
   if (!/^[A-Za-z0-9_-]+$/.test(plan.agentId) || !plan.assistantMarker || !Array.isArray(plan.files) || !plan.files.length) fail('INVALID_DOWNLOAD_PLAN');
   for (const file of plan.files) {
     if (typeof file.path !== 'string' || !file.path || file.path.startsWith('/') || /[\\\0?#:]/.test(file.path) || file.path.split('/').some(p => !p || p === '.' || p === '..') || !file.label || !/^[a-f0-9]{64}$/.test(file.sha256)) fail('INVALID_DOWNLOAD_FILE');
@@ -40,7 +46,7 @@ function validatePlan(plan) {
 }
 
 export async function verifyDownloads(page, context, plan, progress = () => {}) {
-  validatePlan(plan);
+  validateDownloadPlan(plan);
   const rows = [];
   await page.goto(plan.workspaceUrl, { waitUntil: 'domcontentloaded' });
   for (const file of plan.files) {
@@ -102,11 +108,12 @@ export async function verifyDownloads(page, context, plan, progress = () => {}) 
   return rows;
 }
 
-export async function verifyUnpairedIsolation(browser, workspaceUrl) {
+export async function verifyUnpairedIsolation(browser, workspaceUrl, target = 'paseo') {
+  validateWorkspaceUrl(workspaceUrl, target);
   const { context, page } = await freshPage(browser);
   try {
     await page.goto(workspaceUrl, { waitUntil: 'domcontentloaded' });
-    await page.getByText('Welcome to Paseo', { exact: true }).waitFor();
+    await page.getByTestId('welcome-paste-pairing-link').waitFor();
     const result = {
       welcomeVisible: true,
       assistantMessages: await page.getByTestId('assistant-message').count(),
@@ -120,7 +127,7 @@ export async function verifyUnpairedIsolation(browser, workspaceUrl) {
 
 async function main() {
   const plan = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
-  validatePlan(plan);
+  validateDownloadPlan(plan);
   const report = { ok: false, rows: [], noHeaderInjection: true, noSshForward: true };
   const save = () => { if (plan.reportFile) fs.writeFileSync(plan.reportFile, JSON.stringify(report, null, 2) + '\n'); };
   let browser, context;
@@ -128,10 +135,10 @@ async function main() {
     browser = await launchBrowser();
     const fresh = await freshPage(browser); context = fresh.context;
     const pair = JSON.parse(fs.readFileSync(plan.privatePairFile, 'utf8'));
-    await pairBrowser(fresh.page, pair.pairUrl);
+    await pairBrowser(fresh.page, pair.pairUrl, plan.target);
     report.paired = true;
     report.rows = await verifyDownloads(fresh.page, context, plan, result => { Object.assign(report, result); save(); });
-    report.unpairedIsolation = await verifyUnpairedIsolation(browser, plan.workspaceUrl);
+    report.unpairedIsolation = await verifyUnpairedIsolation(browser, plan.workspaceUrl, plan.target);
     report.ok = true;
   } catch (error) {
     Object.assign(report, safeFailure(error));

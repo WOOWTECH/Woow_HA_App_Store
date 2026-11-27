@@ -11,6 +11,7 @@ export function normalizeRequest(request) {
     result.provider = alias(request.engine);
   } else if (request.provider !== undefined) result.provider = alias(request.provider);
   if (result.provider !== undefined && !['claude', 'codex', 'pi'].includes(result.provider)) throw new RuntimeError('INVALID_PROVIDER');
+  if (request.action === 'verify' && request.providers !== undefined && (!Array.isArray(request.providers) || request.providers.length === 0 || new Set(request.providers.map(alias)).size !== request.providers.length || request.providers.some(provider => !['claude', 'codex', 'pi'].includes(alias(provider))))) throw new RuntimeError('INVALID_PROVIDER');
   if (request.action === 'verify' && result.provider && request.providers !== undefined && (!Array.isArray(request.providers) || request.providers.length !== 1 || alias(request.providers[0]) !== result.provider)) throw new RuntimeError('PROVIDER_SELECTION_CONFLICT');
   if (request.action === 'verify' && request.model !== undefined) {
     if (!result.provider || typeof request.model !== 'string' || !request.model) throw new RuntimeError('INVALID_MODEL');
@@ -71,6 +72,6 @@ export async function handle(request) {
   } catch (error) {
     const code = error instanceof RuntimeError || /^[A-Z][A-Z0-9_]{0,63}$/.test(error?.code || '') ? error.code : 'PASEO_RUNTIME_FAILED';
     // Never include arbitrary subprocess/SDK error text: it may contain tokens.
-    return { ok: false, connector: 'paseo', error: { code, message: code === 'RUNTIME_MISSING' ? 'The pinned Paseo 0.11.2 runtime is missing or failed integrity checks.' : code } };
+    return { ok: false, connector: 'paseo', error: { code, message: code === 'RUNTIME_MISSING' ? 'The pinned Agent Connect runtime is missing or failed integrity checks.' : code } };
   }
 }

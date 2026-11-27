@@ -1,0 +1,9 @@
+{
+  "id": "better-paseo",
+  "name": "Better Paseo",
+  "description": "Every agent on one board across your phone, pad, and desktop, with a clearer, faster chat timeline.",
+  "icon": "assets/icon.png",
+  "requirements": {
+    "paseo": ">=0.14.0"
+  }
+}

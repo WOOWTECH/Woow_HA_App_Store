@@ -17,9 +17,14 @@ function privateDir(dir) {
  const s=assertSafePath(dir);
  if(!s?.isDirectory()||s.uid!==process.getuid()||(s.mode&0o777)!==0o700)fail('DAEMON_IDENTITY_UNSAFE');
 }
-function safeJson(file,{proof=false}={}) {
- const before=assertSafePath(file);
- if(!before?.isFile()||before.uid!==process.getuid()||before.nlink!==1||(before.mode&(proof?0o077:0o022))||before.size>65536)fail('DAEMON_IDENTITY_UNSAFE');
+// Upstream Paseo creates paseo.pid with open(path,'wx') and no mode, so under umask 002 (Ubuntu's
+// default for a user with a private group) it is 0664. Group write is harmless only because the
+// file's own directory is verified private first (0700, this user): no other account can reach the
+// file. Other-write still fails closed, and the proof files this plugin writes stay owner-only.
+function safeJson(file,{proof=false,privateParent=false}={}) {
+ if(privateParent)privateDir(path.dirname(file));
+ const before=assertSafePath(file),forbidden=proof?0o077:privateParent?0o002:0o022;
+ if(!before?.isFile()||before.uid!==process.getuid()||before.nlink!==1||(before.mode&forbidden)||before.size>65536)fail('DAEMON_IDENTITY_UNSAFE');
  const fd=fs.openSync(file,fs.constants.O_RDONLY|fs.constants.O_NOFOLLOW|fs.constants.O_NONBLOCK);
  try {
   const opened=fs.fstatSync(fd);
@@ -30,7 +35,7 @@ function safeJson(file,{proof=false}={}) {
   const after=fs.fstatSync(fd),current=assertSafePath(file);
   if(!sameInode(opened,current)||opened.size!==after.size||opened.mtimeMs!==after.mtimeMs||opened.ctimeMs!==after.ctimeMs)fail('DAEMON_STATE_CHANGED');
   let value;try{value=JSON.parse(text);}catch{fail('DAEMON_IDENTITY_UNSAFE');}
-  return{file,stat:after,text,value};
+  return{file,stat:after,text,value,rules:{proof,privateParent}};
  }finally{fs.closeSync(fd);}
 }
 function ownedHome(loc) {
@@ -47,12 +52,12 @@ function requireRuntimeLock(loc) {
  if(lock.pid!==process.pid||!lock.token||lock.identity!==processIdentity(process.pid))fail('DAEMON_RECOVERY_NOT_LOCKED');
 }
 function pidRecord(loc,instance) {
- const record=safeJson(pidPath(loc));const p=record.value;
+ const record=safeJson(pidPath(loc),{privateParent:true});const p=record.value;
  if(!Number.isInteger(p.pid)||p.pid<=1||typeof p.startedAt!=='string'||!p.startedAt||p.uid!==process.getuid()||p.heartbeat!==true||p.piPaseoProtocol!==PID_TRANSITION_PROTOCOL||!sameLock(p,instance))fail('DAEMON_NOT_OWNED');
  return record;
 }
 function unchanged(record) {
- const now=safeJson(record.file);
+ const now=safeJson(record.file,record.rules); // re-read under the rules of the first read
  if(!sameInode(now.stat,record.stat)||now.text!==record.text)fail('DAEMON_STATE_CHANGED');
  return now;
 }
@@ -97,9 +102,10 @@ export function assertNoHomeSupervisor(loc) {
  }
 }
 
-export function createDaemonIdentity({readBirth=readLinuxBirth,assertNoSupervisor=assertNoHomeSupervisor}={}) {
+// `platform` lets tests run the darwin/other path in a Linux process; it defaults to the real one.
+export function createDaemonIdentity({readBirth=readLinuxBirth,assertNoSupervisor=assertNoHomeSupervisor,platform=process.platform}={}) {
  function observe(loc,instance,verifyOwnership) {
-  if(process.platform!=='linux')return;
+  if(platform!=='linux')return;
   const installationId=ownedHome(loc);requireRuntimeLock(loc);
   if(!runtimeReady(loc))fail('DAEMON_TRANSITION_UNVERIFIED');
   const record=pidRecord(loc,instance),before=readBirth(instance.pid);
@@ -110,11 +116,11 @@ export function createDaemonIdentity({readBirth=readLinuxBirth,assertNoSuperviso
   return {schema:1,installationId,home:loc.paseoHome,lock:{pid:instance.pid,startedAt:instance.startedAt,bootId:instance.bootId,uid:instance.uid,piPaseoProtocol:instance.piPaseoProtocol},process:before,pidFile:{dev:record.stat.dev,ino:record.stat.ino}};
  }
  async function observeOwnedInstance(loc,instance,verifyOwnership) {
-  if(process.platform!=='linux')return null;
+  if(platform!=='linux')return null;
   return withPidTransition(loc.paseoHome,()=>observe(loc,instance,verifyOwnership));
  }
  async function rememberOwnedInstance(loc,instance,verifyOwnership,expected) {
-  if(process.platform!=='linux')return;
+  if(platform!=='linux')return;
   return withPidTransition(loc.paseoHome,()=>{
   const receipt=observe(loc,instance,verifyOwnership);
   if(!expected||!sameBirth(receipt.process,expected.process)||!sameLock(receipt.lock,expected.lock)||!sameInode(receipt.pidFile,expected.pidFile))fail('DAEMON_STATE_CHANGED');
@@ -124,7 +130,7 @@ export function createDaemonIdentity({readBirth=readLinuxBirth,assertNoSuperviso
   });
  }
  async function recoverStaleInstance(loc,instance) {
-  if(process.platform!=='linux')fail('DAEMON_NOT_OWNED');
+  if(platform!=='linux')fail('DAEMON_NOT_OWNED');
   return withPidTransition(loc.paseoHome,()=>{
   const installationId=ownedHome(loc);requireRuntimeLock(loc);
   if(!runtimeReady(loc))fail('DAEMON_TRANSITION_UNVERIFIED');
@@ -151,7 +157,7 @@ export function createDaemonIdentity({readBirth=readLinuxBirth,assertNoSuperviso
    fs.unlinkSync(quarantine); // only our unique quarantine link; data remains at original path
   };
   try {
-   const moved=safeJson(quarantine);
+   const moved=safeJson(quarantine,{privateParent:true}); // the PID file, renamed inside paseoHome
    if(!sameInode(moved.stat,record.stat)||moved.text!==record.text)fail('DAEMON_STATE_CHANGED');
    if(assertSafePath(record.file))fail('DAEMON_STATE_CHANGED');
    assertNoSupervisor(loc);

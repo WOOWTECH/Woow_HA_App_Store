@@ -6,8 +6,11 @@ import path from 'node:path';
 import { validatePairUrl, safeFailure, BrowserCheckError } from './browser-support.mjs';
 import { validatePlan, readPrivatePlan, waitForNewAssistant } from './browser-acceptance.mjs';
 import { inspect as remoteInspect } from './inspect-command.mjs';
+import { validateDownloadPlan } from './browser-downloads.mjs';
 
-const pairUrl = 'https://app.paseo.sh/#test-fixture-not-a-real-pairing';
+const fixturePair = (origin = 'https://app.paseo.sh', relay = 'relay.paseo.sh:443', extra = { minimumSecurityMode: 'protected' }) =>
+  `${origin}/#offer=${Buffer.from(JSON.stringify({ v: 2, serverId: 'synthetic-test-server', daemonPublicKeyB64: 'synthetic-not-a-real-key', relay: { endpoint: relay, useTls: true }, ...extra })).toString('base64url')}`;
+const pairUrl = fixturePair();
 const plan = () => ({ pairUrl, workspace: '/workspace', allowModelCalls: true, providers: ['claude', 'codex', 'pi'].map(id => ({ id, models: [{ id: 'model-one', label: 'Model one' }, { id: 'model-two', label: 'Model two' }] })) });
 
 test('pair-only mode cannot implicitly enable models and full mode requires explicit authorization', () => {
@@ -40,8 +43,43 @@ test('pair URL rejects origin changes and userinfo without disclosing its fragme
   assert.equal(validatePairUrl(pairUrl), pairUrl);
   assert.throws(() => validatePairUrl('https://other.invalid/#sensitive-fragment'), { code: 'INVALID_PAIR_URL' });
   assert.throws(() => validatePairUrl('https://user:secret@app.paseo.sh/#sensitive-fragment'), { code: 'INVALID_PAIR_URL' });
-  assert.doesNotMatch(JSON.stringify(safeFailure(new Error('Navigation failed at ' + pairUrl))), /test-fixture|https:/);
+  assert.doesNotMatch(JSON.stringify(safeFailure(new Error('Navigation failed at ' + pairUrl))), /synthetic|https:|offer=/);
   assert.equal(safeFailure(new BrowserCheckError('CONTROL_NOT_FOUND')).error.code, 'CONTROL_NOT_FOUND');
+});
+
+test('a branded browser plan requires its explicit matching target and relay', () => {
+  for (const [target, origin, relay] of [
+    ['woowtech', 'https://smart.woowtech.io', 'relay.woowtech.io:443'],
+    ['apporo', 'https://smart.apporo.ai', 'relay.apporo.ai:443'],
+  ]) {
+    const url = fixturePair(origin, relay, {});
+    assert.equal(validatePlan({ ...plan(), target, pairUrl: url }).pairUrl, url);
+    assert.equal(validatePairUrl(url, target), url);
+    assert.throws(() => validatePairUrl(url), { code: 'INVALID_PAIR_URL' });
+    assert.throws(() => validatePairUrl(fixturePair(origin, 'relay.paseo.sh:443', {}), target), { code: 'INVALID_PAIR_URL' });
+    assert.throws(() => validatePairUrl(fixturePair(origin, relay), target), { code: 'INVALID_PAIR_URL' });
+  }
+  assert.throws(() => validatePlan({ ...plan(), target: 'other' }), { code: 'INVALID_BROWSER_TARGET' });
+});
+
+test('browser pairing rejects unrelated paths, queries, non-V2 and non-TLS offers', () => {
+  for (const url of [
+    pairUrl.replace('/#', '/unrelated#'), pairUrl.replace('/#', '/?extra=1#'),
+    'https://app.paseo.sh/#test-fixture-not-a-real-pairing',
+    fixturePair('https://app.paseo.sh', 'relay.paseo.sh:443', { v: 1 }),
+    fixturePair('https://app.paseo.sh', 'relay.paseo.sh:443', { relay: { endpoint: 'relay.paseo.sh:443', useTls: false } }),
+  ]) assert.throws(() => validatePairUrl(url), { code: 'INVALID_PAIR_URL' });
+});
+
+test('download plans bind workspace transport to the explicitly selected client', () => {
+  const base = { agentId: 'synthetic-agent', assistantMarker: 'synthetic-marker', files: [{ path: 'proof.txt', label: 'Proof', sha256: '0'.repeat(64) }] };
+  for (const [target, origin] of [['paseo', 'https://app.paseo.sh'], ['woowtech', 'https://smart.woowtech.io'], ['apporo', 'https://smart.apporo.ai']]) {
+    const value = { ...base, target, workspaceUrl: `${origin}/h/synthetic-host/workspace/synthetic-workspace` };
+    assert.doesNotThrow(() => validateDownloadPlan(value));
+    assert.throws(() => validateDownloadPlan({ ...value, workspaceUrl: 'https://other.invalid/h/host/workspace/workspace' }), { code: 'INVALID_WORKSPACE_URL' });
+    assert.throws(() => validateDownloadPlan({ ...value, workspaceUrl: value.workspaceUrl + '?offer=secret' }), { code: 'INVALID_WORKSPACE_URL' });
+    if (target !== 'paseo') assert.throws(() => validateDownloadPlan({ ...value, target: undefined }), { code: 'INVALID_WORKSPACE_URL' });
+  }
 });
 
 test('pairing plan must be private and outside the checkout', t => {

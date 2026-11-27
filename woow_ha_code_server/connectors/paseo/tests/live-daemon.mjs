@@ -1,10 +1,12 @@
 // Explicit integration test against a prebuilt runtime. Uses a fresh temporary
-// home and no provider credentials, opens only loopback, and cleans up its daemon.
+// home and no provider credentials; binds loopback, uses its selected relay,
+// and cleans up its daemon.
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import assert from 'node:assert/strict';
 import { handle } from '../index.mjs';
+import { PASEO_VERSION } from '../src/runtime-layout.mjs';
 import { readState, updateState } from '../src/state.mjs';
 
 if (!process.env.WOOW_PASEO_RUNTIME_DIR) throw new Error('Set WOOW_PASEO_RUNTIME_DIR to a prebuilt pinned runtime.');
@@ -47,7 +49,7 @@ try {
   assert.equal((await handle({ action: 'restore' })).restored, false);
   updateState({ desiredEnabled: true });
   assert.equal((await handle({ action: 'restore' })).daemon.reachable, true);
-  process.stdout.write(JSON.stringify({ passed: true, daemonVersion: '0.11.2', concurrentSingleDaemon: true, pairingProduced: true, statePrivate: true, healthyRestoreReadOnly: true, stoppedRestoreRespected: true, enabledRestoreWorks: true, realModelVerified: false }) + '\n');
+  process.stdout.write(JSON.stringify({ passed: true, daemonVersion: PASEO_VERSION, concurrentSingleDaemon: true, pairingProduced: true, statePrivate: true, healthyRestoreReadOnly: true, stoppedRestoreRespected: true, enabledRestoreWorks: true, realModelVerified: false }) + '\n');
 } finally {
   const stopped = await handle({ action: 'stop' });
   if (!stopped.ok || stopped.daemon.running) throw new Error('LIVE_DAEMON_CLEANUP_FAILED: ' + JSON.stringify(stopped.error || {}));

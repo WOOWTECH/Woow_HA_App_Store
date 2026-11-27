@@ -51,16 +51,28 @@ init-woow（新）  →  init-code-server（上游）  →  code-server（上游
 
 1. HA → Settings → Add-ons → Add-on Store → ⋮ → Repositories → 加入 `https://github.com/WOOWTECH/Woow_ha_code_server_add_on`。
 2. 安裝 **Woow Code Server**，啟動它。
-3. 從側邊欄打開 Web UI。
+3. 用 Home Assistant 的 HTTPS 網址，從側邊欄打開 Web UI；用區網的 HTTP 網址開，ACP 聊天畫面會載入不了。
 4. 開一個 terminal 跑 `pi login`——這個 add-on 的 pi 在你做這件事之前是沒有任何憑證的。
 
 完整檢查清單：[`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md)。
 
 ## ACP 聊天 webview
 
-已經對著一台實際在跑的 Home Assistant 完整驗證過：HA 的 ingress 來源是瀏覽器信任的安全 context，ingress 的路徑前綴不會干擾 webview 的 ServiceWorker 註冊（code-server 本來就用相對路徑產生每一個資源網址），而且一個內建的 webview（Markdown 預覽）透過真正的 ingress 網址渲染成功、ServiceWorker 也正確啟用了。兩分鐘的手動驗證步驟見 [`tests/smoke-acp-webview.md`](tests/smoke-acp-webview.md)；如果你的環境萬一表現不一樣，F1（永遠可用的 terminal 任務）/ F2（選用直連埠）備援階梯見 [`DOCS.md`](DOCS.md)。
+**請用 Home Assistant 的 HTTPS 網址開啟。** 如果改用 `http://` 網址開（例如區網的 `http://<HA-IP>:8123`），編輯器照樣會載入，ACP 側欄甚至會顯示代理已連線，但聊天畫面會一直空白，也不會出現任何錯誤或提示。這是瀏覽器的安全限制，不是 add-on 故障。
 
-**這一段之所以特別寫出來**：VS Code 的 webview 是透過 ServiceWorker 送達內容的，而瀏覽器只允許在「安全」的 context（瀏覽器信任的憑證，或 `localhost`）裡註冊 ServiceWorker——使用者在頁面層級點過的自簽憑證「繼續前往」不算數，SW 那層還是會擋。這正是姊妹的 podman package 至今聊天面板在純 HTTP 區網下打不開的原因。HA 這邊因為 Supervisor ingress 本身就跑在瀏覽器信任的 HTTPS 來源後面，這個限制天生就滿足；上面那句「已完整驗證」指的正是這件事真的被測過，不是假設。
+**怎麼確認：** 在空白的聊天畫面上打開瀏覽器的開發者工具（F12），切到 Console，輸入 `window.isSecureContext`。結果是 `false`，就是這個原因。
+
+**怎麼辦**，照這個順序：
+
+1. 改用 Home Assistant 的 HTTPS 網址（或 `localhost`）開啟，再從側邊欄重新打開這個 add-on。
+2. 改在終端機裡用 `pi`。終端機不受影響（備援 F1）。
+3. 使用選用的直連埠：設定 `direct_password`，並在前面放一個有受信任憑證的 tunnel（備援 F2）。
+
+F1、F2 的步驟在 add-on 的「**說明文件**」分頁，「The ACP chat webview — status and fallback ladder」一節（[`DOCS.md`](DOCS.md#the-acp-chat-webview--status-and-fallback-ladder)）。
+
+原因：聊天畫面是 VS Code 的 webview，而瀏覽器只在安全連線下讓 webview 載入（註冊它的 ServiceWorker）。安全連線指的是瀏覽器信任憑證的 HTTPS，或 `localhost`。`http://` 網址一律不算；自簽憑證就算在頁面上點過「繼續前往」也不算。
+
+用 HTTPS 網址開 Home Assistant 時，這已經對著一台實際在跑的 Home Assistant 完整驗證過：ingress 的路徑前綴不會干擾 webview 的 ServiceWorker 註冊（code-server 用相對路徑產生每一個資源網址），而且一個內建的 webview（Markdown 預覽）透過真正的 ingress 網址渲染成功、ServiceWorker 也正確啟用。兩分鐘的手動驗證步驟見 [`tests/smoke-acp-webview.md`](tests/smoke-acp-webview.md)。
 
 ## 目錄結構
 

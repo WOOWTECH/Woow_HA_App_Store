@@ -1,0 +1,2 @@
+# Preserve hash-pinned vendor bytes.
+/connectors/paseo/runtime/better-paseo/** -whitespace

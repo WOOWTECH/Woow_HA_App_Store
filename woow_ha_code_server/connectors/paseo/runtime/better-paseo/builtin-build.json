@@ -1,0 +1,12 @@
+{
+  "repository": "https://github.com/RoundRedDot/better-paseo",
+  "commit": "e9ac5216185988ce99574b3e2f04f178020204f1",
+  "version": "1.7.0",
+  "lockfileSha256": "2b41e1cfae5eb42a260c9abc94d373b690957c80d2bcea2df9cb30506fe46660",
+  "tasksChunkId": "09f2925ed07d663f",
+  "outputs": {
+    "index.client.ts": "ff5af560644c979e9a44a040053c54f4ec2c1eb70dfda286a3f8dc4401fc73f1",
+    "server/builtin.js": "a915ed83caacda0bb8da8ac9153521d15d72c99dd074cc290c54b1aa86316494",
+    "THIRD_PARTY_NOTICES.txt": "1d89a0c7fddb8b83545bb727b9c1bb9bac35f1bbc173bc01081bb591ffc2f1e6"
+  }
+}

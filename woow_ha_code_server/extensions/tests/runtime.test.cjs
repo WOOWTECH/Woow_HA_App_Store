@@ -69,6 +69,23 @@ test('configuration rejects credentials, untrusted fields, controls and relative
   assert.equal(validMessage({action:'start',fields:{command:'arbitrary'}}),false);
   assert.equal(validMessage({action:'connect',fields:{password:'x'}}),false);
 });
+test('Agent Connect keeps legacy saved URLs but only configures complete supported connection targets', () => {
+  for(const [target,webUrl] of [['paseo','https://app.paseo.sh/'],['woowtech','https://smart.woowtech.io/'],['apporo','https://smart.apporo.ai/']]) {
+    assert.deepEqual(configureFields('paseo',{workspace:'/workspace',hostName:'qa',target,webUrl}),{workspace:'/workspace',hostName:'qa',target,webUrl});
+    const config=settingsFrom({inspect:key=>({globalValue:key==='webUrl'?webUrl:undefined,workspaceValue:key==='target'?'untrusted':undefined})});
+    assert.equal(config.target,target);assert.equal(config.webUrl,webUrl);
+  }
+  assert.throws(()=>configureFields('paseo',{workspace:'/workspace',hostName:'qa',target:'apporo',webUrl:'https://app.paseo.sh/'}));
+  const legacy=settingsFrom({inspect:key=>({globalValue:key==='webUrl'?'https://legacy.example/paseo/':undefined})});
+  assert.equal(legacy.webUrl,'https://legacy.example/paseo/');assert.equal(legacy.target,'');
+  assert.throws(()=>configureFields('paseo',{workspace:'/workspace',hostName:'qa',webUrl:legacy.webUrl}));
+});
+test('Agent Connect distinguishes selected and active targets and only reports pending configuration explicitly', () => {
+  const result=publicStatus({ok:true,phase:'running',selectedTarget:'apporo',activeTarget:'paseo',configurationPending:true},'paseo');
+  assert.equal(result.selectedTarget,'Apporo Smart');assert.equal(result.activeTarget,'Paseo official');assert.equal(result.configurationPending,true);
+  const unknown=publicStatus({ok:true,phase:'running'},'paseo',{target:'apporo'});
+  assert.equal(unknown.selectedTarget,'Apporo Smart');assert.equal(unknown.activeTarget,'');assert.equal(unknown.configurationPending,false);
+});
 test('public status cannot mistake online for verified, strips secrets and nested credentials', () => {
   const source={ok:true,phase:'online',host:{name:'test',token:'never-visible'},token:'never-visible',pairingUrl:'https://app.paseo.sh/#private',engines:[{id:'claude',installed:true,authenticated:false,password:'never-visible'}]};
   const state=publicStatus(source,'omnigent',{server:'https://example.org/?token=never-visible',password:'never-visible'});

@@ -1,4 +1,5 @@
 import { pathToFileURL } from 'node:url';
+import { connectionTarget, targetPairUrl } from '../src/connection-targets.mjs';
 
 export class BrowserCheckError extends Error {
   constructor(code) { super(code); this.code = code; }
@@ -33,15 +34,19 @@ export async function probeOfficial(page) {
   return { url: 'https://app.paseo.sh/', httpStatus: response?.status() || null, ...result };
 }
 
-export function validatePairUrl(value) {
-  let url;
-  try { url = new URL(value); } catch { throw new BrowserCheckError('INVALID_PAIR_URL'); }
-  if (url.origin !== 'https://app.paseo.sh' || url.username || url.password || !url.hash || url.search) throw new BrowserCheckError('INVALID_PAIR_URL');
-  return url.href;
+export function browserTarget(id = 'paseo') {
+  try { return connectionTarget(id); }
+  catch { throw new BrowserCheckError('INVALID_BROWSER_TARGET'); }
 }
 
-export async function pairBrowser(page, pairUrl) {
-  const url = validatePairUrl(pairUrl);
+export function validatePairUrl(value, target = 'paseo') {
+  browserTarget(target);
+  try { return targetPairUrl(value, target); }
+  catch { throw new BrowserCheckError('INVALID_PAIR_URL'); }
+}
+
+export async function pairBrowser(page, pairUrl, target = 'paseo') {
+  const url = validatePairUrl(pairUrl, target);
   try { await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45000 }); }
   catch { throw new BrowserCheckError('PAIRING_NAVIGATION_FAILED'); }
   await page.getByText('Connect to this host?', { exact: true }).waitFor({ timeout: 30000 });
@@ -60,9 +65,20 @@ export async function pairBrowser(page, pairUrl) {
 
 export async function openProjectInBrowser(page, workspace) {
   await page.getByTestId('sidebar-add-project').click();
-  await page.getByTestId('add-project-flow-method-directory-search').click();
-  await page.getByTestId('add-project-flow-input').fill(workspace);
-  await page.getByTestId(`add-project-flow-path-${encodeURIComponent(workspace)}`).click({ timeout: 45000 });
+  const flow = page.getByTestId('add-project-flow').filter({ visible: true });
+  await flow.waitFor();
+  const existing = flow.getByTestId('add-project-flow-tab-existing');
+  // Official 0.17.5 uses tabs; the 0.17.4 Smart clients use the directory picker.
+  if (await existing.isVisible()) {
+    await existing.click();
+    await flow.getByTestId('add-project-flow-input').fill(workspace);
+    await flow.getByTestId('add-project-flow-submit').click();
+  } else {
+    await flow.getByTestId('add-project-flow-method-directory-search').click();
+    await flow.getByTestId('add-project-flow-input').fill(workspace);
+    await flow.getByTestId(`add-project-flow-path-${encodeURIComponent(workspace)}`).click({ timeout: 45000 });
+  }
+  await flow.waitFor({ state: 'hidden', timeout: 45000 });
   await page.waitForURL(url => url.pathname === '/new' && url.searchParams.get('dir') === workspace, { timeout: 30000 });
   await page.getByRole('textbox', { name: 'Message agent...' }).first().waitFor();
   return page.url();

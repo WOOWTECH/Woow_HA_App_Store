@@ -1,15 +1,23 @@
 'use strict';
 const { createRuntime, settingsFrom, configureFields, validMessage, publicStatus, modelItems, safeText, webUrl, publicCode } = require('./runtime.cjs');
 const { html } = require('./ui.cjs');
+const { WEB_CLIENTS, pairingUrlForWebApp } = require('./web-clients.cjs');
 
 function createExtension(connector, dependencies = {}) {
   const vscode = dependencies.vscode || require('vscode');
-  const name = connector === 'paseo' ? 'Paseo' : 'Omnigent';
+  const name = connector === 'paseo' ? 'Agent Connect' : 'Omnigent';
+  const displayName = connector === 'paseo' ? name : `WOOW ${name}`;
   const prefix = `woow.${connector}`;
   let panel, output, emitter, busy = false, lastResult = { ok: true, phase: 'unknown' }, lastModels = [];
+  let confirmedConfigurationPending;
+  function rememberPending(result) {
+    const data = result?.data ?? result;
+    if (connector === 'paseo' && result?.ok === true && typeof data?.configurationPending === 'boolean') confirmedConfigurationPending = data.configurationPending;
+  }
   function configuration() { return settingsFrom(vscode.workspace.getConfiguration(prefix)); }
   function state() {
     const result = publicStatus(lastResult, connector, configuration());
+    if (connector === 'paseo' && confirmedConfigurationPending !== undefined) result.configurationPending = confirmedConfigurationPending;
     if (!result.models.length) result.models = lastModels.map(m => ({ id: safeText(m.id), name: safeText(m.name), agent: safeText(m.agent) }));
     return result;
   }
@@ -30,6 +38,7 @@ function createExtension(connector, dependencies = {}) {
   }
   async function refresh() {
     lastResult = await invoke('status');
+    rememberPending(lastResult);
     render();
     return lastResult;
   }
@@ -41,10 +50,15 @@ function createExtension(connector, dependencies = {}) {
       if (workspace === undefined) return;
       const hostName = await vscode.window.showInputBox({ title: `${name}: host name`, value: existing.hostName || 'code-server', ignoreFocusOut: true });
       if (hostName === undefined) return;
-      const key = connector === 'omnigent' ? 'server' : 'webUrl';
-      const url = await vscode.window.showInputBox({ title: `${name}: ${connector === 'omnigent' ? 'server URL' : 'Web URL'}`, value: existing[key], ignoreFocusOut: true });
-      if (url === undefined) return;
-      fields = { workspace, hostName, [key]: url };
+      if (connector === 'paseo') {
+        const selected = await vscode.window.showQuickPick(WEB_CLIENTS.map(client => ({label:client.label,description:client.url,target:client.id,url:client.url})), {title:'Agent Connect: choose a Web app',ignoreFocusOut:true});
+        if (!selected) return;
+        fields = { workspace, hostName, target: selected.target, webUrl: selected.url };
+      } else {
+        const url = await vscode.window.showInputBox({ title: `${name}: server URL`, value: existing.server, ignoreFocusOut: true });
+        if (url === undefined) return;
+        fields = { workspace, hostName, server: url };
+      }
       if (connector === 'omnigent') {
         const browserUrl = await vscode.window.showInputBox({ title: 'Omnigent: browser Web URL (optional)', prompt: 'URL your browser can reach. Leave empty to open the server URL. No credentials, query, or fragment.', value: existing.webUrl, ignoreFocusOut: true });
         if (browserUrl === undefined) return;
@@ -54,6 +68,7 @@ function createExtension(connector, dependencies = {}) {
     const normalized = configureFields(connector, fields);
     const { webUrl: localWebUrl, ...runtimeFields } = normalized;
     const result = await invoke('configure', runtimeFields);
+    rememberPending(result);
     if (result.ok) {
       const config = vscode.workspace.getConfiguration(prefix);
       for (const [key, value] of Object.entries(normalized)) await config.update(key, value, vscode.ConfigurationTarget.Global);
@@ -144,11 +159,9 @@ function createExtension(connector, dependencies = {}) {
       const response = await invoke('pair');
       if (!response.ok) return response;
       const data = response.data ?? response;
-      url = webUrl(data.url ?? data.pairingUrl ?? data.pairUrl ?? data.pairing?.url ?? data.offer?.url);
-      // Pairing carries authorization. Only the explicit configured Web origin or
-      // official Paseo Web may receive it; never post this URL to a webview or log.
-      const configured = webUrl(configuration().webUrl, { server: true });
-      if (!url || !['https://app.paseo.sh', ...(configured ? [new URL(configured).origin] : [])].includes(new URL(url).origin)) return { ok: false, error: { code: 'INVALID_PAIRING_URL' } };
+      url = pairingUrlForWebApp(data.url ?? data.pairingUrl ?? data.pairUrl ?? data.pairing?.url ?? data.offer?.url, configuration().target);
+      // A private offer goes only to the selected app, never to a webview/log.
+      if (!url) return { ok: false, error: { code: 'INVALID_PAIRING_URL' } };
     } else {
       const config = configuration();
       url = webUrl(connector === 'omnigent' ? config.webUrl || config.server : config.webUrl, { server: true });
@@ -157,6 +170,15 @@ function createExtension(connector, dependencies = {}) {
     const opened = await vscode.env.openExternal(vscode.Uri.parse(url));
     url = '';
     return opened ? { ok: true } : { ok: false, error: { code: 'BROWSER_OPEN_FAILED' } };
+  }
+  async function selectWeb() {
+    if (connector !== 'paseo') return;
+    const selected = await vscode.window.showQuickPick([
+      ...WEB_CLIENTS.map(client => ({ label: client.label, description: client.url, url: client.url, target: client.id })),
+    ], { title: 'Agent Connect: choose a Web app', ignoreFocusOut: true });
+    if (!selected) return;
+    const current = configuration();
+    return configure({ workspace: current.workspace, hostName: current.hostName, target: selected.target, webUrl: selected.url });
   }
   async function perform(action, fields) {
     if (!vscode.workspace.isTrusted) {
@@ -190,6 +212,7 @@ function createExtension(connector, dependencies = {}) {
       }
       else if (action === 'pair') result = await openWeb(true);
       else if (action === 'openWeb') result = await openWeb(false);
+      else if (action === 'selectWeb') result = await selectWeb();
       else if (action === 'models') {
         result = await invoke('models');
         if (result.ok) {
@@ -201,6 +224,7 @@ function createExtension(connector, dependencies = {}) {
         }
       } else if (['start', 'stop', 'restore', 'disconnect'].includes(action)) result = await invoke(action);
       else throw new Error('Unsupported action.');
+      rememberPending(result);
       if (result && action !== 'status') await refresh();
       if (result?.ok === false && action !== 'status') notify(action === 'refreshMcp' ? refreshNotice(result) : `${name}: ${publicCode(result.error?.code)}. Check configuration and runtime availability.`, true);
       return result;
@@ -220,21 +244,21 @@ function createExtension(connector, dependencies = {}) {
   }
   function open() {
     if (panel) { panel.reveal(); return; }
-    panel = vscode.window.createWebviewPanel(`${prefix}.connection`, `WOOW ${name}`, vscode.ViewColumn.One, { enableScripts: true, localResourceRoots: [], retainContextWhenHidden: false });
+    panel = vscode.window.createWebviewPanel(`${prefix}.connection`, displayName, vscode.ViewColumn.One, { enableScripts: true, localResourceRoots: [], retainContextWhenHidden: false });
     panel.webview.html = html(connector);
     panel.webview.onDidReceiveMessage(message => {
       if (!validMessage(message)) return;
-      if (connector !== 'paseo' && message.action === 'pair') return;
+      if (connector !== 'paseo' && ['pair', 'selectWeb'].includes(message.action)) return;
       if (connector !== 'omnigent' && ['connect', 'disconnect'].includes(message.action)) return;
       void perform(message.action, message.fields);
     });
     panel.onDidDispose(() => { panel = undefined; });
   }
   function activate(context) {
-    output = vscode.window.createOutputChannel(`WOOW ${name}`);
+    output = vscode.window.createOutputChannel(displayName);
     emitter = new vscode.EventEmitter();
     context.subscriptions.push(output, emitter);
-    const actions = ['status', 'configure', 'start', 'stop', 'restore', 'models', 'verify', 'refreshMcp', 'openWeb', 'settings', ...(connector === 'paseo' ? ['pair'] : ['connect', 'disconnect'])];
+    const actions = ['status', 'configure', 'start', 'stop', 'restore', 'models', 'verify', 'refreshMcp', 'openWeb', 'settings', ...(connector === 'paseo' ? ['pair', 'selectWeb'] : ['connect', 'disconnect'])];
     context.subscriptions.push(vscode.commands.registerCommand(`${prefix}.open`, open));
     for (const action of actions) context.subscriptions.push(vscode.commands.registerCommand(`${prefix}.${action}`, () => perform(action)));
     const tree = {

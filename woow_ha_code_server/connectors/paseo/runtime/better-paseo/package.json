@@ -1,0 +1,39 @@
+{
+  "name": "better-paseo",
+  "version": "1.7.0",
+  "private": true,
+  "description": "Paseo plugin: every agent on one board across your phone, pad, and desktop, with a clearer, faster chat timeline",
+  "license": "MIT",
+  "scripts": {
+    "typecheck": "npm run typecheck:better-paseo --prefix ..",
+    "test": "npm run test --prefix .. -- better-paseo",
+    "check:hermes": "node scripts/check-hermes.mjs && node scripts/check-hermes.mjs --built",
+    "build:client": "node scripts/build-client.mjs",
+    "build:builtin": "node scripts/build-builtin.mjs"
+  },
+  "dependencies": {
+    "@shikijs/core": "^4.0.2",
+    "@shikijs/engine-javascript": "^4.0.2",
+    "@shikijs/langs": "^4.0.2",
+    "@shikijs/themes": "^4.0.2",
+    "esbuild": "^0.28.2",
+    "remend": "1.4.0"
+  },
+  "devDependencies": {
+    "@getpaseo/client": "0.16.0",
+    "@getpaseo/plugin": "0.16.0",
+    "@tanstack/react-query": "^5.90.11",
+    "@types/node": "^22.15.3",
+    "@types/react": "~19.2.0",
+    "@types/react-test-renderer": "19.1.0",
+    "react": "19.2.3",
+    "react-native": "0.86.3",
+    "react-test-renderer": "19.2.3",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.7",
+    "yoga-layout": "3.2.1",
+    "zod": "^4.4.3"
+  },
+  "packageManager": "npm@11.16.0",
+  "build": 202611252225
+}

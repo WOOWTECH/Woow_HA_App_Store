@@ -7,7 +7,7 @@ export async function build() {
     const out = path.join(root, connector, 'out');
     await rm(out, { recursive: true, force: true });
     await mkdir(out, { recursive: true });
-    for (const name of ['runtime.cjs', 'ui.cjs', 'extension.cjs']) await cp(path.join(root, 'shared', name), path.join(out, name === 'extension.cjs' ? 'controller.cjs' : name));
+    for (const name of ['runtime.cjs', 'web-clients.cjs', 'ui.cjs', 'extension.cjs']) await cp(path.join(root, 'shared', name), path.join(out, name === 'extension.cjs' ? 'controller.cjs' : name));
     await writeFile(path.join(out, 'extension.cjs'), `'use strict';\nmodule.exports = require('./controller.cjs').createExtension('${connector}');\n`);
   }
 }

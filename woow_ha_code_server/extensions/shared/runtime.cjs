@@ -2,6 +2,7 @@
 const { spawn } = require('node:child_process');
 const path = require('node:path');
 const { StringDecoder } = require('node:string_decoder');
+const { webClient } = require('./web-clients.cjs');
 const DEFAULT_RUNTIME = '/usr/local/bin/woow-connectors';
 const ACTIONS = new Set(['status', 'configure', 'start', 'stop', 'restore', 'models', 'verify', 'pair', 'connect', 'disconnect', 'refreshMcp']);
 const MAX_OUTPUT = 2 * 1024 * 1024;
@@ -34,11 +35,13 @@ function settingsFrom(configuration) {
     result[key] = entry?.globalValue ?? entry?.defaultValue ?? '';
   }
   result.runtimePath ||= DEFAULT_RUNTIME;
+  const selected = configuration.inspect('target')?.globalValue;
+  result.target = selected === undefined ? webClient(result.webUrl)?.id ?? '' : webClient(selected)?.id ?? '';
   return result;
 }
 function configureFields(connector, input) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error('Invalid configuration.');
-  const allowed = ['workspace', 'hostName', 'webUrl', ...(connector === 'omnigent' ? ['server'] : [])];
+  const allowed = ['workspace', 'hostName', 'webUrl', ...(connector === 'omnigent' ? ['server'] : ['target'])];
   if (Object.keys(input).some(key => !allowed.includes(key))) throw new Error('Unknown configuration field.');
   const result = {};
   for (const key of ['workspace', 'hostName']) {
@@ -55,11 +58,18 @@ function configureFields(connector, input) {
     result.webUrl = webUrl(input.webUrl, { server: true });
     if (!result.webUrl) throw new Error('Web URL must be an HTTP(S) URL without credentials, query, or fragment.');
   }
+  if (connector === 'paseo') {
+    const selected = webClient(input.target ?? result.webUrl);
+    if (!selected) throw new Error('Invalid connection target. Choose Paseo, Woowtech Smart or Apporo Smart.');
+    if (result.webUrl && result.webUrl !== selected.url) throw new Error('Invalid Web URL for the selected connection target.');
+    result.target = selected.id;
+    result.webUrl = selected.url;
+  }
   return result;
 }
 function validMessage(message) {
   if (!message || typeof message !== 'object' || Array.isArray(message) || Object.keys(message).some(k => !['action', 'fields'].includes(k))) return false;
-  if (!['status', 'configure', 'start', 'stop', 'restore', 'models', 'verify', 'pair', 'connect', 'disconnect', 'openWeb', 'settings', 'refreshMcp'].includes(message.action)) return false;
+  if (!['status', 'configure', 'start', 'stop', 'restore', 'models', 'verify', 'pair', 'connect', 'disconnect', 'openWeb', 'selectWeb', 'settings', 'refreshMcp'].includes(message.action)) return false;
   if (message.action === 'configure') return !!message.fields && typeof message.fields === 'object' && !Array.isArray(message.fields);
   return message.fields === undefined;
 }
@@ -161,7 +171,12 @@ function publicStatus(result, connector, configuration = {}) {
       version: safeText(item.version),
     }).slice(0, 20),
     models: modelItems(data).map(m => ({ id: safeText(m.id), name: safeText(m.name), agent: safeText(m.agent) })),
-    settings: Object.fromEntries(['workspace', 'hostName', 'webUrl', ...(connector === 'omnigent' ? ['server'] : [])].map(key => [key, safeText(['server', 'webUrl'].includes(key) ? webUrl(configuration[key], { server: true }) ?? '' : configuration[key], key === 'workspace' ? 4096 : 512)])),
+    ...(connector === 'paseo' ? {
+      selectedTarget: webClient(data.selectedTarget?.id ?? data.selectedTarget ?? configuration.target)?.label ?? '',
+      activeTarget: webClient(data.activeTarget?.id ?? data.activeTarget)?.label ?? '',
+      configurationPending: data.configurationPending === true,
+    } : {}),
+    settings: Object.fromEntries(['workspace', 'hostName', 'webUrl', ...(connector === 'omnigent' ? ['server'] : ['target'])].map(key => [key, safeText(['server', 'webUrl'].includes(key) ? webUrl(configuration[key], { server: true }) ?? '' : configuration[key], key === 'workspace' ? 4096 : 512)])),
   };
 }
 module.exports = { DEFAULT_RUNTIME, createRuntime, failure, publicCode, safeText, settingsFrom, configureFields, validMessage, webUrl, modelItems, publicStatus };
