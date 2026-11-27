@@ -3,7 +3,8 @@
 ## HA native Omnigent settings
 
 `patches/tests/omnigent-settings.test.mjs` requires `PI_WEB_ROOT` to point at a
-pristine, extracted official `@agegr/pi-web@0.12.0` npm package. It tests the
+source-built `@agegr/pi-web@0.12.0` package produced from the pinned tag, lock
+and Next 16.4.6 patch in `patches/pi-web-source/build-pins.json`. It tests the
 actual compiled client/SSR files and flight references, repeated application,
 and refusal of changed/ambiguous artifacts before any write.
 
@@ -147,8 +148,8 @@ PASEO_PLUGIN_TGZ="$(jq -r .agentConnect.archive cli-runtime/versions.json)" PI_W
   node --test tests/paseo-contract.test.mjs
 ```
 
-`PI_WEB_ROOT` is the official Pi Web package with the production dependencies
-the CI step installs. A Pi Web session that loaded the extension from a
+`PI_WEB_ROOT` is the pinned, source-built Pi Web package with the production
+dependencies the CI step retains. A Pi Web session that loaded the extension from a
 previous plugin root is outside this contract.
 
 The Omnigent system-reminder patch in `patches/omnigent-reminder-patch/` is a

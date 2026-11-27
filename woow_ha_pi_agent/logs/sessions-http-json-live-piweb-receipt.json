@@ -1,0 +1,40 @@
+{
+  "schema": "pi-web-live-http-acceptance-receipt/v1",
+  "recordedAt": "2026-11-27T00:39:47Z",
+  "scope": "C6 test-only helper validation; loopback only; no image build or host operation",
+  "piWeb": {
+    "version": "0.12.0",
+    "packageRoot": "/data/pi-agent/tmp/ha-rc4-contract.bQvAD7/package",
+    "packageJsonSha256": "4dfc2686f8fa407450b2dd4ebe4a86b14ccaabaa59f51af43dd99d858025064a",
+    "packageLockSha256": "6296fbaf1bceb846fdd4e082487f46552a9277b9beff2673bbe2e632226bf2d0",
+    "launchSource": "bin/pi-web.js",
+    "launchSourceSha256": "2b1c3a4bb3d0913e113cfa87c53f974b8a112ccb3f410ff4c04101f5111eaf0a",
+    "command": "node bin/pi-web.js --port 39263 --hostname 127.0.0.1 --no-open",
+    "runtimeCopy": "/data/pi-agent/tmp/rc6-sessions-http-real-piweb.PYCssx/runtime",
+    "runtimeCopyUses": "copied package .next and bin; node_modules symlinked to the recorded packageRoot",
+    "startupEvidence": "▲ Next.js 16.3.8; Local http://127.0.0.1:39263; Ready in 156ms",
+    "nodeVersion": "v22.23.3"
+  },
+  "next": {
+    "version": "16.3.8",
+    "resolved": "https://registry.npmjs.org/next/-/next-16.3.8.tgz",
+    "npmIntegrity": "sha512-U7QEZaTini6wKrb8A8hqLLqYQyCetegKjCpJOyxk642vWoMoU1x5PyZCJFvgYgiptA8xc5j/9xYlZFO7w9Sjmw==",
+    "installedPackageJsonSha256": "6da8fc4823b66b8f2906d150002618e3f3e0d2446ebf3823b2a2f7efe73a46a4"
+  },
+  "acceptance": {
+    "endpoint": "GET http://127.0.0.1:39263/api/sessions?force=1",
+    "responseStatus": 200,
+    "contentEncoding": "gzip",
+    "syntheticSessions": 24,
+    "ha": { "wireBytes": 824, "decodedJsonBytes": 23425, "fetchJson": true },
+    "k3s": { "wireBytes": 834, "decodedJsonBytes": 23425, "fetchJson": true },
+    "negativeProbes": {
+      "wireResponseOver1MiBRejected": true,
+      "gzipOutputOver4MiBRejected": true,
+      "abortedResponseStreamRejected": true,
+      "socketErrorRejected": true
+    }
+  },
+  "isStandInServer": false,
+  "boundary": "Server bound to 127.0.0.1; isolated PI_CODING_AGENT_DIR; request target is hard-constrained to http://127.0.0.1; synthetic session fixture directories removed by each helper."
+}

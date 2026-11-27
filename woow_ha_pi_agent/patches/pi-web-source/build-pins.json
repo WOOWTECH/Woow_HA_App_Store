@@ -1,0 +1,14 @@
+{
+  "package": "@agegr/pi-web",
+  "version": "0.12.0",
+  "repository": "https://github.com/agegr/pi-web.git",
+  "sourceRef": "v0.12.0",
+  "sourceCommit": "894e1a28dbeeb7b457c7712e495d975fe9927b89",
+  "nextVersion": "16.4.6",
+  "eslintConfigNextVersion": "16.4.6",
+  "patch": "patches/pi-web-source/pi-web-0.12.0-next-16.4.6.patch",
+  "patchSha256": "466999cfe128221091b604ec9b53b43324014a36a2b433ab9a40107fb37afae2",
+  "patchedPackageJsonSha256": "fda02b65d756f5c720cc97f2e47d3a65a7915820528a6314899b163de9092ff7",
+  "patchedPackageLockSha256": "c535839d22bd0e7d3310b59032a6e0fcfe17ff096400585cc2a1f9594e2c2872",
+  "auditLevel": "high"
+}

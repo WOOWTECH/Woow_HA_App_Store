@@ -1,3 +1,12 @@
+## 0.15.28
+
+- 內建 Agent Connect 0.1.27 與 Omnigent 0.3.42 正式版：官方 Paseo daemon 升到 0.17.5，Tasks 修正手機看板選取狀態、設定連續儲存與快捷鍵錄製。
+
+- Bundle the Agent Connect 0.1.27 GitHub Release archive (SHA-256 `aecf3bdff1505d3745ddc694f1e50fead50a0fc19b3fa2c82205174917143b6f`; adapter `22d3a604d0c3ddc9305afe07f9f68524bec906fddb16636c08ac2783b4442a6c`) and the Omnigent 0.3.42 GitHub Release archive (SHA-256 `7ffa8983e3bb2d9790f3122fd53db3e7adca4e24aed33f37aa4cc86bbeea5bb5`; combined patch `8d55d6824307023eed5ead7fa89080650d3981fae1746378db9a400fab8a9632`).
+- Upgrade the official Paseo daemon from 0.17.4 to 0.17.5 with the prebuilt runtime `0.17.5-r4-8664f2c3f8f5` and the peer-matched Better Paseo Tasks payload: the phone board keeps its selection, settings can be saved repeatedly and shortcut recording works.
+- Rebuild Pi Web 0.12.0 from its pinned upstream source with Next.js 16.4.6 (security remediation); session lists stay plain JSON under Next's own HTTP compression. The settings page and its Ingress bridge behave as in 0.15.27.
+- Retain the 0.15.27 bridge behavior: start/stop progress, a saved target awaiting application, and an explicit stop/start to change the running brand. Pairing, host identity, conversations and Tasks data stay in the existing Paseo data directory; installing this update restarts the container through Supervisor.
+
 ## 0.15.27
 
 - 設定頁 JavaScript 尚未載入時停用控制項，避免 Ingress 載入延遲期間可按卻沒有事件處理。

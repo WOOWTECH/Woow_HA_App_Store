@@ -27,6 +27,9 @@ manifest is rejected. It binds the original shared data directory's device
 and inode, requires distinct old/new image and version labels, and compares
 all file hashes, sizes, modes, uid/gid and mtimes. Labels and hook state are
 trusted CI inputs, not independent image provenance or authentication.
+Version labels accept stable `X.Y.Z` and numbered `X.Y.Z-rc.N` candidates
+(positive N, no leading zero, at most 32 characters). Both old and new labels
+use the same check; identical versions or identical image labels still fail.
 
 Descriptor traversal refuses symlink ancestors, directory/leaf links,
 hard-linked/nonregular files, unexpected entries, incomplete manifests and

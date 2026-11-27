@@ -1,0 +1,60 @@
+{
+  "runId": 45928270159,
+  "runUrl": "https://github.com/WOOWTECH/Woow_ha_pi_agent_add_on/actions/runs/45928270159",
+  "headSha": "5afde00961c1c3a70635d3db68d5e3ef53fbb8d2",
+  "conclusion": "failure",
+  "jobs": {
+    "Ingress shim regression and patch syntax": {
+      "conclusion": "failure",
+      "jobId": 140274672790,
+      "failedStep": "Build pinned Pi Web source and validate native settings",
+      "passedBeforeFailure": [
+        "source tag and commit",
+        "source patch SHA",
+        "patched package.json and package-lock SHAs",
+        "npm ci",
+        "npm audit high gate",
+        "CJK path patch applied"
+      ],
+      "failure": "Next 16.4.6 webpack build fails when the source project root is nested at /opt/piweb/lib/node_modules/@agegr/pi-web: TypeScript path aliases in app/login/page.tsx cannot resolve, and proxy.ts, instrumentation.ts, and an API route are parsed without TypeScript handling.",
+      "cause": "Next/webpack treats a project rooted inside node_modules as a dependency tree; this path is not a valid source-build root. No settings SHA comparison was reached."
+    },
+    "Upgrade comparison / runtime": {
+      "conclusion": "failure",
+      "failedStep": "Wait for the new images",
+      "cause": "source-build test job failed, so the image build was skipped and no new image was available"
+    },
+    "Upgrade comparison / compare": {
+      "conclusion": "failure",
+      "failedStep": "Wait for the new images’ SBOMs",
+      "cause": "no new image SBOM was produced after the source-build test failure"
+    }
+  },
+  "followup": {
+    "localCommit": "pending",
+    "dockerSourceRoot": "/opt/piweb-source/package (outside node_modules; fixed path shared by CI and Docker)",
+    "ciSourceRoot": "/opt/piweb-source/package",
+    "runtimeLink": "/opt/piweb/lib/node_modules/@agegr/pi-web -> /opt/piweb-source/package",
+    "imageCopy": "Final image copies the node_modules symlink and /opt/piweb-source tree; runtime appDir remains the exact build path.",
+    "strictGates": "No compiled artifact hashes or source anchors changed. The new CI run must validate source build, exact settings hashes, image build, and upgrade comparison."
+  },
+  "localChecks": {
+    "passed": [
+      "workflow YAML parse and source-root alignment assertions",
+      "native-maintenance-integration: 5/5",
+      "Docker Pi Web builder RUN block bash -n",
+      "git diff --check",
+      "node --check patches/patch-omnigent-settings.mjs"
+    ],
+    "notRun": [
+      "local Docker/image build by instruction",
+      "full local Pi Web source build by instruction",
+      "settings compiled-tree Node test: requires extracted official 0.12.0 tree; no source extraction/build rerun locally"
+    ],
+    "pending": [
+      "CI validation of fixed source root and runtime symlink layout",
+      "compiled settings SHA check in CI",
+      "image layer size and upgrade comparison in CI"
+    ]
+  }
+}

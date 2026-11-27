@@ -1,0 +1,21 @@
+{
+  "pullRequest": 55,
+  "workflowRun": 45924916110,
+  "testedMergeHead": "3438346724a2943c0dd8bf36bfb1378f135ab70a",
+  "candidateCommit": "8e2425ccaf57db11e5123f468420c3a809bb11ed",
+  "observed": {
+    "job": "Ingress shim regression and patch syntax",
+    "failedStep": "Validate native settings against the official compiled Pi Web artifact",
+    "failure": "CI extracted @agegr/pi-web@0.12.0 npm precompiled Next 16.3.8 output; new source-build settings hashes correctly rejected it as unsupported compiled artifact.",
+    "followingSteps": "skipped",
+    "upgradeRuntime": "failed because the dependent build job uploaded no image; wait-for-image step reported no new image",
+    "upgradeComparison": "still in progress at last status poll"
+  },
+  "fix": "Change CI fixture to fetch exact sourceRef/sourceCommit, verify tag commit and patch/package/lock hashes, npm ci + high audit + source build, then use that same built tree for contracts and browser tests.",
+  "localChecks": {
+    "workflowYaml": "pass",
+    "modifiedWorkflowBashSyntax": "pass",
+    "focusedVersionsContract": "1/1 pass",
+    "fullSourceBuildRerun": "not run; same source build and settings patch had already passed locally"
+  }
+}

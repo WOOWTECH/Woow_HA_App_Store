@@ -1,0 +1,83 @@
+{
+  "runId": 45925654924,
+  "runUrl": "https://github.com/WOOWTECH/Woow_ha_pi_agent_add_on/actions/runs/45925654924",
+  "headSha": "1917d8fc19f9780897483b3cb933c2c04cec64a4",
+  "conclusion": "failure",
+  "jobs": {
+    "Ingress shim regression and patch syntax": {
+      "conclusion": "failure",
+      "jobId": 140266241852,
+      "failedStep": "Build pinned Pi Web source and validate native settings",
+      "passedBeforeFailure": [
+        "source tag and commit",
+        "package and lock hashes",
+        "npm ci",
+        "high severity audit",
+        "Next 16.4.6 webpack production build"
+      ],
+      "failure": "settings patch strict compiled-artifact hash mismatch; CI log did not retain actual compiled hashes"
+    },
+    "Upgrade comparison / runtime": {
+      "conclusion": "failure",
+      "jobId": 140266241960,
+      "cause": "new image build was skipped after the test job failed; no new image/SBOM was available for comparison"
+    },
+    "Upgrade comparison / compare": {
+      "conclusion": "failure",
+      "cause": "no new image/SBOM was available after the image build was skipped"
+    }
+  },
+  "rootCause": {
+    "finding": "The source-validation workflow compiled Pi Web under RUNNER_TEMP/pi-web-native/package while the production Docker build compiles at /opt/piweb/lib/node_modules/@agegr/pi-web. With identical pinned source, patch, lock, Node 22.23.5, npm 10.9.9 and webpack build command, different absolute build roots produced different Webpack module IDs and compiled hashes.",
+    "strictGate": "Unchanged exact compiled hashes and replacement anchors remain required. Align the validation build root to the production Docker path so the test validates the same compiled artifact.",
+    "pinnedHashes": {
+      "client": "4ce31ce53f1f76cb476137d28e932a898f4ed1680fa9f4b7c3a415c0c30a435f",
+      "server": "86670efdf0d94a68e7b8e4cd61a73a4eb331ef1435215c5d6529cf8b4c7a5372"
+    },
+    "cleanBuildObservations": [
+      {
+        "root": "/data/pi-agent/tmp/ha-pr55-45925654924-repro-02",
+        "client": "b8bfd6d072ea678a32159851283eba0e80d846c833fffbc5deb9aafc2678f53e",
+        "server": "2b1f3e13c96a5901803a818c6d9ef79bc88fafee51883a3b3343149e591b588d",
+        "node": "22.23.5",
+        "npm": "10.9.9",
+        "ci": false
+      },
+      {
+        "root": "/data/pi-agent/tmp/ha-pr55-45925654924-repro-03",
+        "client": "16d1e2e5e0adf83c479ea7cc431bc7ffa5012cf38b87d39abae7af3917907adf",
+        "server": "31aee765c620198b1952658271326cb7051e7b0db0acd6f69e7e17f3e6564305",
+        "node": "22.23.5",
+        "npm": "10.9.9",
+        "ci": false
+      },
+      {
+        "root": "/data/pi-agent/tmp/ha-pr55-45925654924-repro-ci",
+        "client": "90deb054f3a8feaf86da8e908a6cc45e4569b1e48ace6f6ebdbba38e14731a99",
+        "server": "23dfbe574416cd7de974885214068e036b0a24bdce6bc1824b94466c23b50208",
+        "node": "22.23.5",
+        "npm": "10.9.9",
+        "ci": true
+      }
+    ],
+    "byteComparison": "The first two clean build outputs have equal-length client bundles differing in 8 bytes at two webpack entry-module-ID references; the remaining client bytes match after restoring the already-patched fixture to its original form. The server bundle hash also changes across build roots."
+  },
+  "localChanges": {
+    "workflow": "Use /opt/piweb/lib/node_modules/@agegr/pi-web for source validation and subsequent package/browser tests, matching Dockerfile's production build root. On the ephemeral GitHub runner, create the parent directory with sudo and chown it to the runner before cloning.",
+    "diagnostics": "On strict hash mismatch, print expected and actual SHA256 values. Acceptance hashes, source anchors, tamper rejection, and write ordering remain strict."
+  },
+  "localChecks": {
+    "runAt": "2026-11-27",
+    "passed": [
+      "native-maintenance-integration: 5/5",
+      "workflow YAML parse and production-root alignment assertions",
+      "node --check patches/patch-omnigent-settings.mjs",
+      "node --check patches/tests/omnigent-settings.test.mjs",
+      "settings changed-SSR strict rejection test: 1/1",
+      "git diff --check"
+    ],
+    "pending": [
+      "CI validation at the aligned production path"
+    ]
+  }
+}

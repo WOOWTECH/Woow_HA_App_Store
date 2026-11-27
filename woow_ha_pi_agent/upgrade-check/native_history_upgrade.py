@@ -128,12 +128,19 @@ def scopes():
     return paths
 
 
+def valid_version(value):
+    # Store comparison labels include our numbered release candidates. Keep
+    # the bounded grammar explicit; labels still do not prove image identity.
+    return (type(value) is str and len(value) <= 32
+            and re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+(?:-rc\.[1-9][0-9]*)?", value) is not None)
+
+
 def context(hook):
     paths = scopes()
     require(hook in ("seed", "verify"), "hook")
     require(os.environ.get("PHASE") == ("old" if hook == "seed" else "new"), "phase")
     version, image = os.environ.get("ADDON_VERSION", ""), os.environ.get("ADDON_IMAGE", "")
-    require(re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", version) is not None and len(version) <= 32, "version")
+    require(valid_version(version), "version")
     require(0 < len(image) <= 256 and "\x00" not in image, "image")
     return dict(paths, version=version, imageHash=digest(image.encode()))
 
@@ -287,7 +294,7 @@ def verify(ctx):
     value = json.loads(raw, object_pairs_hook=no_duplicates)
     require(type(value) is dict and set(value) == {"schema", "nonce", "beforeVersion", "beforeImageHash", "dataIdentity", "agedNs", "files"}, "state_schema")
     require(value["schema"] == SCHEMA, "state_schema")
-    require(type(value["beforeVersion"]) is str and re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", value["beforeVersion"]) is not None
+    require(valid_version(value["beforeVersion"])
             and value["beforeVersion"] != ctx["version"], "distinct_version_labels")
     require(type(value["beforeImageHash"]) is str and re.fullmatch(r"[0-9a-f]{64}", value["beforeImageHash"]) is not None
             and value["beforeImageHash"] != ctx["imageHash"], "distinct_image_labels")

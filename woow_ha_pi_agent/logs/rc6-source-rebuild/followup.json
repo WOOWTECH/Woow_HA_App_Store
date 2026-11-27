@@ -1,0 +1,12 @@
+{
+  "scope": "review follow-up; source ARG pin binding and build-context cleanup",
+  "sourceCommit": "894e1a28dbeeb7b457c7712e495d975fe9927b89",
+  "checks": [
+    {"name":"ARG-to-build-pins-and-tag-commit","result":"Docker requires PI_WEB_SOURCE_COMMIT == build-pins.sourceCommit, fetches build-pins.sourceRef, checks tag^{commit} == sourceCommit, checks detached HEAD, and retains patch/package/lock SHA checks"},
+    {"name":"build-cache-size-and-runtime-copy-exclusion","result":"local source build measured .git=9.6 MiB and .next/cache=666 MiB; Docker removes .git, .next/cache, node_modules/.cache before final runtime COPY and asserts their absence"},
+    {"name":"fix-unicode-space-paths-idempotence","result":"applied the patch twice to the real SDK path-utils.js; both calls reported already patched and SHA256 remained 68572d6f425d483ca93fa9f825e83c1bc5867e2430b0783876cd7bfa4fb459df"},
+    {"name":"focused-source-build-contract","command":"node --test --test-name-pattern='Pi Web RC6 is rebuilt' tests/versions.test.mjs","exitCode":0,"passed":1,"failed":0},
+    {"name":"syntax-and-diff","command":"node --check tests/versions.test.mjs; git diff --check","exitCode":0}
+  ],
+  "imageBuild": "not run"
+}

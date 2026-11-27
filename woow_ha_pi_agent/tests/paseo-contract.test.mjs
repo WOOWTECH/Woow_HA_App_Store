@@ -3,7 +3,7 @@
 // and pairing-link code, with no Docker, network, daemon, login or provider. It
 // runs in the required test job long before the image build. Needs:
 //   PASEO_PLUGIN_TGZ  the vendored archive named in cli-runtime/versions.json
-//   PI_WEB_ROOT       official Pi Web 0.12.0 with its production dependencies;
+//   PI_WEB_ROOT       source-built Pi Web 0.12.0 / Next 16.4.6 with its production dependencies;
 //                     the image links its node_modules into the plugin, and so
 //                     does this test.
 import test from 'node:test';

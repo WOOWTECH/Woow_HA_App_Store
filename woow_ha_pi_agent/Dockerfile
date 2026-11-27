@@ -16,14 +16,15 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 COPY cli-runtime/versions.json /tmp/versions.json
 RUN set -euo pipefail; \
     semver='^[0-9]+[.][0-9]+[.][0-9]+$'; \
+    plugin_semver='^[0-9]+[.][0-9]+[.][0-9]+(-rc[.][0-9]+)?$'; \
     pin() { mkdir -p "$(dirname "/pins/$1")"; jq -er --arg re "$3" "$2 | strings | select(test(\$re))" /tmp/versions.json > "/pins/$1"; }; \
     pin claude/version .claude.version "${semver}"; \
     pin codex/version .codex.version "${semver}"; \
     pin omnigent/version .omnigent.version "${semver}"; \
-    pin omnigent-plugin/version .omnigentPlugin.version "${semver}"; \
-    pin omnigent-plugin/archive .omnigentPlugin.archive '^candidate-packages/woowtech-pi-omnigent-plugin-[0-9]+[.][0-9]+[.][0-9]+[.]tgz$'; \
+    pin omnigent-plugin/version .omnigentPlugin.version "${plugin_semver}"; \
+    pin omnigent-plugin/archive .omnigentPlugin.archive '^candidate-packages/woowtech-pi-omnigent-plugin-[0-9]+[.][0-9]+[.][0-9]+(-rc[.][0-9]+)?[.]tgz$'; \
     pin omnigent-plugin/sha256 .omnigentPlugin.sha256 '^[0-9a-f]{64}$'; \
-    pin agent-connect/version .agentConnect.version "${semver}"; \
+    pin agent-connect/version .agentConnect.version "${plugin_semver}"; \
     pin agent-connect/sha256 .agentConnect.sha256 '^[0-9a-f]{64}$'; \
     pin agent-connect/runtime-revision .agentConnect.runtimeRevision '^[0-9]+[.][0-9]+[.][0-9]+-r[0-9]+-[0-9a-f]{12}$'
 
@@ -69,7 +70,7 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
-       ca-certificates curl gnupg build-essential python3 \
+       ca-certificates curl gnupg build-essential python3 git \
     && mkdir -p /etc/apt/keyrings \
     && curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key \
        | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg \
@@ -80,11 +81,10 @@ RUN apt-get update \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# Pinned: upstream ships absolute-path assets and 100+ /api/* routes that the
-# ingress shim rewrites in nginx.conf. A floating `@latest` means an upstream
-# refactor of _next chunk names, RSC prefetch shape, or a new /api/* route can
-# silently regress the shim without any local code change. Bump manually after
-# validating a new upstream release doesn't break Ingress.
+# Pi Web source, lock, security audit and compiled output are pinned in
+# patches/pi-web-source/build-pins.json. Build from the exact upstream tag rather
+# than reusing its precompiled npm artifact, so the effective Next runtime and
+# the compiled tree are the same reviewed 16.4.6 build.
 #
 # 0.9.0 notes, read out of the built middleware.js rather than release notes:
 #   - the trust guard's matcher widened from "/api/:path*" to
@@ -97,15 +97,39 @@ RUN apt-get update \
 #     upstream. Nothing in this add-on references either by name; the shim
 #     matches on the /api/ prefix, not a route list.
 ARG PI_WEB_VERSION=0.12.0
-RUN npm install -g --omit=dev --prefix=/opt/piweb "@agegr/pi-web@${PI_WEB_VERSION}" \
-    && rm -rf /tmp/npm-cache
-
-# Pi Web 0.12 pins Pi SDK 1.1, whose caret dependencies now select codemode
-# 1.4. That release removed MCP_TYPESCRIPT_PREAMBLE, breaking SDK imports
-# before the server starts. Keep the related runtime packages on SDK 1.1.
-RUN npm install --omit=dev --ignore-scripts --prefix=/opt/piweb/lib/node_modules/@agegr/pi-web \
-      @earendil-works/pi-codemode@1.1.0 @earendil-works/pi-mcp@1.1.0 @earendil-works/chord@1.1.0 \
-    && rm -rf /tmp/npm-cache
+ARG PI_WEB_SOURCE_COMMIT=894e1a28dbeeb7b457c7712e495d975fe9927b89
+COPY patches/pi-web-source/ /opt/pi-web-source/
+COPY patches/ /opt/patches/
+RUN set -euo pipefail; \
+    ROOT=/opt/piweb-source/package; \
+    RUNTIME_ROOT=/opt/piweb/lib/node_modules/@agegr/pi-web; \
+    mkdir -p "$(dirname "$ROOT")" "$(dirname "$RUNTIME_ROOT")" /opt/piweb/bin; \
+    git init "$ROOT"; \
+    git -C "$ROOT" remote add origin https://github.com/agegr/pi-web.git; \
+    PINNED_SOURCE_COMMIT="$(node -p 'require("/opt/patches/pi-web-source/build-pins.json").sourceCommit')"; \
+    PINNED_SOURCE_REF="$(node -p 'require("/opt/patches/pi-web-source/build-pins.json").sourceRef')"; \
+    test "$PI_WEB_SOURCE_COMMIT" = "$PINNED_SOURCE_COMMIT"; \
+    test "$(node -p 'require("/opt/patches/pi-web-source/build-pins.json").version')" = "$PI_WEB_VERSION"; \
+    git -C "$ROOT" fetch --depth=1 origin "refs/tags/$PINNED_SOURCE_REF:refs/tags/$PINNED_SOURCE_REF"; \
+    test "$(git -C "$ROOT" rev-parse "refs/tags/$PINNED_SOURCE_REF^{commit}")" = "$PINNED_SOURCE_COMMIT"; \
+    git -C "$ROOT" checkout --detach "$PINNED_SOURCE_COMMIT"; \
+    test "$(git -C "$ROOT" rev-parse HEAD)" = "$PINNED_SOURCE_COMMIT"; \
+    echo "$(node -p 'require("/opt/patches/pi-web-source/build-pins.json").patchSha256')  /opt/pi-web-source/pi-web-0.12.0-next-16.4.6.patch" | sha256sum -c -; \
+    git -C "$ROOT" apply /opt/pi-web-source/pi-web-0.12.0-next-16.4.6.patch; \
+    echo "$(node -p 'require("/opt/patches/pi-web-source/build-pins.json").patchedPackageJsonSha256')  $ROOT/package.json" | sha256sum -c -; \
+    echo "$(node -p 'require("/opt/patches/pi-web-source/build-pins.json").patchedPackageLockSha256')  $ROOT/package-lock.json" | sha256sum -c -; \
+    node -e 'const p=require(process.argv[1]); if(p.version!==process.argv[2]||p.dependencies.next!=="16.4.6"||p.devDependencies["eslint-config-next"]!=="16.4.6")process.exit(1)' "$ROOT/package.json" "$PI_WEB_VERSION"; \
+    cd "$ROOT"; npm ci --include=dev --no-fund; npm audit --audit-level=high --no-fund; \
+    mapfile -d '' FILES < <(find "$ROOT" -path '*@earendil-works/*/dist/*/tools/path-utils.js' -print0); \
+    test "${#FILES[@]}" -ge 1; node /opt/patches/fix-unicode-space-paths.mjs "${FILES[@]}"; \
+    NEXT_TELEMETRY_DISABLED=1 npm run build; \
+    node -e 'const p=require(process.argv[1]); if(p.version!=="16.4.6")process.exit(1)' "$ROOT/node_modules/next/package.json"; \
+    npm prune --omit=dev --ignore-scripts --no-fund; \
+    rm -rf "$ROOT/.git" "$ROOT/.next/cache" "$ROOT/node_modules/.cache"; \
+    test ! -e "$ROOT/.git" && test ! -e "$ROOT/.next/cache" && test ! -e "$ROOT/node_modules/.cache"; \
+    ln -s "$ROOT" "$RUNTIME_ROOT"; \
+    ln -s ../lib/node_modules/@agegr/pi-web/bin/pi-web.js /opt/piweb/bin/pi-web; \
+    rm -rf /tmp/npm-cache
 
 # Reproducible, architecture-aware system CLIs. User-scoped binaries in the
 # persistent HOME still take precedence. Separate package locks, builder runs,
@@ -169,9 +193,10 @@ RUN set -euo pipefail; \
 # non-breaking space still resolves) while writes are never rewritten. It
 # asserts every hunk, so an upstream bump fails the build rather than shipping
 # an image that quietly lost the fix.
-COPY patches/ /opt/patches/
+# The runtime path is a symlink to the fixed source-build root (/opt/piweb-source/package).
+# `find -H` follows that command-line symlink only; plain `find` would scan nothing.
 RUN set -euo pipefail; \
-    mapfile -d '' FILES < <(find /opt/piweb/lib/node_modules/@agegr/pi-web \
+    mapfile -d '' FILES < <(find -H /opt/piweb/lib/node_modules/@agegr/pi-web \
       -path '*@earendil-works/*/dist/*/tools/path-utils.js' -print0); \
     echo "[patch] found ${#FILES[@]} path-utils.js copies"; \
     if [ "${#FILES[@]}" -lt 1 ]; then \
@@ -190,7 +215,9 @@ RUN set -euo pipefail; \
 # Keep the official compiled 0.12.0 UI and private Ingress bridge. Add Omnigent
 # to React's desktop/mobile settings navigation immediately after MCP. The
 # patch checks client + SSR artifact hashes and syntax before writing either.
-RUN node /opt/patches/patch-omnigent-settings.mjs /opt/piweb/lib/node_modules/@agegr/pi-web
+# Diagnostic first (never gates): prints this build's compiled-settings pins so CI and each architecture can be compared.
+RUN PIN_BLOCK_SIZE=2048 node /opt/patches/print-compiled-settings-pins.mjs /opt/piweb/lib/node_modules/@agegr/pi-web || true; \
+    node /opt/patches/patch-omnigent-settings.mjs /opt/piweb/lib/node_modules/@agegr/pi-web
 
 
 # Omnigent is built once per architecture, never downloaded on first activation.
@@ -379,6 +406,7 @@ RUN mkdir -p /etc/apt/keyrings \
 # put the tree under /opt/piweb/{lib,bin}, so it maps onto /usr/local unchanged
 # and the `pi-web` bin stays a working relative symlink into lib/node_modules.
 COPY --from=piweb-builder /opt/piweb/lib/node_modules /usr/local/lib/node_modules
+COPY --from=piweb-builder /opt/piweb-source           /opt/piweb-source
 COPY --from=piweb-builder /opt/piweb/bin              /usr/local/bin
 COPY --from=piweb-builder /opt/pi-clis/claude /opt/pi-clis/claude
 COPY --from=piweb-builder /opt/pi-clis/codex /opt/pi-clis/codex
@@ -438,6 +466,7 @@ RUN PINS=/usr/local/share/woow-ha-pi-agent/versions.json \
 
 COPY rootfs/ /
 COPY tests/omnigent-image-smoke.mjs /tmp/omnigent-image-smoke.mjs
+COPY tests/sessions-http-json-acceptance.mjs /tmp/sessions-http-json-acceptance.mjs
 COPY tests/paseo-image-smoke.mjs /tmp/paseo-image-smoke.mjs
 COPY tests/paseo-native-runtime.mjs /tmp/paseo-native-runtime.mjs
 COPY tests/shared-distribution.test.mjs /tmp/shared-distribution.test.mjs
@@ -490,7 +519,7 @@ RUN --network=none sed 's/listen 172.30.32.1:30142/listen 127.0.0.1:30142/' /etc
        /opt/woow/pi-agent-shared-runtime/tests/extension-scan.test.mjs \
        /opt/woow/pi-agent-shared-runtime/tests/bridge.test.mjs \
        /opt/woow/pi-agent-shared-runtime/tests/mcp-adapter.test.mjs \
-    && rm /tmp/omnigent-image-smoke.mjs /tmp/paseo-image-smoke.mjs /tmp/paseo-native-runtime.mjs /tmp/shared-distribution.test.mjs /tmp/shared-sync-only.test.mjs
+    && rm /tmp/omnigent-image-smoke.mjs /tmp/sessions-http-json-acceptance.mjs /tmp/paseo-image-smoke.mjs /tmp/paseo-native-runtime.mjs /tmp/shared-distribution.test.mjs /tmp/shared-sync-only.test.mjs
 
 # SHELL is what pi-web 0.9.0's browser terminal spawns:
 #     process.env.SHELL || "/bin/sh"   with argv ["-l"]

@@ -29,6 +29,9 @@ try {
   assert.equal(pkg.version, pins.omnigentPlugin.version);
   // Pi Web is not in versions.json: the settings patch pins its compiled artifact hashes.
   assert.equal(JSON.parse(fs.readFileSync('/usr/local/lib/node_modules/@agegr/pi-web/package.json', 'utf8')).version, '0.12.0');
+  // Check the dependency actually installed in the final image, rather than
+  // trusting the candidate manifest or the upstream package's declared range.
+  assert.equal(JSON.parse(fs.readFileSync('/usr/local/lib/node_modules/@agegr/pi-web/node_modules/next/package.json', 'utf8')).version, '16.4.6');
   console.log('SMOKE: loading registered image plugin');
   seed(); const plugin = await loadPlugin(); assert.equal(typeof plugin.runtime.resumeAuthorizedHost, 'function'); assert.equal((await plugin.lifecycle()).active, true);
   // Registration never creates a setup conversation: no onboarding state, no session.
@@ -42,8 +45,26 @@ try {
   assert.ok(extensions.extensions.some(extension => extension.path.includes('pi-omnigent-plugin')));
   console.log('SMOKE: discovering preinstalled dependencies without installers');
   const installer = await import(`${BUNDLE}/src/installer.mjs`);
-  const dependencies = await installer.installDependencies({ env: process.env, run: async () => { throw new Error('Unexpected runtime download'); } });
+  // Newer plugins run the maintenance preservation verifier even when every
+  // dependency is already in the image. Execute that exact guard, while still
+  // refusing every installer command (including python -m pip).
+  let maintenanceGuardRuns = 0;
+  const dependencies = await installer.installDependencies({
+    env: process.env,
+    run: async (command, args, options) => {
+      assert.equal(command, '/opt/omnigent/venv/bin/python', 'only the image SDK Python may run');
+      assert.equal(args.length, 7, 'only the maintenance guard argv is allowed');
+      assert.deepEqual(args.slice(0, 4), ['-I', '-B', path.join(BUNDLE, 'src/maintenance_preservation.py'), '--omnigent-bin']);
+      assert.equal(fs.realpathSync(args[4]), '/opt/omnigent/venv/bin/omnigent');
+      assert.deepEqual(args.slice(5), ['--state-dir', process.env.PI_OMNIGENT_STATE_DIR]);
+      assert.equal(options.env.PI_OMNIGENT_STATE_DIR, process.env.PI_OMNIGENT_STATE_DIR);
+      maintenanceGuardRuns += 1;
+      return installer.runCommand(command, args, options);
+    },
+  });
   assert.equal(dependencies.ok, true, JSON.stringify(dependencies.issues));
+  assert.equal(maintenanceGuardRuns, 1, 'the real source-preservation guard ran exactly once');
+  assert.equal(dependencies.maintenancePreservation.ok, true);
   assert.deepEqual(dependencies.installedEngines.sort(), ['claude', 'codex', 'pi']);
   assert.equal(dependencies.claude.path, '/usr/local/bin/claude');
   assert.equal(dependencies.claude.version, pins.claude.version);
@@ -117,6 +138,11 @@ try {
   assert.equal(fs.existsSync(path.join(temporary, 'pi-paseo')), false, 'no Paseo state, so no daemon was started');
   assert.equal(fs.existsSync(path.join(process.env.PI_OMNIGENT_STATE_DIR, 'onboarding.json')), false);
   assert.equal(fs.existsSync(path.join(temporary, 'sessions')), false);
+  const { verifySessionsHttpJson } = await import(new URL('./sessions-http-json-acceptance.mjs', import.meta.url));
+  const sessionsJson = await verifySessionsHttpJson({ baseUrl: 'http://127.0.0.1:30141', agentDir: temporary,
+    piWebRoot: '/usr/local/lib/node_modules/@agegr/pi-web' });
+  assert.equal(sessionsJson.returnedSyntheticSessions, 24);
+  console.log(`SMOKE: live sessions HTTP JSON gzip response parsed (${sessionsJson.sessions} synthetic sessions, ${sessionsJson.decodedBytes} decoded bytes)`);
   console.log('SMOKE: web ready; waiting for offline activation receipt');
   const bootPath = path.join(temporary, 'omnigent-plugin/boot.json');
   for (let attempt = 0; attempt < 45 && !fs.existsSync(bootPath); attempt++) await new Promise(resolve => setTimeout(resolve, 1000));

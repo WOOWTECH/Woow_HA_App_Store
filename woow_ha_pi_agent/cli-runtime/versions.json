@@ -1,18 +1,21 @@
 {
-  "_note": "The only place these bundled versions are written, beside the vendored archives and their record in candidate-packages/manifest.json. The Dockerfile (stage pins), the CI test job and the tests read this file; claude/ and codex/ package locks, omnigent/requirements.* and the manifest must pin the same versions (tests/versions.test.mjs). agentConnect is the @woowtech/pi-paseo archive: paseoVersion is the Paseo daemon it installs and runtimeRevision is derived from its runtime lockfile. Pi Web stays pinned with its settings patch.",
+  "_note": "The only place these bundled versions are written, beside the vendored archives and their record in candidate-packages/manifest.json. The Dockerfile (stage pins), the CI test job and the tests read this file; claude/ and codex/ package locks, omnigent/requirements.* and the manifest must pin the same versions (tests/versions.test.mjs). agentConnect is the @woowtech/pi-paseo archive: paseoVersion is the Paseo daemon it installs and runtimeRevision is derived from its runtime lockfile. Pi Web stays pinned with its settings patch. The paired Agent Connect / Omnigent GitHub Release archives, source revisions and adapter digests are pinned here and recorded in candidate-packages/manifest.json.",
   "omnigentPlugin": {
-    "version": "0.3.34",
-    "archive": "candidate-packages/woowtech-pi-omnigent-plugin-0.3.34.tgz",
-    "sha256": "e9e80783881f8a036cbf922d2f50fad860dac3bd23e170dda768ab3c56107945",
-    "sourceCommit": "d8652e971bdf66133d699052ab9003d39ff69159"
+    "version": "0.3.42",
+    "archive": "candidate-packages/woowtech-pi-omnigent-plugin-0.3.42.tgz",
+    "sha256": "7ffa8983e3bb2d9790f3122fd53db3e7adca4e24aed33f37aa4cc86bbeea5bb5",
+    "sourceCommit": "7b56ad586711e6a707c6c3f36ff5dc5fef2790a4",
+    "combinedPatchSha256": "8d55d6824307023eed5ead7fa89080650d3981fae1746378db9a400fab8a9632"
   },
   "agentConnect": {
-    "version": "0.1.25",
-    "archive": "candidate-packages/woowtech-pi-paseo-0.1.25.tgz",
-    "sha256": "9717988c00a4c830a3fa458ab1ae778515c90257faaac0e68e695fefbf7cd8d1",
-    "sourceCommit": "43cc7b0623c47afdbad6e35e0df7bd03dd5c72d3",
-    "paseoVersion": "0.17.4",
-    "runtimeRevision": "0.17.4-r2-a651f42711da"
+    "version": "0.1.27",
+    "archive": "candidate-packages/woowtech-pi-paseo-0.1.27.tgz",
+    "sha256": "aecf3bdff1505d3745ddc694f1e50fead50a0fc19b3fa2c82205174917143b6f",
+    "sourceCommit": "053a39a7b72e83787a419b97206adc34f45e35bb",
+    "paseoVersion": "0.17.5",
+    "runtimeRevision": "0.17.5-r4-8664f2c3f8f5",
+    "adapterSha256": "22d3a604d0c3ddc9305afe07f9f68524bec906fddb16636c08ac2783b4442a6c",
+    "archiveBuildCommit": "053a39a7b72e83787a419b97206adc34f45e35bb"
   },
   "omnigent": {
     "version": "0.16.0"

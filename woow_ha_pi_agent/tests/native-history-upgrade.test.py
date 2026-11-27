@@ -216,6 +216,23 @@ class SyntheticUpgradeTests(unittest.TestCase):
         self.call("verify", success=False, ADDON_VERSION="0.15.22")
         self.call("verify", success=False, ADDON_IMAGE="owned-fixture:old")
 
+    def test_stable_to_rc_preserves_all_synthetic_data(self):
+        self.seed()
+        before = self.snapshot()
+        self.call("verify", ADDON_VERSION="0.15.28-rc.3")
+        self.assertEqual(self.snapshot(), before)
+
+    def test_rc_to_rc_requires_distinct_versions_and_valid_labels(self):
+        self.call("seed", ADDON_VERSION="0.15.28-rc.3")
+        before = self.snapshot()
+        self.call("verify", ADDON_VERSION="0.15.28-rc.4")
+        self.call("verify", success=False, ADDON_VERSION="0.15.28-rc.3")
+        for label in ["0.15.28-rc", "0.15.28-rc.03", "0.15.28-rc.-1",
+                      "0.15.28-rc.3\n", "0.15.28-rc.3/other", "0.15.28-rc." + "9" * 40]:
+            with self.subTest(label=label):
+                self.call("verify", success=False, ADDON_VERSION=label)
+        self.assertEqual(self.snapshot(), before)
+
     def test_extra_and_oversized_fixture_files_fail(self):
         self.seed()
         target = self.file("config.toml")

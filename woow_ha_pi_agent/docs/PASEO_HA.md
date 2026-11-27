@@ -4,6 +4,22 @@ This change retains the official Pi Web 0.12.0 npm build and its SDK 1.1
 compatibility pins. It does **not** install the plugins' Pi Web 0.10 overlay.
 The native desktop tabs and mobile picker are MCP → Omnigent → Agent Connect.
 
+## Agent Connect 0.1.27 / Omnigent 0.3.42 (0.15.28)
+
+HA `0.15.28` pins the Agent Connect 0.1.27 GitHub Release archive to its exact
+bytes, source commit and adapter digest. Paseo runs `0.17.5-r4-8664f2c3f8f5`
+with the peer-matched a7 phone-board payload. The Omnigent 0.3.42 GitHub Release
+archive and combined-patch hashes are recorded with their source commit in the
+manifest. Pi Web 0.12.0 is rebuilt from its pinned upstream source with
+Next.js 16.4.6; the official 0.12 bridge and settings page remain in use.
+
+The release preserves the 0.15.27 bridge behavior below: startup progress is
+shown, the running brand and a saved-but-pending target are distinguished, and
+a target change requires an explicit stop followed by start. It does not switch
+or interrupt a running conversation. Store version comparison and the
+mock-Supervisor upgrade check gate publication; no HA image is built locally,
+and no real HAOS upgrade or provider acceptance is claimed here.
+
 ## Startup feedback (0.15.27)
 
 The settings page shows progress immediately and checks readiness after the

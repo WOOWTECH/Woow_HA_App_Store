@@ -1,0 +1,32 @@
+{
+  "scope": "HA RC6 Pi Web source rebuild preparation, local only; no image, host, push, PR, or merge operations",
+  "worktree": "/data/pi-agent/home/work/pi-smart-connectors-20261121/runtime-0175-candidate-20261126/http-json-release-rc6/ha",
+  "upstream": {
+    "package": "@agegr/pi-web@0.12.0",
+    "repository": "https://github.com/agegr/pi-web.git",
+    "tag": "v0.12.0",
+    "sourceCommit": "894e1a28dbeeb7b457c7712e495d975fe9927b89",
+    "npmTarballNotUsedAsBuildInput": true
+  },
+  "pins": {
+    "next": "16.4.6",
+    "eslintConfigNext": "16.4.6",
+    "undici": "8.12.2",
+    "buildPatchSha256": "466999cfe128221091b604ec9b53b43324014a36a2b433ab9a40107fb37afae2",
+    "patchedPackageJsonSha256": "fda02b65d756f5c720cc97f2e47d3a65a7915820528a6314899b163de9092ff7",
+    "patchedPackageLockSha256": "c535839d22bd0e7d3310b59032a6e0fcfe17ff096400585cc2a1f9594e2c2872",
+    "installedNextPackageJsonSha256": "ed29e68845a44d4cd30518dd0df0554fcf6f6ada99b81f4e8798d26dc6964f82",
+    "compiledSettingsPatchSha256": "515d5aeaae98b13572e31779537b685eebbe36063743b1751c39ec532b67f24b"
+  },
+  "checks": [
+    {"name":"source-build-next-16.4.6","command":"NEXT_TELEMETRY_DISABLED=1 CIRCLE_NODE_TOTAL=3 npm run build","exitCode":0,"result":"production source build succeeded; non-fatal dynamic dependency warning in app/api/sessions/[id]/export/route.ts"},
+    {"name":"sessions-json-unit-and-route","command":"node --experimental-strip-types --test lib/json-response.test.mjs app/api/sessions/runtime-route.test.mjs","exitCode":0,"passed":10,"failed":0},
+    {"name":"high-severity-audit-gate","command":"npm audit --audit-level=high --no-fund","exitCode":0,"result":"0 high vulnerabilities; npm reports 5 low and 2 moderate (KaTeX and SDK minimatch dependency)"},
+    {"name":"compiled-settings-compatibility","command":"PI_WEB_ROOT=<exact 0.12 source build> node --test patches/tests/omnigent-settings.test.mjs","exitCode":0,"passed":6,"failed":0},
+    {"name":"versions-and-release-contracts","command":"PI_WEB_ROOT=<exact 0.12 source build> node --test tests/versions.test.mjs patches/tests/omnigent-settings.test.mjs","exitCode":0,"passed":16,"failed":0},
+    {"name":"sdk-device-id-live","command":"PI_WEB_ROOT=<exact 0.12 source build> node patches/tests/device-id-live.mjs","exitCode":0,"result":"persisted installation UUID and OAuth callback behavior passed"},
+    {"name":"sessions-live-http","command":"Next 16.4.6 production server launched from exact rebuilt 0.12.0 source on 127.0.0.1; verifySessionsHttpJson(minimumSessions=24)","exitCode":0,"status":200,"encoding":"one gzip layer","wireBytes":802,"decodedBytes":21505,"fetchJson":true,"returnedSyntheticSessions":24},
+    {"name":"syntax-and-diff","command":"node --check patches/patch-omnigent-settings.mjs; node --check tests/versions.test.mjs; git diff --check","exitCode":0}
+  ],
+  "releaseGates": {"amd64Image":"pending CI","aarch64Image":"pending CI","upgradeComparison":"pending CI","publishedOrStable":false}
+}

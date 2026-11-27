@@ -22,7 +22,7 @@ const frame = '(0,r.jsx)("iframe",{title:"Omnigent",src:' + prefix + '+"/omnigen
 const paseoFrame = frame.replaceAll("Omnigent", "Agent Connect").replace("/omnigent?", "/paseo/setup?");
 const specs = {
   client: {
-    sha256: 'f273303c76f7ab856768e315526cdc7cd485fba7f930e649337c57289d96093f',
+    sha256: 'ac18c04848bead1a116f08abbd88b705e42bc6680e1b44af6b070bb865eed560',
     replacements: [
       ['"/icons/catppuccin"', iconBase],
       [sections, expanded],
@@ -32,29 +32,32 @@ const specs = {
     ],
   },
   server: {
-    sha256: 'a1205fad45252a602e50e13a3c5c2fd21c7968b002d54ad939984052953a2d71',
+    sha256: '20af3728b46f5a2af6cc895dba58819f6f01a36a32489a64e42214e20b4b8a2a',
     replacements: [
       ['"/icons/catppuccin"', iconBase],
       [sections, expanded],
       ['{id:"mcp",label:k("settings.mcp")}', '{id:"mcp",label:k("settings.mcp")},{id:"omnigent",label:"Omnigent"},{id:"paseo",label:"Agent Connect"}'],
-      ['u("mcp",(0,r.jsx)(zG,{embedded:!0,cwd:a,trust:h,onTrustProject:i,onProjectTrustChanged:j,onClose:d},a??""))',
-        'u("mcp",(0,r.jsx)(zG,{embedded:!0,cwd:a,trust:h,onTrustProject:i,onProjectTrustChanged:j,onClose:d},a??"")),l==="omnigent"&&u("omnigent",' + frame + '),l==="paseo"&&u("paseo",' + paseoFrame + ')'],
+      ['u("mcp",(0,r.jsx)(zH,{embedded:!0,cwd:a,trust:h,onTrustProject:i,onProjectTrustChanged:j,onClose:d},a??""))',
+        'u("mcp",(0,r.jsx)(zH,{embedded:!0,cwd:a,trust:h,onTrustProject:i,onProjectTrustChanged:j,onClose:d},a??"")),l==="omnigent"&&u("omnigent",' + frame + '),l==="paseo"&&u("paseo",' + paseoFrame + ')'],
     ],
   },
 };
 // References include the pre-rendered HTML and RSC, not just the JS manifest.
 // Keep the hash width unchanged so length-prefixed flight content stays valid.
-const oldName = 'page-b3286479e7c79f5d.js';
+const oldName = 'page-5309ff419b280c46.js';
 const references = [
-  ['index.html', 'f3586c304ad4853a5d844ca82babc0daf3b0eb32508188cd1c3515543d1de264'],
-  ['_global-error/page_client-reference-manifest.js', '287a194231a779c5e5afe692a224e3bf9f88249d70a9dea8612a6386ad2d3567'],
-  ['_not-found/page_client-reference-manifest.js', '69c95b97255eea379a7f74b69bf8fc37af377ba72fd267f65176f2de32cadf5c'],
-  ['login/page_client-reference-manifest.js', '528a8132af338691169ca3fd425054debc3a60ee5b2405edee0f1ef5684165d7'],
-  ['page_client-reference-manifest.js', '2f99858d8655e7a67e138c40a8d5d376d3daed6e9d99b920777fd6e5b1c2e8e1'],
-  ['index.segments/__PAGE__.segment.rsc', '69b2c5407307b0e2b00d3cc8e020ffb52eed6854960319bea38536071d79a2b1'],
-  ['index.segments/_full.segment.rsc', '05dc21b7d3c4185d7e88c19b4f3fa8eaf359d17f90338bf3c9fec6c108597f1a'],
-  ['index.rsc', '05dc21b7d3c4185d7e88c19b4f3fa8eaf359d17f90338bf3c9fec6c108597f1a'],
+  ['index.html', 'af51784f4d2752c9088169eb337bbc8e3afac89dd30edeaf548f813318519ffd'],
+  ['_global-error/page_client-reference-manifest.js', '0df7ac2048acb2116d1f8bc8541eecfcafa2ac0acc98f38ffafdfacceb08ce76'],
+  ['_not-found/page_client-reference-manifest.js', 'd149504ff56c736d011c487426527694232b601afa2c4d6acaaa1d7876773acb'],
+  ['login/page_client-reference-manifest.js', 'e3a1676790674436a0a366032bf2527d871205c29a82c20f22f5b66f28d1b232'],
+  ['page_client-reference-manifest.js', '6143099aaa16ea3c5ff772f08da6170dac54f3b3c9fe2ae5b439d58be98a087a'],
+  ['index.segments/__PAGE__.segment.rsc', '6c53201a6a69dd49a1d35ffee2fec6fe5ec2c2c9299ad5e3aebf3c1a6e72c4b9'],
+  ['index.segments/_full.segment.rsc', '286087d203e99851eca115d11a91843e1dc1f540e387afb5f70f1e3ec25c532a'],
+  ['index.rsc', '286087d203e99851eca115d11a91843e1dc1f540e387afb5f70f1e3ec25c532a'],
 ];
+// Read-only view for patches/print-compiled-settings-pins.mjs, which reports every
+// build-derived value above after a Pi Web, lockfile or build-root change.
+export const COMPILED_PIN_TABLE = Object.freeze({ specs, oldName, references });
 const hash = text => createHash('sha256').update(text).digest('hex');
 function replaceOnce(text, from, to) {
   if (text.split(from).length !== 2) throw new Error('Omnigent settings: expected exactly one source anchor');
@@ -67,7 +70,8 @@ function transform(source, spec) {
     if (hash(original) !== spec.sha256) throw new Error('Omnigent settings: patched artifact has changed');
     return source;
   }
-  if (hash(source) !== spec.sha256) throw new Error('Omnigent settings: unsupported compiled artifact; revalidate the Pi Web build');
+  const actualHash = hash(source);
+  if (actualHash !== spec.sha256) throw new Error(`Omnigent settings: unsupported compiled artifact (expected ${spec.sha256}, got ${actualHash}); revalidate the Pi Web build`);
   for (const [from, to] of spec.replacements) source = replaceOnce(source, from, to);
   return source + marker;
 }
@@ -95,7 +99,8 @@ export function patchSettings(root) {
     if (!fs.lstatSync(file).isFile()) throw new Error('Settings reference must be a regular file');
     const before = fs.readFileSync(file, 'utf8');
     const original = alreadyPatched ? before.replaceAll(newName, oldName) : before;
-    if (hash(original) !== checksum) throw new Error(`Omnigent settings: incompatible asset reference ${relative}`);
+    const actualHash = hash(original);
+    if (actualHash !== checksum) throw new Error(`Omnigent settings: incompatible asset reference ${relative} (expected ${checksum}, got ${actualHash})`);
     planned.push({ file, before, after: original.replaceAll(oldName, newName) });
   }
   const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'ha-settings-syntax-'));
