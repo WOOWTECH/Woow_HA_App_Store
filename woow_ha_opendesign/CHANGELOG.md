@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.17
+
+- Update the bundled Agent Connect runtime from 0.3.0 to the public 0.3.1 release. The only change is how the image is built: `node-pty` is compiled for musl against the Node headers that ship in the image instead of headers downloaded from unofficial-builds.nodejs.org, a single distant host that made image builds fail at random (`NATIVE_NODE_PTY_BUILD_FAILED`) on slow links. A failed build now keeps npm's own error in the log.
+- Paseo stays 0.17.5 and the runtime revision stays `0.17.5-r2-186f173be43b`, so updating from 0.2.16 keeps the installed runtime, the provider homes, the pairing and the conversations. The plugin card shows Agent Connect 0.3.1.
+- No option, port, architecture, image name, core digest (still `20261101.2319` = `sha256:a3d1e6ce…`) or data-layout change. Going back to 0.2.16 needs no manual step; going back to 0.2.15 is as described under 0.2.16.
+
 ## 0.2.16
 
 - Update the bundled Paseo runtime from the 0.2.3 release (Paseo 0.11.2) to the public Agent Connect 0.3.0 release (official Paseo 0.17.5). The plugin card, setup page and guide are now called Agent Connect; the plugin id, the `/paseo/setup/` path, the provider homes and the workspaces are unchanged.

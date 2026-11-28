@@ -2628,21 +2628,21 @@
     "woow_ha_opendesign": {
       "id": "woow_ha_opendesign",
       "name": "Woow HA OpenDesign",
-      "version": "0.2.16",
+      "version": "0.2.17",
       "repository": "WOOWTECH/Woow_ha_opendesign_add_on",
-      "source_sha": "a80c0ee37b52d732d47d0046761ce3c02a4f8cf7",
+      "source_sha": "5b91b6bd63334646ae3055b43e85b15b30fe115b",
       "source_path": ".",
       "config_file": "config.yaml",
-      "config_sha256": "sha256:2f6255593ff5c001f1ccb8274ee070d4e340af9089e4813d57446b78f800ea4c",
-      "archive_sha256": "sha256:0ca17885add93a11107acc0ca6c5ab732e08ad34b18a6bcf290a416863dab3ac",
-      "context_fingerprint": "sha256:2154bd54031f1cfb174e36daa3e8c12998adda66e0ac71fb26d5f30d2d9114fa",
-      "material_fingerprint": "sha256:ee33da39f6f23c55897f51b9bcca60df55fd323cbaf13a9094aed73d1e114dde",
+      "config_sha256": "sha256:5ab9c7a91b3133e88c3eb4002f7e8a6e8734724833f350994a0edece3b6f0644",
+      "archive_sha256": "sha256:8bce270ccd6f945d964661bb34e5e462f15230ce15bb69f2b83a21084f3d93ee",
+      "context_fingerprint": "sha256:5bedf6e6d446d7cba46cce489d5b9a2fe2bb0757a9c901a774b166d73c346978",
+      "material_fingerprint": "sha256:47996558258bf5dabe07dcd1f1e265cef81f1be48af5dc47f7e8b3ddf9c7c121",
       "architectures": [
         "amd64"
       ],
       "config": {
         "name": "Woow HA OpenDesign",
-        "version": "0.2.16",
+        "version": "0.2.17",
         "slug": "woow_ha_opendesign",
         "description": "OpenDesign 0.24.1 (WoowTech core) with browser-local API BYOK, headless exports and a built-in MCP server",
         "url": "https://github.com/WOOWTECH/Woow_ha_opendesign_add_on",
@@ -2679,15 +2679,15 @@
       "source_build_supported": true,
       "images": {
         "amd64": {
-          "reference": "ghcr.io/woowtech/woow-ha-opendesign-amd64:0.2.16",
-          "index_digest": "sha256:ebbd0095cb4e0688ab93ddaf595f3304b606319190c2516b577eff57d5b0b6e8",
-          "digest": "sha256:ebbd0095cb4e0688ab93ddaf595f3304b606319190c2516b577eff57d5b0b6e8",
-          "source_revision": "a80c0ee37b52d732d47d0046761ce3c02a4f8cf7"
+          "reference": "ghcr.io/woowtech/woow-ha-opendesign-amd64:0.2.17",
+          "index_digest": "sha256:eae972e22d81953407ead9f348bdb73e47f79618d114bcb6dcfb1bf76cabbd55",
+          "digest": "sha256:eae972e22d81953407ead9f348bdb73e47f79618d114bcb6dcfb1bf76cabbd55",
+          "source_revision": "5b91b6bd63334646ae3055b43e85b15b30fe115b"
         }
       },
       "delivery": "published-image",
       "validation": "manifest+architecture-images+configured-CI",
-      "publisher_run_id": "45987503728",
+      "publisher_run_id": "46090382349",
       "channel": "stable",
       "store_path": "woow_ha_opendesign"
     },
@@ -3337,5 +3337,5 @@
       "store_path": "woow_mcp_headscale"
     }
   },
-  "catalog_id": "sha256:b4f2e44cf7b07863dc0fda01a3c508913a57ac542c3a45920a877b1ed1625aa4"
+  "catalog_id": "sha256:f5784ee7be260b304fb55e8e6e84fb2d25e84f8d5ba1b294d8fae8b572fc2ffe"
 }
